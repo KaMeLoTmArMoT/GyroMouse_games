@@ -55,8 +55,8 @@ GyroMouse_games/
 
 - **🔮 3D Marble Maze (`games/marble_maze`):**
   - **View:** 100% Top-Down (90° overhead perspective).
-  - **Physics:** Static board physics with gravity vector rotation in Rapier3D. Zero catapulting & zero floor tunneling.
-  - **Obstacles:** Circular hole pits ($r=0.5\text{m}$) surrounded by walkable floor slabs ($0.95\text{m}$ clearance).
-  - **Surfaces:** Ice (ultra-slippery), Sand (high friction), Asphalt (standard).
-  - **Controls:** WASD / Arrow Keys by default; PC Mouse Cursor tracking disabled by default (`mouseEnabled: false`, toggleable in Settings).
+  - **Physics:** Static board with rotated gravity vector in Rapier3D. `setSleeping(false)` ensures marble never freezes.
+  - **Themes:** Winter (Snow/Ice/Asphalt), City (Asphalt/Cobblestone/Dirt), Forest (Grass/Dirt/Path) — each with unique terrain frictions, fog and lighting.
+  - **Holes:** Variable radii (0.35 / 0.48 / 0.62 m), off-center positions (center / corners / sides). Fall detected by physical Y-drop only (`y < -0.35`).
+  - **Controls:** Arrow Keys / WASD by default. Reads both `e.code` and `e.key` for full compatibility with pyautogui and Chrome Extension dispatch. `window.blur` clears stuck keys.
   - **Audio:** Muted by default (`isMuted: true`).

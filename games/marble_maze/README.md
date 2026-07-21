@@ -8,63 +8,63 @@ An interactive 3D physics marble maze game controlled by tilting your smartphone
 
 > **Status:** Fully functional & verified. 0 TypeScript compilation errors. Running via `npm run dev`.
 
-### 📍 Поточний стан:
+### 📍 Current Features & Architecture:
 
-#### 🎨 Тематичні біоми (Themes & Biomes)
-Кожен рівень випадково отримує одну з трьох тем із власними покриттями, освітленням та туманом:
+#### 🎨 Themed Biomes
+Every generated maze randomly picks one of three environment themes featuring dedicated terrain types, lighting, and atmospheric fog:
 
-| Тема | Основне | Вторинне | Третинне | Атмосфера |
+| Theme | Primary Surface | Secondary Surface | Tertiary Surface | Atmosphere & Fog |
 |---|---|---|---|---|
-| ❄️ **Winter** | Snow (норм.) | Ice (надслизько) | Asphalt | Крижано-синій туман |
-| 🏙️ **City** | Asphalt (норм.) | Dirt/Mud (повільно) | Cobblestone | Сутінкове міське |
-| 🌿 **Forest** | Grass (норм.) | Dirt/Mud (повільно) | Path/Asphalt | Смарагдовий ліс |
+| ❄️ **Winter** | Snow (standard) | Ice (ultra-slippery) | Asphalt | Crisp ice-blue fog |
+| 🏙️ **City** | Asphalt (standard) | Dirt/Mud (heavy drag) | Cobblestone | Dark urban dusk |
+| 🌿 **Forest** | Grass (light resistance) | Dirt/Mud (heavy drag) | Path/Asphalt | Emerald forest haze |
 
-Покриття генеруються **органічними кластерами** (Voronoi seed clustering), а не суцільним рандомом.
+Surfaces are generated in **organic clusters** (Voronoi seed placement) rather than completely random single tiles.
 
-#### 🕳️ Ями (Holes)
-- **Три розміри:** Малі ($r = 0.35\text{ м}$), Середні ($r = 0.48\text{ м}$), Великі ($r = 0.62\text{ м}$).
-- **Варіативне розташування:** Центр, Кути, Боки клітинки.
-- **Фізика:** Програш спрацьовує лише коли кулька **фізично провалюється** нижче рівня підлоги (`translation.y < -0.35`). Без штучних магнітів, без миттєвих тригерів при дотику до краю.
+#### 🕳️ Pitfalls & Holes
+- **Three Diameters:** Small ($r = 0.35\text{m}$), Medium ($r = 0.48\text{m}$), Large ($r = 0.62\text{m}$).
+- **Variable Cell Placement:** Center, Corners, or Side edges.
+- **Physics Behavior:** Game Over triggers ONLY when the marble **physically drops** below the floor level (`translation.y < -0.35`). No artificial magnetic attraction or premature boundary triggers.
 
-#### 🎮 Фізика (Rapier3D)
-- Підлога статична; нахил — через математичне обертання $\vec{g}$.
-- **Сон (Sleep) вимкнено:** `setSleeping(false)` + `wakeUp()` при зміні нахилу — кулька ніколи не "застигає" через Rapier sleep.
-- **Тертя за покриттями:**
+#### 🎮 Physics Engine (Rapier3D)
+- Board geometry is static; tilt is achieved by mathematically rotating the gravity vector $\vec{g}$.
+- **Sleep Disabled:** `setSleeping(false)` + `wakeUp()` on gravity update prevent the marble from freezing if Rapier puts the rigid body to sleep.
+- **Surface Frictions:**
 
-| Покриття | Тертя | Ефект |
+| Surface | Friction Coefficient | In-Game Effect |
 |---|---|---|
-| Ice | 0.03 | Надслизько |
-| Cobblestone | 0.35 | Гладко |
-| Snow / Asphalt / Path | 0.45 | Стандарт |
-| Grass | 0.65 | М'який опір |
-| Sand / Dirt | 0.90–0.95 | Різко гальмує |
+| Ice | 0.03 | Ultra-slippery sliding |
+| Cobblestone | 0.35 | Smooth rolling |
+| Snow / Asphalt / Path | 0.45 | Standard balanced control |
+| Grass | 0.65 | Soft surface drag |
+| Sand / Dirt / Mud | 0.90–0.95 | Heavy resistance / deceleration |
 
-#### ⌨️ Ввід (InputManager)
-- Слухає **обидва** `e.code` та `e.key` — сумісний з реальною клавіатурою, `pyautogui`, Chrome Extension `dispatchEvent` (де `e.code` може бути порожнім).
-- `window.blur` → `keysPressed.clear()` — клавіші **не залипають** при відкритті F12 / Alt+Tab.
-- За замовчуванням: `mode: 'keyboard'`, `mouseEnabled: false` (вмикається в ⚙️ Settings).
-- **Аудіо:** Вимкнено за замовчуванням (`isMuted: true`).
+#### ⌨️ Input Handling (InputManager)
+- Captures both `e.code` and `e.key` for maximum compatibility with physical keyboards, `pyautogui`, and Chrome Extension `dispatchEvent` (where `e.code` might be empty).
+- `window.blur` listener clears `keysPressed` to prevent stuck arrow keys when switching windows or opening DevTools (F12).
+- Default mode: `mode: 'keyboard'`, `mouseEnabled: false` (toggleable in ⚙️ Settings).
+- **Audio:** Muted by default (`isMuted: true`).
 
 ---
 
-## 📁 Карта файлів підмодуля
+## 📁 Submodule File Map
 
-| Файл | Роль та функціонал |
+| File | Role & Features |
 | :--- | :--- |
-| [`src/main.ts`](src/main.ts) | Точка входу: ігровий цикл, physics step, render loop, HUD updates. |
-| [`src/physics/physicsManager.ts`](src/physics/physicsManager.ts) | **Rapier3D:** Колайдери підлоги, сенсори ям, гравітаційний вектор $\vec{g}$, sleep-fix. |
-| [`src/graphics/sceneManager.ts`](src/graphics/sceneManager.ts) | **Three.js:** Top-down камера, матеріали всіх 7 типів покриттів, атмосфера біому, рендер ям. |
-| [`src/maze/mazeGenerator.ts`](src/maze/mazeGenerator.ts) | **DFS генератор:** Теми, органічні біомні кластери, конфіги ям (`HoleConfig`). |
-| [`src/ui/hudManager.ts`](src/ui/hudManager.ts) | **HUD:** Таймер, монети, бейдж покриття (7 типів + іконки), сід, модалки. |
-| [`../../../shared/inputManager.ts`](../../../shared/inputManager.ts) | **Ввід:** WASD/стрілочки + GyroMouse. `e.code`+`e.key` fix. `blur`-clear fix. |
-| [`../../../shared/audioManager.ts`](../../../shared/audioManager.ts) | **Аудіо:** Web Audio API синтезатор звуків (muted by default). |
+| [`src/main.ts`](src/main.ts) | Entry point: Game loop orchestration, physics step, render loop, HUD updates. |
+| [`src/physics/physicsManager.ts`](src/physics/physicsManager.ts) | **Rapier3D:** Static floor colliders, hole sensors, gravity vector $\vec{g}$ rotation, sleep fix. |
+| [`src/graphics/sceneManager.ts`](src/graphics/sceneManager.ts) | **Three.js:** Top-down camera, materials for 7 terrain types, biome atmosphere, hole rendering. |
+| [`src/maze/mazeGenerator.ts`](src/maze/mazeGenerator.ts) | **DFS Generator:** Themes, organic Voronoi biome clusters, dynamic `HoleConfig`. |
+| [`src/ui/hudManager.ts`](src/ui/hudManager.ts) | **UI HUD:** Timer, coin counter, terrain badge (7 types + icons), seed copying, modals. |
+| [`../../../shared/inputManager.ts`](../../../shared/inputManager.ts) | **Shared Input:** WASD/Arrow keys + GyroMouse air-mouse. `e.code`+`e.key` fix, `blur`-clear fix. |
+| [`../../../shared/audioManager.ts`](../../../shared/audioManager.ts) | **Shared Audio:** Web Audio API sound synthesizer (muted by default). |
 
 ---
 
-## 🚀 Як запустити
+## 🚀 How to Run
 
-1. Запустіть сервер у корені `GyroMouse_games`:
+1. Start the Vite dev server in the `GyroMouse_games` root:
    ```bash
    npm run dev
    ```
-2. Відкрийте у браузері: `http://localhost:5173/games/marble_maze/index.html`
+2. Open in your browser: `http://localhost:5173/games/marble_maze/index.html`
