@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GyroMouse Web Games Hub 🎯🕹️</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: radial-gradient(circle at top, #1e1b4b 0%, #0c0f1d 100%);
+      color: #f3f4f6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+    h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #38bdf8 0%, #a855f7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+    p {
+      color: #9ca3af;
+      font-size: 1.1rem;
+      max-width: 600px;
+    }
+    .game-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      width: 100%;
+      max-width: 900px;
+    }
+    .game-card {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-decoration: none;
+      color: inherit;
+    }
+    .game-card:hover {
+      transform: translateY(-6px);
+      border-color: #38bdf8;
+      box-shadow: 0 12px 30px rgba(56, 189, 248, 0.25);
+    }
+    .game-card.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    .game-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+    }
+    .game-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    .game-desc {
+      font-size: 0.95rem;
+      color: #9ca3af;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .btn-play {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #fff;
+      font-weight: 700;
+      padding: 12px 20px;
+      border-radius: 12px;
+      text-align: center;
+      display: inline-block;
+      transition: background 0.2s;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎯 GyroMouse Web Games</h1>
+    <p>Zero-hosting, local web games designed for smartphone gyroscope control & air-mouse input.</p>
+  </header>
+
+  <main class="game-grid">
+    <!-- Game 1: Marble Maze -->
+    <a href="/games/marble_maze/index.html" class="game-card">
+      <div>
+        <div class="badge">READY TO PLAY</div>
+        <div class="game-icon">🔮</div>
+        <div class="game-title">3D Marble Maze</div>
+        <div class="game-desc">
+          Procedurally generated 3D mazes with Rapier3D physics. Features Ice, Sand, and Asphalt surfaces, pitfall traps, and seed replaying.
+        </div>
+      </div>
+      <div class="btn-play">▶ Play Game</div>
+    </a>
+
+    <!-- Game 2: Subway Surfer Runner (Placeholder) -->
+    <div class="game-card disabled">
+      <div>
+        <div class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">COMING SOON</div>
+        <div class="game-icon">🏃‍♂️</div>
+        <div class="game-title">3D Endless Runner</div>
+        <div class="game-desc">
+          Subway Surfers-style 3-lane endless runner. Tilt air-mouse to switch lanes and tap screen to jump over obstacles.
+        </div>
+      </div>
+      <div class="btn-play" style="background: #334155;">Planned</div>
+    </div>
+  </main>
+</body>
+</html>

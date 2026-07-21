@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Marble Maze - GyroMouse Air Mouse Game</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="crosshair" title="Center Deadzone Reference"></div>
+
+  <div id="hud">
+    <div class="hud-left">
+      <a href="/" class="glass-card brand-title" style="text-decoration: none;">
+        <span>🔮</span> MARBLE MAZE
+      </a>
+      <div class="glass-card" id="hud-timer">00:00.0</div>
+      <div class="glass-card" id="hud-coins">⭐ 0 / 0</div>
+      <div class="glass-card" id="hud-seed" style="cursor: pointer;" title="Click to copy Seed">🌱 maze-123</div>
+      <div id="hud-surface" class="surface-badge surface-asphalt">🪨 Asphalt</div>
+    </div>
+
+    <div class="hud-right">
+      <button class="icon-btn" id="btn-mute">🔇 Muted</button>
+      <button class="icon-btn" id="btn-restart">🔄 Restart</button>
+      <button class="icon-btn primary" id="btn-new-level">🎲 New Level</button>
+      <button class="icon-btn" id="btn-settings">⚙️ Settings</button>
+      <a href="/" class="icon-btn" style="text-decoration: none;">🏠 Hub</a>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-box">
+      <div class="modal-title">
+        <span>⚙️ Game Settings</span>
+      </div>
+
+      <div class="modal-group">
+        <label for="setting-mode">Control Input Source</label>
+        <select id="setting-mode" class="modal-select">
+          <option value="keyboard" selected>Keyboard Only (Arrow Keys / WASD)</option>
+          <option value="gyromouse">GyroMouse Air Mouse Only (Cursor Offset)</option>
+          <option value="both">Both (GyroMouse + Arrow Keys/WASD)</option>
+        </select>
+      </div>
+
+      <div class="modal-group" style="flex-direction: row; align-items: center; justify-content: space-between;">
+        <label for="setting-mouse-enable" style="cursor: pointer;">Enable PC Mouse Cursor Tracking</label>
+        <input type="checkbox" id="setting-mouse-enable" style="width: 20px; height: 20px; cursor: pointer;" />
+      </div>
+
+      <div class="modal-group">
+        <label for="setting-difficulty">Difficulty & Maze Size</label>
+        <select id="setting-difficulty" class="modal-select">
+          <option value="easy">Easy (6x6 Grid, Full Guardrails, Grippy)</option>
+          <option value="medium" selected>Medium (10x10 Grid, Mixed Ice/Sand)</option>
+          <option value="hard">Hard (14x14 Grid, Pitfalls & Ice Corridors)</option>
+        </select>
+      </div>
+
+      <div class="modal-group">
+        <label for="setting-sensitivity">Tilt Sensitivity</label>
+        <input type="range" id="setting-sensitivity" min="0.5" max="2.0" step="0.1" value="1.0" class="modal-input" />
+      </div>
+
+      <div class="modal-group">
+        <label for="setting-seed">Custom Maze Seed (Optional)</label>
+        <input type="text" id="setting-seed" placeholder="e.g. gyro-marble-99" class="modal-input" />
+      </div>
+
+      <div class="modal-actions">
+        <button class="icon-btn" id="btn-close-settings">Cancel</button>
+        <button class="icon-btn primary" id="btn-save-settings">Save & Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="win-modal">
+    <div class="modal-box" style="text-align: center;">
+      <div class="modal-title" style="justify-content: center; font-size: 2rem;">
+        🎉 VICTORY!
+      </div>
+      <p style="margin-bottom: 16px; color: #9ca3af;">You balanced the marble safely to the goal!</p>
+
+      <div style="display: flex; justify-content: space-around; background: rgba(30,41,59,0.5); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+        <div>
+          <div style="font-size: 0.85rem; color: #9ca3af;">TIME</div>
+          <div id="win-time" style="font-size: 1.4rem; font-weight: 800; color: #38bdf8;">00:00</div>
+        </div>
+        <div>
+          <div style="font-size: 0.85rem; color: #9ca3af;">STARS</div>
+          <div id="win-coins" style="font-size: 1.4rem; font-weight: 800; color: #facc15;">0 / 0</div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="justify-content: center;">
+        <button class="icon-btn primary" id="btn-win-next" style="padding: 12px 24px; font-size: 1.1rem;">🎲 Next Level</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="fall-modal">
+    <div class="modal-box" style="text-align: center;">
+      <div class="modal-title" style="justify-content: center; font-size: 2rem; color: #ef4444;">
+        💥 FELL OFF!
+      </div>
+      <p style="margin-bottom: 20px; color: #9ca3af;">The marble plunged into a pitfall!</p>
+
+      <div class="modal-actions" style="justify-content: center;">
+        <button class="icon-btn primary" id="btn-fall-retry" style="padding: 12px 24px; font-size: 1.1rem;">🔄 Try Again</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>
