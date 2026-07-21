@@ -110,18 +110,45 @@ export class HudManager {
     this.seedEl.setAttribute('data-seed', seed);
   }
 
-  public updateSurface(terrain: TerrainType) {
-    this.surfaceEl.className = 'surface-badge';
-    if (terrain === 'ice') {
-      this.surfaceEl.classList.add('surface-ice');
-      this.surfaceEl.innerText = '🧊 Ice (Slide!)';
-    } else if (terrain === 'sand') {
-      this.surfaceEl.classList.add('surface-sand');
-      this.surfaceEl.innerText = '🏜️ Sand (Slow!)';
-    } else {
-      this.surfaceEl.classList.add('surface-asphalt');
-      this.surfaceEl.innerText = '🪨 Asphalt';
+  public updateTerrain(terrain: TerrainType) {
+    let text = '🛣️ ASPHALT';
+    let color = '#9ca3af';
+
+    switch (terrain) {
+      case 'ice':
+        text = '🧊 ICE (SLIPPERY)';
+        color = '#38bdf8';
+        break;
+      case 'snow':
+        text = '❄️ SNOW';
+        color = '#e2e8f0';
+        break;
+      case 'grass':
+        text = '🌿 GRASS';
+        color = '#4ade80';
+        break;
+      case 'dirt':
+        text = '🪵 MUD / DIRT (SLOW)';
+        color = '#d97706';
+        break;
+      case 'cobblestone':
+        text = '🧱 COBBLESTONE';
+        color = '#a855f7';
+        break;
+      case 'sand':
+        text = '🏜️ SAND (SLOW)';
+        color = '#f59e0b';
+        break;
+      case 'asphalt':
+      default:
+        text = '🛣️ ASPHALT';
+        color = '#9ca3af';
+        break;
     }
+
+    this.surfaceEl.textContent = text;
+    this.surfaceEl.style.borderColor = color;
+    this.surfaceEl.style.color = color;
   }
 
   public openSettingsModal() {

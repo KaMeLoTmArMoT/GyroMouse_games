@@ -4,26 +4,45 @@ An interactive 3D physics marble maze game controlled by tilting your smartphone
 
 ---
 
-## 🤝 Handoff / Current State (Теперішній стан)
+## 🤝 Handoff / Current State
 
 > **Status:** Fully functional & verified. 0 TypeScript compilation errors. Running via `npm run dev`.
 
-### 📍 На чому зупинилися:
-- **Вигляд камери:** 100% Top-Down (прямо зверху 90°) для максимальної точності огляду мапи та контролю кулі.
-- **Фізика та підлога (Rapier3D):**
-  - Підлога статична, нахил реалізовано через математичне обертання вектора гравітації $\vec{g}$.
-  - М'яч **НЕ провалюється** і **НЕ підкидається** при нахилах дошки.
-  - Кулька прикріплена всередину 3D-групи дошки (`boardGroup.add(marbleMesh)`), тому візуально вона 100% синхронізована з поверхнею.
-- **Круглі ями (Holes):**
-  - Ями зроблені круглими циліндрами ($r = 0.5\,\text{м}$) із червоним застережним обідком у центрі клітинки.
-  - Навколо ями збережено $0.95\,\text{м}$ проходу підлоги, тому кульку ($r = 0.35\,\text{м}$) можна акуратно провести вільними краями коридору.
-- **Керування та осі:**
-  - **Клавіатура (За замовчуванням):** WASD / Стрілочки з плавною інтерполяцією (Lerp factor = `dt * 4.0`, Max Tilt = $12^\circ$).
-    - `W` / `Up`: нахил переднього краю донизу $\rightarrow$ кулька котиться **вперед**.
-    - `S` / `Down`: нахил ближнього краю донизу $\rightarrow$ кулька котиться **назад**.
-    - `A` / `Left`: нахил лівого краю донизу $\rightarrow$ кулька котиться **ліворуч**.
-    - `D` / `Right`: нахил правого краю донизу $\rightarrow$ кулька котиться **праворуч**.
-  - **Миша ПК:** Відстеження курсора миші **вимкнено за замовчуванням** (`mouseEnabled: false`), щоб рух миші на ПК не заважав. Перемикач є у вікні налаштувань (`⚙️ Settings`).
+### 📍 Поточний стан:
+
+#### 🎨 Тематичні біоми (Themes & Biomes)
+Кожен рівень випадково отримує одну з трьох тем із власними покриттями, освітленням та туманом:
+
+| Тема | Основне | Вторинне | Третинне | Атмосфера |
+|---|---|---|---|---|
+| ❄️ **Winter** | Snow (норм.) | Ice (надслизько) | Asphalt | Крижано-синій туман |
+| 🏙️ **City** | Asphalt (норм.) | Dirt/Mud (повільно) | Cobblestone | Сутінкове міське |
+| 🌿 **Forest** | Grass (норм.) | Dirt/Mud (повільно) | Path/Asphalt | Смарагдовий ліс |
+
+Покриття генеруються **органічними кластерами** (Voronoi seed clustering), а не суцільним рандомом.
+
+#### 🕳️ Ями (Holes)
+- **Три розміри:** Малі ($r = 0.35\text{ м}$), Середні ($r = 0.48\text{ м}$), Великі ($r = 0.62\text{ м}$).
+- **Варіативне розташування:** Центр, Кути, Боки клітинки.
+- **Фізика:** Програш спрацьовує лише коли кулька **фізично провалюється** нижче рівня підлоги (`translation.y < -0.35`). Без штучних магнітів, без миттєвих тригерів при дотику до краю.
+
+#### 🎮 Фізика (Rapier3D)
+- Підлога статична; нахил — через математичне обертання $\vec{g}$.
+- **Сон (Sleep) вимкнено:** `setSleeping(false)` + `wakeUp()` при зміні нахилу — кулька ніколи не "застигає" через Rapier sleep.
+- **Тертя за покриттями:**
+
+| Покриття | Тертя | Ефект |
+|---|---|---|
+| Ice | 0.03 | Надслизько |
+| Cobblestone | 0.35 | Гладко |
+| Snow / Asphalt / Path | 0.45 | Стандарт |
+| Grass | 0.65 | М'який опір |
+| Sand / Dirt | 0.90–0.95 | Різко гальмує |
+
+#### ⌨️ Ввід (InputManager)
+- Слухає **обидва** `e.code` та `e.key` — сумісний з реальною клавіатурою, `pyautogui`, Chrome Extension `dispatchEvent` (де `e.code` може бути порожнім).
+- `window.blur` → `keysPressed.clear()` — клавіші **не залипають** при відкритті F12 / Alt+Tab.
+- За замовчуванням: `mode: 'keyboard'`, `mouseEnabled: false` (вмикається в ⚙️ Settings).
 - **Аудіо:** Вимкнено за замовчуванням (`isMuted: true`).
 
 ---
@@ -32,13 +51,13 @@ An interactive 3D physics marble maze game controlled by tilting your smartphone
 
 | Файл | Роль та функціонал |
 | :--- | :--- |
-| [`src/main.ts`](file:///g:/programming/GyroMouse_games/games/marble_maze/src/main.ts) | Точка входу: оркестрація ігрового циклу, physics step, render loop, HUD updates. |
-| [`src/physics/physicsManager.ts`](file:///g:/programming/GyroMouse_games/games/marble_maze/src/physics/physicsManager.ts) | **Rapier3D physics:** Статичні колайдери підлоги, циліндричні сенсори ям, розрахунок вектора гравітації $\vec{g}$. |
-| [`src/graphics/sceneManager.ts`](file:///g:/programming/GyroMouse_games/games/marble_maze/src/graphics/sceneManager.ts) | **Three.js graphics:** 100% top-down camera, матеріали (Асфальт, Лід, Пісок), рендеринг круглих ям та монет. |
-| [`src/maze/mazeGenerator.ts`](file:///g:/programming/GyroMouse_games/games/marble_maze/src/maze/mazeGenerator.ts) | **DFS генератор:** Створення сітки рівнів, розстановка монет, круглих ям та покриттів. |
-| [`src/ui/hudManager.ts`](file:///g:/programming/GyroMouse_games/games/marble_maze/src/ui/hudManager.ts) | **UI HUD:** Таймер, монети, бейдж покриття, сід-код, модалки налаштувань/перемоги/падіння. |
-| [`../../../shared/inputManager.ts`](file:///g:/programming/GyroMouse_games/shared/inputManager.ts) | **Спільний ввід:** Обробка WASD/стрілочок та GyroMouse air-mouse з плавною інтерполяцією. |
-| [`../../../shared/audioManager.ts`](file:///g:/programming/GyroMouse_games/shared/audioManager.ts) | **Спільне аудіо:** Web Audio API синтезатор звуків (muted by default). |
+| [`src/main.ts`](src/main.ts) | Точка входу: ігровий цикл, physics step, render loop, HUD updates. |
+| [`src/physics/physicsManager.ts`](src/physics/physicsManager.ts) | **Rapier3D:** Колайдери підлоги, сенсори ям, гравітаційний вектор $\vec{g}$, sleep-fix. |
+| [`src/graphics/sceneManager.ts`](src/graphics/sceneManager.ts) | **Three.js:** Top-down камера, матеріали всіх 7 типів покриттів, атмосфера біому, рендер ям. |
+| [`src/maze/mazeGenerator.ts`](src/maze/mazeGenerator.ts) | **DFS генератор:** Теми, органічні біомні кластери, конфіги ям (`HoleConfig`). |
+| [`src/ui/hudManager.ts`](src/ui/hudManager.ts) | **HUD:** Таймер, монети, бейдж покриття (7 типів + іконки), сід, модалки. |
+| [`../../../shared/inputManager.ts`](../../../shared/inputManager.ts) | **Ввід:** WASD/стрілочки + GyroMouse. `e.code`+`e.key` fix. `blur`-clear fix. |
+| [`../../../shared/audioManager.ts`](../../../shared/audioManager.ts) | **Аудіо:** Web Audio API синтезатор звуків (muted by default). |
 
 ---
 

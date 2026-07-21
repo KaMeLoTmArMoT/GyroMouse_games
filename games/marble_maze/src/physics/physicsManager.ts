@@ -26,6 +26,8 @@ export class PhysicsManager {
     this.isInitialized = true;
   }
 
+  private holeDataList: { x: number; z: number; radius: number; sensor: RAPIER.Collider }[] = [];
+
   public buildMazePhysics(maze: MazeData, callbacks: PhysicsCallbacks): {
     startPos: { x: number; y: number; z: number };
     goalPos: { x: number; y: number; z: number };
@@ -33,6 +35,7 @@ export class PhysicsManager {
     this.callbacks = callbacks;
     this.coinSensors.clear();
     this.holeSensors = [];
+    this.holeDataList = [];
     this.goalSensor = null;
 
     // 1. Clean Rapier world with initial downward gravity
@@ -63,7 +66,8 @@ export class PhysicsManager {
       .setTranslation(startPos.x, startPos.y, startPos.z)
       .setLinearDamping(0.3)
       .setAngularDamping(0.3)
-      .setCcdEnabled(true);
+      .setCcdEnabled(true)
+      .setSleeping(false); // Never sleep: must always respond to gravity vector changes
 
     this.marbleBody = this.world.createRigidBody(marbleBodyDesc);
 
@@ -84,38 +88,52 @@ export class PhysicsManager {
         const restitution = cell.terrain === 'ice' ? 0.05 : 0.15;
 
         if (cell.isHole) {
-          // Hole sensor in center of cell
-          const holeSensorDesc = RAPIER.ColliderDesc.cylinder(0.2, 0.45)
-            .setTranslation(cellCenterX, -0.2, cellCenterZ)
+          const cfg = cell.holeConfig || { radius: 0.5, offsetX: 0, offsetZ: 0 };
+          const holeWorldX = cellCenterX + cfg.offsetX;
+          const holeWorldZ = cellCenterZ + cfg.offsetZ;
+
+          // Hole sensor in exact position & radius
+          const holeSensorDesc = RAPIER.ColliderDesc.cylinder(0.2, cfg.radius * 0.9)
+            .setTranslation(holeWorldX, -0.2, holeWorldZ)
             .setSensor(true)
             .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
 
           const sensor = this.world.createCollider(holeSensorDesc, boardBody);
           this.holeSensors.push(sensor);
+          this.holeDataList.push({ x: holeWorldX, z: holeWorldZ, radius: cfg.radius, sensor });
 
-          // Surrounding floor slabs around central hole (so marble can roll around hole!)
-          const holeSize = 1.1;
-          const rimWidth = (cellSize - holeSize) / 2;
-          const halfRim = rimWidth / 2;
-          const halfHole = holeSize / 2;
+          // Build surrounding floor colliders safely avoiding the off-center hole area
+          const r = cfg.radius;
+          const offX = cfg.offsetX;
+          const offZ = cfg.offsetZ;
 
-          const topSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, halfRim)
-            .setTranslation(cellCenterX, -0.4, cellCenterZ - halfCell + halfRim)
+          // We build 4 surrounding slab boxes around the specific hole circle
+          const topRimH = Math.max(0.05, halfCell + offZ - r);
+          const botRimH = Math.max(0.05, halfCell - offZ - r);
+          const leftRimW = Math.max(0.05, halfCell + offX - r);
+          const rightRimW = Math.max(0.05, halfCell - offX - r);
+
+          // Top slab
+          const topSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, topRimH / 2)
+            .setTranslation(cellCenterX, -0.4, cellCenterZ - halfCell + topRimH / 2)
             .setFriction(friction).setRestitution(restitution);
           this.world.createCollider(topSlabDesc, boardBody);
 
-          const botSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, halfRim)
-            .setTranslation(cellCenterX, -0.4, cellCenterZ + halfCell - halfRim)
+          // Bottom slab
+          const botSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, botRimH / 2)
+            .setTranslation(cellCenterX, -0.4, cellCenterZ + halfCell - botRimH / 2)
             .setFriction(friction).setRestitution(restitution);
           this.world.createCollider(botSlabDesc, boardBody);
 
-          const leftSlabDesc = RAPIER.ColliderDesc.cuboid(halfRim, 0.4, halfHole)
-            .setTranslation(cellCenterX - halfCell + halfRim, -0.4, cellCenterZ)
+          // Left slab
+          const leftSlabDesc = RAPIER.ColliderDesc.cuboid(leftRimW / 2, 0.4, r)
+            .setTranslation(cellCenterX - halfCell + leftRimW / 2, -0.4, holeWorldZ)
             .setFriction(friction).setRestitution(restitution);
           this.world.createCollider(leftSlabDesc, boardBody);
 
-          const rightSlabDesc = RAPIER.ColliderDesc.cuboid(halfRim, 0.4, halfHole)
-            .setTranslation(cellCenterX + halfCell - halfRim, -0.4, cellCenterZ)
+          // Right slab
+          const rightSlabDesc = RAPIER.ColliderDesc.cuboid(rightRimW / 2, 0.4, r)
+            .setTranslation(cellCenterX + halfCell - rightRimW / 2, -0.4, holeWorldZ)
             .setFriction(friction).setRestitution(restitution);
           this.world.createCollider(rightSlabDesc, boardBody);
         } else {
@@ -187,10 +205,18 @@ export class PhysicsManager {
 
   private getFrictionForTerrain(terrain: TerrainType): number {
     switch (terrain) {
+      case 'dirt':
+        return 0.95; // Muddy/heavy drag
+      case 'grass':
+        return 0.65; // Lush grass friction
       case 'sand':
-        return 0.95;
+        return 0.90;
       case 'ice':
-        return 0.03;
+        return 0.03; // Extremely slippery
+      case 'cobblestone':
+        return 0.35;
+      case 'snow':
+        return 0.45;
       case 'asphalt':
       default:
         return 0.45;
@@ -207,6 +233,11 @@ export class PhysicsManager {
     const gy = -baseG * Math.cos(tiltXRad) * Math.cos(tiltZRad);
 
     this.world.gravity = { x: gx, y: gy, z: gz };
+
+    // Wake the marble if Rapier put it to sleep — sleeping bodies ignore gravity changes!
+    if (this.marbleBody && this.marbleBody.isSleeping()) {
+      this.marbleBody.wakeUp();
+    }
   }
 
   public step(dt: number): {
@@ -222,15 +253,10 @@ export class PhysicsManager {
     const speed = Math.hypot(linvel.x, linvel.y, linvel.z);
 
     if (this.callbacks) {
-      if (translation.y < -1.5) {
+      // Trigger loss ONLY when marble physically drops into the hole below floor level (y < -0.35)
+      if (translation.y < -0.35) {
         this.callbacks.onFallInHole();
       }
-
-      this.holeSensors.forEach((sensor) => {
-        if (this.world.intersectionPair(this.marbleCollider, sensor)) {
-          this.callbacks?.onFallInHole();
-        }
-      });
 
       if (this.goalSensor && this.world.intersectionPair(this.marbleCollider, this.goalSensor)) {
         this.callbacks.onReachGoal();

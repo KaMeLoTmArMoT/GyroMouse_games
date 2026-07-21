@@ -1,6 +1,14 @@
 import { SeededRandom } from '../utils/seedrandom';
 
-export type TerrainType = 'asphalt' | 'sand' | 'ice';
+export type TerrainType = 'asphalt' | 'sand' | 'ice' | 'snow' | 'dirt' | 'grass' | 'cobblestone';
+
+export type MazeTheme = 'winter' | 'city' | 'forest';
+
+export interface HoleConfig {
+  radius: number; // e.g. 0.35, 0.50, 0.65
+  offsetX: number; // offset relative to cell center (-0.7 to 0.7)
+  offsetZ: number; // offset relative to cell center (-0.7 to 0.7)
+}
 
 export interface MazeCell {
   x: number;
@@ -14,6 +22,7 @@ export interface MazeCell {
   };
   terrain: TerrainType;
   isHole: boolean;
+  holeConfig?: HoleConfig;
   isGoal: boolean;
   isStart: boolean;
   hasCoin: boolean;
@@ -33,6 +42,7 @@ export interface MazeData {
   cellSize: number;
   seed: string;
   difficulty: Difficulty;
+  theme: MazeTheme;
   cells: MazeCell[][];
   startCell: { x: number; z: number };
   goalCell: { x: number; z: number };
@@ -46,10 +56,15 @@ export class MazeGenerator {
     height: number,
     seedStr: string,
     difficulty: Difficulty = 'medium',
-    cellSize: number = 3.0
+    cellSize: number = 3.0,
+    forcedTheme?: MazeTheme
   ): MazeData {
     const prng = new SeededRandom(seedStr);
     const cells: MazeCell[][] = [];
+
+    // Select theme logically or randomly if not forced
+    const availableThemes: MazeTheme[] = ['winter', 'city', 'forest'];
+    const theme: MazeTheme = forcedTheme || prng.choice(availableThemes);
 
     for (let z = 0; z < height; z++) {
       cells[z] = [];
@@ -59,7 +74,7 @@ export class MazeGenerator {
           z,
           visited: false,
           walls: { top: true, right: true, bottom: true, left: true },
-          terrain: 'asphalt',
+          terrain: this.getDefaultTerrainForTheme(theme),
           isHole: false,
           isGoal: false,
           isStart: false,
@@ -94,11 +109,11 @@ export class MazeGenerator {
     cells[startZ][startX].isStart = true;
     cells[goalCell.z][goalCell.x].isGoal = true;
 
-    this.assignMixedTerrains(cells, width, height, difficulty, prng);
+    this.assignOrganicTerrains(cells, width, height, difficulty, theme, prng);
 
     let holesCount = 0;
     let coinsCount = 0;
-    const holeProb = difficulty === 'easy' ? 0.04 : difficulty === 'medium' ? 0.09 : 0.16;
+    const holeProb = difficulty === 'easy' ? 0.05 : difficulty === 'medium' ? 0.10 : 0.18;
 
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
@@ -115,6 +130,7 @@ export class MazeGenerator {
           coinsCount++;
         } else if (prng.next() < holeProb) {
           cell.isHole = true;
+          cell.holeConfig = this.generateHoleConfig(prng);
           holesCount++;
         } else if (prng.next() < 0.25) {
           cell.hasCoin = true;
@@ -148,12 +164,51 @@ export class MazeGenerator {
       cellSize,
       seed: seedStr,
       difficulty,
+      theme,
       cells,
       startCell,
       goalCell,
       holesCount,
       coinsCount
     };
+  }
+
+  private static getDefaultTerrainForTheme(theme: MazeTheme): TerrainType {
+    switch (theme) {
+      case 'winter':
+        return 'snow';
+      case 'city':
+        return 'asphalt';
+      case 'forest':
+        return 'grass';
+    }
+  }
+
+  private static generateHoleConfig(prng: SeededRandom): HoleConfig {
+    const radii = [0.35, 0.48, 0.62]; // Small, Medium, Large
+    const radius = prng.choice(radii);
+
+    // Offsets: center (0,0), corners (±0.6, ±0.6), sides (±0.6, 0 or 0, ±0.6)
+    const positionTypes = ['center', 'corner', 'side'];
+    const posType = prng.choice(positionTypes);
+
+    let offsetX = 0;
+    let offsetZ = 0;
+
+    const maxOffset = 0.65 - radius * 0.4;
+
+    if (posType === 'corner') {
+      offsetX = (prng.next() < 0.5 ? 1 : -1) * maxOffset;
+      offsetZ = (prng.next() < 0.5 ? 1 : -1) * maxOffset;
+    } else if (posType === 'side') {
+      if (prng.next() < 0.5) {
+        offsetX = (prng.next() < 0.5 ? 1 : -1) * maxOffset;
+      } else {
+        offsetZ = (prng.next() < 0.5 ? 1 : -1) * maxOffset;
+      }
+    }
+
+    return { radius, offsetX, offsetZ };
   }
 
   private static getUnvisitedNeighbors(
@@ -190,58 +245,75 @@ export class MazeGenerator {
     }
   }
 
-  private static assignMixedTerrains(
+  private static assignOrganicTerrains(
     cells: MazeCell[][],
     width: number,
     height: number,
     difficulty: Difficulty,
+    theme: MazeTheme,
     prng: SeededRandom
   ) {
-    const numIceSeeds = Math.max(1, Math.floor((width * height) / 12));
-    const numSandSeeds = Math.max(1, Math.floor((width * height) / 12));
+    // Generate cluster seeds for secondary and tertiary terrains based on theme
+    let secondaryTerrain: TerrainType = 'ice';
+    let tertiaryTerrain: TerrainType = 'asphalt';
 
-    const iceSeeds: { x: number; z: number }[] = [];
-    const sandSeeds: { x: number; z: number }[] = [];
-
-    for (let i = 0; i < numIceSeeds; i++) {
-      iceSeeds.push({ x: prng.nextInt(0, width - 1), z: prng.nextInt(0, height - 1) });
+    if (theme === 'winter') {
+      secondaryTerrain = 'ice';
+      tertiaryTerrain = 'asphalt';
+    } else if (theme === 'city') {
+      secondaryTerrain = 'dirt';
+      tertiaryTerrain = 'cobblestone';
+    } else if (theme === 'forest') {
+      secondaryTerrain = 'dirt';
+      tertiaryTerrain = 'asphalt';
     }
-    for (let i = 0; i < numSandSeeds; i++) {
-      sandSeeds.push({ x: prng.nextInt(0, width - 1), z: prng.nextInt(0, height - 1) });
+
+    const numSecSeeds = Math.max(1, Math.floor((width * height) / 10));
+    const numTertSeeds = Math.max(1, Math.floor((width * height) / 12));
+
+    const secSeeds: { x: number; z: number }[] = [];
+    const tertSeeds: { x: number; z: number }[] = [];
+
+    for (let i = 0; i < numSecSeeds; i++) {
+      secSeeds.push({ x: prng.nextInt(0, width - 1), z: prng.nextInt(0, height - 1) });
+    }
+    for (let i = 0; i < numTertSeeds; i++) {
+      tertSeeds.push({ x: prng.nextInt(0, width - 1), z: prng.nextInt(0, height - 1) });
     }
 
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
         const cell = cells[z][x];
         if (cell.isStart || cell.isGoal) {
-          cell.terrain = 'asphalt';
+          cell.terrain = this.getDefaultTerrainForTheme(theme);
           continue;
         }
 
-        let minIceDist = Infinity;
-        let minSandDist = Infinity;
+        let minSecDist = Infinity;
+        let minTertDist = Infinity;
 
-        iceSeeds.forEach((s) => {
+        secSeeds.forEach((s) => {
           const d = Math.hypot(s.x - x, s.z - z);
-          if (d < minIceDist) minIceDist = d;
+          if (d < minSecDist) minSecDist = d;
         });
 
-        sandSeeds.forEach((s) => {
+        tertSeeds.forEach((s) => {
           const d = Math.hypot(s.x - x, s.z - z);
-          if (d < minSandDist) minSandDist = d;
+          if (d < minTertDist) minTertDist = d;
         });
 
-        const iceRadius = difficulty === 'hard' ? 3.5 : 2.2;
-        const sandRadius = 2.5;
+        const secRadius = difficulty === 'hard' ? 3.5 : 2.4;
+        const tertRadius = 2.2;
 
-        if (minIceDist < iceRadius && minIceDist <= minSandDist) {
-          cell.terrain = 'ice';
-        } else if (minSandDist < sandRadius) {
-          cell.terrain = 'sand';
+        if (minSecDist < secRadius && minSecDist <= minTertDist) {
+          cell.terrain = secondaryTerrain;
+        } else if (minTertDist < tertRadius) {
+          cell.terrain = tertiaryTerrain;
         } else {
-          cell.terrain = 'asphalt';
+          cell.terrain = this.getDefaultTerrainForTheme(theme);
         }
       }
     }
   }
 }
+

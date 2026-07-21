@@ -40,6 +40,7 @@ export class SharedInputManager {
     window.addEventListener('mousemove', this.onPointerMove.bind(this));
     window.addEventListener('keydown', this.onKeyDown.bind(this));
     window.addEventListener('keyup', this.onKeyUp.bind(this));
+    window.addEventListener('blur', () => this.keysPressed.clear());
 
     this.createTiltIndicator();
   }
@@ -78,11 +79,13 @@ export class SharedInputManager {
   }
 
   private onKeyDown(e: KeyboardEvent) {
-    this.keysPressed.add(e.code);
+    if (e.code) this.keysPressed.add(e.code);
+    if (e.key) this.keysPressed.add(e.key);
   }
 
   private onKeyUp(e: KeyboardEvent) {
-    this.keysPressed.delete(e.code);
+    if (e.code) this.keysPressed.delete(e.code);
+    if (e.key) this.keysPressed.delete(e.key);
   }
 
   public update(dt: number) {

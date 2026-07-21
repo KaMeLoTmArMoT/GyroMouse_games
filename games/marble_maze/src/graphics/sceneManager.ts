@@ -38,10 +38,10 @@ export class SceneManager {
     this.particleGroup = new THREE.Group();
     this.scene.add(this.particleGroup);
 
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
     this.scene.add(this.ambientLight);
 
-    this.shadowLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.shadowLight = new THREE.DirectionalLight(0xffffff, 1.6);
     this.shadowLight.position.set(15, 30, 20);
     this.shadowLight.castShadow = true;
     this.shadowLight.shadow.mapSize.width = 2048;
@@ -86,6 +86,9 @@ export class SceneManager {
     }
     this.coinMeshes.clear();
 
+    // Configure Theme Background & Fog & Lighting
+    this.applyThemeEnvironment(maze.theme);
+
     // Re-add marbleMesh to boardGroup after clearing
     this.boardGroup.add(this.marbleMesh);
 
@@ -105,6 +108,7 @@ export class SceneManager {
     const wallGeoY = new THREE.BoxGeometry(cellSize, 0.8, 0.3);
     const wallGeoX = new THREE.BoxGeometry(0.3, 0.8, cellSize);
 
+    // Materials Palette
     const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.8, metalness: 0.1 });
     const sandMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.9, metalness: 0.0 });
     const iceMat = new THREE.MeshPhysicalMaterial({
@@ -115,13 +119,15 @@ export class SceneManager {
       opacity: 0.9,
       transparent: true
     });
+    const snowMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.6, metalness: 0.05 });
+    const grassMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8, metalness: 0.0 });
+    const dirtMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.95, metalness: 0.0 });
+    const cobbleMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.5, metalness: 0.2 });
+
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.5, metalness: 0.3 });
     const pitMat = new THREE.MeshBasicMaterial({ color: 0x030305 });
     const pitRingMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
     const goalMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.3, emissive: 0x15803d });
-
-    const pitGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.45, 32);
-    const pitRingGeo = new THREE.TorusGeometry(0.55, 0.06, 16, 32);
 
     for (let z = 0; z < maze.height; z++) {
       for (let x = 0; x < maze.width; x++) {
@@ -130,8 +136,15 @@ export class SceneManager {
         const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
 
         let mat = asphaltMat;
-        if (cell.terrain === 'sand') mat = sandMat;
-        if (cell.terrain === 'ice') mat = iceMat;
+        switch (cell.terrain) {
+          case 'sand': mat = sandMat; break;
+          case 'ice': mat = iceMat; break;
+          case 'snow': mat = snowMat; break;
+          case 'grass': mat = grassMat; break;
+          case 'dirt': mat = dirtMat; break;
+          case 'cobblestone': mat = cobbleMat; break;
+          case 'asphalt': default: mat = asphaltMat; break;
+        }
         if (cell.isGoal) mat = goalMat;
 
         const tileMesh = new THREE.Mesh(tileGeo, mat);
@@ -141,13 +154,20 @@ export class SceneManager {
         this.boardGroup.add(tileMesh);
 
         if (cell.isHole) {
+          const cfg = cell.holeConfig || { radius: 0.5, offsetX: 0, offsetZ: 0 };
+          const holeWorldX = cellCenterX + cfg.offsetX;
+          const holeWorldZ = cellCenterZ + cfg.offsetZ;
+
+          const pitGeo = new THREE.CylinderGeometry(cfg.radius, cfg.radius, 0.45, 32);
+          const pitRingGeo = new THREE.TorusGeometry(cfg.radius, 0.05, 16, 32);
+
           const pitMesh = new THREE.Mesh(pitGeo, pitMat);
-          pitMesh.position.set(cellCenterX, -0.18, cellCenterZ);
+          pitMesh.position.set(holeWorldX, -0.18, holeWorldZ);
           this.boardGroup.add(pitMesh);
 
           const ringMesh = new THREE.Mesh(pitRingGeo, pitRingMat);
           ringMesh.rotation.x = Math.PI / 2;
-          ringMesh.position.set(cellCenterX, 0.02, cellCenterZ);
+          ringMesh.position.set(holeWorldX, 0.02, holeWorldZ);
           this.boardGroup.add(ringMesh);
         }
 
@@ -258,6 +278,30 @@ export class SceneManager {
         this.particleGroup.remove(p);
       }
     }, 30);
+  }
+
+  private applyThemeEnvironment(theme: 'winter' | 'city' | 'forest') {
+    let bgColor = '#0c0f1d';
+    let fogDensity = 0.015;
+    let lightColor = 0xffffff;
+
+    if (theme === 'winter') {
+      bgColor = '#0f172a'; // Deep ice blue
+      fogDensity = 0.012;
+      lightColor = 0xe0f2fe; // Crisp cold white light
+    } else if (theme === 'city') {
+      bgColor = '#111827'; // Dark urban dusk
+      fogDensity = 0.015;
+      lightColor = 0xfef08a; // Soft street lamp warm yellow light
+    } else if (theme === 'forest') {
+      bgColor = '#052e16'; // Deep emerald forest dark green
+      fogDensity = 0.018;
+      lightColor = 0xdcfce7; // Soft natural green-tinged light
+    }
+
+    this.scene.background = new THREE.Color(bgColor);
+    this.scene.fog = new THREE.FogExp2(bgColor, fogDensity);
+    this.shadowLight.color.setHex(lightColor);
   }
 
   public render() {

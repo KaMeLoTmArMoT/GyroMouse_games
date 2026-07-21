@@ -142,7 +142,7 @@ class Game {
       this.audioManager.updateRollSound(speed);
 
       const currentTerrain = this.getTerrainAtPos(marblePos.x, marblePos.z);
-      this.hudManager.updateSurface(currentTerrain);
+      this.hudManager.updateTerrain(currentTerrain);
 
       this.hudManager.update(dt);
     }
