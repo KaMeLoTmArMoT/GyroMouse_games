@@ -48,10 +48,10 @@ export class SceneManager {
     this.particleGroup = new THREE.Group();
     this.scene.add(this.particleGroup);
 
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
     this.scene.add(this.ambientLight);
 
-    this.shadowLight = new THREE.DirectionalLight(0xffffff, 1.6);
+    this.shadowLight = new THREE.DirectionalLight(0xffffff, 2.2);
     this.shadowLight.position.set(15, 30, 20);
     this.shadowLight.castShadow = true;
     this.shadowLight.shadow.mapSize.width = 2048;
@@ -109,7 +109,7 @@ export class SceneManager {
     const mazeWorldHeight = maze.height * cellSize;
 
     const frameGeo = new THREE.BoxGeometry(mazeWorldWidth + 1.2, 0.6, mazeWorldHeight + 1.2);
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x2d3a4a, roughness: 0.8 });
     const frameMesh = new THREE.Mesh(frameGeo, frameMat);
     frameMesh.position.set(0, -0.4, 0);
     frameMesh.receiveShadow = true;
@@ -120,26 +120,26 @@ export class SceneManager {
     const wallGeoX = new THREE.BoxGeometry(0.3, 0.8, cellSize);
 
     // Materials Palette
-    const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.8, metalness: 0.1 });
-    const sandMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.9, metalness: 0.0 });
+    const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x5a6e8a, roughness: 0.8, metalness: 0.1 });
+    const sandMat = new THREE.MeshStandardMaterial({ color: 0xe8a830, roughness: 0.9, metalness: 0.0 });
     const iceMat = new THREE.MeshPhysicalMaterial({
-      color: 0x38bdf8,
+      color: 0x6fd4ff,
       roughness: 0.05,
       metalness: 0.2,
       transmission: 0.6,
       opacity: 0.9,
       transparent: true
     });
-    const snowMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.6, metalness: 0.05 });
-    const grassMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8, metalness: 0.0 });
-    const dirtMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.95, metalness: 0.0 });
-    const cobbleMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.5, metalness: 0.2 });
+    const snowMat = new THREE.MeshStandardMaterial({ color: 0xf8faff, roughness: 0.6, metalness: 0.05 });
+    const grassMat = new THREE.MeshStandardMaterial({ color: 0x33cc55, roughness: 0.8, metalness: 0.0 });
+    const dirtMat = new THREE.MeshStandardMaterial({ color: 0x9d5b2a, roughness: 0.95, metalness: 0.0 });
+    const cobbleMat = new THREE.MeshStandardMaterial({ color: 0x718096, roughness: 0.5, metalness: 0.2 });
 
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.5, metalness: 0.3 });
-    const pitMat = new THREE.MeshBasicMaterial({ color: 0x030305 });
-    const pitRingMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-    const pitMovingRingMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
-    const goalMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.3, emissive: 0x15803d });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xbcc4d0, roughness: 0.5, metalness: 0.3 });
+    const pitMat = new THREE.MeshBasicMaterial({ color: 0x020208 });
+    const pitRingMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
+    const pitMovingRingMat = new THREE.MeshBasicMaterial({ color: 0x00ffee });
+    const goalMat = new THREE.MeshStandardMaterial({ color: 0x00ff66, roughness: 0.2, emissive: 0x00cc44 });
 
     for (let z = 0; z < maze.height; z++) {
       for (let x = 0; x < maze.width; x++) {
@@ -481,22 +481,22 @@ export class SceneManager {
   }
 
   private applyThemeEnvironment(theme: 'winter' | 'city' | 'forest') {
-    let bgColor = '#0c0f1d';
-    let fogDensity = 0.015;
+    let bgColor = '#060912';
+    let fogDensity = 0.008;
     let lightColor = 0xffffff;
 
     if (theme === 'winter') {
-      bgColor = '#0f172a'; // Deep ice blue
-      fogDensity = 0.012;
-      lightColor = 0xe0f2fe; // Crisp cold white light
+      bgColor = '#080c1a';
+      fogDensity = 0.007;
+      lightColor = 0xffeedd;
     } else if (theme === 'city') {
-      bgColor = '#111827'; // Dark urban dusk
-      fogDensity = 0.015;
-      lightColor = 0xfef08a; // Soft street lamp warm yellow light
+      bgColor = '#080b14';
+      fogDensity = 0.009;
+      lightColor = 0xffbb33;
     } else if (theme === 'forest') {
-      bgColor = '#052e16'; // Deep emerald forest dark green
-      fogDensity = 0.018;
-      lightColor = 0xdcfce7; // Soft natural green-tinged light
+      bgColor = '#060912';
+      fogDensity = 0.008;
+      lightColor = 0xffcc55;
     }
 
     this.scene.background = new THREE.Color(bgColor);
