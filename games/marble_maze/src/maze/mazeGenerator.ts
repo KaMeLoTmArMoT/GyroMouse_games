@@ -147,7 +147,11 @@ export class MazeGenerator {
     cells[startZ][startX].isStart = true;
     cells[goalCell.z][goalCell.x].isGoal = true;
 
-    this.assignOrganicTerrains(cells, width, height, difficulty, theme, prng);
+    const mainPath = this.findMainPath(cells, width, height);
+    const pathIndex = new Map<string, number>();
+    mainPath.forEach((p, i) => pathIndex.set(`${p.x},${p.z}`, i));
+
+    this.assignOrganicTerrains(cells, width, height, theme, mainPath, prng);
 
     let holesCount = 0;
     let coinsCount = 0;
@@ -155,9 +159,6 @@ export class MazeGenerator {
 
     let gatesCount = 0;
     let checkpointsCount = 0;
-    const mainPath = this.findMainPath(cells, width, height);
-    const pathIndex = new Map<string, number>();
-    mainPath.forEach((p, i) => pathIndex.set(`${p.x},${p.z}`, i));
 
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
@@ -583,38 +584,41 @@ export class MazeGenerator {
     cells: MazeCell[][],
     width: number,
     height: number,
-    difficulty: Difficulty,
     theme: MazeTheme,
+    mainPath: { x: number; z: number }[],
     prng: SeededRandom
   ) {
-    // Generate cluster seeds for secondary and tertiary terrains based on theme
-    let secondaryTerrain: TerrainType = 'ice';
-    let tertiaryTerrain: TerrainType = 'asphalt';
+    const terrainPalette = this.getTerrainPalette(theme);
+    const zoneCount = Math.min(terrainPalette.length, Math.max(2, Math.floor(mainPath.length / 3)));
 
-    if (theme === 'winter') {
-      secondaryTerrain = 'ice';
-      tertiaryTerrain = 'asphalt';
-    } else if (theme === 'city') {
-      secondaryTerrain = 'dirt';
-      tertiaryTerrain = 'cobblestone';
-    } else if (theme === 'forest') {
-      secondaryTerrain = 'dirt';
-      tertiaryTerrain = 'asphalt';
+    // Divide main path into zones
+    const zoneDefs: { startIdx: number; endIdx: number; terrain: TerrainType }[] = [];
+    let assignedTerrains: TerrainType[] = [];
+    for (let i = 0; i < zoneCount; i++) {
+      const ti = Math.floor((i / zoneCount) * terrainPalette.length);
+      assignedTerrains.push(terrainPalette[ti]);
+    }
+    // Shuffle zone terrains deterministically
+    for (let i = assignedTerrains.length - 1; i > 0; i--) {
+      const j = Math.floor(prng.next() * (i + 1));
+      [assignedTerrains[i], assignedTerrains[j]] = [assignedTerrains[j], assignedTerrains[i]];
     }
 
-    const numSecSeeds = Math.max(1, Math.floor((width * height) / 10));
-    const numTertSeeds = Math.max(1, Math.floor((width * height) / 12));
-
-    const secSeeds: { x: number; z: number }[] = [];
-    const tertSeeds: { x: number; z: number }[] = [];
-
-    for (let i = 0; i < numSecSeeds; i++) {
-      secSeeds.push({ x: prng.nextInt(0, width - 1), z: prng.nextInt(0, height - 1) });
-    }
-    for (let i = 0; i < numTertSeeds; i++) {
-      tertSeeds.push({ x: prng.nextInt(0, width - 1), z: prng.nextInt(0, height - 1) });
+    for (let i = 0; i < zoneCount; i++) {
+      const startIdx = Math.floor((i / zoneCount) * mainPath.length);
+      const endIdx = Math.floor(((i + 1) / zoneCount) * mainPath.length) - 1;
+      zoneDefs.push({ startIdx, endIdx, terrain: assignedTerrains[i] });
     }
 
+    // Assign zone index to each path cell
+    const pathZone: number[] = new Array(mainPath.length);
+    for (let zi = 0; zi < zoneDefs.length; zi++) {
+      for (let pi = zoneDefs[zi].startIdx; pi <= zoneDefs[zi].endIdx; pi++) {
+        pathZone[pi] = zi;
+      }
+    }
+
+    // Assign terrain to every cell based on closest path cell
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
         const cell = cells[z][x];
@@ -623,30 +627,29 @@ export class MazeGenerator {
           continue;
         }
 
-        let minSecDist = Infinity;
-        let minTertDist = Infinity;
-
-        secSeeds.forEach((s) => {
-          const d = Math.hypot(s.x - x, s.z - z);
-          if (d < minSecDist) minSecDist = d;
-        });
-
-        tertSeeds.forEach((s) => {
-          const d = Math.hypot(s.x - x, s.z - z);
-          if (d < minTertDist) minTertDist = d;
-        });
-
-        const secRadius = difficulty === 'hard' ? 3.5 : 2.4;
-        const tertRadius = 2.2;
-
-        if (minSecDist < secRadius && minSecDist <= minTertDist) {
-          cell.terrain = secondaryTerrain;
-        } else if (minTertDist < tertRadius) {
-          cell.terrain = tertiaryTerrain;
-        } else {
-          cell.terrain = this.getDefaultTerrainForTheme(theme);
+        let bestDist = Infinity;
+        let bestZone = 0;
+        for (let pi = 0; pi < mainPath.length; pi++) {
+          const d = Math.abs(x - mainPath[pi].x) + Math.abs(z - mainPath[pi].z);
+          if (d < bestDist) {
+            bestDist = d;
+            bestZone = pathZone[pi];
+          }
         }
+
+        cell.terrain = zoneDefs[bestZone].terrain;
       }
+    }
+  }
+
+  private static getTerrainPalette(theme: MazeTheme): TerrainType[] {
+    switch (theme) {
+      case 'winter':
+        return ['snow', 'ice', 'asphalt'];
+      case 'city':
+        return ['asphalt', 'dirt', 'cobblestone'];
+      case 'forest':
+        return ['grass', 'dirt', 'cobblestone'];
     }
   }
 }
