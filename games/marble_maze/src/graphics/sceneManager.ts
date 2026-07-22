@@ -25,7 +25,7 @@ export class SceneManager {
   private checkpointMeshes: Map<string, THREE.Mesh> = new Map();
   private activeCheckpointId: string | null = null;
 
-  private shadowLight: THREE.DirectionalLight;
+  private cornerLights: THREE.DirectionalLight[];
   private ambientLight: THREE.AmbientLight;
 
   constructor(container: HTMLElement) {
@@ -51,22 +51,33 @@ export class SceneManager {
     this.particleGroup = new THREE.Group();
     this.scene.add(this.particleGroup);
 
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(this.ambientLight);
 
-    this.shadowLight = new THREE.DirectionalLight(0xffffff, 2.2);
-    this.shadowLight.position.set(15, 30, 20);
-    this.shadowLight.castShadow = true;
-    this.shadowLight.shadow.mapSize.width = 2048;
-    this.shadowLight.shadow.mapSize.height = 2048;
-    this.shadowLight.shadow.camera.near = 0.5;
-    this.shadowLight.shadow.camera.far = 150;
-    const d = 30;
-    this.shadowLight.shadow.camera.left = -d;
-    this.shadowLight.shadow.camera.right = d;
-    this.shadowLight.shadow.camera.top = d;
-    this.shadowLight.shadow.camera.bottom = -d;
-    this.scene.add(this.shadowLight);
+    this.cornerLights = [];
+    const lightIntensity = 1.0;
+    const cornerPositions = [
+      { x: -1, z: -1 }, { x: 1, z: -1 },
+      { x: -1, z: 1 },  { x: 1, z: 1 }
+    ];
+    for (let i = 0; i < 4; i++) {
+      const light = new THREE.DirectionalLight(0xffffff, lightIntensity);
+      light.position.set(cornerPositions[i].x * 25, 40, cornerPositions[i].z * 25);
+      light.castShadow = i === 0;
+      if (i === 0) {
+        light.shadow.mapSize.width = 2048;
+        light.shadow.mapSize.height = 2048;
+        light.shadow.camera.near = 0.5;
+        light.shadow.camera.far = 150;
+        const d = 25;
+        light.shadow.camera.left = -d;
+        light.shadow.camera.right = d;
+        light.shadow.camera.top = d;
+        light.shadow.camera.bottom = -d;
+      }
+      this.scene.add(light);
+      this.cornerLights.push(light);
+    }
 
     // Marble Sphere Mesh
     const marbleGeo = new THREE.SphereGeometry(0.35, 32, 32);
@@ -747,7 +758,9 @@ export class SceneManager {
 
     this.scene.background = new THREE.Color(bgColor);
     this.scene.fog = new THREE.FogExp2(bgColor, fogDensity);
-    this.shadowLight.color.setHex(lightColor);
+    for (const light of this.cornerLights) {
+      light.color.setHex(lightColor);
+    }
   }
 
   public render() {
