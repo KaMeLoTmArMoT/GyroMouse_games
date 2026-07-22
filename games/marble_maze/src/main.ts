@@ -13,7 +13,7 @@ class Game {
   private hudManager: HudManager;
 
   private currentMaze!: MazeData;
-  private currentDifficulty: Difficulty = 'medium';
+  private currentDifficulty: string = 'medium';
   private currentSeed: string = '';
   private debugPathEnabled: boolean = false;
 
@@ -58,9 +58,9 @@ class Game {
     this.hudManager.updateDebugPathSetting(this.debugPathEnabled);
   }
 
-  private loadDifficulty(): Difficulty {
+  private loadDifficulty(): string {
     const stored = localStorage.getItem('marble-maze-difficulty');
-    if (stored === 'easy' || stored === 'medium' || stored === 'hard') return stored;
+    if (stored === 'easy' || stored === 'medium_easy' || stored === 'medium' || stored === 'medium_hard' || stored === 'hard') return stored;
     return 'medium';
   }
 
@@ -84,9 +84,16 @@ class Game {
 
   private generateLevelFromSeed(seedStr: string) {
     this.currentSeed = seedStr;
-    const gridDim = this.currentDifficulty === 'easy' ? 6 : this.currentDifficulty === 'medium' ? 10 : 14;
+    const diffMap: Record<string, { size: number; diff: Difficulty }> = {
+      easy: { size: 6, diff: 'easy' },
+      medium_easy: { size: 8, diff: 'easy' },
+      medium: { size: 10, diff: 'medium' },
+      medium_hard: { size: 12, diff: 'medium' },
+      hard: { size: 14, diff: 'hard' },
+    };
+    const { size, diff } = diffMap[this.currentDifficulty] || diffMap.medium;
 
-    this.currentMaze = MazeGenerator.generate(gridDim, gridDim, this.currentSeed, this.currentDifficulty);
+    this.currentMaze = MazeGenerator.generate(size, size, this.currentSeed, diff);
     this.collectedCoinsCount = 0;
     this.isGameOver = false;
 
@@ -142,7 +149,7 @@ class Game {
     this.hudManager.resetTimer();
   }
 
-   private updateSettings(settings: Partial<InputSettings>, difficulty: Difficulty, debugPath?: boolean) {
+   private updateSettings(settings: Partial<InputSettings>, difficulty: string, debugPath?: boolean) {
     Object.assign(this.inputManager.settings, settings);
     if (difficulty !== this.currentDifficulty) {
       this.currentDifficulty = difficulty;
@@ -175,6 +182,8 @@ class Game {
     if (gate) {
       const requiredCoins = this.physicsManager.gateCosts.get(gateId) || 5;
       if (this.collectedCoinsCount >= requiredCoins) {
+        this.collectedCoinsCount -= requiredCoins;
+        this.hudManager.updateCoins(this.collectedCoinsCount, this.currentMaze.coinsCount);
         this.physicsManager.world.removeCollider(gate.blocker, false);
         this.physicsManager.gateSensors.delete(gateId);
         this.sceneManager.removeGateMesh(gateId);
@@ -183,6 +192,7 @@ class Game {
   }
 
   private handleActivateCheckpoint(checkpointId: string) {
+    if (this.activatedCheckpoints.has(checkpointId)) return;
     const now = Date.now();
     if (now - this.lastCheckpointTime < 500) return;
     this.lastCheckpointTime = now;

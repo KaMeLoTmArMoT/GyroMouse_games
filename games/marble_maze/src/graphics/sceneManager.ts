@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MazeData, HoleMovePattern, gateBlockDirection } from '../maze/mazeGenerator';
 
 export class SceneManager {
@@ -22,10 +21,6 @@ export class SceneManager {
     range: number;
     elapsed: number;
   }[] = [];
-
-  private debugPathMesh: THREE.Mesh | null = null;
-  private debugPathMaterial: THREE.Material | null = null;
-  private debugPathEnabled: boolean = false;
 
   private checkpointMeshes: Map<string, THREE.Mesh> = new Map();
   private activeCheckpointId: string | null = null;
@@ -458,9 +453,9 @@ export class SceneManager {
             this.boardGroup.add(wallMesh);
            gatesRendered++;
            
-           // Cost text
-           const cost = maze.cells[z][x].gateCost || 5;
-           this.addGateCostText(cellCenterX, 0.5, cellCenterZ, cost);
+            // Cost text
+            const cost = maze.cells[z][x].gateCost || 5;
+            this.addGateCostText(cellCenterX, 0.5, cellCenterZ, x, z, cost);
          }
       }
     }
@@ -514,10 +509,9 @@ export class SceneManager {
       console.log(`[SCENE DEBUG] Elements: ${coinsRendered} coins, ${gatesRendered} gates, ${holesRendered} holes, ${bridgesRendered} bridges`);
       console.log(`[SCENE DEBUG] Main path length: ${maze.mainPath.length}`);
 
-       this.debugPathEnabled = debugPathEnabled;
-       if (debugPathEnabled) {
-         this.createDebugPath(maze);
-       }
+        if (debugPathEnabled) {
+          this.createDebugPath(maze);
+        }
 
       const goalX = maze.goalCell.x * cellSize + halfCell - mazeWorldWidth / 2;
     const goalZ = maze.goalCell.z * cellSize + halfCell - mazeWorldHeight / 2;
@@ -540,69 +534,24 @@ export class SceneManager {
       return;
     }
 
-    // Clean up existing debug path
-    if (this.debugPathMesh) {
-      this.scene.remove(this.debugPathMesh);
-      this.debugPathMesh.geometry.dispose();
-      this.debugPathMesh = null;
-    }
-
-    // Create material
-    this.debugPathMaterial = new THREE.MeshBasicMaterial({
-      color: 0x64C8FF,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide
-    });
-
-    // Build path segments as thin visible lines (boxes) on the board
     const cellSize = mazeData.cellSize;
     const halfCell = cellSize / 2;
-    const pathThickness = 0.05;
-    const pathY = -0.05;
-    const geometries: THREE.BufferGeometry[] = [];
 
-    for (const pathCell of mazeData.mainPath) {
-      const worldX = (pathCell.x - mazeData.width / 2) * cellSize + halfCell;
-      const worldZ = (pathCell.z - mazeData.height / 2) * cellSize + halfCell;
-
-      const geo = new THREE.BoxGeometry(cellSize * 0.7, pathThickness, cellSize * 0.7);
-      geo.translate(worldX, pathY, worldZ);
-      geometries.push(geo);
-    }
-
-    // Connect adjacent path cells with line segments
     const linePoints: THREE.Vector3[] = [];
     for (const pathCell of mazeData.mainPath) {
       const worldX = (pathCell.x - mazeData.width / 2) * cellSize + halfCell;
       const worldZ = (pathCell.z - mazeData.height / 2) * cellSize + halfCell;
-      linePoints.push(new THREE.Vector3(worldX, 0.005, worldZ));
+      linePoints.push(new THREE.Vector3(worldX, 0.08, worldZ));
     }
     const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
     const lineMat = new THREE.LineBasicMaterial({ color: 0x64C8FF, linewidth: 2 });
     const line = new THREE.Line(lineGeo, lineMat);
+    line.frustumCulled = false;
+    line.renderOrder = 1;
     this.boardGroup.add(line);
-
-    // Merge box geometries for performance
-    const mergedGeometry = mergeGeometries(geometries);
-    this.debugPathMesh = new THREE.Mesh(mergedGeometry, this.debugPathMaterial);
-    this.debugPathMesh.visible = this.debugPathEnabled;
-    this.boardGroup.add(this.debugPathMesh);
-
-    console.log(`[SCENE DEBUG] Created debug path with ${mazeData.mainPath.length} segments`);
   }
 
   private removeDebugPath() {
-    if (this.debugPathMesh) {
-      this.boardGroup.remove(this.debugPathMesh);
-      this.debugPathMesh.geometry.dispose();
-      this.debugPathMesh = null;
-    }
-    if (this.debugPathMaterial) {
-      this.debugPathMaterial.dispose();
-      this.debugPathMaterial = null;
-    }
-    // Remove line segments
     const lines = this.boardGroup.children.filter(c => c.type === 'Line');
     for (const line of lines) {
       this.boardGroup.remove(line);
@@ -652,10 +601,6 @@ export class SceneManager {
   }
 
   public updateDebugPathVisibility(visible: boolean) {
-    this.debugPathEnabled = visible;
-    if (this.debugPathMesh) {
-      this.debugPathMesh.visible = visible;
-    }
     const lines = this.boardGroup.children.filter(c => c.type === 'Line');
     for (const line of lines) {
       line.visible = visible;
@@ -728,25 +673,25 @@ export class SceneManager {
     }
   }
 
-  private addGateCostText(x: number, height: number, z: number, cost: number) {
+  private addGateCostText(x: number, height: number, z: number, gridX: number, gridZ: number, cost: number) {
     const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 32;
+    canvas.width = 128;
+    canvas.height = 64;
     const ctx = canvas.getContext('2d')!;
     
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.font = 'bold 20px Arial';
+    ctx.font = 'bold 40px Arial';
     ctx.fillStyle = '#ffcc00';
     ctx.textAlign = 'center';
-    ctx.fillText(`${cost}⭐`, canvas.width / 2, 24);
+    ctx.fillText(`${cost}⭐`, canvas.width / 2, 48);
     
     const texture = new THREE.CanvasTexture(canvas);
     const material = new THREE.SpriteMaterial({ map: texture });
     const sprite = new THREE.Sprite(material);
-    sprite.position.set(x, height + 0.3, z); // Position above the wall
+    sprite.position.set(x, height + 0.5, z);
     sprite.scale.set(0.5, 0.25, 1);
-    sprite.userData = { type: 'gateCost', x: Math.floor(x), z: Math.floor(z) };
+    sprite.userData = { type: 'gateCost', x: gridX, z: gridZ };
     this.boardGroup.add(sprite);
   }
 

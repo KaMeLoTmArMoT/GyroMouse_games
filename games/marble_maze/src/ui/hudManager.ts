@@ -1,11 +1,11 @@
-import { TerrainType, Difficulty } from '../maze/mazeGenerator';
+import { TerrainType } from '../maze/mazeGenerator';
 import { InputSettings } from '../../../../shared/inputManager';
 
 export interface HudCallbacks {
   onRestart: (fromCheckpoint?: boolean) => void;
   onNewRandom: () => void;
   onApplySeed: (seed: string) => void;
-  onUpdateSettings: (settings: Partial<InputSettings>, difficulty: Difficulty, debugPath?: boolean) => void;
+  onUpdateSettings: (settings: Partial<InputSettings>, difficulty: string, debugPath?: boolean) => void;
   onToggleMute: () => boolean;
 }
 
@@ -69,6 +69,15 @@ export class HudManager {
       const seedText = this.seedEl.getAttribute('data-seed') || '';
       navigator.clipboard.writeText(seedText);
       alert(`Copied seed "${seedText}" to clipboard!`);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (!this.settingsModal.classList.contains('active')) return;
+      if (e.key === 'Escape') {
+        this.closeSettingsModal();
+      } else if (e.key === 'Enter') {
+        this.saveSettings();
+      }
     });
   }
 
@@ -169,7 +178,7 @@ export class HudManager {
   private saveSettings() {
     const mode = (document.getElementById('setting-mode') as HTMLSelectElement).value as any;
     const mouseEnabled = (document.getElementById('setting-mouse-enable') as HTMLInputElement).checked;
-    const difficulty = (document.getElementById('setting-difficulty') as HTMLSelectElement).value as Difficulty;
+    const difficulty = (document.getElementById('setting-difficulty') as HTMLSelectElement).value;
     const sensitivity = parseFloat((document.getElementById('setting-sensitivity') as HTMLInputElement).value);
     const customSeed = (document.getElementById('setting-seed') as HTMLInputElement).value.trim();
     const debugPath = (document.getElementById('setting-debug-path') as HTMLInputElement).checked;
