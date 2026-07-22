@@ -18,6 +18,11 @@ export interface HoleConfig {
   moveRange: number;
 }
 
+export interface BridgeConfig {
+  lane: 'left' | 'center' | 'right';
+  axis: 'x' | 'z'; // 'z': bridge spans Z (narrow in X). 'x': bridge spans X (narrow in Z).
+}
+
 export interface MazeCell {
   x: number;
   z: number;
@@ -31,6 +36,8 @@ export interface MazeCell {
   terrain: TerrainType;
   isHole: boolean;
   holeConfig?: HoleConfig;
+  isBridge: boolean;
+  bridgeConfig?: BridgeConfig;
   isGoal: boolean;
   isStart: boolean;
   hasCoin: boolean;
@@ -84,6 +91,7 @@ export class MazeGenerator {
           walls: { top: true, right: true, bottom: true, left: true },
           terrain: this.getDefaultTerrainForTheme(theme),
           isHole: false,
+          isBridge: false,
           isGoal: false,
           isStart: false,
           hasCoin: false,
@@ -147,6 +155,8 @@ export class MazeGenerator {
       }
     }
 
+    this.placeBridges(cells, width, height, difficulty, prng);
+
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
         const cell = cells[z][x];
@@ -157,7 +167,7 @@ export class MazeGenerator {
           left: cell.walls.left
         };
 
-        if (difficulty === 'hard' && !cell.isHole) {
+        if (difficulty === 'hard' && !cell.isHole && !cell.isBridge) {
           if (prng.next() < 0.2) cell.hasGuardrail.top = false;
           if (prng.next() < 0.2) cell.hasGuardrail.right = false;
           if (prng.next() < 0.2) cell.hasGuardrail.bottom = false;
@@ -235,6 +245,107 @@ export class MazeGenerator {
     const moveRange = movePattern === 'static' ? 0 : 0.25 + prng.next() * 0.35;
 
     return { shape, radius, size, offsetX, offsetZ, movePattern, moveSpeed, moveRange };
+  }
+
+  private static findMainPath(
+    cells: MazeCell[][],
+    width: number,
+    height: number
+  ): { x: number; z: number }[] {
+    const start = { x: 0, z: 0 };
+    const goal = { x: width - 1, z: height - 1 };
+
+    const parent = new Map<string, { x: number; z: number }>();
+    const visited = new Set<string>();
+    const queue: { x: number; z: number }[] = [{ x: 0, z: 0 }];
+    visited.add('0,0');
+
+    const dirs = [
+      { dx: 0, dz: -1, wall: 'top' as const },
+      { dx: 1, dz: 0, wall: 'right' as const },
+      { dx: 0, dz: 1, wall: 'bottom' as const },
+      { dx: -1, dz: 0, wall: 'left' as const },
+    ];
+
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (cur.x === goal.x && cur.z === goal.z) break;
+
+      for (const d of dirs) {
+        const nx = cur.x + d.dx;
+        const nz = cur.z + d.dz;
+        const key = `${nx},${nz}`;
+        if (nx >= 0 && nx < width && nz >= 0 && nz < height && !visited.has(key)) {
+          if (!cells[cur.z][cur.x].walls[d.wall]) {
+            visited.add(key);
+            parent.set(key, cur);
+            queue.push({ x: nx, z: nz });
+          }
+        }
+      }
+    }
+
+    const path: { x: number; z: number }[] = [];
+    let cur = goal;
+    const goalKey = `${goal.x},${goal.z}`;
+    if (!parent.has(goalKey)) return path;
+    while (cur.x !== start.x || cur.z !== start.z) {
+      path.unshift({ ...cur });
+      const p = parent.get(`${cur.x},${cur.z}`);
+      if (!p) break;
+      cur = p;
+    }
+    path.unshift({ ...start });
+    return path;
+  }
+
+  private static placeBridges(
+    cells: MazeCell[][],
+    width: number,
+    height: number,
+    difficulty: Difficulty,
+    prng: SeededRandom
+  ): void {
+    if (difficulty === 'easy') return;
+    const bridgeProb = difficulty === 'medium' ? 0.05 : 0.10;
+
+    const mainPath = this.findMainPath(cells, width, height);
+    const eligible = mainPath.slice(2, -2);
+
+    const key = (p: { x: number; z: number }) => `${p.x},${p.z}`;
+    const pathIndex = new Map<string, number>();
+    mainPath.forEach((p, i) => pathIndex.set(key(p), i));
+
+    for (const cell of eligible) {
+      const c = cells[cell.z][cell.x];
+      if (c.isHole || c.hasCoin) continue;
+      if (prng.next() >= bridgeProb) continue;
+
+      const idx = pathIndex.get(key(cell))!;
+      const prev = mainPath[idx - 1];
+      const next = mainPath[idx + 1];
+      if (!prev || !next) continue;
+
+      const entryDir =
+        prev.x < cell.x ? 'left' :
+        prev.x > cell.x ? 'right' :
+        prev.z < cell.z ? 'top' : 'bottom';
+
+      const exitDir =
+        next.x > cell.x ? 'right' :
+        next.x < cell.x ? 'left' :
+        next.z > cell.z ? 'bottom' : 'top';
+
+      // Only place bridge when path goes straight through this cell
+      const opp: Record<string, string> = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
+      if (exitDir !== opp[entryDir]) continue;
+
+      const axis = (entryDir === 'top' || entryDir === 'bottom') ? 'z' : 'x';
+      const lanes: ('left' | 'center' | 'right')[] = ['left', 'center', 'right'];
+
+      c.isBridge = true;
+      c.bridgeConfig = { lane: prng.choice(lanes), axis };
+    }
   }
 
   private static getUnvisitedNeighbors(

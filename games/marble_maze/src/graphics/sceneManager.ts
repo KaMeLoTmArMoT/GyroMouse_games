@@ -159,13 +159,85 @@ export class SceneManager {
         }
         if (cell.isGoal) mat = goalMat;
 
-        const tileMesh = new THREE.Mesh(tileGeo, mat);
-        tileMesh.position.set(cellCenterX, -0.2, cellCenterZ);
-        tileMesh.receiveShadow = true;
-        tileMesh.castShadow = true;
-        this.boardGroup.add(tileMesh);
+        if (!cell.isBridge) {
+          const tileMesh = new THREE.Mesh(tileGeo, mat);
+          tileMesh.position.set(cellCenterX, -0.2, cellCenterZ);
+          tileMesh.receiveShadow = true;
+          tileMesh.castShadow = true;
+          this.boardGroup.add(tileMesh);
+        }
 
-        if (cell.isHole) {
+        if (cell.isBridge) {
+          const cfg = cell.bridgeConfig!;
+          const bridgeWidth = cellSize / 3;
+          const halfBridge = bridgeWidth / 2;
+          const isZ = cfg.axis === 'z';
+
+          const holes: { offset: number; halfW: number }[] = [];
+          let bridgeOff: number;
+
+          switch (cfg.lane) {
+            case 'left':
+              bridgeOff = -halfCell + halfBridge;
+              holes.push({ offset: halfBridge, halfW: halfCell - halfBridge });
+              break;
+            case 'center':
+              bridgeOff = 0;
+              holes.push({ offset: -halfCell + halfBridge, halfW: halfBridge });
+              holes.push({ offset: halfCell - halfBridge, halfW: halfBridge });
+              break;
+            case 'right':
+              bridgeOff = halfCell - halfBridge;
+              holes.push({ offset: -halfBridge, halfW: halfCell - halfBridge });
+              break;
+          }
+
+          if (isZ) {
+            const bridgeGeo = new THREE.BoxGeometry(bridgeWidth * 0.9, 0.4, cellSize * 0.9);
+            const bridgeMesh = new THREE.Mesh(bridgeGeo, mat);
+            bridgeMesh.position.set(cellCenterX + bridgeOff, -0.2, cellCenterZ);
+            bridgeMesh.receiveShadow = true;
+            bridgeMesh.castShadow = true;
+            this.boardGroup.add(bridgeMesh);
+
+            for (const h of holes) {
+              const pitGeo = new THREE.BoxGeometry(h.halfW * 1.8, 0.45, cellSize * 0.9);
+              const pitMesh = new THREE.Mesh(pitGeo, pitMat);
+              pitMesh.position.set(cellCenterX + h.offset, -0.18, cellCenterZ);
+              this.boardGroup.add(pitMesh);
+
+              const ringEdgeX = h.offset > bridgeOff
+                ? bridgeOff + halfBridge
+                : bridgeOff - halfBridge;
+              const ringGeo = new THREE.BoxGeometry(0.05, 0.04, cellSize * 0.85);
+              const ringMesh = new THREE.Mesh(ringGeo, pitRingMat);
+              ringMesh.position.set(cellCenterX + ringEdgeX, 0.02, cellCenterZ);
+              this.boardGroup.add(ringMesh);
+            }
+          } else {
+            const bridgeGeo = new THREE.BoxGeometry(cellSize * 0.9, 0.4, bridgeWidth * 0.9);
+            const bridgeMesh = new THREE.Mesh(bridgeGeo, mat);
+            bridgeMesh.position.set(cellCenterX, -0.2, cellCenterZ + bridgeOff);
+            bridgeMesh.receiveShadow = true;
+            bridgeMesh.castShadow = true;
+            this.boardGroup.add(bridgeMesh);
+
+            for (const h of holes) {
+              const pitGeo = new THREE.BoxGeometry(cellSize * 0.9, 0.45, h.halfW * 1.8);
+              const pitMesh = new THREE.Mesh(pitGeo, pitMat);
+              pitMesh.position.set(cellCenterX, -0.18, cellCenterZ + h.offset);
+              this.boardGroup.add(pitMesh);
+
+              const ringEdgeZ = h.offset > bridgeOff
+                ? bridgeOff + halfBridge
+                : bridgeOff - halfBridge;
+              const ringGeo = new THREE.BoxGeometry(cellSize * 0.85, 0.04, 0.05);
+              const ringMesh = new THREE.Mesh(ringGeo, pitRingMat);
+              ringMesh.position.set(cellCenterX, 0.02, cellCenterZ + ringEdgeZ);
+              this.boardGroup.add(ringMesh);
+            }
+          }
+        } else if (cell.isHole) {
           const defaultCfg = { shape: 'round' as const, radius: 0.5, size: 0, offsetX: 0, offsetZ: 0, movePattern: 'static' as HoleMovePattern, moveSpeed: 0, moveRange: 0 };
           const cfg = cell.holeConfig || defaultCfg;
           const holeWorldX = cellCenterX + cfg.offsetX;
@@ -275,7 +347,7 @@ export class SceneManager {
           }
         }
 
-        if (cell.hasCoin && !cell.isHole) {
+        if (cell.hasCoin && !cell.isHole && !cell.isBridge) {
           const coinId = `coin_${x}_${z}`;
           const coinGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.08, 16);
           const coinMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.9, roughness: 0.2 });

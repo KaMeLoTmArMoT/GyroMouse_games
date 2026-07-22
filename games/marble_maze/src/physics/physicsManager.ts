@@ -98,7 +98,61 @@ export class PhysicsManager {
         const friction = this.getFrictionForTerrain(cell.terrain);
         const restitution = cell.terrain === 'ice' ? 0.05 : 0.15;
 
-        if (cell.isHole) {
+        if (cell.isBridge) {
+          const cfg = cell.bridgeConfig!;
+          const bridgeWidth = cellSize / 3;
+          const halfBridge = bridgeWidth / 2;
+          const isZ = cfg.axis === 'z';
+
+          const holes: { offset: number; halfW: number }[] = [];
+          let bridgeOff: number;
+
+          switch (cfg.lane) {
+            case 'left':
+              bridgeOff = -halfCell + halfBridge;
+              holes.push({ offset: halfBridge, halfW: halfCell - halfBridge });
+              break;
+            case 'center':
+              bridgeOff = 0;
+              holes.push({ offset: -halfCell + halfBridge, halfW: halfBridge });
+              holes.push({ offset: halfCell - halfBridge, halfW: halfBridge });
+              break;
+            case 'right':
+              bridgeOff = halfCell - halfBridge;
+              holes.push({ offset: -halfBridge, halfW: halfCell - halfBridge });
+              break;
+          }
+
+          if (isZ) {
+            const holeZ = halfCell * 0.95;
+            const bDesc = RAPIER.ColliderDesc.cuboid(halfBridge * 0.9, 0.4, holeZ)
+              .setTranslation(cellCenterX + bridgeOff, -0.4, cellCenterZ)
+              .setFriction(friction).setRestitution(restitution);
+            this.world.createCollider(bDesc, boardBody);
+
+            for (const h of holes) {
+              const sDesc = RAPIER.ColliderDesc.cuboid(h.halfW * 0.9, 0.2, holeZ)
+                .setTranslation(cellCenterX + h.offset, -0.2, cellCenterZ)
+                .setSensor(true)
+                .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+              this.holeSensors.push(this.world.createCollider(sDesc, boardBody));
+            }
+          } else {
+            const holeX = halfCell * 0.95;
+            const bDesc = RAPIER.ColliderDesc.cuboid(holeX, 0.4, halfBridge * 0.9)
+              .setTranslation(cellCenterX, -0.4, cellCenterZ + bridgeOff)
+              .setFriction(friction).setRestitution(restitution);
+            this.world.createCollider(bDesc, boardBody);
+
+            for (const h of holes) {
+              const sDesc = RAPIER.ColliderDesc.cuboid(holeX, 0.2, h.halfW * 0.9)
+                .setTranslation(cellCenterX, -0.2, cellCenterZ + h.offset)
+                .setSensor(true)
+                .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+              this.holeSensors.push(this.world.createCollider(sDesc, boardBody));
+            }
+          }
+        } else if (cell.isHole) {
           const defaultCfg = { shape: 'round' as HoleShape, radius: 0.5, size: 0, offsetX: 0, offsetZ: 0, movePattern: 'static' as HoleMovePattern, moveSpeed: 0, moveRange: 0 };
           const cfg = cell.holeConfig || defaultCfg;
           const holeWorldX = cellCenterX + cfg.offsetX;
@@ -193,7 +247,7 @@ export class PhysicsManager {
           this.world.createCollider(floorDesc, boardBody);
         }
 
-        if (cell.hasCoin && !cell.isHole) {
+        if (cell.hasCoin && !cell.isHole && !cell.isBridge) {
           const coinId = `coin_${x}_${z}`;
           const coinSensorDesc = RAPIER.ColliderDesc.ball(0.4)
             .setTranslation(cellCenterX, 0.4, cellCenterZ)

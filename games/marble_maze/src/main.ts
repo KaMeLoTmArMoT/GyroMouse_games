@@ -40,8 +40,25 @@ class Game {
 
   public async start() {
     await this.physicsManager.init();
+    this.loadSettings();
     this.generateNewLevel();
     requestAnimationFrame(this.gameLoop.bind(this));
+  }
+
+  private loadSettings() {
+    this.currentDifficulty = this.loadDifficulty();
+    const diffEl = document.getElementById('setting-difficulty') as HTMLSelectElement | null;
+    if (diffEl) diffEl.value = this.currentDifficulty;
+  }
+
+  private loadDifficulty(): Difficulty {
+    const stored = localStorage.getItem('marble-maze-difficulty');
+    if (stored === 'easy' || stored === 'medium' || stored === 'hard') return stored;
+    return 'medium';
+  }
+
+  private saveDifficulty() {
+    localStorage.setItem('marble-maze-difficulty', this.currentDifficulty);
   }
 
   private generateNewLevel() {
@@ -97,6 +114,7 @@ class Game {
     Object.assign(this.inputManager.settings, settings);
     if (difficulty !== this.currentDifficulty) {
       this.currentDifficulty = difficulty;
+      this.saveDifficulty();
       this.generateNewLevel();
     }
   }
