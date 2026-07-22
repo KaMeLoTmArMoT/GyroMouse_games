@@ -2,12 +2,15 @@
 
 ## Commands
 
-| Task | Command |
-|------|---------|
-| Dev server (LAN, port 5173) | `npm run dev` |
-| Build (typecheck + bundle) | `npm run build` |
-| Preview production build | `npm run preview` |
-| Type-check only | `npx tsc --noEmit` |
+| Task                        | Command            |
+| -----------------------------| --------------------|
+| Dev server (LAN, port 5173) | `npm run dev`      |
+| Build (typecheck + bundle)  | `npm run build`    |
+| Preview production build    | `npm run preview`  |
+| Type-check only             | `npx tsc --noEmit` |
+
+## Rules
+Do not run `npm run build` or `npm run dev` if i don't ask for it.
 
 ## Testing & Validation
 No test runner configured — validate changes manually via `npm run dev` and visual check in browser.

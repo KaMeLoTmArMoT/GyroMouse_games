@@ -6,6 +6,8 @@ export interface PhysicsCallbacks {
   onFallInHole: () => void;
   onReachGoal: () => void;
   onHitWall: (impactVelocity: number) => void;
+  onActivateGate: (gateId: string) => void;
+  onActivateCheckpoint: (checkpointId: string) => void;
 }
 
 export class PhysicsManager {
@@ -16,6 +18,8 @@ export class PhysicsManager {
   private coinSensors: Map<string, RAPIER.Collider> = new Map();
   private holeSensors: RAPIER.Collider[] = [];
   private goalSensor: RAPIER.Collider | null = null;
+  public gateSensors: Map<string, { sensor: RAPIER.Collider, blocker: RAPIER.Collider, cooldown: number }> = new Map();
+  public checkpointSensors: Map<string, { sensor: RAPIER.Collider, position: { x: number, y: number, z: number } }> = new Map();
 
   private isInitialized: boolean = false;
   private callbacks?: PhysicsCallbacks;
@@ -27,6 +31,7 @@ export class PhysicsManager {
   }
 
   private holeDataList: { x: number; z: number; radius: number; sensor: RAPIER.Collider }[] = [];
+  public gateCosts: Map<string, number> = new Map();
 
   private movingHoles: {
     sensor: RAPIER.Collider;
@@ -296,13 +301,75 @@ export class PhysicsManager {
       }
     }
 
-    const goalX = maze.goalCell.x * cellSize + halfCell - mazeWorldWidth / 2;
-    const goalZ = maze.goalCell.z * cellSize + halfCell - mazeWorldHeight / 2;
+       // Build gates
+       for (let z = 0; z < maze.height; z++) {
+         for (let x = 0; x < maze.width; x++) {
+           const cell = maze.cells[z][x];
+           if (cell.isGate) {
+             const gateId = `gate_${x}_${z}`;
+             const cellCenterX = x * cellSize + halfCell - mazeWorldWidth / 2;
+             const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
 
-    return {
-      startPos,
-      goalPos: { x: goalX, y: 0.2, z: goalZ }
-    };
+             // Sensor collider (triggers activation) - covers center area
+             const sensorDesc = RAPIER.ColliderDesc.cuboid(0.4, 0.5, 0.4)
+               .setTranslation(cellCenterX, 0.2, cellCenterZ)
+               .setSensor(true)
+               .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+             const sensor = this.world.createCollider(sensorDesc, boardBody);
+
+             // Blocker collider (solid physics) - placed on cell edge like guardrail
+             // Default to top edge (blocks bottom direction) to match graphics
+             const blockerDesc = RAPIER.ColliderDesc.cuboid(halfCell, wallHalfHeight, wallHalfThick)
+               .setTranslation(cellCenterX, wallHalfHeight, cellCenterZ - halfCell); // Top edge
+             const blocker = this.world.createCollider(blockerDesc, boardBody);
+
+             this.gateSensors.set(gateId, { sensor, blocker, cooldown: 0 });
+             this.gateCosts.set(gateId, cell.gateCost || 5);
+           }
+         }
+       }
+
+      // Build checkpoints
+      for (let z = 0; z < maze.height; z++) {
+        for (let x = 0; x < maze.width; x++) {
+          const cell = maze.cells[z][x];
+          if (cell.isCheckpoint) {
+            const checkpointId = `checkpoint_${x}_${z}`;
+            const cellCenterX = x * cellSize + halfCell - mazeWorldWidth / 2;
+            const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
+
+            const sensorDesc = RAPIER.ColliderDesc.cuboid(0.4, 0.5, 0.4)
+              .setTranslation(cellCenterX, 0.2, cellCenterZ)
+              .setSensor(true)
+              .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+            const sensor = this.world.createCollider(sensorDesc, boardBody);
+
+            this.checkpointSensors.set(checkpointId, {
+              sensor,
+              position: { x: cellCenterX, y: 0.5, z: cellCenterZ }
+            });
+          }
+        }
+      }
+
+      const goalX = maze.goalCell.x * cellSize + halfCell - mazeWorldWidth / 2;
+      const goalZ = maze.goalCell.z * cellSize + halfCell - mazeWorldHeight / 2;
+
+      return {
+        startPos,
+        goalPos: { x: goalX, y: 0.2, z: goalZ }
+      };
+  }
+
+  private isMarbleInsideGate(gate: { sensor: RAPIER.Collider, blocker: RAPIER.Collider, cooldown: number }): boolean {
+    const marblePos = this.marbleBody.translation();
+    const blockerPos = gate.blocker.translation();
+    const distance = Math.hypot(
+      marblePos.x - blockerPos.x,
+      marblePos.y - blockerPos.y,
+      marblePos.z - blockerPos.z
+    );
+    return distance < 0.5; // Within 0.5 units of blocker
   }
 
   private getFrictionForTerrain(terrain: TerrainType): number {
@@ -396,6 +463,35 @@ export class PhysicsManager {
         }
       }
 
+      // Gate activation
+      this.gateSensors.forEach((gate, gateId) => {
+        if (gate.cooldown > 0) {
+          gate.cooldown -= dt;
+          if (gate.cooldown <= 0 && this.isMarbleInsideGate(gate)) {
+            this.world.removeCollider(gate.blocker, false);
+            this.gateSensors.delete(gateId);
+          }
+          return;
+        }
+
+        if (this.world.intersectionPair(this.marbleCollider, gate.sensor)) {
+          if (this.callbacks?.onActivateGate) {
+            this.callbacks.onActivateGate(gateId);
+          }
+          gate.cooldown = 1.0; // 1-second cooldown
+        }
+      });
+
+      // Checkpoint activation
+      this.checkpointSensors.forEach((checkpoint, checkpointId) => {
+        if (this.world.intersectionPair(this.marbleCollider, checkpoint.sensor)) {
+          if (this.callbacks?.onActivateCheckpoint) {
+            this.callbacks.onActivateCheckpoint(checkpointId);
+          }
+        }
+      });
+
+      // Coin collection
       this.coinSensors.forEach((sensor, coinId) => {
         if (this.world.intersectionPair(this.marbleCollider, sensor)) {
           const parts = coinId.split('_');

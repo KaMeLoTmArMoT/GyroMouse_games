@@ -64,9 +64,14 @@
         <input type="range" id="setting-sensitivity" min="0.5" max="2.0" step="0.1" value="1.0" class="modal-input" />
       </div>
 
-      <div class="modal-group">
+       <div class="modal-group">
         <label for="setting-seed">Custom Maze Seed (Optional)</label>
         <input type="text" id="setting-seed" placeholder="e.g. gyro-marble-99" class="modal-input" />
+      </div>
+      
+      <div class="modal-group" style="flex-direction: row; align-items: center; justify-content: space-between;">
+        <label for="setting-debug-path" style="cursor: pointer;">Show Debug Path Visualization</label>
+        <input type="checkbox" id="setting-debug-path" style="width: 20px; height: 20px; cursor: pointer;" />
       </div>
 
       <div class="modal-actions">
@@ -108,7 +113,8 @@
       <p style="margin-bottom: 20px; color: #9ca3af;">The marble plunged into a pitfall!</p>
 
       <div class="modal-actions" style="justify-content: center;">
-        <button class="icon-btn primary" id="btn-fall-retry" style="padding: 12px 24px; font-size: 1.1rem;">🔄 Try Again</button>
+        <button class="icon-btn primary" id="btn-fall-retry" style="padding: 12px 24px; font-size: 1.1rem;">🔄 Restart Level</button>
+        <button class="icon-btn primary" id="btn-fall-checkpoint" style="padding: 12px 24px; font-size: 1.1rem; display: none;">🏁 Restart from Checkpoint</button>
       </div>
     </div>
   </div>

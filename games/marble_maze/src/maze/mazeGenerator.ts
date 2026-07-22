@@ -41,6 +41,9 @@ export interface MazeCell {
   isGoal: boolean;
   isStart: boolean;
   hasCoin: boolean;
+  isGate: boolean;
+  gateCost?: number;
+  isCheckpoint: boolean;
   hasGuardrail: {
     top: boolean;
     right: boolean;
@@ -61,8 +64,11 @@ export interface MazeData {
   cells: MazeCell[][];
   startCell: { x: number; z: number };
   goalCell: { x: number; z: number };
+  mainPath: { x: number; z: number }[]; // Store main path to avoid recalculation
   holesCount: number;
   coinsCount: number;
+  gatesCount: number;
+  checkpointsCount: number;
 }
 
 export class MazeGenerator {
@@ -95,6 +101,8 @@ export class MazeGenerator {
           isGoal: false,
           isStart: false,
           hasCoin: false,
+          isGate: false,
+          isCheckpoint: false,
           hasGuardrail: { top: true, right: true, bottom: true, left: true }
         };
       }
@@ -131,6 +139,12 @@ export class MazeGenerator {
     let coinsCount = 0;
     const holeProb = difficulty === 'easy' ? 0.05 : difficulty === 'medium' ? 0.10 : 0.18;
 
+    let gatesCount = 0;
+    let checkpointsCount = 0;
+    const mainPath = this.findMainPath(cells, width, height);
+    const pathIndex = new Map<string, number>();
+    mainPath.forEach((p, i) => pathIndex.set(`${p.x},${p.z}`, i));
+
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
         const cell = cells[z][x];
@@ -155,6 +169,42 @@ export class MazeGenerator {
       }
     }
 
+    // Place gates on main path (not start/goal) with coin accessibility check
+    const gateDifficultyCounts = { easy: 1, medium: 2, hard: 3 };
+    const gateDifficultyCosts = { easy: 3, medium: 5, hard: 8 };
+    const gateCount = gateDifficultyCounts[difficulty];
+    const gateCost = gateDifficultyCosts[difficulty];
+
+    // Ensure gates are placed where player has enough coins
+    for (let i = 0; i < gateCount; i++) {
+      const candidateIdx = Math.floor(prng.next() * (mainPath.length - 4)) + 2;
+      const cell = cells[mainPath[candidateIdx].z][mainPath[candidateIdx].x];
+      
+      // Check if path to gate has enough coins
+      const pathToGate = mainPath.slice(0, candidateIdx + 1);
+      let coinCount = 0;
+      for (const p of pathToGate) {
+        if (cells[p.z][p.x].hasCoin) coinCount++;
+      }
+      
+      if (!cell.isHole && !cell.hasCoin && !cell.isBridge && coinCount >= gateCost) {
+        cell.isGate = true;
+        cell.gateCost = gateCost;
+        gatesCount++;
+      }
+    }
+
+     // Place 3 checkpoints at 40%, 60%, 80% of main path length
+     const checkpointPosValues = [0.4, 0.6, 0.8];
+     for (const pos of checkpointPosValues) {
+       const idx = Math.floor(pos * mainPath.length);
+       const cell = cells[mainPath[idx].z][mainPath[idx].x];
+       if (!cell.isHole && !cell.hasCoin && !cell.isBridge && !cell.isGate && !cell.isCheckpoint) {
+         cell.isCheckpoint = true;
+         checkpointsCount++;
+       }
+     }
+
     this.placeBridges(cells, width, height, difficulty, prng);
 
     for (let z = 0; z < height; z++) {
@@ -176,19 +226,98 @@ export class MazeGenerator {
       }
     }
 
-    return {
-      width,
-      height,
-      cellSize,
-      seed: seedStr,
-      difficulty,
-      theme,
-      cells,
-      startCell,
-      goalCell,
-      holesCount,
-      coinsCount
-    };
+     // Debug logging for all maze elements
+     console.log(`[MAZE DEBUG] Generated maze ${width}x${height}, seed: ${seedStr}, difficulty: ${difficulty}`);
+     console.log(`[MAZE DEBUG] Main path length: ${mainPath.length}`);
+     console.log(`[MAZE DEBUG] Elements: ${holesCount} holes, ${coinsCount} coins, ${gatesCount} gates, ${checkpointsCount} checkpoints`);
+
+     // Log all gates with positions
+     const gatePositions = [];
+     for (let z = 0; z < height; z++) {
+       for (let x = 0; x < width; x++) {
+         if (cells[z][x].isGate) {
+           gatePositions.push(`(${x},${z})`);
+         }
+       }
+     }
+     console.log(`[MAZE DEBUG] Gates at: ${gatePositions.join(', ') || 'none'}`);
+
+     // Log all checkpoints with positions
+     const checkpointLocs = [];
+     for (let z = 0; z < height; z++) {
+       for (let x = 0; x < width; x++) {
+         if (cells[z][x].isCheckpoint) {
+           checkpointLocs.push(`(${x},${z})`);
+         }
+       }
+     }
+     console.log(`[MAZE DEBUG] Checkpoints at: ${checkpointLocs.join(', ') || 'none'}`);
+
+     // Log all holes with types and positions
+     const roundHoles = [];
+     const squareHoles = [];
+     const movingHoles = [];
+     for (let z = 0; z < height; z++) {
+       for (let x = 0; x < width; x++) {
+         if (cells[z][x].isHole) {
+           const config = cells[z][x].holeConfig;
+           if (config?.shape === 'round') {
+             roundHoles.push(`(${x},${z})${config.movePattern !== 'static' ? ' moving' : ''}`);
+           } else {
+             squareHoles.push(`(${x},${z})${config?.movePattern !== 'static' ? ' moving' : ''}`);
+           }
+            if (config?.movePattern !== 'static') {
+              movingHoles.push(`(${x},${z}) ${config?.shape || 'unknown'} ${config?.movePattern || 'unknown'}`);
+            }
+         }
+       }
+     }
+     console.log(`[MAZE DEBUG] Round holes: ${roundHoles.join(', ') || 'none'}`);
+     console.log(`[MAZE DEBUG] Square holes: ${squareHoles.join(', ') || 'none'}`);
+     console.log(`[MAZE DEBUG] Moving holes: ${movingHoles.join(', ') || 'none'}`);
+
+     // Log all bridges with positions
+     const bridgePositions = [];
+     for (let z = 0; z < height; z++) {
+       for (let x = 0; x < width; x++) {
+         if (cells[z][x].isBridge) {
+           bridgePositions.push(`(${x},${z}) ${cells[z][x].bridgeConfig?.lane || 'unknown'}`);
+         }
+       }
+     }
+     console.log(`[MAZE DEBUG] Bridges at: ${bridgePositions.join(', ') || 'none'}`);
+
+     // Log wall statistics
+     let totalWalls = 0;
+     let cellsWithWalls = 0;
+     for (let z = 0; z < height; z++) {
+       for (let x = 0; x < width; x++) {
+         const cell = cells[z][x];
+         const wallCount = (cell.walls.top ? 1 : 0) + (cell.walls.right ? 1 : 0) + 
+                          (cell.walls.bottom ? 1 : 0) + (cell.walls.left ? 1 : 0);
+         totalWalls += wallCount;
+         if (wallCount > 0) cellsWithWalls++;
+       }
+     }
+     const avgWallsPerCell = (totalWalls / (width * height)).toFixed(2);
+     console.log(`[MAZE DEBUG] Walls: ${totalWalls} total, ${avgWallsPerCell} avg per cell, ${cellsWithWalls}/${width*height} cells have walls`);
+
+     return {
+       width,
+       height,
+       cellSize,
+       seed: seedStr,
+       difficulty,
+       theme,
+       cells,
+       startCell,
+       goalCell,
+       mainPath: mainPath,
+       holesCount,
+       coinsCount,
+       gatesCount,
+       checkpointsCount
+     };
   }
 
   private static getDefaultTerrainForTheme(theme: MazeTheme): TerrainType {

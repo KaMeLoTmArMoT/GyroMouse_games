@@ -5,7 +5,7 @@ export interface HudCallbacks {
   onRestart: () => void;
   onNewRandom: () => void;
   onApplySeed: (seed: string) => void;
-  onUpdateSettings: (settings: Partial<InputSettings>, difficulty: Difficulty) => void;
+  onUpdateSettings: (settings: Partial<InputSettings>, difficulty: Difficulty, debugPath?: boolean) => void;
   onToggleMute: () => boolean;
 }
 
@@ -151,9 +151,16 @@ export class HudManager {
     this.surfaceEl.style.color = color;
   }
 
-  public openSettingsModal() {
+   public openSettingsModal() {
     this.settingsModal.classList.add('active');
-  }
+   }
+
+   public updateDebugPathSetting(enabled: boolean) {
+    const debugPathCheckbox = document.getElementById('setting-debug-path') as HTMLInputElement;
+    if (debugPathCheckbox) {
+      debugPathCheckbox.checked = enabled;
+    }
+   }
 
   public closeSettingsModal() {
     this.settingsModal.classList.remove('active');
@@ -165,6 +172,7 @@ export class HudManager {
     const difficulty = (document.getElementById('setting-difficulty') as HTMLSelectElement).value as Difficulty;
     const sensitivity = parseFloat((document.getElementById('setting-sensitivity') as HTMLInputElement).value);
     const customSeed = (document.getElementById('setting-seed') as HTMLInputElement).value.trim();
+    const debugPath = (document.getElementById('setting-debug-path') as HTMLInputElement).checked;
 
     this.callbacks.onUpdateSettings(
       {
@@ -172,7 +180,8 @@ export class HudManager {
         mouseEnabled,
         sensitivity
       },
-      difficulty
+      difficulty,
+      debugPath
     );
 
     if (customSeed) {
@@ -195,9 +204,23 @@ export class HudManager {
     this.winModal.classList.remove('active');
   }
 
-  public showFallModal() {
+  public showFallModal(hasCheckpoint: boolean) {
     this.isTimerRunning = false;
     this.fallModal.classList.add('active');
+    
+    const restartFromCheckpointBtn = document.getElementById('btn-fall-checkpoint');
+    
+    if (restartFromCheckpointBtn) {
+      if (hasCheckpoint) {
+        restartFromCheckpointBtn.style.display = 'inline-block';
+        restartFromCheckpointBtn.onclick = () => {
+          this.closeFallModal();
+          (this.callbacks.onRestart as (fromCheckpoint?: boolean) => void)(true);
+        };
+      } else {
+        restartFromCheckpointBtn.style.display = 'none';
+      }
+    }
   }
 
   public closeFallModal() {

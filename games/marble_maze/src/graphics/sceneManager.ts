@@ -89,16 +89,18 @@ export class SceneManager {
     window.addEventListener('resize', this.onWindowResize.bind(this));
   }
 
-  public buildMazeMesh(maze: MazeData) {
-    while (this.boardGroup.children.length > 0) {
-      const child = this.boardGroup.children[0];
-      this.boardGroup.remove(child);
-    }
-    this.coinMeshes.clear();
-    this.movingHoles = [];
+    public buildMazeMesh(maze: MazeData, options: { debugPath?: boolean } = {}) {
+     console.log(`[SCENE DEBUG] Building maze mesh for ${maze.width}x${maze.height} maze`);
+     
+     while (this.boardGroup.children.length > 0) {
+       const child = this.boardGroup.children[0];
+       this.boardGroup.remove(child);
+     }
+     this.coinMeshes.clear();
+     this.movingHoles = [];
 
-    // Configure Theme Background & Fog & Lighting
-    this.applyThemeEnvironment(maze.theme);
+     // Configure Theme Background & Fog & Lighting
+     this.applyThemeEnvironment(maze.theme);
 
     // Re-add marbleMesh to boardGroup after clearing
     this.boardGroup.add(this.marbleMesh);
@@ -139,13 +141,22 @@ export class SceneManager {
     const pitMat = new THREE.MeshBasicMaterial({ color: 0x020208 });
     const pitRingMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
     const pitMovingRingMat = new THREE.MeshBasicMaterial({ color: 0x00ffee });
-    const goalMat = new THREE.MeshStandardMaterial({ color: 0x00ff66, roughness: 0.2, emissive: 0x00cc44 });
+     const goalMat = new THREE.MeshStandardMaterial({ color: 0x00ff66, roughness: 0.2, emissive: 0x00cc44 });
 
-    for (let z = 0; z < maze.height; z++) {
-      for (let x = 0; x < maze.width; x++) {
-        const cell = maze.cells[z][x];
-        const cellCenterX = x * cellSize + halfCell - mazeWorldWidth / 2;
-        const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
+     // Counters for debugging
+     let floorTiles = 0;
+     let wallSegments = 0;
+     let guardrailSegments = 0;
+     let gatesRendered = 0;
+     let coinsRendered = 0;
+     let holesRendered = 0;
+     let bridgesRendered = 0;
+
+     for (let z = 0; z < maze.height; z++) {
+       for (let x = 0; x < maze.width; x++) {
+         const cell = maze.cells[z][x];
+         const cellCenterX = x * cellSize + halfCell - mazeWorldWidth / 2;
+         const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
 
         let mat = asphaltMat;
         switch (cell.terrain) {
@@ -167,11 +178,12 @@ export class SceneManager {
           this.boardGroup.add(tileMesh);
         }
 
-        if (cell.isBridge) {
-          const cfg = cell.bridgeConfig!;
-          const bridgeWidth = cellSize / 3;
-          const halfBridge = bridgeWidth / 2;
-          const isZ = cfg.axis === 'z';
+         if (cell.isBridge) {
+           const cfg = cell.bridgeConfig!;
+           const bridgeWidth = cellSize / 3;
+           const halfBridge = bridgeWidth / 2;
+           const isZ = cfg.axis === 'z';
+           bridgesRendered++;
 
           const holes: { offset: number; halfW: number }[] = [];
           let bridgeOff: number;
@@ -237,14 +249,15 @@ export class SceneManager {
               this.boardGroup.add(ringMesh);
             }
           }
-        } else if (cell.isHole) {
-          const defaultCfg = { shape: 'round' as const, radius: 0.5, size: 0, offsetX: 0, offsetZ: 0, movePattern: 'static' as HoleMovePattern, moveSpeed: 0, moveRange: 0 };
-          const cfg = cell.holeConfig || defaultCfg;
-          const holeWorldX = cellCenterX + cfg.offsetX;
-          const holeWorldZ = cellCenterZ + cfg.offsetZ;
-          const isSquare = cfg.shape === 'square';
-          const halfExtent = isSquare ? cfg.size / 2 : cfg.radius;
-          const isMoving = cfg.movePattern !== 'static';
+         } else if (cell.isHole) {
+           const defaultCfg = { shape: 'round' as const, radius: 0.5, size: 0, offsetX: 0, offsetZ: 0, movePattern: 'static' as HoleMovePattern, moveSpeed: 0, moveRange: 0 };
+           const cfg = cell.holeConfig || defaultCfg;
+           const holeWorldX = cellCenterX + cfg.offsetX;
+           const holeWorldZ = cellCenterZ + cfg.offsetZ;
+           const isSquare = cfg.shape === 'square';
+           const halfExtent = isSquare ? cfg.size / 2 : cfg.radius;
+           const isMoving = cfg.movePattern !== 'static';
+           holesRendered++;
 
           if (isMoving) {
             // Moving hole: render tile normally + pit group on top that moves
@@ -347,52 +360,131 @@ export class SceneManager {
           }
         }
 
-        if (cell.hasCoin && !cell.isHole && !cell.isBridge) {
-          const coinId = `coin_${x}_${z}`;
-          const coinGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.08, 16);
-          const coinMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.9, roughness: 0.2 });
-          const coinMesh = new THREE.Mesh(coinGeo, coinMat);
-          coinMesh.rotation.x = Math.PI / 2;
-          coinMesh.position.set(cellCenterX, 0.4, cellCenterZ);
-          coinMesh.castShadow = true;
-          this.boardGroup.add(coinMesh);
-          this.coinMeshes.set(coinId, coinMesh);
-        }
+         if (cell.hasCoin && !cell.isHole && !cell.isBridge) {
+           const coinId = `coin_${x}_${z}`;
+           const coinGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.08, 16);
+           const coinMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.9, roughness: 0.2 });
+           const coinMesh = new THREE.Mesh(coinGeo, coinMat);
+           coinMesh.rotation.x = Math.PI / 2;
+           coinMesh.position.set(cellCenterX, 0.4, cellCenterZ);
+           coinMesh.castShadow = true;
+           this.boardGroup.add(coinMesh);
+           this.coinMeshes.set(coinId, coinMesh);
+           coinsRendered++;
+         }
 
-        const g = cell.hasGuardrail;
+         const g = cell.hasGuardrail;
 
-        if (g.top) {
-          const wMesh = new THREE.Mesh(wallGeoY, wallMat);
-          wMesh.position.set(cellCenterX, 0.4, cellCenterZ - halfCell);
-          wMesh.castShadow = true;
-          wMesh.receiveShadow = true;
-          this.boardGroup.add(wMesh);
-        }
-        if (g.bottom) {
-          const wMesh = new THREE.Mesh(wallGeoY, wallMat);
-          wMesh.position.set(cellCenterX, 0.4, cellCenterZ + halfCell);
-          wMesh.castShadow = true;
-          wMesh.receiveShadow = true;
-          this.boardGroup.add(wMesh);
-        }
-        if (g.left) {
-          const wMesh = new THREE.Mesh(wallGeoX, wallMat);
-          wMesh.position.set(cellCenterX - halfCell, 0.4, cellCenterZ);
-          wMesh.castShadow = true;
-          wMesh.receiveShadow = true;
-          this.boardGroup.add(wMesh);
-        }
-        if (g.right) {
-          const wMesh = new THREE.Mesh(wallGeoX, wallMat);
-          wMesh.position.set(cellCenterX + halfCell, 0.4, cellCenterZ);
-          wMesh.castShadow = true;
-          wMesh.receiveShadow = true;
-          this.boardGroup.add(wMesh);
-        }
+         if (g.top) {
+           const wMesh = new THREE.Mesh(wallGeoY, wallMat);
+           wMesh.position.set(cellCenterX, 0.4, cellCenterZ - halfCell);
+           wMesh.castShadow = true;
+           wMesh.receiveShadow = true;
+           this.boardGroup.add(wMesh);
+           guardrailSegments++;
+         }
+         if (g.bottom) {
+           const wMesh = new THREE.Mesh(wallGeoY, wallMat);
+           wMesh.position.set(cellCenterX, 0.4, cellCenterZ + halfCell);
+           wMesh.castShadow = true;
+           wMesh.receiveShadow = true;
+           this.boardGroup.add(wMesh);
+           guardrailSegments++;
+         }
+         if (g.left) {
+           const wMesh = new THREE.Mesh(wallGeoX, wallMat);
+           wMesh.position.set(cellCenterX - halfCell, 0.4, cellCenterZ);
+           wMesh.castShadow = true;
+           wMesh.receiveShadow = true;
+           this.boardGroup.add(wMesh);
+           guardrailSegments++;
+         }
+         if (g.right) {
+           const wMesh = new THREE.Mesh(wallGeoX, wallMat);
+           wMesh.position.set(cellCenterX + halfCell, 0.4, cellCenterZ);
+           wMesh.castShadow = true;
+           wMesh.receiveShadow = true;
+           this.boardGroup.add(wMesh);
+           guardrailSegments++;
+         }
       }
     }
 
-    const goalX = maze.goalCell.x * cellSize + halfCell - mazeWorldWidth / 2;
+    // Gate meshes
+    for (let z = 0; z < maze.height; z++) {
+      for (let x = 0; x < maze.width; x++) {
+        const cell = maze.cells[z][x];
+         if (cell.isGate) {
+           const cellCenterX = x * cellSize + halfCell - mazeWorldWidth / 2;
+           const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
+           // Use the stored main path from maze generator to ensure consistency
+           const mainPath = maze.mainPath;
+           const pathIndex = new Map<string, number>();
+           mainPath.forEach((p, i) => pathIndex.set(`${p.x},${p.z}`, i));
+           
+          const currentIdx = pathIndex.get(`${x},${z}`);
+          
+          // Gates should always be on main path now that we use stored mainPath
+          // Keep this check as safety net but remove verbose logging
+          if (currentIdx === undefined) {
+            console.warn(`Gate at (${x},${z}) not on main path - this shouldn't happen`);
+          }
+          
+           // Gate wall - placed on cell edge like guardrail
+           const gateMat = new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: 0x330000 });
+           
+           // Default to top edge (blocks bottom direction) - use same geometry as regular walls
+           const wallMesh = new THREE.Mesh(wallGeoY, gateMat);
+           wallMesh.position.set(cellCenterX, 0.4, cellCenterZ - halfCell);
+           wallMesh.userData = { type: 'gate', x, z };
+           wallMesh.castShadow = true;
+           wallMesh.receiveShadow = true;
+           this.boardGroup.add(wallMesh);
+           gatesRendered++;
+           
+           // Cost text
+           const cost = maze.cells[z][x].gateCost || 5;
+           this.addGateCostText(cellCenterX, 0.5, cellCenterZ, cost);
+         }
+      }
+    }
+
+    // Checkpoint meshes
+    for (let z = 0; z < maze.height; z++) {
+      for (let x = 0; x < maze.width; x++) {
+        const cell = maze.cells[z][x];
+        if (cell.isCheckpoint) {
+          const cellCenterX = x * cellSize + halfCell - mazeWorldWidth / 2;
+          const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
+          const ringGeo = new THREE.TorusGeometry(0.6, 0.08, 16, 32);
+          const ringMat = new THREE.MeshStandardMaterial({ color: 0x3366ff, emissive: 0x0033cc });
+          const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+          ringMesh.rotation.x = Math.PI / 2;
+          ringMesh.position.set(cellCenterX, 0.05, cellCenterZ);
+          this.boardGroup.add(ringMesh);
+         }
+       }
+     }
+
+     // Debug summary
+     console.log(`[SCENE DEBUG] Rendered: ${floorTiles} floor tiles, ${guardrailSegments} guardrail segments, ${wallSegments} wall segments`);
+     console.log(`[SCENE DEBUG] Elements: ${coinsRendered} coins, ${gatesRendered} gates, ${holesRendered} holes, ${bridgesRendered} bridges`);
+      console.log(`[SCENE DEBUG] Main path length: ${maze.mainPath.length}`);
+
+      // Debug path visualization
+      if (options.debugPath) {
+        const pathMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 });
+        maze.mainPath.forEach((point) => {
+          const pathX = point.x * cellSize + halfCell - mazeWorldWidth / 2;
+          const pathZ = point.z * cellSize + halfCell - mazeWorldHeight / 2;
+          const pathMarker = new THREE.Mesh(new THREE.BoxGeometry(cellSize * 0.8, 0.05, cellSize * 0.8), pathMat);
+          pathMarker.position.set(pathX, 0.03, pathZ);
+          this.boardGroup.add(pathMarker);
+        });
+        console.log(`[SCENE DEBUG] Debug path visualization enabled for ${maze.mainPath.length} path points`);
+      }
+
+      const goalX = maze.goalCell.x * cellSize + halfCell - mazeWorldWidth / 2;
     const goalZ = maze.goalCell.z * cellSize + halfCell - mazeWorldHeight / 2;
 
     const ringGeo = new THREE.TorusGeometry(0.8, 0.1, 16, 32);
@@ -450,6 +542,52 @@ export class SceneManager {
       this.coinMeshes.delete(coinId);
     }
   }
+
+  public removeGateMesh(gateId: string) {
+    const parts = gateId.split('_');
+    const x = parseInt(parts[1], 10);
+    const z = parseInt(parts[2], 10);
+    
+    // Remove all gate parts (top, bottom, pillars)
+    this.boardGroup.children.forEach((child) => {
+      if (child.userData.type === 'gate' && child.userData.x === x && child.userData.z === z) {
+        this.boardGroup.remove(child);
+      }
+    });
+    
+    // Remove cost text
+    const costText = this.boardGroup.children.find((child) => {
+      return child.userData.type === 'gateCost' && child.userData.x === x && child.userData.z === z;
+    }) as THREE.Object3D | undefined;
+    
+    if (costText) {
+      this.boardGroup.remove(costText);
+    }
+  }
+
+  private addGateCostText(x: number, height: number, z: number, cost: number) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d')!;
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = 'bold 20px Arial';
+    ctx.fillStyle = '#ffcc00';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${cost}⭐`, canvas.width / 2, 24);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(material);
+    sprite.position.set(x, height + 0.3, z); // Position above the wall
+    sprite.scale.set(0.5, 0.25, 1);
+    sprite.userData = { type: 'gateCost', x: Math.floor(x), z: Math.floor(z) };
+    this.boardGroup.add(sprite);
+  }
+
+
 
   private createParticleBurst(pos: THREE.Vector3, colorHex: number) {
     const count = 12;
