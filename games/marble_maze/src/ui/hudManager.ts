@@ -2,7 +2,7 @@ import { TerrainType, Difficulty } from '../maze/mazeGenerator';
 import { InputSettings } from '../../../../shared/inputManager';
 
 export interface HudCallbacks {
-  onRestart: () => void;
+  onRestart: (fromCheckpoint?: boolean) => void;
   onNewRandom: () => void;
   onApplySeed: (seed: string) => void;
   onUpdateSettings: (settings: Partial<InputSettings>, difficulty: Difficulty, debugPath?: boolean) => void;

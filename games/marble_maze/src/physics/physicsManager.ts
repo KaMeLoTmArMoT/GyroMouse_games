@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { MazeData, TerrainType, HoleShape, HoleMovePattern } from '../maze/mazeGenerator';
+import { MazeData, TerrainType, HoleShape, HoleMovePattern, gateBlockDirection } from '../maze/mazeGenerator';
 
 export interface PhysicsCallbacks {
   onCollectCoin: (x: number, z: number, coinId: string) => void;
@@ -317,11 +317,16 @@ export class PhysicsManager {
                .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
              const sensor = this.world.createCollider(sensorDesc, boardBody);
 
-             // Blocker collider (solid physics) - placed on cell edge like guardrail
-             // Default to top edge (blocks bottom direction) to match graphics
-             const blockerDesc = RAPIER.ColliderDesc.cuboid(halfCell, wallHalfHeight, wallHalfThick)
-               .setTranslation(cellCenterX, wallHalfHeight, cellCenterZ - halfCell); // Top edge
-             const blocker = this.world.createCollider(blockerDesc, boardBody);
+              // Blocker collider — placed on the wall side blocking forward path exit
+              const blockDir = gateBlockDirection(x, z, maze.mainPath);
+              const blockerDesc = (blockDir === 'top' || blockDir === 'bottom')
+                ? RAPIER.ColliderDesc.cuboid(halfCell, wallHalfHeight, wallHalfThick)
+                    .setTranslation(cellCenterX, wallHalfHeight,
+                      blockDir === 'top' ? cellCenterZ - halfCell : cellCenterZ + halfCell)
+                : RAPIER.ColliderDesc.cuboid(wallHalfThick, wallHalfHeight, halfCell)
+                    .setTranslation(cellCenterX + (blockDir === 'left' ? -halfCell : halfCell),
+                      wallHalfHeight, cellCenterZ);
+              const blocker = this.world.createCollider(blockerDesc, boardBody);
 
              this.gateSensors.set(gateId, { sensor, blocker, cooldown: 0 });
              this.gateCosts.set(gateId, cell.gateCost || 5);

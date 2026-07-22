@@ -71,6 +71,20 @@ export interface MazeData {
   checkpointsCount: number;
 }
 
+/** Determine which wall side to block for a gate on the main path */
+export function gateBlockDirection(
+  gateX: number, gateZ: number,
+  mainPath: { x: number; z: number }[]
+): 'top' | 'bottom' | 'left' | 'right' {
+  const idx = mainPath.findIndex(p => p.x === gateX && p.z === gateZ);
+  if (idx < 0 || idx >= mainPath.length - 1) return 'bottom';
+  const next = mainPath[idx + 1];
+  if (next.x > gateX) return 'right';
+  if (next.x < gateX) return 'left';
+  if (next.z > gateZ) return 'bottom';
+  return 'top';
+}
+
 export class MazeGenerator {
   public static generate(
     width: number,
@@ -175,33 +189,81 @@ export class MazeGenerator {
     const gateCount = gateDifficultyCounts[difficulty];
     const gateCost = gateDifficultyCosts[difficulty];
 
-    // Ensure gates are placed where player has enough coins
+    // Place gates on main path — require enough reachable coins first
+    const usedByGate = new Set<number>();
     for (let i = 0; i < gateCount; i++) {
-      const candidateIdx = Math.floor(prng.next() * (mainPath.length - 4)) + 2;
-      const cell = cells[mainPath[candidateIdx].z][mainPath[candidateIdx].x];
-      
-      // Check if path to gate has enough coins
-      const pathToGate = mainPath.slice(0, candidateIdx + 1);
-      let coinCount = 0;
-      for (const p of pathToGate) {
-        if (cells[p.z][p.x].hasCoin) coinCount++;
+      let placed = false;
+
+      // Helper: count coins on main path up to index
+      const coinsBefore = (idx: number): number => {
+        let c = 0;
+        for (let j = 0; j <= idx; j++) {
+          if (cells[mainPath[j].z][mainPath[j].x].hasCoin) c++;
+        }
+        return c;
+      };
+
+      // Phase 1: random search — require full gate cost
+      for (let a = 0; a < mainPath.length && !placed; a++) {
+        const candidateIdx = Math.floor(prng.next() * (mainPath.length - 3)) + 1;
+        if (usedByGate.has(candidateIdx)) continue;
+        const cell = cells[mainPath[candidateIdx].z][mainPath[candidateIdx].x];
+        if (cell.isHole || cell.hasCoin || cell.isBridge || cell.isGate || cell.isCheckpoint) continue;
+        if (coinsBefore(candidateIdx) >= gateCost) {
+          cell.isGate = true;
+          cell.gateCost = gateCost;
+          usedByGate.add(candidateIdx);
+          gatesCount++;
+          placed = true;
+        }
       }
-      
-      if (!cell.isHole && !cell.hasCoin && !cell.isBridge && coinCount >= gateCost) {
-        cell.isGate = true;
-        cell.gateCost = gateCost;
-        gatesCount++;
+
+      // Phase 2: sequential — find cell with most coins before it, adjust cost
+      if (!placed) {
+        let bestIdx = -1;
+        let bestCoins = 0;
+        for (let ci = 1; ci < mainPath.length - 1; ci++) {
+          if (usedByGate.has(ci)) continue;
+          const cell = cells[mainPath[ci].z][mainPath[ci].x];
+          if (cell.isHole || cell.hasCoin || cell.isBridge || cell.isGate || cell.isCheckpoint) continue;
+          const c = coinsBefore(ci);
+          if (c > bestCoins) { bestCoins = c; bestIdx = ci; }
+        }
+        if (bestIdx >= 0) {
+          const cell = cells[mainPath[bestIdx].z][mainPath[bestIdx].x];
+          const adjustedCost = Math.min(gateCost, Math.max(1, bestCoins));
+          cell.isGate = true;
+          cell.gateCost = adjustedCost;
+          usedByGate.add(bestIdx);
+          gatesCount++;
+        }
       }
     }
 
-     // Place 3 checkpoints at 40%, 60%, 80% of main path length
+     // Place checkpoints with fallback search
      const checkpointPosValues = [0.4, 0.6, 0.8];
+     const usedByCheckpoint = new Set<number>();
      for (const pos of checkpointPosValues) {
-       const idx = Math.floor(pos * mainPath.length);
-       const cell = cells[mainPath[idx].z][mainPath[idx].x];
-       if (!cell.isHole && !cell.hasCoin && !cell.isBridge && !cell.isGate && !cell.isCheckpoint) {
-         cell.isCheckpoint = true;
-         checkpointsCount++;
+       const targetIdx = Math.floor(pos * mainPath.length);
+       let placed = false;
+
+       // Search forward then backward from target
+       for (let offset = 0; offset < mainPath.length; offset++) {
+         for (const dir of [1, -1]) {
+           const idx = targetIdx + offset * dir;
+           if (idx < 0 || idx >= mainPath.length) continue;
+           if (usedByCheckpoint.has(idx)) continue;
+
+           const cell = cells[mainPath[idx].z][mainPath[idx].x];
+           if (!cell.isHole && !cell.hasCoin && !cell.isBridge && !cell.isGate && !cell.isCheckpoint) {
+             cell.isCheckpoint = true;
+             usedByCheckpoint.add(idx);
+             checkpointsCount++;
+             placed = true;
+             break;
+           }
+         }
+         if (placed) break;
        }
      }
 
@@ -216,6 +278,12 @@ export class MazeGenerator {
           bottom: cell.walls.bottom,
           left: cell.walls.left
         };
+
+        // Gate replaces guardrail on its blocked edge
+        if (cell.isGate) {
+          const blockDir = gateBlockDirection(x, z, mainPath);
+          cell.hasGuardrail[blockDir] = false;
+        }
 
         if (difficulty === 'hard' && !cell.isHole && !cell.isBridge) {
           if (prng.next() < 0.2) cell.hasGuardrail.top = false;

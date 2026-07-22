@@ -34,7 +34,7 @@ class Game {
     this.audioManager = new AudioManager();
 
     this.hudManager = new HudManager({
-      onRestart: () => this.restartLevel(),
+      onRestart: (fromCheckpoint?: boolean) => this.restartLevel(fromCheckpoint),
       onNewRandom: () => this.generateNewLevel(),
       onApplySeed: (seed) => this.generateLevelFromSeed(seed),
       onUpdateSettings: (settings, diff, debugPath) => this.updateSettings(settings, diff, debugPath),
@@ -100,7 +100,8 @@ class Game {
     });
 
     this.startPos = startPos;
-    this.sceneManager.buildMazeMesh(this.currentMaze, { debugPath: this.debugPathEnabled });
+    this.sceneManager.buildMazeMesh(this.currentMaze, this.debugPathEnabled);
+    this.sceneManager.resetCheckpoints();
     this.sceneManager.updateMarble(startPos, { x: 0, y: 0, z: 0 });
 
     this.hudManager.updateSeed(this.currentSeed);
@@ -112,6 +113,14 @@ class Game {
   private restartLevel(fromCheckpoint: boolean = false) {
     this.isGameOver = false;
 
+    if (fromCheckpoint && this.lastCheckpoint) {
+      this.physicsManager.resetMarblePosition(this.lastCheckpoint.x, this.lastCheckpoint.y, this.lastCheckpoint.z);
+      this.sceneManager.updateMarble(this.lastCheckpoint, { x: 0, y: 0, z: 0 });
+      this.hudManager.resetTimer();
+      this.hudManager.startTimer();
+      return;
+    }
+
     this.physicsManager.buildMazePhysics(this.currentMaze, {
       onCollectCoin: (x, z, coinId) => this.handleCollectCoin(x, z, coinId),
       onFallInHole: () => this.handleFallInHole(),
@@ -121,20 +130,15 @@ class Game {
       onActivateCheckpoint: (checkpointId) => this.handleActivateCheckpoint(checkpointId)
     });
 
-    this.sceneManager.buildMazeMesh(this.currentMaze, { debugPath: this.debugPathEnabled });
+    this.sceneManager.buildMazeMesh(this.currentMaze, this.debugPathEnabled);
+    this.sceneManager.resetCheckpoints();
 
-    if (fromCheckpoint && this.lastCheckpoint) {
-      this.physicsManager.resetMarblePosition(this.lastCheckpoint.x, this.lastCheckpoint.y, this.lastCheckpoint.z);
-      this.sceneManager.updateMarble(this.lastCheckpoint, { x: 0, y: 0, z: 0 });
-    } else {
-      this.collectedCoinsCount = 0;
-      this.activatedCheckpoints.clear();
-      this.lastCheckpoint = null;
-      this.physicsManager.resetMarblePosition(this.startPos.x, this.startPos.y, this.startPos.z);
-      this.sceneManager.updateMarble(this.startPos, { x: 0, y: 0, z: 0 });
-      this.hudManager.updateCoins(0, this.currentMaze.coinsCount);
-    }
-
+    this.collectedCoinsCount = 0;
+    this.activatedCheckpoints.clear();
+    this.lastCheckpoint = null;
+    this.physicsManager.resetMarblePosition(this.startPos.x, this.startPos.y, this.startPos.z);
+    this.sceneManager.updateMarble(this.startPos, { x: 0, y: 0, z: 0 });
+    this.hudManager.updateCoins(0, this.currentMaze.coinsCount);
     this.hudManager.resetTimer();
   }
 
@@ -182,12 +186,13 @@ class Game {
     const now = Date.now();
     if (now - this.lastCheckpointTime < 500) return;
     this.lastCheckpointTime = now;
-    
+
     this.activatedCheckpoints.add(checkpointId);
     const checkpoint = this.physicsManager.checkpointSensors.get(checkpointId);
     if (checkpoint) {
       this.lastCheckpoint = checkpoint.position;
     }
+    this.sceneManager.activateCheckpoint(checkpointId);
   }
 
   private handleReachGoal() {

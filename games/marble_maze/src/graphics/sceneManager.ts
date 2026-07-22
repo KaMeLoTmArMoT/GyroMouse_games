@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { MazeData, HoleMovePattern } from '../maze/mazeGenerator';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MazeData, HoleMovePattern, gateBlockDirection } from '../maze/mazeGenerator';
 
 export class SceneManager {
   public scene: THREE.Scene;
@@ -21,6 +22,13 @@ export class SceneManager {
     range: number;
     elapsed: number;
   }[] = [];
+
+  private debugPathMesh: THREE.Mesh | null = null;
+  private debugPathMaterial: THREE.Material | null = null;
+  private debugPathEnabled: boolean = false;
+
+  private checkpointMeshes: Map<string, THREE.Mesh> = new Map();
+  private activeCheckpointId: string | null = null;
 
   private shadowLight: THREE.DirectionalLight;
   private ambientLight: THREE.AmbientLight;
@@ -89,15 +97,16 @@ export class SceneManager {
     window.addEventListener('resize', this.onWindowResize.bind(this));
   }
 
-    public buildMazeMesh(maze: MazeData, options: { debugPath?: boolean } = {}) {
+    public buildMazeMesh(maze: MazeData, debugPathEnabled: boolean = false) {
      console.log(`[SCENE DEBUG] Building maze mesh for ${maze.width}x${maze.height} maze`);
      
      while (this.boardGroup.children.length > 0) {
        const child = this.boardGroup.children[0];
        this.boardGroup.remove(child);
      }
-     this.coinMeshes.clear();
-     this.movingHoles = [];
+      this.coinMeshes.clear();
+      this.movingHoles = [];
+      this.removeDebugPath();
 
      // Configure Theme Background & Fog & Lighting
      this.applyThemeEnvironment(maze.theme);
@@ -430,16 +439,23 @@ export class SceneManager {
             console.warn(`Gate at (${x},${z}) not on main path - this shouldn't happen`);
           }
           
-           // Gate wall - placed on cell edge like guardrail
-           const gateMat = new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: 0x330000 });
-           
-           // Default to top edge (blocks bottom direction) - use same geometry as regular walls
-           const wallMesh = new THREE.Mesh(wallGeoY, gateMat);
-           wallMesh.position.set(cellCenterX, 0.4, cellCenterZ - halfCell);
-           wallMesh.userData = { type: 'gate', x, z };
-           wallMesh.castShadow = true;
-           wallMesh.receiveShadow = true;
-           this.boardGroup.add(wallMesh);
+            // Gate wall — placed on the wall side blocking forward path exit
+            const gateMat = new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: 0x330000 });
+            const blockDir = gateBlockDirection(x, z, maze.mainPath);
+            const wallMesh = (blockDir === 'top' || blockDir === 'bottom')
+              ? new THREE.Mesh(wallGeoY, gateMat)
+              : new THREE.Mesh(wallGeoX, gateMat);
+            wallMesh.position.set(
+              blockDir === 'left' ? cellCenterX - halfCell :
+                blockDir === 'right' ? cellCenterX + halfCell : cellCenterX,
+              0.4,
+              blockDir === 'top' ? cellCenterZ - halfCell :
+                blockDir === 'bottom' ? cellCenterZ + halfCell : cellCenterZ
+            );
+            wallMesh.userData = { type: 'gate', x, z };
+            wallMesh.castShadow = true;
+            wallMesh.receiveShadow = true;
+            this.boardGroup.add(wallMesh);
            gatesRendered++;
            
            // Cost text
@@ -449,40 +465,59 @@ export class SceneManager {
       }
     }
 
-    // Checkpoint meshes
+    // Checkpoint meshes — all start inactive (blue)
+    this.checkpointMeshes.clear();
+    this.activeCheckpointId = null;
     for (let z = 0; z < maze.height; z++) {
       for (let x = 0; x < maze.width; x++) {
         const cell = maze.cells[z][x];
         if (cell.isCheckpoint) {
           const cellCenterX = x * cellSize + halfCell - mazeWorldWidth / 2;
           const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
+          const checkpointId = `checkpoint_${x}_${z}`;
+
+          const ringMat = new THREE.MeshStandardMaterial({
+            color: 0x3366ff,
+            emissive: 0x0033cc,
+            emissiveIntensity: 0.3
+          });
+          const pillarMat = new THREE.MeshStandardMaterial({ color: 0x6688cc, roughness: 0.6 });
+
+          const group = new THREE.Group();
+          group.position.set(cellCenterX, 0, cellCenterZ);
+
           const ringGeo = new THREE.TorusGeometry(0.6, 0.08, 16, 32);
-          const ringMat = new THREE.MeshStandardMaterial({ color: 0x3366ff, emissive: 0x0033cc });
           const ringMesh = new THREE.Mesh(ringGeo, ringMat);
           ringMesh.rotation.x = Math.PI / 2;
-          ringMesh.position.set(cellCenterX, 0.05, cellCenterZ);
-          this.boardGroup.add(ringMesh);
+          ringMesh.position.y = 0.05;
+          group.add(ringMesh);
+
+          const pillarGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.5, 8);
+          const positions = [
+            [-0.55, 0.25, 0], [0.55, 0.25, 0],
+            [0, 0.25, -0.55], [0, 0.25, 0.55]
+          ];
+          for (const [px, py, pz] of positions) {
+            const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+            pillar.position.set(px, py, pz);
+            group.add(pillar);
+          }
+
+          this.boardGroup.add(group);
+          this.checkpointMeshes.set(checkpointId, ringMesh);
          }
        }
      }
 
      // Debug summary
-     console.log(`[SCENE DEBUG] Rendered: ${floorTiles} floor tiles, ${guardrailSegments} guardrail segments, ${wallSegments} wall segments`);
-     console.log(`[SCENE DEBUG] Elements: ${coinsRendered} coins, ${gatesRendered} gates, ${holesRendered} holes, ${bridgesRendered} bridges`);
+      console.log(`[SCENE DEBUG] Rendered: ${floorTiles} floor tiles, ${guardrailSegments} guardrail segments, ${wallSegments} wall segments`);
+      console.log(`[SCENE DEBUG] Elements: ${coinsRendered} coins, ${gatesRendered} gates, ${holesRendered} holes, ${bridgesRendered} bridges`);
       console.log(`[SCENE DEBUG] Main path length: ${maze.mainPath.length}`);
 
-      // Debug path visualization
-      if (options.debugPath) {
-        const pathMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 });
-        maze.mainPath.forEach((point) => {
-          const pathX = point.x * cellSize + halfCell - mazeWorldWidth / 2;
-          const pathZ = point.z * cellSize + halfCell - mazeWorldHeight / 2;
-          const pathMarker = new THREE.Mesh(new THREE.BoxGeometry(cellSize * 0.8, 0.05, cellSize * 0.8), pathMat);
-          pathMarker.position.set(pathX, 0.03, pathZ);
-          this.boardGroup.add(pathMarker);
-        });
-        console.log(`[SCENE DEBUG] Debug path visualization enabled for ${maze.mainPath.length} path points`);
-      }
+       this.debugPathEnabled = debugPathEnabled;
+       if (debugPathEnabled) {
+         this.createDebugPath(maze);
+       }
 
       const goalX = maze.goalCell.x * cellSize + halfCell - mazeWorldWidth / 2;
     const goalZ = maze.goalCell.z * cellSize + halfCell - mazeWorldHeight / 2;
@@ -497,6 +532,134 @@ export class SceneManager {
     const maxDim = Math.max(mazeWorldWidth, mazeWorldHeight);
     this.camera.position.set(0, maxDim * 1.6, 0.001);
     this.camera.lookAt(0, 0, 0);
+  }
+
+  private createDebugPath(mazeData: MazeData) {
+    if (!mazeData.mainPath || mazeData.mainPath.length === 0) {
+      console.warn('[SCENE DEBUG] No main path available for debug rendering');
+      return;
+    }
+
+    // Clean up existing debug path
+    if (this.debugPathMesh) {
+      this.scene.remove(this.debugPathMesh);
+      this.debugPathMesh.geometry.dispose();
+      this.debugPathMesh = null;
+    }
+
+    // Create material
+    this.debugPathMaterial = new THREE.MeshBasicMaterial({
+      color: 0x64C8FF,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide
+    });
+
+    // Build path segments as thin visible lines (boxes) on the board
+    const cellSize = mazeData.cellSize;
+    const halfCell = cellSize / 2;
+    const pathThickness = 0.05;
+    const pathY = -0.05;
+    const geometries: THREE.BufferGeometry[] = [];
+
+    for (const pathCell of mazeData.mainPath) {
+      const worldX = (pathCell.x - mazeData.width / 2) * cellSize + halfCell;
+      const worldZ = (pathCell.z - mazeData.height / 2) * cellSize + halfCell;
+
+      const geo = new THREE.BoxGeometry(cellSize * 0.7, pathThickness, cellSize * 0.7);
+      geo.translate(worldX, pathY, worldZ);
+      geometries.push(geo);
+    }
+
+    // Connect adjacent path cells with line segments
+    const linePoints: THREE.Vector3[] = [];
+    for (const pathCell of mazeData.mainPath) {
+      const worldX = (pathCell.x - mazeData.width / 2) * cellSize + halfCell;
+      const worldZ = (pathCell.z - mazeData.height / 2) * cellSize + halfCell;
+      linePoints.push(new THREE.Vector3(worldX, 0.005, worldZ));
+    }
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x64C8FF, linewidth: 2 });
+    const line = new THREE.Line(lineGeo, lineMat);
+    this.boardGroup.add(line);
+
+    // Merge box geometries for performance
+    const mergedGeometry = mergeGeometries(geometries);
+    this.debugPathMesh = new THREE.Mesh(mergedGeometry, this.debugPathMaterial);
+    this.debugPathMesh.visible = this.debugPathEnabled;
+    this.boardGroup.add(this.debugPathMesh);
+
+    console.log(`[SCENE DEBUG] Created debug path with ${mazeData.mainPath.length} segments`);
+  }
+
+  private removeDebugPath() {
+    if (this.debugPathMesh) {
+      this.boardGroup.remove(this.debugPathMesh);
+      this.debugPathMesh.geometry.dispose();
+      this.debugPathMesh = null;
+    }
+    if (this.debugPathMaterial) {
+      this.debugPathMaterial.dispose();
+      this.debugPathMaterial = null;
+    }
+    // Remove line segments
+    const lines = this.boardGroup.children.filter(c => c.type === 'Line');
+    for (const line of lines) {
+      this.boardGroup.remove(line);
+      (line as THREE.Line).geometry.dispose();
+    }
+  }
+
+  public setCheckpointActiveState(checkpointId: string, state: 'inactive' | 'active' | 'claimed') {
+    const mesh = this.checkpointMeshes.get(checkpointId);
+    if (!mesh) return;
+
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    switch (state) {
+      case 'inactive':
+        mat.color.setHex(0x3366ff);
+        mat.emissive.setHex(0x0033cc);
+        mat.emissiveIntensity = 0.3;
+        break;
+      case 'active':
+        mat.color.setHex(0x00ff88);
+        mat.emissive.setHex(0x00ff66);
+        mat.emissiveIntensity = 1.2;
+        this.activeCheckpointId = checkpointId;
+        break;
+      case 'claimed':
+        mat.color.setHex(0x445577);
+        mat.emissive.setHex(0x112244);
+        mat.emissiveIntensity = 0.15;
+        break;
+    }
+  }
+
+  /** Demote current active checkpoint to claimed, activate a new one */
+  public activateCheckpoint(checkpointId: string) {
+    if (this.activeCheckpointId) {
+      this.setCheckpointActiveState(this.activeCheckpointId, 'claimed');
+    }
+    this.setCheckpointActiveState(checkpointId, 'active');
+  }
+
+  /** Reset all checkpoints to inactive */
+  public resetCheckpoints() {
+    this.checkpointMeshes.forEach((_, id) => {
+      this.setCheckpointActiveState(id, 'inactive');
+    });
+    this.activeCheckpointId = null;
+  }
+
+  public updateDebugPathVisibility(visible: boolean) {
+    this.debugPathEnabled = visible;
+    if (this.debugPathMesh) {
+      this.debugPathMesh.visible = visible;
+    }
+    const lines = this.boardGroup.children.filter(c => c.type === 'Line');
+    for (const line of lines) {
+      line.visible = visible;
+    }
   }
 
   public updateBoardTilt(tiltXRad: number, tiltZRad: number) {
