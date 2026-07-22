@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { MazeData, TerrainType } from '../maze/mazeGenerator';
+import { MazeData, TerrainType, HoleShape, HoleMovePattern } from '../maze/mazeGenerator';
 
 export interface PhysicsCallbacks {
   onCollectCoin: (x: number, z: number, coinId: string) => void;
@@ -28,6 +28,16 @@ export class PhysicsManager {
 
   private holeDataList: { x: number; z: number; radius: number; sensor: RAPIER.Collider }[] = [];
 
+  private movingHoles: {
+    sensor: RAPIER.Collider;
+    baseX: number;
+    baseZ: number;
+    pattern: HoleMovePattern;
+    speed: number;
+    range: number;
+    elapsed: number;
+  }[] = [];
+
   public buildMazePhysics(maze: MazeData, callbacks: PhysicsCallbacks): {
     startPos: { x: number; y: number; z: number };
     goalPos: { x: number; y: number; z: number };
@@ -36,6 +46,7 @@ export class PhysicsManager {
     this.coinSensors.clear();
     this.holeSensors = [];
     this.holeDataList = [];
+    this.movingHoles = [];
     this.goalSensor = null;
 
     // 1. Clean Rapier world with initial downward gravity
@@ -88,54 +99,91 @@ export class PhysicsManager {
         const restitution = cell.terrain === 'ice' ? 0.05 : 0.15;
 
         if (cell.isHole) {
-          const cfg = cell.holeConfig || { radius: 0.5, offsetX: 0, offsetZ: 0 };
+          const defaultCfg = { shape: 'round' as HoleShape, radius: 0.5, size: 0, offsetX: 0, offsetZ: 0, movePattern: 'static' as HoleMovePattern, moveSpeed: 0, moveRange: 0 };
+          const cfg = cell.holeConfig || defaultCfg;
           const holeWorldX = cellCenterX + cfg.offsetX;
           const holeWorldZ = cellCenterZ + cfg.offsetZ;
+          const isSquare = cfg.shape === 'square';
+          const halfExtent = isSquare ? cfg.size / 2 : cfg.radius;
+          const isMoving = cfg.movePattern !== 'static';
 
-          // Hole sensor in exact position & radius
-          const holeSensorDesc = RAPIER.ColliderDesc.cylinder(0.2, cfg.radius * 0.9)
-            .setTranslation(holeWorldX, -0.2, holeWorldZ)
-            .setSensor(true)
-            .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+          if (isMoving) {
+            // Moving hole: full floor + sensor at floor level
+            const floorDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, halfCell)
+              .setTranslation(cellCenterX, -0.4, cellCenterZ)
+              .setFriction(friction).setRestitution(restitution);
+            this.world.createCollider(floorDesc, boardBody);
 
-          const sensor = this.world.createCollider(holeSensorDesc, boardBody);
-          this.holeSensors.push(sensor);
-          this.holeDataList.push({ x: holeWorldX, z: holeWorldZ, radius: cfg.radius, sensor });
+            let sensorDesc: RAPIER.ColliderDesc;
+            if (isSquare) {
+              sensorDesc = RAPIER.ColliderDesc.cuboid(halfExtent * 0.9, 0.15, halfExtent * 0.9)
+                .setTranslation(holeWorldX, 0.1, holeWorldZ);
+            } else {
+              sensorDesc = RAPIER.ColliderDesc.cylinder(0.15, halfExtent * 0.9)
+                .setTranslation(holeWorldX, 0.1, holeWorldZ);
+            }
+            sensorDesc.setSensor(true).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+            const sensor = this.world.createCollider(sensorDesc, boardBody);
+            this.holeSensors.push(sensor);
+            this.holeDataList.push({ x: holeWorldX, z: holeWorldZ, radius: halfExtent, sensor });
+            this.movingHoles.push({
+              sensor,
+              baseX: holeWorldX,
+              baseZ: holeWorldZ,
+              pattern: cfg.movePattern,
+              speed: cfg.moveSpeed,
+              range: cfg.moveRange,
+              elapsed: 0,
+            });
+          } else {
+            // Static hole: sensor below floor + 4 floor slabs around the gap
+            let holeSensorDesc: RAPIER.ColliderDesc;
+            if (isSquare) {
+              const s = halfExtent * 0.9;
+              holeSensorDesc = RAPIER.ColliderDesc.cuboid(s, 0.2, s)
+                .setTranslation(holeWorldX, -0.2, holeWorldZ);
+            } else {
+              holeSensorDesc = RAPIER.ColliderDesc.cylinder(0.2, halfExtent * 0.9)
+                .setTranslation(holeWorldX, -0.2, holeWorldZ);
+            }
+            holeSensorDesc
+              .setSensor(true)
+              .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
 
-          // Build surrounding floor colliders safely avoiding the off-center hole area
-          const r = cfg.radius;
-          const offX = cfg.offsetX;
-          const offZ = cfg.offsetZ;
+            const sensor = this.world.createCollider(holeSensorDesc, boardBody);
+            this.holeSensors.push(sensor);
+            this.holeDataList.push({ x: holeWorldX, z: holeWorldZ, radius: halfExtent, sensor });
 
-          // We build 4 surrounding slab boxes around the specific hole circle
-          const topRimH = Math.max(0.05, halfCell + offZ - r);
-          const botRimH = Math.max(0.05, halfCell - offZ - r);
-          const leftRimW = Math.max(0.05, halfCell + offX - r);
-          const rightRimW = Math.max(0.05, halfCell - offX - r);
+            // Build surrounding floor colliders safely avoiding the off-center hole area
+            const r = halfExtent;
+            const offX = cfg.offsetX;
+            const offZ = cfg.offsetZ;
 
-          // Top slab
-          const topSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, topRimH / 2)
-            .setTranslation(cellCenterX, -0.4, cellCenterZ - halfCell + topRimH / 2)
-            .setFriction(friction).setRestitution(restitution);
-          this.world.createCollider(topSlabDesc, boardBody);
+            const topRimH = Math.max(0.05, halfCell + offZ - r);
+            const botRimH = Math.max(0.05, halfCell - offZ - r);
+            const leftRimW = Math.max(0.05, halfCell + offX - r);
+            const rightRimW = Math.max(0.05, halfCell - offX - r);
 
-          // Bottom slab
-          const botSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, botRimH / 2)
-            .setTranslation(cellCenterX, -0.4, cellCenterZ + halfCell - botRimH / 2)
-            .setFriction(friction).setRestitution(restitution);
-          this.world.createCollider(botSlabDesc, boardBody);
+            const topSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, topRimH / 2)
+              .setTranslation(cellCenterX, -0.4, cellCenterZ - halfCell + topRimH / 2)
+              .setFriction(friction).setRestitution(restitution);
+            this.world.createCollider(topSlabDesc, boardBody);
 
-          // Left slab
-          const leftSlabDesc = RAPIER.ColliderDesc.cuboid(leftRimW / 2, 0.4, r)
-            .setTranslation(cellCenterX - halfCell + leftRimW / 2, -0.4, holeWorldZ)
-            .setFriction(friction).setRestitution(restitution);
-          this.world.createCollider(leftSlabDesc, boardBody);
+            const botSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, botRimH / 2)
+              .setTranslation(cellCenterX, -0.4, cellCenterZ + halfCell - botRimH / 2)
+              .setFriction(friction).setRestitution(restitution);
+            this.world.createCollider(botSlabDesc, boardBody);
 
-          // Right slab
-          const rightSlabDesc = RAPIER.ColliderDesc.cuboid(rightRimW / 2, 0.4, r)
-            .setTranslation(cellCenterX + halfCell - rightRimW / 2, -0.4, holeWorldZ)
-            .setFriction(friction).setRestitution(restitution);
-          this.world.createCollider(rightSlabDesc, boardBody);
+            const leftSlabDesc = RAPIER.ColliderDesc.cuboid(leftRimW / 2, 0.4, r)
+              .setTranslation(cellCenterX - halfCell + leftRimW / 2, -0.4, holeWorldZ)
+              .setFriction(friction).setRestitution(restitution);
+            this.world.createCollider(leftSlabDesc, boardBody);
+
+            const rightSlabDesc = RAPIER.ColliderDesc.cuboid(rightRimW / 2, 0.4, r)
+              .setTranslation(cellCenterX + halfCell - rightRimW / 2, -0.4, holeWorldZ)
+              .setFriction(friction).setRestitution(restitution);
+            this.world.createCollider(rightSlabDesc, boardBody);
+          }
         } else {
           const floorDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, halfCell)
             .setTranslation(cellCenterX, -0.4, cellCenterZ)
@@ -240,6 +288,30 @@ export class PhysicsManager {
     }
   }
 
+  public updateMovingHoles(dt: number) {
+    for (const mh of this.movingHoles) {
+      mh.elapsed += dt;
+      let dx = 0;
+      let dz = 0;
+      const t = mh.elapsed * mh.speed;
+
+      switch (mh.pattern) {
+        case 'horizontal':
+          dx = Math.sin(t) * mh.range;
+          break;
+        case 'vertical':
+          dz = Math.sin(t) * mh.range;
+          break;
+        case 'circular':
+          dx = Math.cos(t) * mh.range;
+          dz = Math.sin(t) * mh.range;
+          break;
+      }
+
+      mh.sensor.setTranslation({ x: mh.baseX + dx, y: 0.1, z: mh.baseZ + dz });
+    }
+  }
+
   public step(dt: number): {
     marblePos: { x: number; y: number; z: number };
     marbleVel: { x: number; y: number; z: number };
@@ -260,6 +332,14 @@ export class PhysicsManager {
 
       if (this.goalSensor && this.world.intersectionPair(this.marbleCollider, this.goalSensor)) {
         this.callbacks.onReachGoal();
+      }
+
+      // Check moving hole sensors (at floor level)
+      for (const mh of this.movingHoles) {
+        if (this.world.intersectionPair(this.marbleCollider, mh.sensor)) {
+          this.callbacks.onFallInHole();
+          break;
+        }
       }
 
       this.coinSensors.forEach((sensor, coinId) => {

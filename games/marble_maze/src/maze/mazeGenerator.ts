@@ -4,10 +4,18 @@ export type TerrainType = 'asphalt' | 'sand' | 'ice' | 'snow' | 'dirt' | 'grass'
 
 export type MazeTheme = 'winter' | 'city' | 'forest';
 
+export type HoleShape = 'round' | 'square';
+export type HoleMovePattern = 'static' | 'horizontal' | 'vertical' | 'circular';
+
 export interface HoleConfig {
-  radius: number; // e.g. 0.35, 0.50, 0.65
-  offsetX: number; // offset relative to cell center (-0.7 to 0.7)
-  offsetZ: number; // offset relative to cell center (-0.7 to 0.7)
+  shape: HoleShape;
+  radius: number; // for round holes: e.g. 0.35, 0.48, 0.62
+  size: number; // for square holes: side length, e.g. 0.7, 0.95, 1.25 (half-size = side/2)
+  offsetX: number; // offset relative to cell center (-0.6 to 0.6)
+  offsetZ: number; // offset relative to cell center (-0.6 to 0.6)
+  movePattern: HoleMovePattern;
+  moveSpeed: number;
+  moveRange: number;
 }
 
 export interface MazeCell {
@@ -185,17 +193,29 @@ export class MazeGenerator {
   }
 
   private static generateHoleConfig(prng: SeededRandom): HoleConfig {
-    const radii = [0.35, 0.48, 0.62]; // Small, Medium, Large
-    const radius = prng.choice(radii);
+    const shape: HoleShape = prng.next() < 0.4 ? 'round' : 'square';
 
-    // Offsets: center (0,0), corners (±0.6, ±0.6), sides (±0.6, 0 or 0, ±0.6)
+    const roundRadii = [0.35, 0.48, 0.62];
+    const squareSizes = [0.7, 0.95, 1.25];
+
+    let radius = 0;
+    let size = 0;
+
+    if (shape === 'round') {
+      radius = prng.choice(roundRadii);
+    } else {
+      size = prng.choice(squareSizes);
+    }
+
+    // Offsets: center (0,0), corners (±, ±), sides (±, 0) or (0, ±)
     const positionTypes = ['center', 'corner', 'side'];
     const posType = prng.choice(positionTypes);
 
     let offsetX = 0;
     let offsetZ = 0;
 
-    const maxOffset = 0.65 - radius * 0.4;
+    const halfExtent = shape === 'round' ? radius : size / 2;
+    const maxOffset = 0.6 - halfExtent * 0.4;
 
     if (posType === 'corner') {
       offsetX = (prng.next() < 0.5 ? 1 : -1) * maxOffset;
@@ -208,7 +228,13 @@ export class MazeGenerator {
       }
     }
 
-    return { radius, offsetX, offsetZ };
+    // Movement: ~40% of holes move
+    const movePatterns: HoleMovePattern[] = ['static', 'static', 'static', 'horizontal', 'vertical', 'circular'];
+    const movePattern: HoleMovePattern = prng.choice(movePatterns);
+    const moveSpeed = movePattern === 'static' ? 0 : 0.3 + prng.next() * 0.5;
+    const moveRange = movePattern === 'static' ? 0 : 0.25 + prng.next() * 0.35;
+
+    return { shape, radius, size, offsetX, offsetZ, movePattern, moveSpeed, moveRange };
   }
 
   private static getUnvisitedNeighbors(

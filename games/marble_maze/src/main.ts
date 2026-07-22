@@ -136,6 +136,9 @@ class Game {
       this.physicsManager.updateBoardTilt(tiltX, tiltZ);
       this.sceneManager.updateBoardTilt(tiltX, tiltZ);
 
+      this.physicsManager.updateMovingHoles(dt);
+      this.sceneManager.updateMovingHoles(dt);
+
       const { marblePos, marbleVel, speed } = this.physicsManager.step(dt);
       this.sceneManager.updateMarble(marblePos, marbleVel);
 

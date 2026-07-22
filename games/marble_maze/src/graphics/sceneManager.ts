@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MazeData } from '../maze/mazeGenerator';
+import { MazeData, HoleMovePattern } from '../maze/mazeGenerator';
 
 export class SceneManager {
   public scene: THREE.Scene;
@@ -11,6 +11,16 @@ export class SceneManager {
   private coinMeshes: Map<string, THREE.Mesh> = new Map();
   private goalMesh: THREE.Mesh | null = null;
   private particleGroup: THREE.Group;
+
+  private movingHoles: {
+    group: THREE.Group;
+    baseX: number;
+    baseZ: number;
+    pattern: HoleMovePattern;
+    speed: number;
+    range: number;
+    elapsed: number;
+  }[] = [];
 
   private shadowLight: THREE.DirectionalLight;
   private ambientLight: THREE.AmbientLight;
@@ -85,6 +95,7 @@ export class SceneManager {
       this.boardGroup.remove(child);
     }
     this.coinMeshes.clear();
+    this.movingHoles = [];
 
     // Configure Theme Background & Fog & Lighting
     this.applyThemeEnvironment(maze.theme);
@@ -127,6 +138,7 @@ export class SceneManager {
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.5, metalness: 0.3 });
     const pitMat = new THREE.MeshBasicMaterial({ color: 0x030305 });
     const pitRingMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const pitMovingRingMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
     const goalMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.3, emissive: 0x15803d });
 
     for (let z = 0; z < maze.height; z++) {
@@ -154,21 +166,113 @@ export class SceneManager {
         this.boardGroup.add(tileMesh);
 
         if (cell.isHole) {
-          const cfg = cell.holeConfig || { radius: 0.5, offsetX: 0, offsetZ: 0 };
+          const defaultCfg = { shape: 'round' as const, radius: 0.5, size: 0, offsetX: 0, offsetZ: 0, movePattern: 'static' as HoleMovePattern, moveSpeed: 0, moveRange: 0 };
+          const cfg = cell.holeConfig || defaultCfg;
           const holeWorldX = cellCenterX + cfg.offsetX;
           const holeWorldZ = cellCenterZ + cfg.offsetZ;
+          const isSquare = cfg.shape === 'square';
+          const halfExtent = isSquare ? cfg.size / 2 : cfg.radius;
+          const isMoving = cfg.movePattern !== 'static';
 
-          const pitGeo = new THREE.CylinderGeometry(cfg.radius, cfg.radius, 0.45, 32);
-          const pitRingGeo = new THREE.TorusGeometry(cfg.radius, 0.05, 16, 32);
+          if (isMoving) {
+            // Moving hole: render tile normally + pit group on top that moves
+            const tileMesh = new THREE.Mesh(tileGeo, mat);
+            tileMesh.position.set(cellCenterX, -0.2, cellCenterZ);
+            tileMesh.receiveShadow = true;
+            tileMesh.castShadow = true;
+            this.boardGroup.add(tileMesh);
 
-          const pitMesh = new THREE.Mesh(pitGeo, pitMat);
-          pitMesh.position.set(holeWorldX, -0.18, holeWorldZ);
-          this.boardGroup.add(pitMesh);
+            const holeGroup = new THREE.Group();
+            holeGroup.position.set(holeWorldX, 0, holeWorldZ);
 
-          const ringMesh = new THREE.Mesh(pitRingGeo, pitRingMat);
-          ringMesh.rotation.x = Math.PI / 2;
-          ringMesh.position.set(holeWorldX, 0.02, holeWorldZ);
-          this.boardGroup.add(ringMesh);
+            if (isSquare) {
+              const pitGeo = new THREE.BoxGeometry(cfg.size, 0.45, cfg.size);
+              const pitMesh = new THREE.Mesh(pitGeo, pitMat);
+              pitMesh.position.set(0, -0.18, 0);
+              holeGroup.add(pitMesh);
+
+              const ringThickness = 0.05;
+              const ringHeight = 0.04;
+              const horizGeo = new THREE.BoxGeometry(cfg.size + ringThickness * 2, ringHeight, ringThickness);
+              const topRing = new THREE.Mesh(horizGeo, pitMovingRingMat);
+              topRing.position.set(0, 0, -halfExtent - ringThickness / 2);
+              holeGroup.add(topRing);
+              const botRing = new THREE.Mesh(horizGeo, pitMovingRingMat);
+              botRing.position.set(0, 0, halfExtent + ringThickness / 2);
+              holeGroup.add(botRing);
+              const vertGeo = new THREE.BoxGeometry(ringThickness, ringHeight, cfg.size);
+              const leftRing = new THREE.Mesh(vertGeo, pitMovingRingMat);
+              leftRing.position.set(-halfExtent - ringThickness / 2, 0, 0);
+              holeGroup.add(leftRing);
+              const rightRing = new THREE.Mesh(vertGeo, pitMovingRingMat);
+              rightRing.position.set(halfExtent + ringThickness / 2, 0, 0);
+              holeGroup.add(rightRing);
+            } else {
+              const pitGeo = new THREE.CylinderGeometry(halfExtent, halfExtent, 0.45, 32);
+              const pitMesh = new THREE.Mesh(pitGeo, pitMat);
+              pitMesh.position.set(0, -0.18, 0);
+              holeGroup.add(pitMesh);
+
+              const pitRingGeo = new THREE.TorusGeometry(halfExtent, 0.05, 16, 32);
+              const ringMesh = new THREE.Mesh(pitRingGeo, pitMovingRingMat);
+              ringMesh.rotation.x = Math.PI / 2;
+              ringMesh.position.set(0, 0.02, 0);
+              holeGroup.add(ringMesh);
+            }
+
+            this.boardGroup.add(holeGroup);
+            this.movingHoles.push({
+              group: holeGroup,
+              baseX: holeWorldX,
+              baseZ: holeWorldZ,
+              pattern: cfg.movePattern,
+              speed: cfg.moveSpeed,
+              range: cfg.moveRange,
+              elapsed: 0,
+            });
+          } else {
+            // Static hole: no tile, pit directly on board
+            if (isSquare) {
+              const pitGeo = new THREE.BoxGeometry(cfg.size, 0.45, cfg.size);
+              const pitMesh = new THREE.Mesh(pitGeo, pitMat);
+              pitMesh.position.set(holeWorldX, -0.18, holeWorldZ);
+              this.boardGroup.add(pitMesh);
+
+              const ringThickness = 0.05;
+              const ringHeight = 0.04;
+              const ringGroup = new THREE.Group();
+
+              const horizGeo = new THREE.BoxGeometry(cfg.size + ringThickness * 2, ringHeight, ringThickness);
+              const topRing = new THREE.Mesh(horizGeo, pitRingMat);
+              topRing.position.set(0, 0, -halfExtent - ringThickness / 2);
+              ringGroup.add(topRing);
+              const botRing = new THREE.Mesh(horizGeo, pitRingMat);
+              botRing.position.set(0, 0, halfExtent + ringThickness / 2);
+              ringGroup.add(botRing);
+
+              const vertGeo = new THREE.BoxGeometry(ringThickness, ringHeight, cfg.size);
+              const leftRing = new THREE.Mesh(vertGeo, pitRingMat);
+              leftRing.position.set(-halfExtent - ringThickness / 2, 0, 0);
+              ringGroup.add(leftRing);
+              const rightRing = new THREE.Mesh(vertGeo, pitRingMat);
+              rightRing.position.set(halfExtent + ringThickness / 2, 0, 0);
+              ringGroup.add(rightRing);
+
+              ringGroup.position.set(holeWorldX, 0.02, holeWorldZ);
+              this.boardGroup.add(ringGroup);
+            } else {
+              const pitGeo = new THREE.CylinderGeometry(halfExtent, halfExtent, 0.45, 32);
+              const pitMesh = new THREE.Mesh(pitGeo, pitMat);
+              pitMesh.position.set(holeWorldX, -0.18, holeWorldZ);
+              this.boardGroup.add(pitMesh);
+
+              const pitRingGeo = new THREE.TorusGeometry(halfExtent, 0.05, 16, 32);
+              const ringMesh = new THREE.Mesh(pitRingGeo, pitRingMat);
+              ringMesh.rotation.x = Math.PI / 2;
+              ringMesh.position.set(holeWorldX, 0.02, holeWorldZ);
+              this.boardGroup.add(ringMesh);
+            }
+          }
         }
 
         if (cell.hasCoin && !cell.isHole) {
@@ -240,6 +344,30 @@ export class SceneManager {
     this.marbleMesh.position.set(pos.x, pos.y, pos.z);
     this.marbleMesh.rotation.z -= vel.x * 0.05;
     this.marbleMesh.rotation.x += vel.z * 0.05;
+  }
+
+  public updateMovingHoles(dt: number) {
+    for (const mh of this.movingHoles) {
+      mh.elapsed += dt;
+      let dx = 0;
+      let dz = 0;
+      const t = mh.elapsed * mh.speed;
+
+      switch (mh.pattern) {
+        case 'horizontal':
+          dx = Math.sin(t) * mh.range;
+          break;
+        case 'vertical':
+          dz = Math.sin(t) * mh.range;
+          break;
+        case 'circular':
+          dx = Math.cos(t) * mh.range;
+          dz = Math.sin(t) * mh.range;
+          break;
+      }
+
+      mh.group.position.set(mh.baseX + dx, 0, mh.baseZ + dz);
+    }
   }
 
   public removeCoinMesh(coinId: string) {
