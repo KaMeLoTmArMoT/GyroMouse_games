@@ -224,13 +224,20 @@ export class CranePhysicsManager {
     this.lastTrolleyVx = trolleyVx;
 
     // 2. Player 1: Cable Hoist Length L (InputY: Up decreases length L, Down increases length L)
+    const prevL = this.cableLength;
     this.cableLength -= inputY * hoistSpeed * dt;
     this.cableLength = Math.max(this.minCableL, Math.min(this.maxCableL, this.cableLength));
+
+    // Conserve natural pendulum swing energy during both lowering and upering (raising)
+    if (prevL !== this.cableLength && Math.abs(this.cableAngVel) > 0.001) {
+      const scale = Math.sqrt(prevL / this.cableLength);
+      this.cableAngVel *= scale;
+    }
 
     // 3. Cable Pendulum Angular Acceleration equation:
     // alpha = -(g / L) * sin(theta) - (Ax / L) * cos(theta) - damping * omega
     const g = 9.81;
-    const damping = 0.1;
+    const damping = 0.2;
     const alpha = (-g / this.cableLength) * Math.sin(this.cableAngle)
       - (trolleyAx / this.cableLength) * Math.cos(this.cableAngle)
       - damping * this.cableAngVel;
