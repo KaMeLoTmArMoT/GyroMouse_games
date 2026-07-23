@@ -31,7 +31,12 @@ GyroMouse_games/
 │   │   ├── README.md          # Game documentation & handoff state
 │   │   └── src/
 │   │
-│   └── crane_tower/           # 🏗️ 3D Crane Tower (Cooperative split-axis cargo stacker)
+│   ├── crane_tower/           # 🏗️ 3D Crane Tower (Cooperative split-axis cargo stacker)
+│   │   ├── index.html
+│   │   ├── README.md          # Game documentation & handoff state
+│   │   └── src/
+│   │
+│   └── artillery_siege/       # 💥 3D Artillery Siege (Cooperative dual-axis artillery bombardment)
 │       ├── index.html
 │       ├── README.md          # Game documentation & handoff state
 │       └── src/
@@ -59,6 +64,7 @@ GyroMouse_games/
    - **3D Marble Maze:** `http://localhost:5173/games/marble_maze/index.html`
    - **3D Subway Runner:** `http://localhost:5173/games/subway_runner/index.html`
    - **3D Crane Tower:** `http://localhost:5173/games/crane_tower/index.html`
+   - **3D Artillery Siege:** `http://localhost:5173/games/artillery_siege/index.html`
 
 ---
 
@@ -82,6 +88,12 @@ GyroMouse_games/
 * **Gameplay:** Cooperative dual-axis cargo stacker. Player 1 controls Hook Height (Y), Player 2 controls Trolley Position (X). Drop crates onto a train flatbed with Rapier3D physics.
 * **Physics & Features:** Cable pendulum equations with frequency-based energy scaling, elastic collision momentum transfer, side supply dock platform, configurable aim goal (3, 5, 7, 9, 11 boxes), and `localStorage` persistence.
 * **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Drop (`Space`).
+
+### 4. 💥 3D Artillery Siege (`games/artillery_siege/`)
+* **Perspective:** Dynamic 3D behind-the-turret camera with automatic orbit follow & Tactical Radar overlay.
+* **Gameplay:** Cooperative dual-axis artillery bombardment. Player 1 controls Elevation Pitch & Power, Player 2 controls Turret Azimuth & Micro Wind Tuning.
+* **Physics & Features:** 2-stage aiming sequence, Rapier3D ballistics, instant direct-hit damage & target explosion physics, progressive sighting hints with ghost trajectory arcs, procedural sunset sky dome, grass/dirt ground map, and spotter recon feedback.
+* **Controls:** Player 1 (`Up`/`Down` pitch & power), Player 2 (`Left`/`Right` direction), Stage Lock / Fire (`Space`).
 
 ---
 
