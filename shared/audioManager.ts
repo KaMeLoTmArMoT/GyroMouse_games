@@ -1,6 +1,6 @@
 export class SharedAudioManager {
   private ctx: AudioContext | null = null;
-  private isMuted: boolean = true; // Muted by default as requested
+  private isMuted: boolean = localStorage.getItem('gyromouse-muted') !== 'false'; // Default muted unless explicitly unmuted
   private rollOsc: OscillatorNode | null = null;
   private rollGain: GainNode | null = null;
   private isRollingPlaying: boolean = false;

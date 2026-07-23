@@ -1,4 +1,5 @@
 import { ImpactRecord, TargetStructure } from '../physics/artilleryPhysics';
+import { MenuNav } from '../../../../shared/menuNav';
 
 export class ArtilleryHUD {
   private radarCanvas: HTMLCanvasElement;
@@ -21,6 +22,7 @@ export class ArtilleryHUD {
   private modalTitle: HTMLElement;
   private modalDesc: HTMLElement;
   private modalBtn: HTMLElement;
+  private modalMenuNav: MenuNav;
 
   constructor() {
     this.radarCanvas = document.getElementById('radar-canvas') as HTMLCanvasElement;
@@ -43,6 +45,7 @@ export class ArtilleryHUD {
     this.modalTitle = document.getElementById('modal-title')!;
     this.modalDesc = document.getElementById('modal-desc')!;
     this.modalBtn = document.getElementById('modal-btn')!;
+    this.modalMenuNav = new MenuNav({ container: this.modalOverlay });
   }
 
   public updateStats(level: number, hitTargets: number, totalTargets: number, shellsLeft: number) {
@@ -183,9 +186,11 @@ export class ArtilleryHUD {
     this.modalDesc.innerText = desc;
     this.modalBtn.innerText = btnText;
     this.modalOverlay.classList.add('active');
+    this.modalMenuNav.activate();
 
     this.modalBtn.onclick = () => {
       this.modalOverlay.classList.remove('active');
+      this.modalMenuNav.deactivate();
       onBtnClick();
     };
   }

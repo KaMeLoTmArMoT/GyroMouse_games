@@ -612,5 +612,6 @@ export class PhysicsManager {
     this.marbleBody.setTranslation({ x, y, z }, true);
     this.marbleBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.marbleBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.marbleBody.wakeUp();
   }
 }

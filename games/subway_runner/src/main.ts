@@ -3,6 +3,7 @@ import { Runner } from './game/runner';
 import { TrackManager } from './game/trackManager';
 import { CollisionManager } from './game/collisionManager';
 import { RunnerSoundFX } from './audio/soundFX';
+import { MenuNav } from '../../../shared/menuNav';
 
 class SubwayRunnerGame {
   private sceneManager!: SceneManager;
@@ -10,6 +11,7 @@ class SubwayRunnerGame {
   private trackManager!: TrackManager;
   private collisionManager!: CollisionManager;
   private soundFX!: RunnerSoundFX;
+  private gameOverMenuNav!: MenuNav;
 
   private isRunning: boolean = false;
   private isPaused: boolean = false;
@@ -38,6 +40,7 @@ class SubwayRunnerGame {
     this.trackManager = new TrackManager(this.sceneManager.scene);
     this.collisionManager = new CollisionManager();
     this.soundFX = new RunnerSoundFX();
+    this.gameOverMenuNav = new MenuNav({ container: this.gameoverScreenEl });
 
     this.setupControls();
     this.setupUI();
@@ -46,7 +49,16 @@ class SubwayRunnerGame {
 
   private setupControls() {
     window.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.code === 'Escape' && this.isRunning) {
+      if (!this.isRunning && !this.isPaused) {
+        if (e.code === 'Space' || e.key === ' ') {
+          e.preventDefault();
+          this.startGame();
+          return;
+        }
+      }
+
+      if ((e.code === 'Escape' || e.code === 'Space' || e.key === ' ') && this.isRunning) {
+        e.preventDefault();
         this.togglePause();
         return;
       }
@@ -76,7 +88,7 @@ class SubwayRunnerGame {
   }
 
   private setupUI() {
-    document.getElementById('btn-start')?.addEventListener('click', () => this.startGame());
+    this.startScreenEl.addEventListener('click', () => this.startGame());
     document.getElementById('btn-restart')?.addEventListener('click', () => this.restartGame());
     document.getElementById('btn-resume')?.addEventListener('click', () => this.togglePause(false));
   }
@@ -97,6 +109,7 @@ class SubwayRunnerGame {
     this.startScreenEl.classList.add('hidden');
     this.gameoverScreenEl.classList.add('hidden');
     this.pauseScreenEl.classList.add('hidden');
+    this.gameOverMenuNav.deactivate();
     this.isPaused = false;
     this.resetGame();
     this.isRunning = true;
@@ -113,6 +126,7 @@ class SubwayRunnerGame {
     this.finalScoreEl.textContent = `${Math.floor(this.distance)} m`;
     this.finalCoinsEl.textContent = `${this.coinsCount}`;
     this.gameoverScreenEl.classList.remove('hidden');
+    this.gameOverMenuNav.activate();
   }
 
   private resetGame() {

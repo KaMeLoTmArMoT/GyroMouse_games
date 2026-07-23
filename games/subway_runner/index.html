@@ -51,6 +51,7 @@
     .stat {
       display: flex;
       flex-direction: column;
+      min-width: 110px;
     }
     .stat-label {
       font-size: 0.75rem;
@@ -63,6 +64,7 @@
       font-size: 1.8rem;
       font-weight: 800;
       color: #38bdf8;
+      white-space: nowrap;
     }
     .stat-val.coins {
       color: #fbbf24;
@@ -158,14 +160,17 @@
 
   <div id="hud">
     <div class="hud-top">
-      <div class="score-box">
-        <div class="stat">
-          <span class="stat-label">Distance</span>
-          <span id="score-val" class="stat-val">0 m</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Coins</span>
-          <span id="coins-val" class="stat-val coins">0</span>
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <a href="/" class="btn btn-secondary" style="display: inline-flex; align-items: center; margin: 0; padding: 10px 18px; text-decoration: none; pointer-events: auto;">🏠 Hub</a>
+        <div class="score-box">
+          <div class="stat">
+            <span class="stat-label">Distance</span>
+            <span id="score-val" class="stat-val">0 m</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Coins</span>
+            <span id="coins-val" class="stat-val coins">0</span>
+          </div>
         </div>
       </div>
 
@@ -173,7 +178,7 @@
         <div class="key-badge">⬅️ ➡️ Lane</div>
         <div class="key-badge">⬆️ Jump</div>
         <div class="key-badge">⬇️ Slide</div>
-        <div class="key-badge">ESC Pause</div>
+        <div class="key-badge">Space / ESC Pause</div>
       </div>
     </div>
   </div>
@@ -182,26 +187,27 @@
   <div id="pause-screen" class="overlay-screen hidden">
     <div class="modal">
       <h1>⏸️ Game Paused</h1>
-      <p class="subtitle">Press ESC to Resume</p>
+      <p class="subtitle">Press Space or ESC to Resume</p>
       <button id="btn-resume" class="btn">▶ Resume</button>
       <a href="/" class="btn btn-secondary" style="display: block; text-decoration: none;">🏠 Quit to Hub</a>
     </div>
   </div>
 
-  <!-- Start Screen -->
-  <div id="start-screen" class="overlay-screen">
-    <div class="modal">
-      <h1>🏃‍♂️ 3D Subway Runner</h1>
-      <p class="subtitle">Classic Single-Player 3D Runner</p>
-      <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 12px; margin-bottom: 20px; text-align: left; font-size: 0.95rem; line-height: 1.8;">
-        <div>⬅️ / ➡️ <b>Arrow Left / Right</b>: Switch Lanes</div>
-        <div>⬆️ <b>Arrow Up</b>: Jump over low obstacles</div>
-        <div>⬇️ <b>Arrow Down</b>: Slide under high obstacles</div>
-      </div>
-      <button id="btn-start" class="btn">🚀 Start Game</button>
-      <a href="/" class="btn btn-secondary" style="display: block; text-decoration: none;">🏠 Hub</a>
+  <!-- Start Screen Prompt -->
+  <div id="start-screen" class="overlay-screen" style="background: rgba(11, 15, 25, 0.4); backdrop-filter: blur(8px); cursor: pointer;">
+    <div style="text-align: center; animation: pulsePrompt 1.5s infinite alternate;">
+      <h1 style="font-size: 3rem; margin-bottom: 12px; text-shadow: 0 0 20px rgba(168, 85, 247, 0.6);">🏃‍♂️ 3D Subway Runner</h1>
+      <p style="font-size: 1.6rem; font-weight: 800; color: #38bdf8; letter-spacing: 2px; text-transform: uppercase; background: rgba(15, 23, 42, 0.7); padding: 16px 32px; border-radius: 20px; border: 1px solid rgba(56, 189, 248, 0.4); display: inline-block;">
+        PRESS SPACE TO START
+      </p>
     </div>
   </div>
+  <style>
+    @keyframes pulsePrompt {
+      from { transform: scale(0.96); opacity: 0.85; }
+      to { transform: scale(1.04); opacity: 1; }
+    }
+  </style>
 
   <!-- Game Over Screen -->
   <div id="gameover-screen" class="overlay-screen hidden">

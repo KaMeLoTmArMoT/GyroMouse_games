@@ -1,6 +1,7 @@
 import { CranePhysicsManager } from '../physics/cranePhysics';
 import { CraneGraphicsManager } from '../graphics/craneGraphics';
 import { SharedAudioManager } from '../../../../shared/audioManager';
+import { MenuNav } from '../../../../shared/menuNav';
 
 export type GameState = 'IDLE' | 'SPAWNING' | 'PLAYING' | 'COUNTDOWN' | 'VICTORY' | 'GAME_OVER';
 
@@ -26,6 +27,7 @@ export class CraneGameLogic {
   private physics: CranePhysicsManager;
   private graphics: CraneGraphicsManager;
   private audio: SharedAudioManager;
+  private modalMenuNav!: MenuNav;
 
   constructor(physics: CranePhysicsManager, graphics: CraneGraphicsManager, audio: SharedAudioManager) {
     this.physics = physics;
@@ -44,6 +46,10 @@ export class CraneGameLogic {
     this.modalDesc = document.getElementById('modal-desc');
     this.modalBtn = document.getElementById('modal-btn');
 
+    if (this.modalOverlay) {
+      this.modalMenuNav = new MenuNav({ container: this.modalOverlay });
+    }
+
     if (this.modalBtn) {
       this.modalBtn.addEventListener('click', () => {
         if (this.state === 'VICTORY') {
@@ -56,6 +62,7 @@ export class CraneGameLogic {
 
     const soundBtn = document.getElementById('btn-sound');
     if (soundBtn) {
+      soundBtn.textContent = this.audio.getMuted() ? '🔊 Mute' : '🔊 Sound ON';
       soundBtn.addEventListener('click', () => {
         const muted = this.audio.toggleMute();
         soundBtn.textContent = muted ? '🔊 Mute' : '🔊 Sound ON';
@@ -89,7 +96,7 @@ export class CraneGameLogic {
     }
 
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') {
+      if (e.code === 'Space' && this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
         e.preventDefault();
         this.triggerDropAction();
       }
@@ -282,10 +289,16 @@ export class CraneGameLogic {
     if (this.modalTitle) this.modalTitle.textContent = title;
     if (this.modalDesc) this.modalDesc.textContent = desc;
     if (this.modalBtn) this.modalBtn.textContent = btnText;
-    if (this.modalOverlay) this.modalOverlay.classList.add('active');
+    if (this.modalOverlay) {
+      this.modalOverlay.classList.add('active');
+      this.modalMenuNav?.activate();
+    }
   }
 
   private hideModal() {
-    if (this.modalOverlay) this.modalOverlay.classList.remove('active');
+    if (this.modalOverlay) {
+      this.modalOverlay.classList.remove('active');
+      this.modalMenuNav?.deactivate();
+    }
   }
 }

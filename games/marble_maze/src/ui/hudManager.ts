@@ -1,5 +1,6 @@
 import { TerrainType } from '../maze/mazeGenerator';
 import { InputSettings } from '../../../../shared/inputManager';
+import { MenuNav } from '../../../../shared/menuNav';
 
 export interface HudCallbacks {
   onRestart: (fromCheckpoint?: boolean) => void;
@@ -26,6 +27,9 @@ export class HudManager {
   private isTimerRunning: boolean = false;
   private elapsedSeconds: number = 0;
 
+  private fallMenuNav!: MenuNav;
+  private winMenuNav!: MenuNav;
+
   constructor(callbacks: HudCallbacks) {
     this.callbacks = callbacks;
     this.bindDOM();
@@ -43,6 +47,9 @@ export class HudManager {
 
     this.winTimeEl = document.getElementById('win-time')!;
     this.winCoinsEl = document.getElementById('win-coins')!;
+
+    this.fallMenuNav = new MenuNav({ container: this.fallModal });
+    this.winMenuNav = new MenuNav({ container: this.winModal });
 
     document.getElementById('btn-restart')?.addEventListener('click', () => this.callbacks.onRestart());
     document.getElementById('btn-new-level')?.addEventListener('click', () => this.callbacks.onNewRandom());
@@ -207,10 +214,12 @@ export class HudManager {
     this.winTimeEl.innerText = `${mins > 0 ? `${mins}m ` : ''}${secs}s`;
     this.winCoinsEl.innerText = `${coins} / ${totalCoins}`;
     this.winModal.classList.add('active');
+    this.winMenuNav.activate();
   }
 
   public closeWinModal() {
     this.winModal.classList.remove('active');
+    this.winMenuNav.deactivate();
   }
 
   public showFallModal(hasCheckpoint: boolean) {
@@ -230,9 +239,12 @@ export class HudManager {
         restartFromCheckpointBtn.style.display = 'none';
       }
     }
+
+    this.fallMenuNav.activate();
   }
 
   public closeFallModal() {
     this.fallModal.classList.remove('active');
+    this.fallMenuNav.deactivate();
   }
 }
