@@ -59,9 +59,12 @@ async function main() {
     inputX = Math.max(-1.0, Math.min(1.0, inputX));
     inputY = Math.max(-1.0, Math.min(1.0, inputY));
 
+    // Check magnet active state (Space key or UI drop button)
+    const isMagnetActive = Boolean(keys && keys.has('Space'));
+
     // Update Crane Hook movement
     if (game.state === 'PLAYING' || game.state === 'COUNTDOWN') {
-      physics.updateCranePosition(inputX, inputY, dt);
+      physics.updateCranePosition(inputX, inputY, dt, isMagnetActive);
     }
 
     // Step Physics

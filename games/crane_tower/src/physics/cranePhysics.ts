@@ -127,20 +127,22 @@ export class CranePhysicsManager {
     const spawnX = -4.5;
     const spawnY = 0.7 + halfY;
 
-    // Create dynamic rigid body for crate
+    // Create dynamic rigid body for crate locked to 2D X-Y plane (no Z drift or out-of-plane tilt)
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(spawnX, spawnY, 0)
       .setLinearDamping(0.2)
       .setAngularDamping(0.4)
       .setCcdEnabled(true)
-      .setSleeping(false);
+      .setSleeping(false)
+      .enabledTranslations(true, true, false)
+      .enabledRotations(false, false, true);
 
     const body = this.world.createRigidBody(bodyDesc);
 
     const colliderDesc = RAPIER.ColliderDesc.cuboid(halfX, halfY, halfZ)
       .setFriction(0.85)
       .setRestitution(0.1)
-      .setDensity(1.5);
+      .setDensity(4.5);
 
     const collider = this.world.createCollider(colliderDesc, body);
 
@@ -149,12 +151,12 @@ export class CranePhysicsManager {
       body,
       collider,
       size,
-      isAttachedToMagnet: false, // Unattached by default on side platform
+      isAttachedToMagnet: false, // Unattached on side platform (requires lowering magnet to grab)
       isGlued: false
     };
 
     this.crates.set(id, crate);
-    this.currentHeldCrateId = null;
+    // Note: Do NOT clear currentHeldCrateId here so any crate currently attached to magnet remains attached!
     return crate;
   }
 
@@ -170,6 +172,8 @@ export class CranePhysicsManager {
     if (crate) {
       crate.isAttachedToMagnet = false;
       crate.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+      crate.body.setEnabledTranslations(true, true, false, true);
+      crate.body.setEnabledRotations(false, false, true, true);
 
       // Inherit tangential pendulum velocity when dropped!
       const tangentSpeed = this.cableAngVel * this.cableLength;
@@ -193,7 +197,7 @@ export class CranePhysicsManager {
   public tryRegrabCrate(): boolean {
     if (this.currentHeldCrateId) return false;
     // Don't re-grab immediately after dropping
-    if (Date.now() - this.lastReleaseTime < 1000) return false;
+    if (Date.now() - this.lastReleaseTime < 600) return false;
 
     const magnetPos = { x: this.magnetX, y: this.magnetY, z: 0 };
 
@@ -203,8 +207,8 @@ export class CranePhysicsManager {
       const pos = crate.body.translation();
       const dist = Math.hypot(pos.x - magnetPos.x, pos.y - (magnetPos.y - crate.size.y / 2));
 
-      // If magnet is close on top of this crate
-      if (dist < 1.3) {
+      // Magnet proximity check (requires bringing magnet close directly above box)
+      if (dist < 1.2) {
         crate.isAttachedToMagnet = true;
         this.currentHeldCrateId = id;
         return true;
@@ -216,7 +220,7 @@ export class CranePhysicsManager {
   /**
    * Update Crane Hook position and Cable Pendulum Physics from Player inputs
    */
-  public updateCranePosition(inputX: number, inputY: number, dt: number) {
+  public updateCranePosition(inputX: number, inputY: number, dt: number, isMagnetActive: boolean = false) {
     const trolleySpeed = 4.0;
     const hoistSpeed = 3.5;
 
@@ -272,8 +276,45 @@ export class CranePhysicsManager {
       this.magnetBody.setNextKinematicRotation(q);
     }
 
-    // 6. If holding a crate, attach it to the swinging pendulum hook vector!
-    if (this.currentHeldCrateId) {
+    // 6. Magnetic Force & Attachment logic (Activated when Space is pressed / magnet action active)
+    if (!this.currentHeldCrateId) {
+      if (isMagnetActive && Date.now() - this.lastReleaseTime >= 400) {
+        const magTargetY = this.magnetY - 0.75; // Attract top of crate to bottom of magnet
+        const magnetPos = { x: this.magnetX, y: magTargetY };
+
+        for (const [id, crate] of this.crates.entries()) {
+          if (crate.isGlued || crate.isAttachedToMagnet) continue;
+
+          const pos = crate.body.translation();
+          const dx = magnetPos.x - pos.x;
+          const dy = magnetPos.y - pos.y;
+          const dist = Math.hypot(dx, dy);
+
+          const maxRange = 2.4;
+          if (dist < maxRange) {
+            if (dist < 0.25) {
+              // Lock onto magnet hook once close enough
+              crate.isAttachedToMagnet = true;
+              this.currentHeldCrateId = id;
+            } else {
+              // Normalized distance factor from 0.0 (far edge) to 1.0 (touching magnet)
+              const proximityFactor = Math.pow(Math.max(0, 1.0 - (dist / maxRange)), 2.5);
+
+              // Force is subtle at far distance and ramps up to max force at the very end
+              const forceMagnitude = 2.0 + proximityFactor * 16.0;
+              const fx = (dx / dist) * forceMagnitude;
+              // Lift force ramps up gently from 0.95g up to 1.45g at the top contact point
+              const liftMultiplier = 0.95 + proximityFactor * 0.5;
+              const fy = (dy / dist) * forceMagnitude + 9.81 * liftMultiplier;
+
+              crate.body.applyImpulse({ x: fx * dt, y: fy * dt, z: 0 }, true);
+              crate.body.wakeUp();
+            }
+          }
+        }
+      }
+    } else {
+      // Holding a crate - lock it to pendulum position
       const crate = this.crates.get(this.currentHeldCrateId);
       if (crate && crate.isAttachedToMagnet) {
         const halfY = crate.size.y / 2;
@@ -323,14 +364,41 @@ export class CranePhysicsManager {
   }
 
   /**
+   * Check if the spawn column (drop zone up to the sky at X = -4.5) is clear before spawning a new crate.
+   */
+  public isSpawnZoneClear(): boolean {
+    const spawnX = -4.5;
+    const spawnZ = 0;
+    const checkRadiusX = 1.0;
+    const checkRadiusZ = 1.0;
+
+    for (const crate of this.crates.values()) {
+      const pos = crate.body.translation();
+      // Check if any crate is anywhere in the vertical spawn column (from platform up to sky Y >= 0.6)
+      const inColumn =
+        Math.abs(pos.x - spawnX) < checkRadiusX &&
+        Math.abs(pos.z - spawnZ) < checkRadiusZ &&
+        pos.y >= 0.5;
+
+      if (inColumn) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Check if any released crate touched ground (Failure)
    */
   public checkGroundCollision(): boolean {
     for (const crate of this.crates.values()) {
       if (crate.isAttachedToMagnet) continue;
       const pos = crate.body.translation();
-      // If crate fallen below train bed height onto the ground floor (Y < 0.3)
-      if (pos.y < 0.35) {
+      // Side platform surface is Y=0.5 (cuboid height 0.2 means top is Y=0.6).
+      // Train bed surface is Y=0.5 (top is Y=0.6).
+      // Ground surface is Y=0 (top is Y=0.1).
+      // If crate falls off side platform or train bed onto ground floor (center Y < 0.8), it dropped on the floor!
+      if (pos.y < 0.8 && Math.abs(pos.x - (-4.5)) > 1.2) {
         return true;
       }
     }
@@ -389,7 +457,9 @@ export class CranePhysicsManager {
         ? this.crates.get(this.currentHeldCrateId)?.collider
         : this.magnetCollider;
 
-      if (swingingCollider && Math.abs(this.cableAngVel) > 0.3) {
+      const swingSpeed = Math.abs(this.cableAngVel * this.cableLength);
+
+      if (swingingCollider && swingSpeed > 0.6) {
         for (const [id, targetCrate] of this.crates.entries()) {
           if (id === this.currentHeldCrateId || targetCrate.isAttachedToMagnet) continue;
 
@@ -400,6 +470,11 @@ export class CranePhysicsManager {
 
             // Apply push impulse to hit crate
             targetCrate.body.applyImpulse({ x: impulseX, y: 0.8, z: 0 }, true);
+
+            // DROP ON HIT: If swinging hard while holding a crate (swingSpeed > 1.2), drop the crate!
+            if (this.currentHeldCrateId && swingSpeed > 1.2) {
+              this.releaseHeldCrate();
+            }
 
             // Rebound swinging crane momentum (Newton's Cradle momentum transfer)
             this.cableAngVel *= -0.35;

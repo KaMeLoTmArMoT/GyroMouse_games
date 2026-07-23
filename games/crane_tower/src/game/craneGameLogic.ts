@@ -138,11 +138,7 @@ export class CraneGameLogic {
 
       // Schedule spawn of next crate if target not reached
       if (this.currentCratesSpawned < this.targetCrateCount) {
-        setTimeout(() => {
-          if (this.state === 'PLAYING' || this.state === 'COUNTDOWN') {
-            this.spawnNextCrate();
-          }
-        }, 1200);
+        this.tryScheduleSpawnNextCrate();
       }
     } else {
       // Try to re-grab nearby crate if magnet lowered onto one
@@ -151,6 +147,19 @@ export class CraneGameLogic {
         this.audio.playTone(500, 0.2, 'sine');
       }
     }
+  }
+
+  private tryScheduleSpawnNextCrate() {
+    setTimeout(() => {
+      if (this.state === 'PLAYING' || this.state === 'COUNTDOWN') {
+        if (this.physics.isSpawnZoneClear()) {
+          this.spawnNextCrate();
+        } else {
+          // If spawn zone is obstructed, check again shortly
+          this.tryScheduleSpawnNextCrate();
+        }
+      }
+    }, 1200);
   }
 
   private spawnNextCrate() {
