@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Endless Runner - GyroMouse Games 🏃‍♂️</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Outfit', sans-serif;
+      background-color: #0b0f19;
+      color: #fff;
+    }
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    #hud {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+    }
+    .hud-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .score-box {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 16px 24px;
+      border-radius: 16px;
+      display: flex;
+      gap: 24px;
+    }
+    .stat {
+      display: flex;
+      flex-direction: column;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      color: #9ca3af;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .stat-val {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #38bdf8;
+    }
+    .stat-val.coins {
+      color: #fbbf24;
+    }
+    .controls-indicator {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 12px 20px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .key-badge {
+      background: rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    
+    .overlay-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      pointer-events: auto;
+    }
+    .modal {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 24px;
+      padding: 40px;
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+    h1 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #a855f7, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p.subtitle {
+      color: #9ca3af;
+      margin-bottom: 24px;
+      font-size: 0.95rem;
+    }
+    .btn {
+      background: linear-gradient(135deg, #a855f7, #6366f1);
+      color: #fff;
+      font-size: 1.1rem;
+      font-weight: 700;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s ease;
+      margin-top: 12px;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(168, 85, 247, 0.4);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      margin-top: 8px;
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <div id="hud">
+    <div class="hud-top">
+      <div class="score-box">
+        <div class="stat">
+          <span class="stat-label">Distance</span>
+          <span id="score-val" class="stat-val">0 m</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Coins</span>
+          <span id="coins-val" class="stat-val coins">0</span>
+        </div>
+      </div>
+
+      <div class="controls-indicator">
+        <div class="key-badge">⬅️ ➡️ Lane</div>
+        <div class="key-badge">⬆️ Jump</div>
+        <div class="key-badge">⬇️ Slide</div>
+        <div class="key-badge">ESC Pause</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause Screen -->
+  <div id="pause-screen" class="overlay-screen hidden">
+    <div class="modal">
+      <h1>⏸️ Game Paused</h1>
+      <p class="subtitle">Press ESC to Resume</p>
+      <button id="btn-resume" class="btn">▶ Resume</button>
+      <a href="/" class="btn btn-secondary" style="display: block; text-decoration: none;">🏠 Quit to Hub</a>
+    </div>
+  </div>
+
+  <!-- Start Screen -->
+  <div id="start-screen" class="overlay-screen">
+    <div class="modal">
+      <h1>🏃‍♂️ 3D Subway Runner</h1>
+      <p class="subtitle">Classic Single-Player 3D Runner</p>
+      <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 12px; margin-bottom: 20px; text-align: left; font-size: 0.95rem; line-height: 1.8;">
+        <div>⬅️ / ➡️ <b>Arrow Left / Right</b>: Switch Lanes</div>
+        <div>⬆️ <b>Arrow Up</b>: Jump over low obstacles</div>
+        <div>⬇️ <b>Arrow Down</b>: Slide under high obstacles</div>
+      </div>
+      <button id="btn-start" class="btn">🚀 Start Game</button>
+      <a href="/" class="btn btn-secondary" style="display: block; text-decoration: none;">🏠 Hub</a>
+    </div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="gameover-screen" class="overlay-screen hidden">
+    <div class="modal">
+      <h1 style="background: linear-gradient(135deg, #ef4444, #f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">💥 Crash!</h1>
+      <p class="subtitle">You ran into an obstacle!</p>
+      <div style="margin: 20px 0; font-size: 1.2rem;">
+        Final Distance: <strong id="final-score" style="color: #38bdf8;">0 m</strong><br/>
+        Coins Collected: <strong id="final-coins" style="color: #fbbf24;">0</strong>
+      </div>
+      <button id="btn-restart" class="btn">🔄 Try Again</button>
+      <a href="/" class="btn btn-secondary" style="display: block; text-decoration: none;">🏠 Back to Hub</a>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

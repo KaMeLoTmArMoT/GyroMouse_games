@@ -11,7 +11,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        marble_maze: resolve(__dirname, 'games/marble_maze/index.html')
+        marble_maze: resolve(__dirname, 'games/marble_maze/index.html'),
+        subway_runner: resolve(__dirname, 'games/subway_runner/index.html')
       }
     }
   },
