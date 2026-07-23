@@ -37,8 +37,8 @@ export class CraneGraphicsManager {
       0.1,
       100
     );
-    this.camera.position.set(0, 4.5, 14.5);
-    this.camera.lookAt(0, 3.8, 0);
+    this.camera.position.set(0.5, 4.5, 14.5);
+    this.camera.lookAt(0.5, 3.8, 0);
 
     // 3. Renderer setup
     this.renderer = new THREE.WebGLRenderer({
@@ -124,10 +124,10 @@ export class CraneGraphicsManager {
     this.scene.add(rightRail);
 
     // Side Supply Dock Platform (where new boxes arrive)
-    const sideDockGeo = new THREE.BoxGeometry(3.0, 0.4, 2.4);
+    const sideDockGeo = new THREE.BoxGeometry(2.6, 0.4, 2.4);
     const sideDockMat = new THREE.MeshStandardMaterial({ color: '#334155', metalness: 0.6, roughness: 0.4 });
     const sideDockMesh = new THREE.Mesh(sideDockGeo, sideDockMat);
-    sideDockMesh.position.set(-5.0, 0.5, 0);
+    sideDockMesh.position.set(-4.5, 0.5, 0);
     sideDockMesh.receiveShadow = true;
     sideDockMesh.castShadow = true;
     this.scene.add(sideDockMesh);
@@ -135,14 +135,14 @@ export class CraneGraphicsManager {
 
   private buildGantryCrane() {
     // Top Horizontal Beam (Rail for trolley)
-    const beamGeo = new THREE.BoxGeometry(16, 0.5, 0.6);
+    const beamGeo = new THREE.BoxGeometry(22, 0.5, 0.6);
     const beamMat = new THREE.MeshStandardMaterial({
       color: '#f59e0b', // Yellow industrial gantry beam
       metalness: 0.6,
       roughness: 0.3
     });
     const beamMesh = new THREE.Mesh(beamGeo, beamMat);
-    beamMesh.position.set(0, 8.0, 0);
+    beamMesh.position.set(1.5, 8.0, 0);
     beamMesh.castShadow = true;
     this.scene.add(beamMesh);
 
@@ -155,7 +155,7 @@ export class CraneGraphicsManager {
     this.scene.add(leftLeg);
 
     const rightLeg = new THREE.Mesh(legGeo, legMat);
-    rightLeg.position.set(7.5, 4.0, 0);
+    rightLeg.position.set(10.5, 4.0, 0);
     this.scene.add(rightLeg);
 
     // Trolley mesh (rides on beam)
@@ -248,8 +248,8 @@ export class CraneGraphicsManager {
     const wireframeMat = new THREE.LineBasicMaterial({ color: '#38bdf8', opacity: 0.4, transparent: true });
 
     this.targetRegionMesh = new THREE.LineSegments(wireframeGeo, wireframeMat);
-    // Center at target region bounds midpoint
-    this.targetRegionMesh.position.set(0, 4.3, 0);
+    // Center at target region bounds midpoint (X = 3.5)
+    this.targetRegionMesh.position.set(3.5, 4.3, 0);
     this.scene.add(this.targetRegionMesh);
   }
 

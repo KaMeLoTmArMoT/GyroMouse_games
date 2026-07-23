@@ -20,16 +20,21 @@ GyroMouse_games/
 │   ├── inputManager.ts        # Dual-input parser (Keyboard WASD/Arrows & GyroMouse cursor vectors)
 │   └── audioManager.ts        # Web Audio API sound synthesizer (Muted by default)
 │
-└── games/                     # 🎮 Web Games
-    ├── marble_maze/           # 🔮 3D Marble Maze (Top-down view, Rapier3D physics & terrain types)
-    │   ├── index.html
-    │   ├── README.md          # Game documentation & handoff state
-    │   └── src/
-    │
-    └── subway_runner/         # 🏃‍♂️ 3D Subway Runner (Subway Surfers-style lane runner)
-        ├── index.html
-        ├── README.md          # Game documentation & handoff state
-        └── src/
+├── games/                     # 🎮 Web Games
+│   ├── marble_maze/           # 🔮 3D Marble Maze (Top-down view, Rapier3D physics & terrain types)
+│   │   ├── index.html
+│   │   ├── README.md          # Game documentation & handoff state
+│   │   └── src/
+│   │
+│   ├── subway_runner/         # 🏃‍♂️ 3D Subway Runner (Subway Surfers-style lane runner)
+│   │   ├── index.html
+│   │   ├── README.md          # Game documentation & handoff state
+│   │   └── src/
+│   │
+│   └── crane_tower/           # 🏗️ 3D Crane Tower (Cooperative split-axis cargo stacker)
+│       ├── index.html
+│       ├── README.md          # Game documentation & handoff state
+│       └── src/
 ```
 
 ---
@@ -53,6 +58,7 @@ GyroMouse_games/
    - **Game Hub:** `http://localhost:5173/`
    - **3D Marble Maze:** `http://localhost:5173/games/marble_maze/index.html`
    - **3D Subway Runner:** `http://localhost:5173/games/subway_runner/index.html`
+   - **3D Crane Tower:** `http://localhost:5173/games/crane_tower/index.html`
 
 ---
 
@@ -69,10 +75,13 @@ GyroMouse_games/
 * **Perspective:** Elevated third-person runner camera.
 * **Gameplay:** Endless 3-lane obstacle runner with chunk-based track generation, coin rings, trains, and low/high hurdles.
 * **Visuals:** Three.js directional sun + soft shadow mapping, glowing neon rail guides, speed particle streaks, background city skyline, and exponential fog.
-* **Hurdle Clarity:**
-  * ⬆️ **Low Hurdle**: Orange barrier with red warning strip — **Jump** required (`ArrowUp`).
-  * ⬇️ **High Hurdle**: Overhead arch banner with glowing **DOWN arrows** — **Slide/Crawl** required (`ArrowDown`).
 * **Controls:** Arrow Keys (`ArrowLeft`/`ArrowRight` for lanes, `ArrowUp` for Jump, `ArrowDown` for Slide, `ESC` for Pause).
+
+### 3. 🏗️ 3D Crane Tower (`games/crane_tower/`)
+* **Perspective:** Industrial depot 2D/3D profile view.
+* **Gameplay:** Cooperative dual-axis cargo stacker. Player 1 controls Hook Height (Y), Player 2 controls Trolley Position (X). Drop crates onto a train flatbed with Rapier3D physics.
+* **Physics & Features:** Cable pendulum equations with frequency-based energy scaling, elastic collision momentum transfer, side supply dock platform, configurable aim goal (3, 5, 7, 9, 11 boxes), and `localStorage` persistence.
+* **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Drop (`Space`).
 
 ---
 

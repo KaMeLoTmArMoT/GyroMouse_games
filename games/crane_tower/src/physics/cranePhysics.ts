@@ -35,10 +35,10 @@ export class CranePhysicsManager {
   // Currently held crate ID
   public currentHeldCrateId: string | null = null;
 
-  // Target Region Bounding Box for box counter
+  // Target Region Bounding Box for box counter (centered at train platform X = 3.5)
   public targetRegion: TargetRegionBounds = {
-    minX: -2.8,
-    maxX: 2.8,
+    minX: 0.7,
+    maxX: 6.3,
     minY: 0.6,
     maxY: 8.0,
     minZ: -1.2,
@@ -54,19 +54,19 @@ export class CranePhysicsManager {
   public sidePlatformCollider!: RAPIER.Collider;
 
   // Trolley & Magnet position (driven by Player 1 Y, Player 2 X)
-  public trolleyX: number = 0;
+  public trolleyX: number = -4.5;
 
   // Cable & Pendulum State
   public cableLength: number = 2.2; // Cable length L
   public cableAngle: number = 0.0;  // Swing angle theta (radians)
   public cableAngVel: number = 0.0; // Angular velocity omega
-  public magnetX: number = 0.0;     // Actual swinging magnet X position
+  public magnetX: number = -4.5;    // Actual swinging magnet X position
   public magnetY: number = 5.5;     // Actual swinging magnet Y position
   private lastTrolleyVx: number = 0.0;
 
   // Boundaries for crane movement
   public readonly minX: number = -6.0;
-  public readonly maxX: number = 6.0;
+  public readonly maxX: number = 9.5;
   public readonly minCableL: number = 1.0;
   public readonly maxCableL: number = 6.4;
   public readonly gantryY: number = 7.7;
@@ -88,16 +88,16 @@ export class CranePhysicsManager {
       .setRestitution(0.1);
     this.groundCollider = this.world.createCollider(groundColliderDesc, groundBody);
 
-    // Side Supply Dock Platform at X = -5.0 (where new crates rest)
-    const sideDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(-5.0, 0.5, 0);
+    // Side Supply Dock Platform at X = -4.5 (where new crates rest)
+    const sideDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(-4.5, 0.5, 0);
     this.sidePlatformBody = this.world.createRigidBody(sideDesc);
-    const sideColliderDesc = RAPIER.ColliderDesc.cuboid(1.5, 0.2, 1.2)
+    const sideColliderDesc = RAPIER.ColliderDesc.cuboid(1.2, 0.2, 1.2)
       .setFriction(0.9)
       .setRestitution(0.05);
     this.sidePlatformCollider = this.world.createCollider(sideColliderDesc, this.sidePlatformBody);
 
-    // Train Flatbed Platform (Kinematic body so it can drive away)
-    const trainDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, 0.5, 0);
+    // Train Flatbed Platform at X = 3.5 (Kinematic body so it can drive away)
+    const trainDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(3.5, 0.5, 0);
     this.trainBody = this.world.createRigidBody(trainDesc);
 
     // Flatbed collider: Width = 5.2, Height = 0.4, Depth = 2.0
@@ -107,7 +107,7 @@ export class CranePhysicsManager {
     this.trainCollider = this.world.createCollider(trainColliderDesc, this.trainBody);
 
     // Kinematic Magnet Head RigidBody (provides physical collision for the crane itself!)
-    const magDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, 5.5, 0);
+    const magDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(-4.5, 5.5, 0);
     this.magnetBody = this.world.createRigidBody(magDesc);
     const magColliderDesc = RAPIER.ColliderDesc.cylinder(0.2, 0.55)
       .setFriction(0.8)
@@ -116,15 +116,15 @@ export class CranePhysicsManager {
   }
 
   /**
-   * Spawns a new Crate resting on the side supply dock at X = -5.0.
+   * Spawns a new Crate resting on the side supply dock at X = -4.5.
    */
   public spawnCrate(id: string, size = { x: 1.2, y: 1.2, z: 1.2 }): CrateItem {
     const halfX = size.x / 2;
     const halfY = size.y / 2;
     const halfZ = size.z / 2;
 
-    // Spawn resting on side platform (X = -5.0, Y = 0.7 + halfY)
-    const spawnX = -5.0;
+    // Spawn resting on side platform (X = -4.5, Y = 0.7 + halfY)
+    const spawnX = -4.5;
     const spawnY = 0.7 + halfY;
 
     // Create dynamic rigid body for crate
@@ -149,13 +149,16 @@ export class CranePhysicsManager {
       body,
       collider,
       size,
-      isAttachedToMagnet: false,
+      isAttachedToMagnet: false, // Unattached by default on side platform
       isGlued: false
     };
 
     this.crates.set(id, crate);
+    this.currentHeldCrateId = null;
     return crate;
   }
+
+  public lastReleaseTime: number = 0;
 
   /**
    * Release crate from crane magnet (Drop action) with pendulum momentum
@@ -180,6 +183,7 @@ export class CranePhysicsManager {
 
     const releasedId = this.currentHeldCrateId;
     this.currentHeldCrateId = null;
+    this.lastReleaseTime = Date.now();
     return releasedId;
   }
 
@@ -188,6 +192,8 @@ export class CranePhysicsManager {
    */
   public tryRegrabCrate(): boolean {
     if (this.currentHeldCrateId) return false;
+    // Don't re-grab immediately after dropping
+    if (Date.now() - this.lastReleaseTime < 1000) return false;
 
     const magnetPos = { x: this.magnetX, y: this.magnetY, z: 0 };
 
@@ -197,8 +203,8 @@ export class CranePhysicsManager {
       const pos = crate.body.translation();
       const dist = Math.hypot(pos.x - magnetPos.x, pos.y - (magnetPos.y - crate.size.y / 2));
 
-      // If magnet is right on top of this crate
-      if (dist < 1.1) {
+      // If magnet is close on top of this crate
+      if (dist < 1.3) {
         crate.isAttachedToMagnet = true;
         this.currentHeldCrateId = id;
         return true;
@@ -266,18 +272,14 @@ export class CranePhysicsManager {
       this.magnetBody.setNextKinematicRotation(q);
     }
 
-    // Auto-grab unattached crate if magnet touches it
-    if (!this.currentHeldCrateId) {
-      this.tryRegrabCrate();
-    }
-
-    // 6. If holding a crate, attach it rigidly/kinematically to the swinging magnet head!
+    // 6. If holding a crate, attach it to the swinging pendulum hook vector!
     if (this.currentHeldCrateId) {
       const crate = this.crates.get(this.currentHeldCrateId);
       if (crate && crate.isAttachedToMagnet) {
         const halfY = crate.size.y / 2;
-        const crateX = this.magnetX - (halfY + 0.15) * Math.sin(this.cableAngle);
-        const crateY = this.magnetY - (halfY + 0.15) * Math.cos(this.cableAngle);
+        const effL = this.cableLength + halfY + 0.15;
+        const crateX = this.trolleyX + effL * Math.sin(this.cableAngle);
+        const crateY = this.gantryY - effL * Math.cos(this.cableAngle);
 
         crate.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
         crate.body.setNextKinematicTranslation({ x: crateX, y: crateY, z: 0 });
@@ -371,11 +373,43 @@ export class CranePhysicsManager {
     }
   }
 
+  private lastHitCooldown: number = 0;
+
   /**
    * Physics step
    */
   public step(dt: number) {
     this.world.timestep = Math.min(dt, 0.033);
+
+    // Collision & Momentum Transfer check between swinging crane/held crate and settled crates
+    if (this.lastHitCooldown > 0) {
+      this.lastHitCooldown -= dt;
+    } else {
+      const swingingCollider = this.currentHeldCrateId
+        ? this.crates.get(this.currentHeldCrateId)?.collider
+        : this.magnetCollider;
+
+      if (swingingCollider && Math.abs(this.cableAngVel) > 0.3) {
+        for (const [id, targetCrate] of this.crates.entries()) {
+          if (id === this.currentHeldCrateId || targetCrate.isAttachedToMagnet) continue;
+
+          if (this.world.intersectionPair(swingingCollider, targetCrate.collider)) {
+            // Tangential momentum transfer: swinging object transfers velocity to target crate!
+            const tangentSpeed = this.cableAngVel * this.cableLength;
+            const impulseX = tangentSpeed * 1.5;
+
+            // Apply push impulse to hit crate
+            targetCrate.body.applyImpulse({ x: impulseX, y: 0.8, z: 0 }, true);
+
+            // Rebound swinging crane momentum (Newton's Cradle momentum transfer)
+            this.cableAngVel *= -0.35;
+            this.lastHitCooldown = 0.25; // 250ms hit cooldown
+            break;
+          }
+        }
+      }
+    }
+
     this.world.step();
   }
 
@@ -388,13 +422,13 @@ export class CranePhysicsManager {
       this.world.removeRigidBody(crate.body);
     }
     this.crates.clear();
-    this.trolleyX = 0;
+    this.trolleyX = -4.5;
     this.cableLength = 2.2;
     this.cableAngle = 0;
     this.cableAngVel = 0;
-    this.magnetX = 0;
+    this.magnetX = -4.5;
     this.magnetY = 5.5;
     this.lastTrolleyVx = 0;
-    this.trainBody.setTranslation({ x: 0, y: 0.5, z: 0 }, true);
+    this.trainBody.setTranslation({ x: 3.5, y: 0.5, z: 0 }, true);
   }
 }

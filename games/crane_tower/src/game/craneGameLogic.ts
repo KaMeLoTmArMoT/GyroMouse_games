@@ -62,6 +62,17 @@ export class CraneGameLogic {
       });
     }
 
+    const savedGoal = localStorage.getItem('crane_tower_target_goal');
+    const goalSelect = document.getElementById('select-target-goal') as HTMLSelectElement;
+    if (goalSelect) {
+      if (savedGoal) goalSelect.value = savedGoal;
+      goalSelect.addEventListener('change', () => {
+        const val = parseInt(goalSelect.value, 10);
+        localStorage.setItem('crane_tower_target_goal', val.toString());
+        this.startLevel(1, val);
+      });
+    }
+
     const targetToggle = document.getElementById('chk-show-target') as HTMLInputElement;
     if (targetToggle) {
       targetToggle.addEventListener('change', (e) => {
@@ -85,9 +96,24 @@ export class CraneGameLogic {
     });
   }
 
-  public startLevel(level: number = 1) {
+  public startLevel(level: number = 1, customTargetCount?: number) {
     this.currentLevel = level;
-    this.targetCrateCount = 2 + level; // Level 1 = 3 crates, Level 2 = 4, etc.
+
+    const goalSelect = document.getElementById('select-target-goal') as HTMLSelectElement;
+    if (customTargetCount !== undefined) {
+      this.targetCrateCount = customTargetCount;
+    } else if (goalSelect && goalSelect.value) {
+      this.targetCrateCount = parseInt(goalSelect.value, 10) || 3;
+    } else {
+      const savedGoal = localStorage.getItem('crane_tower_target_goal');
+      this.targetCrateCount = savedGoal ? parseInt(savedGoal, 10) : 3;
+    }
+
+    if (goalSelect) {
+      goalSelect.value = `${this.targetCrateCount}`;
+    }
+    localStorage.setItem('crane_tower_target_goal', this.targetCrateCount.toString());
+
     this.currentCratesSpawned = 0;
     this.countdownTimer = 5.0;
 
@@ -204,11 +230,14 @@ export class CraneGameLogic {
   }
 
   private nextLevel() {
-    this.startLevel(this.currentLevel + 1);
+    const nextCount = Math.min(11, this.targetCrateCount + 2);
+    const goalSelect = document.getElementById('select-target-goal') as HTMLSelectElement;
+    if (goalSelect) goalSelect.value = `${nextCount}`;
+    this.startLevel(this.currentLevel + 1, nextCount);
   }
 
   private restartLevel() {
-    this.startLevel(this.currentLevel);
+    this.startLevel(this.currentLevel, this.targetCrateCount);
   }
 
   private updateHUD(currentInZone?: number) {

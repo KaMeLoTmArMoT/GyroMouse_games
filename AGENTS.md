@@ -21,9 +21,8 @@ No test runner configured — validate changes manually via `npm run dev` and vi
 
 ## Structure
 
-- **Vite multi-page app** — entry points: `/index.html` (hub), `games/marble_maze/index.html` (game)
+- **Vite multi-page app** — entry points: `/index.html` (hub), `games/marble_maze/index.html` (game), `games/subway_runner/index.html` (game), `games/crane_tower/index.html` (game)
 - **Not an npm workspaces monorepo** — `shared/` is imported via relative paths from inside `games/`
-- **`games/subway_runner/`** is a planned "Coming Soon" placeholder in the hub but does **not exist** as a directory yet
 
 ## Architecture
 
