@@ -27,9 +27,13 @@ export class SharedInputManager {
   public currentTiltX: number = 0;
   public currentTiltZ: number = 0;
 
-  private keysPressed: Set<string> = new Set();
+  public keysPressed: Set<string> = new Set();
   public mouseX: number = window.innerWidth / 2;
   public mouseY: number = window.innerHeight / 2;
+
+  public isKeyPressed(keyOrCode: string): boolean {
+    return this.keysPressed.has(keyOrCode);
+  }
   public normalizedDx: number = 0;
   public normalizedDy: number = 0;
 

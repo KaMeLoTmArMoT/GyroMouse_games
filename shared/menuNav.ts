@@ -64,12 +64,12 @@ export class MenuNav {
   private handleKeyDown(e: KeyboardEvent) {
     if (!this.isActive || this.buttons.length === 0) return;
 
-    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
       e.preventDefault();
       e.stopPropagation();
       this.activeIndex = (this.activeIndex + 1) % this.buttons.length;
       this.updateHighlight();
-    } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
       e.preventDefault();
       e.stopPropagation();
       this.activeIndex = (this.activeIndex - 1 + this.buttons.length) % this.buttons.length;

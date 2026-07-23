@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>3D Cyber Air Hockey - GyroMouse Games</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap');
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Outfit', sans-serif;
+      background: #060913;
+      color: #f3f4f6;
+    }
+
+    #game-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* Glassmorphism UI HUD */
+    .hud-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 20px;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      width: 100%;
+    }
+
+    .card {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 14px 22px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      pointer-events: auto;
+    }
+
+    .nav-btn {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      text-decoration: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+      transition: all 0.2s ease;
+    }
+    .nav-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: #38bdf8;
+      color: #38bdf8;
+      transform: translateY(-2px);
+    }
+
+    .scoreboard-card {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .team-score {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .team-name {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .score-val {
+      font-size: 2.2rem;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .p1-color { color: #38bdf8; text-shadow: 0 0 12px rgba(56, 189, 248, 0.6); }
+    .p2-color { color: #f43f5e; text-shadow: 0 0 12px rgba(244, 63, 94, 0.6); }
+
+    .vs-divider {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #64748b;
+    }
+
+    .select-input {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .controls-hint {
+      display: flex;
+      gap: 20px;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+
+    .key-badge {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 2px 8px;
+      border-radius: 6px;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* Pause & Game Over Modal */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(6, 9, 19, 0.8);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      z-index: 100;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-card {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 24px;
+      padding: 40px;
+      width: 90%;
+      max-width: 460px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+    }
+
+    .modal-title {
+      font-size: 2.2rem;
+      font-weight: 900;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, #38bdf8, #f43f5e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .modal-desc {
+      font-size: 1rem;
+      color: #94a3b8;
+      margin-bottom: 28px;
+    }
+
+    .btn-action {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #fff;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      width: 100%;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+    }
+    .btn-action:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+    }
+
+    .btn-action.menu-focus {
+      outline: 3px solid #38bdf8;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.8);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div class="hud-layer">
+    <div class="top-bar">
+      <a href="/" class="nav-btn">
+        <span>🏠</span> Hub
+      </a>
+
+      <div class="card scoreboard-card">
+        <div class="team-score">
+          <span class="team-name p1-color">P1 (Blue)</span>
+          <span id="score-p1" class="score-val p1-color">0</span>
+        </div>
+        <span class="vs-divider">VS</span>
+        <div class="team-score">
+          <span id="p2-label" class="team-name p2-color">Bot (Red)</span>
+          <span id="score-p2" class="score-val p2-color">0</span>
+        </div>
+      </div>
+
+      <div class="card" style="display: flex; gap: 12px; align-items: center;">
+        <select id="mode-select" class="select-input">
+          <option value="1p">1P vs AI</option>
+          <option value="2p">2P Local</option>
+        </select>
+
+        <select id="diff-select" class="select-input">
+          <option value="easy">AI: Easy</option>
+          <option value="medium" selected>AI: Medium</option>
+          <option value="hard">AI: Hard</option>
+          <option value="adaptive">AI: Adaptive</option>
+        </select>
+
+        <button id="btn-audio" class="nav-btn">🔊 Mute</button>
+      </div>
+    </div>
+
+    <div class="controls-hint">
+      <div>P1: <span class="key-badge">W</span>/<span class="key-badge">S</span> or <span class="key-badge">↑</span>/<span class="key-badge">↓</span> or <span class="key-badge">←</span>/<span class="key-badge">→</span></div>
+      <div id="p2-controls-hint">P2: <span class="key-badge">W</span>/<span class="key-badge">S</span> or <span class="key-badge">↑</span>/<span class="key-badge">↓</span></div>
+      <div>Pause: <span class="key-badge">Space</span></div>
+    </div>
+  </div>
+
+  <!-- Pause Overlay -->
+  <div id="pause-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h2 class="modal-title">GAME PAUSED</h2>
+      <p class="modal-desc">Take a breath or resume the match!</p>
+      <button id="btn-resume" class="btn-action menu-focus">Resume Match (Space)</button>
+      <a href="/" class="nav-btn" style="justify-content: center;"><span>🏠</span> Return to Hub</a>
+    </div>
+  </div>
+
+  <!-- Game Over Modal -->
+  <div id="gameover-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h2 id="winner-title" class="modal-title">BLUE WINS!</h2>
+      <p id="winner-desc" class="modal-desc">Score: 10 - 7</p>
+      <button id="btn-restart" class="btn-action menu-focus">Play Again (Space)</button>
+      <a href="/" class="nav-btn" style="justify-content: center;"><span>🏠</span> Return to Hub</a>
+    </div>
+  </div>
+
+  <script type="module" src="/games/cyber_pong/src/main.ts"></script>
+</body>
+</html>
