@@ -41,6 +41,18 @@ export class PhysicsManager {
     speed: number;
     range: number;
     elapsed: number;
+    radius: number;
+    isSquare: boolean;
+    cellCenterX: number;
+    cellCenterZ: number;
+    halfCell: number;
+    friction: number;
+    restitution: number;
+    body: RAPIER.RigidBody;
+    topSlab: RAPIER.Collider;
+    botSlab: RAPIER.Collider;
+    leftSlab: RAPIER.Collider;
+    rightSlab: RAPIER.Collider;
   }[] = [];
 
   public buildMazePhysics(maze: MazeData, callbacks: PhysicsCallbacks): {
@@ -167,19 +179,47 @@ export class PhysicsManager {
           const isMoving = cfg.movePattern !== 'static';
 
           if (isMoving) {
-            // Moving hole: full floor + sensor at floor level
-            const floorDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, halfCell)
-              .setTranslation(cellCenterX, -0.4, cellCenterZ)
+            // Moving hole: create initial edge slabs that perfectly track the hole position
+            const hMinX = holeWorldX - halfExtent;
+            const hMaxX = holeWorldX + halfExtent;
+            const hMinZ = holeWorldZ - halfExtent;
+            const hMaxZ = holeWorldZ + halfExtent;
+            const minX = cellCenterX - halfCell;
+            const maxX = cellCenterX + halfCell;
+            const minZ = cellCenterZ - halfCell;
+            const maxZ = cellCenterZ + halfCell;
+
+            const topD = Math.max(0.01, (hMinZ - minZ) / 2);
+            const topSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, topD)
+              .setTranslation(cellCenterX, -0.4, minZ + topD)
               .setFriction(friction).setRestitution(restitution);
-            this.world.createCollider(floorDesc, boardBody);
+            const topSlab = this.world.createCollider(topSlabDesc, boardBody);
+
+            const botD = Math.max(0.01, (maxZ - hMaxZ) / 2);
+            const botSlabDesc = RAPIER.ColliderDesc.cuboid(halfCell, 0.4, botD)
+              .setTranslation(cellCenterX, -0.4, hMaxZ + botD)
+              .setFriction(friction).setRestitution(restitution);
+            const botSlab = this.world.createCollider(botSlabDesc, boardBody);
+
+            const leftW = Math.max(0.01, (hMinX - minX) / 2);
+            const leftSlabDesc = RAPIER.ColliderDesc.cuboid(leftW, 0.4, halfExtent)
+              .setTranslation(minX + leftW, -0.4, holeWorldZ)
+              .setFriction(friction).setRestitution(restitution);
+            const leftSlab = this.world.createCollider(leftSlabDesc, boardBody);
+
+            const rightW = Math.max(0.01, (maxX - hMaxX) / 2);
+            const rightSlabDesc = RAPIER.ColliderDesc.cuboid(rightW, 0.4, halfExtent)
+              .setTranslation(hMaxX + rightW, -0.4, holeWorldZ)
+              .setFriction(friction).setRestitution(restitution);
+            const rightSlab = this.world.createCollider(rightSlabDesc, boardBody);
 
             let sensorDesc: RAPIER.ColliderDesc;
             if (isSquare) {
-              sensorDesc = RAPIER.ColliderDesc.cuboid(halfExtent * 0.9, 0.15, halfExtent * 0.9)
-                .setTranslation(holeWorldX, 0.1, holeWorldZ);
+              sensorDesc = RAPIER.ColliderDesc.cuboid(halfExtent * 0.9, 0.2, halfExtent * 0.9)
+                .setTranslation(holeWorldX, -0.2, holeWorldZ);
             } else {
-              sensorDesc = RAPIER.ColliderDesc.cylinder(0.15, halfExtent * 0.9)
-                .setTranslation(holeWorldX, 0.1, holeWorldZ);
+              sensorDesc = RAPIER.ColliderDesc.cylinder(0.2, halfExtent * 0.9)
+                .setTranslation(holeWorldX, -0.2, holeWorldZ);
             }
             sensorDesc.setSensor(true).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
             const sensor = this.world.createCollider(sensorDesc, boardBody);
@@ -193,6 +233,18 @@ export class PhysicsManager {
               speed: cfg.moveSpeed,
               range: cfg.moveRange,
               elapsed: 0,
+              radius: halfExtent,
+              isSquare,
+              cellCenterX,
+              cellCenterZ,
+              halfCell,
+              friction,
+              restitution,
+              body: boardBody,
+              topSlab,
+              botSlab,
+              leftSlab,
+              rightSlab
             });
           } else {
             // Static hole: sensor below floor + 4 floor slabs around the gap
@@ -434,7 +486,55 @@ export class PhysicsManager {
           break;
       }
 
-      mh.sensor.setTranslation({ x: mh.baseX + dx, y: 0.1, z: mh.baseZ + dz });
+      const holeX = mh.baseX + dx;
+      const holeZ = mh.baseZ + dz;
+      mh.sensor.setTranslation({ x: holeX, y: -0.2, z: holeZ });
+
+      // Update the 4 dynamic floor slabs to tightly frame the moving hole
+      const r = mh.radius;
+      const hMinX = holeX - r;
+      const hMaxX = holeX + r;
+      const hMinZ = holeZ - r;
+      const hMaxZ = holeZ + r;
+      
+      const cX = mh.cellCenterX;
+      const cZ = mh.cellCenterZ;
+      const hC = mh.halfCell;
+      const minX = cX - hC;
+      const maxX = cX + hC;
+      const minZ = cZ - hC;
+      const maxZ = cZ + hC;
+
+      // Destroy old slabs
+      this.world.removeCollider(mh.topSlab, false);
+      this.world.removeCollider(mh.botSlab, false);
+      this.world.removeCollider(mh.leftSlab, false);
+      this.world.removeCollider(mh.rightSlab, false);
+
+      // Recreate them with updated dimensions/positions
+      const topD = Math.max(0.01, (hMinZ - minZ) / 2);
+      const topDesc = RAPIER.ColliderDesc.cuboid(hC, 0.4, topD)
+        .setTranslation(cX, -0.4, minZ + topD)
+        .setFriction(mh.friction).setRestitution(mh.restitution);
+      mh.topSlab = this.world.createCollider(topDesc, mh.body);
+
+      const botD = Math.max(0.01, (maxZ - hMaxZ) / 2);
+      const botDesc = RAPIER.ColliderDesc.cuboid(hC, 0.4, botD)
+        .setTranslation(cX, -0.4, hMaxZ + botD)
+        .setFriction(mh.friction).setRestitution(mh.restitution);
+      mh.botSlab = this.world.createCollider(botDesc, mh.body);
+
+      const leftW = Math.max(0.01, (hMinX - minX) / 2);
+      const leftDesc = RAPIER.ColliderDesc.cuboid(leftW, 0.4, r)
+        .setTranslation(minX + leftW, -0.4, holeZ)
+        .setFriction(mh.friction).setRestitution(mh.restitution);
+      mh.leftSlab = this.world.createCollider(leftDesc, mh.body);
+
+      const rightW = Math.max(0.01, (maxX - hMaxX) / 2);
+      const rightDesc = RAPIER.ColliderDesc.cuboid(rightW, 0.4, r)
+        .setTranslation(hMaxX + rightW, -0.4, holeZ)
+        .setFriction(mh.friction).setRestitution(mh.restitution);
+      mh.rightSlab = this.world.createCollider(rightDesc, mh.body);
     }
   }
 
@@ -451,21 +551,13 @@ export class PhysicsManager {
     const speed = Math.hypot(linvel.x, linvel.y, linvel.z);
 
     if (this.callbacks) {
-      // Trigger loss ONLY when marble physically drops into the hole below floor level (y < -0.35)
+      // Trigger loss ONLY when marble physically drops below floor level (y < -0.35)
       if (translation.y < -0.35) {
         this.callbacks.onFallInHole();
       }
 
       if (this.goalSensor && this.world.intersectionPair(this.marbleCollider, this.goalSensor)) {
         this.callbacks.onReachGoal();
-      }
-
-      // Check moving hole sensors (at floor level)
-      for (const mh of this.movingHoles) {
-        if (this.world.intersectionPair(this.marbleCollider, mh.sensor)) {
-          this.callbacks.onFallInHole();
-          break;
-        }
       }
 
       // Gate activation
