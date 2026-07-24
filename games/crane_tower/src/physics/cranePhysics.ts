@@ -112,9 +112,12 @@ export class CranePhysicsManager {
     // Kinematic Magnet Head RigidBody (provides physical collision for the crane itself!)
     const magDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(-4.5, 5.5, 0);
     this.magnetBody = this.world.createRigidBody(magDesc);
-    const magColliderDesc = RAPIER.ColliderDesc.cylinder(0.2, 0.55)
+    // Magnet head visual cylinder radius ~0.55, half-height ~0.15
+    // Set collision group: Membership Group 2 (0x0002), Filter mask Group 1 & 2 (0x0003) -> 0x00030002
+    const magColliderDesc = RAPIER.ColliderDesc.cylinder(0.15, 0.55)
       .setFriction(0.8)
-      .setRestitution(0.1);
+      .setRestitution(0.1)
+      .setCollisionGroups(0x00030002);
     this.magnetCollider = this.world.createCollider(magColliderDesc, this.magnetBody);
   }
 
@@ -165,6 +168,7 @@ export class CranePhysicsManager {
     return crate;
   }
 
+  public lastReleasedCrateId: string | null = null;
   public lastReleaseTime: number = 0;
 
   /**
@@ -177,13 +181,14 @@ export class CranePhysicsManager {
     if (crate) {
       crate.isAttachedToMagnet = false;
 
-      // Nudge crate position downward slightly (0.06 units) to avoid explosive Rapier contact separation
-      const curPos = crate.body.translation();
-      crate.body.setTranslation({ x: curPos.x, y: curPos.y - 0.06, z: curPos.z }, true);
-
+      // Clean separation without position teleport/nudge: zero out relative movement artifact
       crate.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       crate.body.setEnabledTranslations(true, true, false, true);
       crate.body.setEnabledRotations(false, false, true, true);
+
+      // Disable collision between this released crate and magnet head collider temporarily (250ms)
+      // Magnet is group 2 (0x0002). Set crate filter to 0x0001 (collides with everything EXCEPT magnet group 2)
+      crate.collider.setCollisionGroups(0x00010001);
 
       // Inherit natural crane momentum (trolley linear speed + cable swing speed)
       const cosAngle = Math.cos(this.cableAngle);
@@ -199,6 +204,7 @@ export class CranePhysicsManager {
     }
 
     const releasedId = this.currentHeldCrateId;
+    this.lastReleasedCrateId = releasedId;
     this.currentHeldCrateId = null;
     this.lastReleaseTime = Date.now();
     return releasedId;
@@ -366,7 +372,7 @@ export class CranePhysicsManager {
       const crate = this.crates.get(this.currentHeldCrateId);
       if (crate && crate.isAttachedToMagnet) {
         const halfY = crate.size.y / 2;
-        const effL = this.cableLength + halfY + 0.15;
+        const effL = this.cableLength + halfY + 0.22; // 0.22 provides ~5%+ safety gap between magnet bottom and crate top
         const crateX = this.trolleyX + effL * Math.sin(this.cableAngle);
         const crateY = this.gantryY - effL * Math.cos(this.cableAngle);
 
@@ -593,6 +599,16 @@ export class CranePhysicsManager {
           break;
         }
       }
+    }
+
+    // Re-enable collisions between magnet and recently released crate after 250ms (1/4 sec)
+    if (this.lastReleasedCrateId && this.lastReleaseTime > 0 && Date.now() - this.lastReleaseTime >= 250) {
+      const releasedCrate = this.crates.get(this.lastReleasedCrateId);
+      if (releasedCrate) {
+        // Restore default collision groups (collides with group 1 and group 2)
+        releasedCrate.collider.setCollisionGroups(0x00030003);
+      }
+      this.lastReleasedCrateId = null;
     }
 
     this.world.step();

@@ -191,7 +191,7 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       z-index: 100;
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: center;
       opacity: 0;
@@ -199,6 +199,7 @@
       transition: opacity 0.25s ease;
     }
     .modal-overlay.active {
+      display: flex;
       opacity: 1;
       pointer-events: auto;
     }
