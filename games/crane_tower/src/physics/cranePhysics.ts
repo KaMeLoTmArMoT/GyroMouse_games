@@ -1,5 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 
+export const ARM_MASS = 1.0;
+export const CRATE_MASS = 10.0;
+
 export interface CrateItem {
   id: string;
   body: RAPIER.RigidBody;
@@ -139,10 +142,12 @@ export class CranePhysicsManager {
 
     const body = this.world.createRigidBody(bodyDesc);
 
+    const crateMass = CRATE_MASS;
+    const volume = size.x * size.y * size.z;
     const colliderDesc = RAPIER.ColliderDesc.cuboid(halfX, halfY, halfZ)
       .setFriction(0.85)
       .setRestitution(0.1)
-      .setDensity(4.5);
+      .setDensity(crateMass / volume);
 
     const collider = this.world.createCollider(colliderDesc, body);
 
@@ -280,7 +285,9 @@ export class CranePhysicsManager {
     // 3. Cable Pendulum Angular Acceleration equation:
     // alpha = -(g / L) * sin(theta) - (Ax / L) * cos(theta) - damping * omega
     const g = 9.81;
-    const damping = 0.2;
+    // Air damping: Heavy load (m=11) maintains swing longer than light empty arm (m=1)
+    const mCrane = this.currentHeldCrateId ? (ARM_MASS + CRATE_MASS) : ARM_MASS;
+    const damping = 0.12 + 0.13 / mCrane;
     const alpha = (-g / this.cableLength) * Math.sin(this.cableAngle)
       - (trolleyAx / this.cableLength) * Math.cos(this.cableAngle)
       - damping * this.cableAngVel;
@@ -302,35 +309,7 @@ export class CranePhysicsManager {
     this.magnetX = this.trolleyX + this.cableLength * Math.sin(this.cableAngle);
     this.magnetY = this.gantryY - this.cableLength * Math.cos(this.cableAngle);
 
-    // 5. Check Obstacle Contact / Recoil for Magnet & Held Crate
-    const activeCrate = this.currentHeldCrateId ? this.crates.get(this.currentHeldCrateId) : null;
-    const currentCollider = activeCrate ? activeCrate.collider : this.magnetCollider;
-    const testPos = activeCrate
-      ? { x: this.trolleyX + (this.cableLength + activeCrate.size.y / 2 + 0.15) * Math.sin(this.cableAngle), y: this.gantryY - (this.cableLength + activeCrate.size.y / 2 + 0.15) * Math.cos(this.cableAngle) }
-      : { x: this.magnetX, y: this.magnetY };
-
-    for (const [id, targetCrate] of this.crates.entries()) {
-      if (id === this.currentHeldCrateId || targetCrate.isAttachedToMagnet) continue;
-
-      if (currentCollider && this.world.intersectionPair(currentCollider, targetCrate.collider)) {
-        const targetPos = targetCrate.body.translation();
-        const dx = testPos.x - targetPos.x;
-
-        // Push stationary target crate gently
-        const pushImpulse = (this.cableAngVel * this.cableLength + trolleyVx) * 0.25;
-        targetCrate.body.applyImpulse({ x: pushImpulse, y: 0.0, z: 0 }, true);
-
-        // Immediate recoil impulse back to crane pendulum angle and angular velocity!
-        if (this.lastHitCooldown <= 0) {
-          this.cableAngVel = -this.cableAngVel * 0.4 - (dx < 0 ? 0.8 : -0.8);
-          this.cableAngle += (dx < 0 ? -0.05 : 0.05);
-          this.lastHitCooldown = 0.15;
-        }
-        break;
-      }
-    }
-
-    // 6. Update Kinematic Magnet Head & Held Crate Colliders
+    // 5. Update Kinematic Magnet Head & Held Crate Colliders
     if (this.magnetBody) {
       this.magnetBody.setNextKinematicTranslation({ x: this.magnetX, y: this.magnetY, z: 0 });
       const q = new RAPIER.Quaternion(0, 0, Math.sin(this.cableAngle / 2), Math.cos(this.cableAngle / 2));
@@ -510,50 +489,100 @@ export class CranePhysicsManager {
   public step(dt: number) {
     this.world.timestep = Math.min(dt, 0.033);
 
-    // Collision & Momentum Transfer check between swinging crane/held crate and settled crates
+    // Dynamic AABB Collision Check between swinging crane (magnet or held crate) and target crates
     if (this.lastHitCooldown > 0) {
       this.lastHitCooldown -= dt;
     } else {
-      const swingingCollider = this.currentHeldCrateId
-        ? this.crates.get(this.currentHeldCrateId)?.collider
-        : this.magnetCollider;
+      const activeCrate = this.currentHeldCrateId ? this.crates.get(this.currentHeldCrateId) : null;
+      const isHolding = !!activeCrate;
 
-      const swingSpeed = Math.abs(this.cableAngVel * this.cableLength);
+      // Position & half-extents of the swinging object (magnet head or held crate)
+      let swingX = this.magnetX;
+      let swingY = this.magnetY;
+      let swingHalfX = 0.55; // magnet radius
+      let swingHalfY = 0.3;  // magnet half height
 
-      if (swingingCollider && swingSpeed > 0.3) {
-        for (const [id, targetCrate] of this.crates.entries()) {
-          if (id === this.currentHeldCrateId || targetCrate.isAttachedToMagnet) continue;
+      if (activeCrate) {
+        const cPos = activeCrate.body.translation();
+        swingX = cPos.x;
+        swingY = cPos.y;
+        swingHalfX = activeCrate.size.x / 2;
+        swingHalfY = activeCrate.size.y / 2;
+      }
 
-          if (this.world.intersectionPair(swingingCollider, targetCrate.collider)) {
-            // Two-way elastic/inelastic momentum transfer (Newtonian reaction force back to crane swing)
-            const tangentSpeed = this.cableAngVel * this.cableLength;
-            
-            // Mass ratio: held crate + magnet vs target crate
-            // Target crate receives a moderate push proportional to swing speed
-            const pushImpulse = tangentSpeed * 0.35;
-            targetCrate.body.applyImpulse({ x: pushImpulse, y: 0.0, z: 0 }, true);
+      for (const [id, targetCrate] of this.crates.entries()) {
+        if (id === this.currentHeldCrateId || targetCrate.isAttachedToMagnet) continue;
 
-            // REACTION ON CRANE: The collision immediately loses majority of forward swing velocity and rebounds!
-            // Elasticity coefficient (~0.2 rebound in opposite direction)
-            this.cableAngVel = -this.cableAngVel * 0.25;
+        const targetPos = targetCrate.body.translation();
+        const tHalfX = targetCrate.size.x / 2;
+        const tHalfY = targetCrate.size.y / 2;
 
-            // Also push/nudge cable angle back away from impact target
-            const magPos = { x: this.magnetX, y: this.magnetY };
-            const targetPos = targetCrate.body.translation();
-            const dx = magPos.x - targetPos.x;
-            if (Math.abs(dx) > 0.01) {
-              const recoilAngleShift = (dx > 0 ? 0.04 : -0.04);
-              this.cableAngle += recoilAngleShift;
-            }
+        const dx = swingX - targetPos.x;
+        const dy = swingY - targetPos.y;
 
-            // DROP ON HEAVY IMPACT: Drop crate if collision is violent (swingSpeed > 2.0)
-            if (this.currentHeldCrateId && swingSpeed > 2.0) {
+        const overlapX = (swingHalfX + tHalfX) - Math.abs(dx);
+        const overlapY = (swingHalfY + tHalfY) - Math.abs(dy);
+
+        // AABB Intersection check
+        if (overlapX > 0 && overlapY > 0) {
+          const hitFromLeft = dx < 0;
+          const dir = hitFromLeft ? 1 : -1;
+
+          const cosAngle = Math.cos(this.cableAngle);
+          const armSpeedX = (this.lastTrolleyVx || 0) + (this.cableAngVel * this.cableLength * cosAngle);
+          const targetSpeedX = targetCrate.body.linvel().x;
+          const relVx = armSpeedX - targetSpeedX;
+          const relativeSpeed = relVx * dir;
+
+          if (isHolding) {
+            // --- CARRIER MODE (Mass 11 vs 10) ---
+            // Heavy payload plows through: transfers massive impulse to target box, maintains forward swing
+            const m1 = ARM_MASS + CRATE_MASS;
+            const m2 = CRATE_MASS;
+            const e = 0.35;
+            const effSpeed = Math.max(0.6, relativeSpeed);
+            const J = ((m1 * m2) / (m1 + m2)) * (1 + e) * effSpeed;
+
+            targetCrate.body.applyImpulse({ x: J * dir, y: 0.8, z: 0 }, true);
+            targetCrate.body.wakeUp();
+
+            // Retain positive forward swing momentum
+            this.cableAngVel *= 0.45;
+            this.cableAngle += (hitFromLeft ? -0.02 : 0.02);
+
+            // Drop crate on violent impact
+            if (Math.abs(this.cableAngVel * this.cableLength) > 2.2) {
               this.releaseHeldCrate();
             }
+          } else {
+            // --- EMPTY ARM MODE (Mass 1 vs 10) ---
+            // Guaranteed visible impact on target box + smooth springy pendulum rebound (no position teleporting!)
+            const minImpulse = 2.4;
+            const effSpeed = Math.max(0.5, relativeSpeed);
+            const J = Math.max(minImpulse, ((ARM_MASS * CRATE_MASS) / (ARM_MASS + CRATE_MASS)) * 1.35 * effSpeed);
 
-            this.lastHitCooldown = 0.2; // 200ms cooldown
-            break;
+            // 1. Guaranteed physical bump on target box
+            targetCrate.body.applyImpulse({ x: J * dir, y: 0.3, z: 0 }, true);
+            targetCrate.body.wakeUp();
+
+            // 2. Subtle velocity-driven angular recoil (reduced to 20% strength)
+            const bounceSpeed = Math.max(0.12, Math.abs(this.cableAngVel) * 0.09);
+            this.cableAngVel = hitFromLeft ? -bounceSpeed : bounceSpeed;
+
+            // 3. Micro angle nudge to prevent clipping
+            const nudgeAngle = Math.min(0.006, Math.max(0.002, overlapX * 0.04));
+            this.cableAngle += (hitFromLeft ? -nudgeAngle : nudgeAngle);
+
+            // Recalculate position
+            this.magnetX = this.trolleyX + this.cableLength * Math.sin(this.cableAngle);
+            this.magnetY = this.gantryY - this.cableLength * Math.cos(this.cableAngle);
+            if (this.magnetBody) {
+              this.magnetBody.setNextKinematicTranslation({ x: this.magnetX, y: this.magnetY, z: 0 });
+            }
           }
+
+          this.lastHitCooldown = 0.06; // 60ms cooldown
+          break;
         }
       }
     }
