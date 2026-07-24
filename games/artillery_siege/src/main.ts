@@ -2,9 +2,10 @@ import { SharedAudioManager } from '../../../shared/audioManager';
 import { ArtilleryGraphicsManager } from './graphics/artilleryGraphics';
 import { ArtilleryPhysicsManager } from './physics/artilleryPhysics';
 import { ArtilleryHUD } from './ui/hud';
+import { BaseGame } from '../../../shared/baseGame';
 import * as THREE from 'three';
 
-class ArtilleryGame {
+class ArtilleryGame extends BaseGame {
   private physics: ArtilleryPhysicsManager;
   private graphics: ArtilleryGraphicsManager;
   private hud: ArtilleryHUD;
@@ -26,18 +27,14 @@ class ArtilleryGame {
   public totalLevelTargets: number = 3;
   public hitTargetsCount: number = 0;
   public isLevelComplete: boolean = false;
-  public isGameOver: boolean = false;
 
-  public isPaused: boolean = false;
-
-  // Key tracking
-  private keysPressed: Set<string> = new Set();
   private spaceDebounce: boolean = false;
 
   // Trajectory history for sighting hints
   private trajectoryHistory: Array<Array<{ x: number; y: number; z: number }>> = [];
 
   constructor() {
+    super();
     this.physics = new ArtilleryPhysicsManager();
     this.graphics = new ArtilleryGraphicsManager();
     this.audio = new SharedAudioManager();
@@ -52,7 +49,7 @@ class ArtilleryGame {
 
     await this.physics.init();
 
-    this.setupEventListeners();
+    this.setupUI();
     this.startLevel(1);
 
     // Main animation loop
@@ -67,47 +64,30 @@ class ArtilleryGame {
     requestAnimationFrame(tick);
   }
 
-  private togglePause(forceState?: boolean) {
+  public override togglePause(forceState?: boolean) {
     if (this.isLevelComplete || this.isGameOver) return;
-    this.isPaused = forceState !== undefined ? forceState : !this.isPaused;
+    super.togglePause(forceState);
     this.hud.togglePauseModal(this.isPaused, () => this.togglePause(false));
   }
 
-  private setupEventListeners() {
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc') {
-        e.preventDefault();
-        this.togglePause();
-        return;
-      }
+  protected override onSpace() {
+    if (this.isPaused) {
+      this.togglePause(false);
+      return;
+    }
+    if (!this.spaceDebounce) {
+      this.spaceDebounce = true;
+      this.handleSpaceAction();
+    }
+  }
 
-      this.keysPressed.add(e.code);
-      this.keysPressed.add(e.key);
+  protected override onKeyUp(e: KeyboardEvent) {
+    if (e.code === 'Space' || e.key === ' ') {
+      this.spaceDebounce = false;
+    }
+  }
 
-      if (e.code === 'Space' || e.key === ' ') {
-        e.preventDefault();
-        if (this.isPaused) {
-          this.togglePause(false);
-          return;
-        }
-        if (!this.spaceDebounce) {
-          this.spaceDebounce = true;
-          this.handleSpaceAction();
-        }
-      }
-    });
-
-    window.addEventListener('keyup', (e) => {
-      this.keysPressed.delete(e.code);
-      this.keysPressed.delete(e.key);
-
-      if (e.code === 'Space' || e.key === ' ') {
-        this.spaceDebounce = false;
-      }
-    });
-
-    window.addEventListener('blur', () => this.keysPressed.clear());
-
+  private setupUI() {
     // Sound toggle button
     const btnSound = document.getElementById('btn-sound');
     if (btnSound) {
@@ -199,36 +179,36 @@ class ArtilleryGame {
     // 1. Process Input depending on Stage
     if (this.currentStage === 1 && (!this.physics.activeBall || !this.physics.activeBall.active)) {
       // Player 1 Elevation Pitch (Up lowers pitch, Down raises pitch)
-      if (this.keysPressed.has('ArrowUp') || this.keysPressed.has('KeyW')) {
+      if (this.input.keysPressed.has('ArrowUp') || this.input.keysPressed.has('KeyW')) {
         this.pitchDeg = Math.max(10.0, this.pitchDeg - dt * 17.0);
       }
-      if (this.keysPressed.has('ArrowDown') || this.keysPressed.has('KeyS')) {
+      if (this.input.keysPressed.has('ArrowDown') || this.input.keysPressed.has('KeyS')) {
         this.pitchDeg = Math.min(75.0, this.pitchDeg + dt * 17.0);
       }
 
       // Player 2 Azimuth Direction (Right = Turn Right, Left = Turn Left)
-      if (this.keysPressed.has('ArrowRight') || this.keysPressed.has('KeyD')) {
+      if (this.input.keysPressed.has('ArrowRight') || this.input.keysPressed.has('KeyD')) {
         this.yawDeg = Math.min(50.0, this.yawDeg + dt * 20.0);
       }
-      if (this.keysPressed.has('ArrowLeft') || this.keysPressed.has('KeyA')) {
+      if (this.input.keysPressed.has('ArrowLeft') || this.input.keysPressed.has('KeyA')) {
         this.yawDeg = Math.max(-50.0, this.yawDeg - dt * 20.0);
       }
 
       this.hud.updateAimValues(this.pitchDeg, this.yawDeg);
     } else if (this.currentStage === 2) {
       // P1 100% Manual Power adjustment (Up increases, Down decreases)
-      if (this.keysPressed.has('ArrowUp') || this.keysPressed.has('KeyW')) {
+      if (this.input.keysPressed.has('ArrowUp') || this.input.keysPressed.has('KeyW')) {
         this.powerMps = Math.min(65.0, this.powerMps + dt * 23.0);
       }
-      if (this.keysPressed.has('ArrowDown') || this.keysPressed.has('KeyS')) {
+      if (this.input.keysPressed.has('ArrowDown') || this.input.keysPressed.has('KeyS')) {
         this.powerMps = Math.max(15.0, this.powerMps - dt * 23.0);
       }
 
       // P2 Micro Wind / Angle Adjust (Right = Turn Right, Left = Turn Left)
-      if (this.keysPressed.has('ArrowRight') || this.keysPressed.has('KeyD')) {
+      if (this.input.keysPressed.has('ArrowRight') || this.input.keysPressed.has('KeyD')) {
         this.yawDeg = Math.min(50.0, this.yawDeg + dt * 6.5);
       }
-      if (this.keysPressed.has('ArrowLeft') || this.keysPressed.has('KeyA')) {
+      if (this.input.keysPressed.has('ArrowLeft') || this.input.keysPressed.has('KeyA')) {
         this.yawDeg = Math.max(-50.0, this.yawDeg - dt * 6.5);
       }
 

@@ -1,15 +1,14 @@
 import * as THREE from 'three';
 import { SharedAudioManager } from '../../../shared/audioManager';
-import { SharedInputManager } from '../../../shared/inputManager';
 import { MenuNav } from '../../../shared/menuNav';
+import { BaseGame } from '../../../shared/baseGame';
 import { ArenaRenderer } from './graphics/ArenaRenderer';
 import { PhysicsWorld } from './physics/PhysicsWorld';
 import { AIBotController, AIDifficulty } from './ai/AIBotController';
 
-export class CyberPongGame {
+export class CyberPongGame extends BaseGame {
   private renderer!: ArenaRenderer;
   private physicsWorld!: PhysicsWorld;
-  private inputManager!: SharedInputManager;
   private aiBot!: AIBotController;
   private audioManager!: SharedAudioManager;
 
@@ -23,9 +22,6 @@ export class CyberPongGame {
   public p2BricksCleared: number = 0;
   public totalBricksPerSide: number = 6;
 
-  public isStarted: boolean = false;
-  public isPaused: boolean = false;
-  public isGameOver: boolean = false;
   private lastTime: number = 0;
 
   // UI Element References
@@ -51,6 +47,10 @@ export class CyberPongGame {
   private pauseMenuNav!: MenuNav;
   private gameoverMenuNav!: MenuNav;
 
+  constructor() {
+    super();
+  }
+
   public static async init() {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
     const game = new CyberPongGame();
@@ -59,7 +59,6 @@ export class CyberPongGame {
 
   private async setup(canvas: HTMLCanvasElement) {
     this.renderer = new ArenaRenderer(canvas);
-    this.inputManager = new SharedInputManager();
     this.audioManager = new SharedAudioManager();
     this.aiBot = new AIBotController('medium');
 
@@ -282,10 +281,10 @@ export class CyberPongGame {
   }
 
   private updatePlayerMovement(dt: number) {
-    this.inputManager.update(dt);
+    this.input.update(dt);
 
     const moveSpeed = 12;
-    const checkKey = (k: string) => this.inputManager.isKeyPressed(k);
+    const checkKey = (k: string) => this.input.isKeyPressed(k);
 
     // Compute dynamic bounds so enlarged paddles never penetrate top/bottom walls
     const p1MaxZ = Math.max(0, 9.8 - 1.6 * this.p1Scale);
@@ -320,8 +319,8 @@ export class CyberPongGame {
       if (isP1Up) this.p1PaddleZ -= moveSpeed * dt;
       if (isP1Down) this.p1PaddleZ += moveSpeed * dt;
 
-      if (Math.abs(this.inputManager.normalizedDy) > 0.05) {
-        this.p1PaddleZ += this.inputManager.normalizedDy * moveSpeed * dt;
+      if (Math.abs(this.input.normalizedDy) > 0.05) {
+        this.p1PaddleZ += this.input.normalizedDy * moveSpeed * dt;
       }
     }
 

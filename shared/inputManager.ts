@@ -30,10 +30,6 @@ export class SharedInputManager {
   public keysPressed: Set<string> = new Set();
   public mouseX: number = window.innerWidth / 2;
   public mouseY: number = window.innerHeight / 2;
-
-  public isKeyPressed(keyOrCode: string): boolean {
-    return this.keysPressed.has(keyOrCode);
-  }
   public normalizedDx: number = 0;
   public normalizedDy: number = 0;
 
@@ -47,6 +43,16 @@ export class SharedInputManager {
     window.addEventListener('blur', () => this.keysPressed.clear());
 
     this.createTiltIndicator();
+  }
+
+  public isKeyPressed(keyOrCode: string): boolean {
+    if (keyOrCode === 'Escape' || keyOrCode === 'Esc') {
+      return this.keysPressed.has('Escape') || this.keysPressed.has('Esc') || this.keysPressed.has('KeyEscape');
+    }
+    if (keyOrCode === 'Space' || keyOrCode === ' ') {
+      return this.keysPressed.has('Space') || this.keysPressed.has(' ') || this.keysPressed.has('Spacebar');
+    }
+    return this.keysPressed.has(keyOrCode);
   }
 
   private createTiltIndicator() {

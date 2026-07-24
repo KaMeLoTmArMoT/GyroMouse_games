@@ -2,10 +2,11 @@ import { CranePhysicsManager } from '../physics/cranePhysics';
 import { CraneGraphicsManager } from '../graphics/craneGraphics';
 import { SharedAudioManager } from '../../../../shared/audioManager';
 import { MenuNav } from '../../../../shared/menuNav';
+import { BaseGame } from '../../../../shared/baseGame';
 
 export type GameState = 'IDLE' | 'SPAWNING' | 'PLAYING' | 'COUNTDOWN' | 'VICTORY' | 'GAME_OVER';
 
-export class CraneGameLogic {
+export class CraneGameLogic extends BaseGame {
   public state: GameState = 'IDLE';
 
   public currentLevel: number = 1;
@@ -24,7 +25,6 @@ export class CraneGameLogic {
   private modalDesc: HTMLElement | null = null;
   private modalBtn: HTMLElement | null = null;
 
-  public isPaused: boolean = false;
   private pauseModalOverlay: HTMLElement | null = null;
   private pauseMenuNav!: MenuNav;
 
@@ -34,11 +34,26 @@ export class CraneGameLogic {
   private modalMenuNav!: MenuNav;
 
   constructor(physics: CranePhysicsManager, graphics: CraneGraphicsManager, audio: SharedAudioManager) {
+    super();
     this.physics = physics;
     this.graphics = graphics;
     this.audio = audio;
 
     this.bindUI();
+  }
+
+  protected override onEscape() {
+    if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
+      this.togglePause();
+    }
+  }
+
+  protected override onSpace() {
+    if (this.isPaused) {
+      this.togglePause(false);
+    } else if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
+      this.triggerDropAction();
+    }
   }
 
   private bindUI() {
@@ -118,26 +133,10 @@ export class CraneGameLogic {
         }
       });
     }
-
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape' || e.key === 'Escape' || e.key === 'Esc') {
-        e.preventDefault();
-        if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
-          this.togglePause();
-        }
-      } else if (e.code === 'Space' || e.key === ' ' || e.key === 'Space') {
-        e.preventDefault();
-        if (this.isPaused) {
-          this.togglePause(false);
-        } else if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
-          this.triggerDropAction();
-        }
-      }
-    });
   }
 
-  public togglePause(forceState?: boolean) {
-    this.isPaused = forceState !== undefined ? forceState : !this.isPaused;
+  public override togglePause(forceState?: boolean) {
+    super.togglePause(forceState);
     if (this.isPaused) {
       this.pauseModalOverlay?.classList.add('active');
       this.pauseMenuNav?.activate();

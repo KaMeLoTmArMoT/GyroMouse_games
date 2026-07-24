@@ -6,12 +6,12 @@ An endless 3D obstacle runner game built with **Three.js** inspired by Subway Su
 
 ## 🕹️ Controls & Gameplay
 
-| Action | Control Key | Description |
+| Action | Control Keys | Description |
 |---|---|---|
-| **Steer Left** | `ArrowLeft` | Switch to the left lane |
-| **Steer Right** | `ArrowRight` | Switch to the right lane |
-| **Jump** | `ArrowUp` | Leap over low hurdles & low barriers |
-| **Slide / Crawl** | `ArrowDown` | Duck under high overhead arches & drop fast from air |
+| **Steer Left** | `ArrowLeft` / `A` | Switch to the left lane |
+| **Steer Right** | `ArrowRight` / `D` | Switch to the right lane |
+| **Jump** | `ArrowUp` / `W` | Leap over low hurdles & low barriers |
+| **Slide / Crawl** | `ArrowDown` / `S` | Duck under high overhead arches & drop fast from air |
 | **Pause** | `ESC` | Pause / resume game & show menu |
 
 ---

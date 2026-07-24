@@ -11,6 +11,7 @@
 
 ## Rules
 Do not run `npm run build` or `npm run dev` if i don't ask for it.
+STRICTLY FORBIDDEN: NEVER add mouse movement/cursor tilt controls (e.g. `mouseEnabled`, `pointermove` for game steering) to games unless explicitly requested. Controls must remain strictly keyboard-driven (WASD / Arrow keys / Space).
 
 ## Testing & Validation
 No test runner configured — validate changes manually via `npm run dev` and visual check in browser.
@@ -27,7 +28,7 @@ No test runner configured — validate changes manually via `npm run dev` and vi
 ## Architecture
 
 - **Physics tilt** is applied via gravity vector rotation on Rapier3D (not board rotation). The marble body has `setSleeping(false)` to avoid freezing.
-- **Input dual-mode**: `SharedInputManager` handles both GyroMouse (cursor offset) and keyboard (WASD/arrows). A `blur` listener clears `keysPressed` to prevent stuck keys.
+- **Input mode**: Standard keyboard controls (WASD/arrows). A `blur` listener clears `keysPressed` to prevent stuck keys.
 - **Audio muted by default**: `SharedAudioManager.isMuted = true`
 - **Seeded randomness**: `SeededRandom` (FNV hash + LCG) for reproducible mazes
 

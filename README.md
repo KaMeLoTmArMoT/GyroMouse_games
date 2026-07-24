@@ -71,29 +71,31 @@ GyroMouse_games/
 ## 🎮 Games & Status
 
 ### 1. 🔮 3D Marble Maze (`games/marble_maze/`)
-* **Perspective:** 100% Top-Down (90° overhead camera).
-* **Physics Engine:** Rapier3D static floor colliders with tilt simulated via gravity vector rotation $\vec{g}$. Marble body uses `setSleeping(false)` to prevent freezing on low input.
-* **Environments:** Winter (Snow/Ice/Asphalt), City (Asphalt/Dirt/Cobblestone), Forest (Grass/Dirt/Path) — with organic Voronoi terrain clusters and dynamic friction values.
-* **Pitfalls & Hazards:** Circular holes with variable radii (0.35m / 0.48m / 0.62m), off-center placement, and pure physical Y-drop detection.
-* **Controls:** Keyboard Arrow keys / WASD or GyroMouse tilt.
+* **Perspective:** Top-Down 90° overhead camera.
+* **Physics:** Rapier3D static floor colliders with gravity vector tilt simulation $\vec{g}$.
+* **Features:** Organic Voronoi terrain clusters (Snow/Ice/Asphalt, City, Forest), procedural pitfall holes, checkpoint respawns, and seed sharing.
+* **Controls:** Keyboard Arrow keys / `WASD` tilt. Pause via `ESC`.
 
 ### 2. 🏃‍♂️ 3D Subway Runner (`games/subway_runner/`)
-* **Perspective:** Elevated third-person runner camera.
+* **Perspective:** Third-person runner camera.
 * **Gameplay:** Endless 3-lane obstacle runner with chunk-based track generation, coin rings, trains, and low/high hurdles.
 * **Visuals:** Three.js directional sun + soft shadow mapping, glowing neon rail guides, speed particle streaks, background city skyline, and exponential fog.
-* **Controls:** Arrow Keys (`ArrowLeft`/`ArrowRight` for lanes, `ArrowUp` for Jump, `ArrowDown` for Slide, `ESC` for Pause).
+* **Controls:** Arrow Keys & `WASD` (`A`/`←` & `D`/`→` for lanes, `W`/`↑` for Jump, `S`/`↓` for Slide, `ESC` for Pause).
 
 ### 3. 🏗️ 3D Crane Tower (`games/crane_tower/`)
-* **Perspective:** Industrial depot 2D/3D profile view.
+* **Perspective:** Industrial depot profile view.
 * **Gameplay:** Cooperative dual-axis cargo stacker. Player 1 controls Hook Height (Y), Player 2 controls Trolley Position (X). Drop crates onto a train flatbed with Rapier3D physics.
-* **Physics & Features:** Cable pendulum equations with frequency-based energy scaling, elastic collision momentum transfer, side supply dock platform, configurable aim goal (3, 5, 7, 9, 11 boxes), and `localStorage` persistence.
-* **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Drop (`Space`).
+* **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Drop (`Space`), Pause (`ESC`).
 
 ### 4. 💥 3D Artillery Siege (`games/artillery_siege/`)
 * **Perspective:** Dynamic 3D behind-the-turret camera with automatic orbit follow & Tactical Radar overlay.
 * **Gameplay:** Cooperative dual-axis artillery bombardment. Player 1 controls Elevation Pitch & Power, Player 2 controls Turret Azimuth & Micro Wind Tuning.
-* **Physics & Features:** 2-stage aiming sequence, Rapier3D ballistics, instant direct-hit damage & target explosion physics, progressive sighting hints with ghost trajectory arcs, procedural sunset sky dome, grass/dirt ground map, and spotter recon feedback.
-* **Controls:** Player 1 (`Up`/`Down` pitch & power), Player 2 (`Left`/`Right` direction), Stage Lock / Fire (`Space`).
+* **Controls:** Player 1 (`Up`/`Down` pitch & power), Player 2 (`Left`/`Right` direction), Stage Lock / Fire (`Space`), Pause (`ESC`).
+
+### 5. 🏓 3D Cyber Air Hockey / Cyber Pong (`games/cyber_pong/`)
+* **Perspective:** 3D overhead neon arena view.
+* **Gameplay:** 1-Player vs AI Bot (3 difficulties) or 2-Player local versus air hockey with brick shield destruction.
+* **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Start/Pause (`Space` / `ESC`).
 
 ---
 
