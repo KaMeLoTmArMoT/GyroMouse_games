@@ -261,16 +261,32 @@
     <div class="controls-hint">
       <div>P1: <span class="key-badge">W</span>/<span class="key-badge">S</span> or <span class="key-badge">↑</span>/<span class="key-badge">↓</span> or <span class="key-badge">←</span>/<span class="key-badge">→</span></div>
       <div id="p2-controls-hint">P2: <span class="key-badge">W</span>/<span class="key-badge">S</span> or <span class="key-badge">↑</span>/<span class="key-badge">↓</span></div>
-      <div>Pause: <span class="key-badge">Space</span></div>
+      <div>Pause: <span class="key-badge">Space</span> / <span class="key-badge">ESC</span></div>
     </div>
   </div>
+
+  <!-- Start Overlay -->
+  <div id="start-modal" class="modal-overlay" style="background: rgba(9, 13, 22, 0.4); backdrop-filter: blur(8px); cursor: pointer;">
+    <div style="text-align: center; animation: pulsePrompt 1.5s infinite alternate;">
+      <h1 style="font-size: 3rem; margin-bottom: 12px; text-shadow: 0 0 20px rgba(56, 189, 248, 0.6); color: #fff;">🏓 3D Cyber Air Hockey</h1>
+      <p style="font-size: 1.6rem; font-weight: 800; color: #38bdf8; letter-spacing: 2px; text-transform: uppercase; background: rgba(15, 23, 42, 0.85); padding: 16px 32px; border-radius: 20px; border: 1px solid rgba(56, 189, 248, 0.4); display: inline-block;">
+        PRESS SPACE TO START
+      </p>
+    </div>
+  </div>
+  <style>
+    @keyframes pulsePrompt {
+      from { transform: scale(0.96); opacity: 0.85; }
+      to { transform: scale(1.04); opacity: 1; }
+    }
+  </style>
 
   <!-- Pause Overlay -->
   <div id="pause-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <h2 class="modal-title">GAME PAUSED</h2>
       <p class="modal-desc">Take a breath or resume the match!</p>
-      <button id="btn-resume" class="btn-action menu-focus">Resume Match (Space)</button>
+      <button id="btn-resume" class="btn-action menu-focus">Resume Match (Space / ESC)</button>
       <a href="../../index.html" class="nav-btn" style="justify-content: center;"><span style="font-size: 1.2rem;">🏠</span> Return to Hub</a>
     </div>
   </div>

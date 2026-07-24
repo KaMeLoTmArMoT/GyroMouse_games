@@ -171,5 +171,19 @@
       <div class="btn-play" style="background: linear-gradient(135deg, #0284c7, #f43f5e);">▶ Play Game</div>
     </a>
   </main>
+
+  <script type="module">
+    import { MenuNav } from './shared/menuNav.ts';
+    window.addEventListener('DOMContentLoaded', () => {
+      const grid = document.querySelector('.game-grid');
+      if (grid) {
+        const nav = new MenuNav({
+          container: grid,
+          buttonSelector: '.game-card'
+        });
+        nav.activate();
+      }
+    });
+  </script>
 </body>
 </html>

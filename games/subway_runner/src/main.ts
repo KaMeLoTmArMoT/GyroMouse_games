@@ -12,6 +12,7 @@ class SubwayRunnerGame {
   private collisionManager!: CollisionManager;
   private soundFX!: RunnerSoundFX;
   private gameOverMenuNav!: MenuNav;
+  private pauseMenuNav!: MenuNav;
 
   private isRunning: boolean = false;
   private isPaused: boolean = false;
@@ -41,6 +42,7 @@ class SubwayRunnerGame {
     this.collisionManager = new CollisionManager();
     this.soundFX = new RunnerSoundFX();
     this.gameOverMenuNav = new MenuNav({ container: this.gameoverScreenEl });
+    this.pauseMenuNav = new MenuNav({ container: this.pauseScreenEl });
 
     this.setupControls();
     this.setupUI();
@@ -99,8 +101,10 @@ class SubwayRunnerGame {
 
     if (this.isPaused) {
       this.pauseScreenEl.classList.remove('hidden');
+      this.pauseMenuNav.activate();
     } else {
       this.pauseScreenEl.classList.add('hidden');
+      this.pauseMenuNav.deactivate();
       this.lastTime = performance.now(); // Prevent large dt jump
     }
   }

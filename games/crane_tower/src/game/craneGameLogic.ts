@@ -24,6 +24,10 @@ export class CraneGameLogic {
   private modalDesc: HTMLElement | null = null;
   private modalBtn: HTMLElement | null = null;
 
+  public isPaused: boolean = false;
+  private pauseModalOverlay: HTMLElement | null = null;
+  private pauseMenuNav!: MenuNav;
+
   private physics: CranePhysicsManager;
   private graphics: CraneGraphicsManager;
   private audio: SharedAudioManager;
@@ -45,10 +49,18 @@ export class CraneGameLogic {
     this.modalTitle = document.getElementById('modal-title');
     this.modalDesc = document.getElementById('modal-desc');
     this.modalBtn = document.getElementById('modal-btn');
+    this.pauseModalOverlay = document.getElementById('pause-modal');
 
     if (this.modalOverlay) {
       this.modalMenuNav = new MenuNav({ container: this.modalOverlay });
     }
+    if (this.pauseModalOverlay) {
+      this.pauseMenuNav = new MenuNav({ container: this.pauseModalOverlay });
+    }
+
+    document.getElementById('btn-pause-resume')?.addEventListener('click', () => {
+      this.togglePause(false);
+    });
 
     if (this.modalBtn) {
       this.modalBtn.addEventListener('click', () => {
@@ -96,11 +108,31 @@ export class CraneGameLogic {
     }
 
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
+      if (e.code === 'Escape') {
         e.preventDefault();
-        this.triggerDropAction();
+        if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
+          this.togglePause();
+        }
+      } else if (e.code === 'Space') {
+        e.preventDefault();
+        if (this.isPaused) {
+          this.togglePause(false);
+        } else if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
+          this.triggerDropAction();
+        }
       }
     });
+  }
+
+  public togglePause(forceState?: boolean) {
+    this.isPaused = forceState !== undefined ? forceState : !this.isPaused;
+    if (this.isPaused) {
+      this.pauseModalOverlay?.classList.add('active');
+      this.pauseMenuNav?.activate();
+    } else {
+      this.pauseModalOverlay?.classList.remove('active');
+      this.pauseMenuNav?.deactivate();
+    }
   }
 
   public startLevel(level: number = 1, customTargetCount?: number) {

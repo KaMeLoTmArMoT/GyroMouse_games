@@ -29,6 +29,7 @@ export class HudManager {
 
   private fallMenuNav!: MenuNav;
   private winMenuNav!: MenuNav;
+  private settingsMenuNav!: MenuNav;
 
   constructor(callbacks: HudCallbacks) {
     this.callbacks = callbacks;
@@ -50,6 +51,7 @@ export class HudManager {
 
     this.fallMenuNav = new MenuNav({ container: this.fallModal });
     this.winMenuNav = new MenuNav({ container: this.winModal });
+    this.settingsMenuNav = new MenuNav({ container: this.settingsModal, buttonSelector: 'button, input, select' });
 
     document.getElementById('btn-restart')?.addEventListener('click', () => this.callbacks.onRestart());
     document.getElementById('btn-new-level')?.addEventListener('click', () => this.callbacks.onNewRandom());
@@ -79,10 +81,13 @@ export class HudManager {
     });
 
     document.addEventListener('keydown', (e) => {
-      if (!this.settingsModal.classList.contains('active')) return;
       if (e.key === 'Escape') {
-        this.closeSettingsModal();
-      } else if (e.key === 'Enter') {
+        if (this.settingsModal.classList.contains('active')) {
+          this.closeSettingsModal();
+        } else {
+          this.openSettingsModal();
+        }
+      } else if (e.key === 'Enter' && this.settingsModal.classList.contains('active')) {
         this.saveSettings();
       }
     });
@@ -169,6 +174,7 @@ export class HudManager {
 
    public openSettingsModal() {
     this.settingsModal.classList.add('active');
+    this.settingsMenuNav.activate();
    }
 
    public updateDebugPathSetting(enabled: boolean) {
@@ -180,6 +186,7 @@ export class HudManager {
 
   public closeSettingsModal() {
     this.settingsModal.classList.remove('active');
+    this.settingsMenuNav.deactivate();
   }
 
   private saveSettings() {

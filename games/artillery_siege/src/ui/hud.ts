@@ -24,6 +24,9 @@ export class ArtilleryHUD {
   private modalBtn: HTMLElement;
   private modalMenuNav: MenuNav;
 
+  private pauseModalOverlay: HTMLElement;
+  private pauseMenuNav: MenuNav;
+
   constructor() {
     this.radarCanvas = document.getElementById('radar-canvas') as HTMLCanvasElement;
     this.radarCtx = this.radarCanvas.getContext('2d')!;
@@ -46,6 +49,37 @@ export class ArtilleryHUD {
     this.modalDesc = document.getElementById('modal-desc')!;
     this.modalBtn = document.getElementById('modal-btn')!;
     this.modalMenuNav = new MenuNav({ container: this.modalOverlay });
+
+    this.pauseModalOverlay = document.getElementById('pause-modal')!;
+    this.pauseMenuNav = new MenuNav({ container: this.pauseModalOverlay });
+  }
+
+  public togglePauseModal(isPaused: boolean, onResume?: () => void) {
+    if (isPaused) {
+      this.pauseModalOverlay.classList.add('active');
+      this.pauseMenuNav.activate();
+      const btn = document.getElementById('btn-pause-resume');
+      if (btn && onResume) {
+        btn.onclick = () => onResume();
+      }
+    } else {
+      this.pauseModalOverlay.classList.remove('active');
+      this.pauseMenuNav.deactivate();
+    }
+  }
+
+  public showModal(title: string, desc: string, btnText: string, onBtnClick: () => void) {
+    this.modalTitle.innerText = title;
+    this.modalDesc.innerText = desc;
+    this.modalBtn.innerText = btnText;
+    this.modalOverlay.classList.add('active');
+    this.modalMenuNav.activate();
+
+    this.modalBtn.onclick = () => {
+      this.modalOverlay.classList.remove('active');
+      this.modalMenuNav.deactivate();
+      onBtnClick();
+    };
   }
 
   public updateStats(level: number, hitTargets: number, totalTargets: number, shellsLeft: number) {
@@ -179,19 +213,5 @@ export class ArtilleryHUD {
     ctx.beginPath();
     ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
     ctx.fill();
-  }
-
-  public showModal(title: string, desc: string, btnText: string, onBtnClick: () => void) {
-    this.modalTitle.innerText = title;
-    this.modalDesc.innerText = desc;
-    this.modalBtn.innerText = btnText;
-    this.modalOverlay.classList.add('active');
-    this.modalMenuNav.activate();
-
-    this.modalBtn.onclick = () => {
-      this.modalOverlay.classList.remove('active');
-      this.modalMenuNav.deactivate();
-      onBtnClick();
-    };
   }
 }

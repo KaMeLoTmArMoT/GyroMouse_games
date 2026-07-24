@@ -62,16 +62,18 @@ async function main() {
     // Check magnet active state (Space key or UI drop button)
     const isMagnetActive = Boolean(keys && keys.has('Space'));
 
-    // Update Crane Hook movement
-    if (game.state === 'PLAYING' || game.state === 'COUNTDOWN') {
-      physics.updateCranePosition(inputX, inputY, dt, isMagnetActive);
+    if (!game.isPaused) {
+      // Update Crane Hook movement
+      if (game.state === 'PLAYING' || game.state === 'COUNTDOWN') {
+        physics.updateCranePosition(inputX, inputY, dt, isMagnetActive);
+      }
+
+      // Step Physics
+      physics.step(dt);
+
+      // Update Game Rules & Countdown
+      game.update(dt);
     }
-
-    // Step Physics
-    physics.step(dt);
-
-    // Update Game Rules & Countdown
-    game.update(dt);
 
     // Sync 3D Graphics
     graphics.syncGraphics(physics);

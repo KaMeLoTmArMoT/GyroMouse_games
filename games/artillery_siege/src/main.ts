@@ -28,6 +28,8 @@ class ArtilleryGame {
   public isLevelComplete: boolean = false;
   public isGameOver: boolean = false;
 
+  public isPaused: boolean = false;
+
   // Key tracking
   private keysPressed: Set<string> = new Set();
   private spaceDebounce: boolean = false;
@@ -65,13 +67,29 @@ class ArtilleryGame {
     requestAnimationFrame(tick);
   }
 
+  private togglePause(forceState?: boolean) {
+    if (this.isLevelComplete || this.isGameOver) return;
+    this.isPaused = forceState !== undefined ? forceState : !this.isPaused;
+    this.hud.togglePauseModal(this.isPaused, () => this.togglePause(false));
+  }
+
   private setupEventListeners() {
     window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        this.togglePause();
+        return;
+      }
+
       this.keysPressed.add(e.code);
       this.keysPressed.add(e.key);
 
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
+        if (this.isPaused) {
+          this.togglePause(false);
+          return;
+        }
         if (!this.spaceDebounce) {
           this.spaceDebounce = true;
           this.handleSpaceAction();
@@ -176,6 +194,8 @@ class ArtilleryGame {
   }
 
   private update(dt: number) {
+    if (this.isPaused) return;
+
     // 1. Process Input depending on Stage
     if (this.currentStage === 1 && (!this.physics.activeBall || !this.physics.activeBall.active)) {
       // Player 1 Elevation Pitch (Up lowers pitch, Down raises pitch)

@@ -23,6 +23,7 @@ export class CyberPongGame {
   public p2BricksCleared: number = 0;
   public totalBricksPerSide: number = 6;
 
+  public isStarted: boolean = false;
   public isPaused: boolean = false;
   public isGameOver: boolean = false;
   private lastTime: number = 0;
@@ -34,6 +35,7 @@ export class CyberPongGame {
   private modeSelectEl!: HTMLSelectElement;
   private diffSelectEl!: HTMLSelectElement;
   private btnAudioEl!: HTMLButtonElement;
+  private startModalEl!: HTMLElement;
   private pauseModalEl!: HTMLElement;
   private gameoverModalEl!: HTMLElement;
   private winnerTitleEl!: HTMLElement;
@@ -85,12 +87,15 @@ export class CyberPongGame {
     this.modeSelectEl = document.getElementById('mode-select') as HTMLSelectElement;
     this.diffSelectEl = document.getElementById('diff-select') as HTMLSelectElement;
     this.btnAudioEl = document.getElementById('btn-audio') as HTMLButtonElement;
+    this.startModalEl = document.getElementById('start-modal')!;
     this.pauseModalEl = document.getElementById('pause-modal')!;
     this.gameoverModalEl = document.getElementById('gameover-modal')!;
     this.winnerTitleEl = document.getElementById('winner-title')!;
     this.winnerDescEl = document.getElementById('winner-desc')!;
     this.btnResumeEl = document.getElementById('btn-resume') as HTMLButtonElement;
     this.btnRestartEl = document.getElementById('btn-restart') as HTMLButtonElement;
+
+    this.startModalEl.addEventListener('click', () => this.startGame());
 
     // Load saved settings from localStorage on F5 reload
     const savedMode = localStorage.getItem('cyberpong-mode');
@@ -137,8 +142,28 @@ export class CyberPongGame {
     this.btnRestartEl.addEventListener('click', () => this.resetMatch());
   }
 
+  private startGame() {
+    this.isStarted = true;
+    this.isPaused = false;
+    this.startModalEl.classList.add('hidden');
+    this.lastTime = performance.now();
+  }
+
   private handleGlobalInput(e: KeyboardEvent) {
-    if (e.code === 'Space') {
+    if (!this.isStarted) {
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        this.startGame();
+      }
+      return;
+    }
+
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      if (!this.isGameOver) {
+        this.togglePause();
+      }
+    } else if (e.code === 'Space') {
       e.preventDefault();
       if (this.isGameOver) {
         this.resetMatch();
@@ -310,7 +335,7 @@ export class CyberPongGame {
     const dt = Math.min(0.05, (time - this.lastTime) / 1000);
     this.lastTime = time;
 
-    if (!this.isPaused && !this.isGameOver) {
+    if (this.isStarted && !this.isPaused && !this.isGameOver) {
       this.updatePlayerMovement(dt);
 
       const isP1AllCleared = this.p1BricksCleared >= this.totalBricksPerSide;
