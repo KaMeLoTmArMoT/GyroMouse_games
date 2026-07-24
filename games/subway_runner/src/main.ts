@@ -5,6 +5,7 @@ import { CollisionManager } from './game/collisionManager';
 import { RunnerSoundFX } from './audio/soundFX';
 import { MenuNav } from '../../../shared/menuNav';
 import { BaseGame } from '../../../shared/baseGame';
+import { SettingsOverlay } from '../../../shared/settingsOverlay';
 
 class SubwayRunnerGame extends BaseGame {
   private sceneManager!: SceneManager;
@@ -14,6 +15,7 @@ class SubwayRunnerGame extends BaseGame {
   private soundFX!: RunnerSoundFX;
   private gameOverMenuNav!: MenuNav;
   private pauseMenuNav!: MenuNav;
+  public settingsOverlay: SettingsOverlay;
 
   private isRunning: boolean = false;
   private lastTime: number = 0;
@@ -33,6 +35,10 @@ class SubwayRunnerGame extends BaseGame {
 
   constructor() {
     super();
+    this.settingsOverlay = new SettingsOverlay({
+      gameId: 'subway_runner',
+      inputManager: this.input
+    });
     const container = document.getElementById('canvas-container')!;
     this.sceneManager = new SceneManager(container);
     this.runner = new Runner(this.sceneManager.scene);

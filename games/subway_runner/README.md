@@ -42,6 +42,7 @@ An endless 3D obstacle runner game built with **Three.js** inspired by Subway Su
 | [`src/game/collisionManager.ts`](src/game/collisionManager.ts) | 3D bounding box intersection logic for hurdle clearances, train crashes & coin pickups. |
 | [`src/graphics/sceneManager.ts`](src/graphics/sceneManager.ts) | Three.js scene setup, smooth tracking camera, speed particles & directional light follow. |
 | [`src/audio/soundFX.ts`](src/audio/soundFX.ts) | Synthesized Web Audio API sound effects for jump, slide, coin collect, and crash. |
+| [`../../../shared/settingsOverlay.ts`](../../../shared/settingsOverlay.ts) | In-game settings modal (`⚙️` icon / `ESC`) with Control Mode, Sensitivity & Invert X/Y stored in `localStorage`. |
 
 ---
 

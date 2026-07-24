@@ -32,6 +32,10 @@ No test runner configured — validate changes manually via `npm run dev` and vi
   - Listens to WASD / Arrow keys with `blur` cleanup listener to prevent stuck keys.
   - Automatically connects to GyroMouse WebSocket server at `ws://127.0.0.1:5006` (with auto-reconnect).
   - Supports `GyroInputState`, zero-point calibration (`reCenter()` via `KeyC` or `calibrate` payload button), and normalized steering extraction (`getSteeringValue()`).
+- **Settings Overlay**: `SettingsOverlay` (`shared/settingsOverlay.ts`, `shared/settingsOverlay.css`).
+  - Opens on `ESC` key or floating `⚙️` gear icon. Auto-saves settings (`mode`, `sensitivity`, `invertX`, `invertY`) to `localStorage` (`gyromouse_settings_<game_id>`).
+- **2D Menu Grid Navigation**: `MenuNav` (`shared/menuNav.ts`).
+  - Navigates elements spatially in 2D grid space (`Up`/`Down`/`Left`/`Right`) using bounding client rects.
 - **Audio muted by default**: `SharedAudioManager.isMuted = true`
 - **Seeded randomness**: `SeededRandom` (FNV hash + LCG) for reproducible mazes
 

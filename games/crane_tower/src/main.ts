@@ -1,5 +1,6 @@
 import { SharedInputManager } from '../../../shared/inputManager';
 import { SharedAudioManager } from '../../../shared/audioManager';
+import { SettingsOverlay } from '../../../shared/settingsOverlay';
 import { CranePhysicsManager } from './physics/cranePhysics';
 import { CraneGraphicsManager } from './graphics/craneGraphics';
 import { CraneGameLogic } from './game/craneGameLogic';
@@ -15,6 +16,11 @@ async function main() {
   const audio = new SharedAudioManager();
   const input = new SharedInputManager();
   input.settings.mode = 'keyboard'; // Dual split keyboard / gyromouse
+
+  void new SettingsOverlay({
+    gameId: 'crane_tower',
+    inputManager: input
+  });
 
   // 2. Initialize Physics & Graphics
   const physics = new CranePhysicsManager();

@@ -18,7 +18,11 @@ GyroMouse_games/
 │
 ├── shared/                    # 🧬 Shared Core Infrastructure
 │   ├── inputManager.ts        # Input module (WASD/Arrows & GyroMouse WebSocket at ws://127.0.0.1:5006, Re-Center, getSteeringValue)
-│   └── audioManager.ts        # Web Audio API sound synthesizer (Muted by default)
+│   ├── settingsOverlay.ts     # In-game settings modal (Gyro/Pointer/Keyboard mode, sensitivity 0.2x-3.0x, invert X/Y, auto localStorage)
+│   ├── settingsOverlay.css    # Sleek dark/neon glassmorphism styles for settings overlay modal & floating gear button
+│   ├── menuNav.ts             # 2D spatial grid keyboard navigation manager using element bounding rects
+│   ├── audioManager.ts        # Web Audio API sound synthesizer (Muted by default)
+│   └── baseGame.ts            # Abstract BaseGame controller with unified key & pause handling
 │
 ├── games/                     # 🎮 Web Games
 │   ├── marble_maze/           # 🔮 3D Marble Maze (Top-down view, Rapier3D physics & terrain types)
@@ -112,6 +116,17 @@ All games automatically receive gyroscope stream data via `SharedInputManager` f
 * **Auto-connect & Reconnect:** Automatically connects on launch and reconnects every 2s if connection is dropped.
 * **Re-Center Calibration:** Press **`C`** on keyboard or send `"buttons": { "calibrate": true }` to reset zero tilt reference.
 * **Unified Steering:** Exposes `getSteeringValue({ deadzone, sensitivity, invertX, invertY })` returning normalized `{ x, y }` values `[-1.0..1.0]`. Fallback to WASD/Arrows when no live gyro data is connected.
+
+---
+
+## ⚙️ In-Game Settings & 2D Grid Navigation
+
+* **⚙️ Settings Overlay (`shared/settingsOverlay.ts`):** Press **`ESC`** key or click the floating **`⚙️`** gear icon in the top-right corner in any game to customize:
+  1. **Control Mode**: Dropdown (`Gyro Motion / Analog`, `Air Mouse / Pointer`, `Keyboard / WASD`).
+  2. **Sensitivity Multiplier**: Slider (`0.2x` to `3.0x`).
+  3. **Axis Inversion**: Checkboxes for `Invert X` and `Invert Y`.
+  - Preferences auto-save to `localStorage` under `gyromouse_settings_<game_id>` and restore automatically on page refresh (`F5`).
+* **🛠️ 2D Grid Menu Navigation (`shared/menuNav.ts`):** Menu navigation operates as a true 2D spatial grid using element bounding rects. Pressing or tilting `Down` / `Up` / `Left` / `Right` moves focus strictly to the adjacent element in 2D space.
 
 ---
 

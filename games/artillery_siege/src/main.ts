@@ -3,6 +3,7 @@ import { ArtilleryGraphicsManager } from './graphics/artilleryGraphics';
 import { ArtilleryPhysicsManager } from './physics/artilleryPhysics';
 import { ArtilleryHUD } from './ui/hud';
 import { BaseGame } from '../../../shared/baseGame';
+import { SettingsOverlay } from '../../../shared/settingsOverlay';
 import * as THREE from 'three';
 
 class ArtilleryGame extends BaseGame {
@@ -10,6 +11,7 @@ class ArtilleryGame extends BaseGame {
   private graphics: ArtilleryGraphicsManager;
   private hud: ArtilleryHUD;
   private audio: SharedAudioManager;
+  public settingsOverlay: SettingsOverlay;
 
   // Game Loop & State
   private currentLevel: number = 1;
@@ -39,6 +41,10 @@ class ArtilleryGame extends BaseGame {
     this.graphics = new ArtilleryGraphicsManager();
     this.audio = new SharedAudioManager();
     this.hud = new ArtilleryHUD();
+    this.settingsOverlay = new SettingsOverlay({
+      gameId: 'artillery_siege',
+      inputManager: this.input
+    });
 
     this.init();
   }

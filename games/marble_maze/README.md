@@ -59,6 +59,8 @@ Surfaces are generated in **organic clusters** (Voronoi seed placement) rather t
 | [`src/maze/mazeGenerator.ts`](src/maze/mazeGenerator.ts) | **DFS Generator:** Themes, organic Voronoi biome clusters, dynamic `HoleConfig`. |
 | [`src/ui/hudManager.ts`](src/ui/hudManager.ts) | **UI HUD:** Timer, coin counter, terrain badge (7 types + icons), seed copying, modals. |
 | [`../../../shared/inputManager.ts`](../../../shared/inputManager.ts) | **Shared Input:** WASD/Arrows + GyroMouse WebSocket `ws://127.0.0.1:5006`, Re-Center (`KeyC`), `getSteeringValue()`. |
+| [`../../../shared/settingsOverlay.ts`](../../../shared/settingsOverlay.ts) | **Settings Overlay:** Floating `⚙️` gear icon / `ESC` modal for mode, sensitivity & axis inversion auto-persisted in `localStorage`. |
+| [`../../../shared/settingsOverlay.css`](../../../shared/settingsOverlay.css) | **Overlay CSS:** Glassmorphism neon dark theme styles for settings dialog & gear button. |
 | [`../../../shared/audioManager.ts`](../../../shared/audioManager.ts) | **Shared Audio:** Web Audio API sound synthesizer (muted by default). |
 
 ---

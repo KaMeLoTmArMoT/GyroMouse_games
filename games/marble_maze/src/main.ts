@@ -4,6 +4,7 @@ import { SceneManager } from './graphics/sceneManager';
 import { SharedInputManager as InputManager, InputSettings } from '../../../shared/inputManager';
 import { SharedAudioManager as AudioManager } from '../../../shared/audioManager';
 import { HudManager } from './ui/hudManager';
+import { SettingsOverlay } from '../../../shared/settingsOverlay';
 
 class Game {
   private physicsManager: PhysicsManager;
@@ -11,6 +12,7 @@ class Game {
   private inputManager: InputManager;
   private audioManager: AudioManager;
   private hudManager: HudManager;
+  public settingsOverlay: SettingsOverlay;
 
   private currentMaze!: MazeData;
   private currentDifficulty: string = 'medium';
@@ -32,6 +34,10 @@ class Game {
     this.physicsManager = new PhysicsManager();
     this.inputManager = new InputManager();
     this.audioManager = new AudioManager();
+    this.settingsOverlay = new SettingsOverlay({
+      gameId: 'marble_maze',
+      inputManager: this.inputManager
+    });
 
     this.hudManager = new HudManager({
       onRestart: (fromCheckpoint?: boolean) => this.restartLevel(fromCheckpoint),

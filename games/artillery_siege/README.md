@@ -39,6 +39,7 @@ A cooperative 2-Player / Dual-Axis 3D artillery bombardment game built with **Th
 | [`src/physics/artilleryPhysics.ts`](src/physics/artilleryPhysics.ts) | Rapier3D physics manager, ground plane collider, target rigidbodies, shell ballistics, instant direct-hit detection. |
 | [`src/graphics/artilleryGraphics.ts`](src/graphics/artilleryGraphics.ts) | Three.js visual scene, procedural dusk sunset sky dome, grass/dirt ground texture, metallic cannon model, recoil animation, explosion particles. |
 | [`src/ui/hud.ts`](src/ui/hud.ts) | Canvas-based tactical radar map renderer, 2-stage HUD switcher, power bar display, spotter feedback log. |
+| [`../../../shared/settingsOverlay.ts`](../../../shared/settingsOverlay.ts) | In-game settings modal (`⚙️` icon / `ESC`) with Control Mode, Sensitivity & Invert X/Y stored in `localStorage`. |
 
 ---
 

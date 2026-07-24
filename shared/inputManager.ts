@@ -1,4 +1,4 @@
-export type ControlMode = 'gyromouse' | 'keyboard' | 'both';
+export type ControlMode = 'gyromouse' | 'pointer' | 'keyboard' | 'both';
 
 export interface InputSettings {
   mode: ControlMode;

@@ -36,6 +36,7 @@ A 3D cyberpunk air-hockey & brick breaker fusion built with **Three.js**, **Rapi
 | [`src/graphics/ArenaRenderer.ts`](src/graphics/ArenaRenderer.ts) | Three.js scene, neon bloom arena, glowing paddle/puck meshes, dynamic particle trails. |
 | [`src/physics/PhysicsWorld.ts`](src/physics/PhysicsWorld.ts) | Rapier3D rigid body physics, kinematic paddles, dynamic puck reflection & brick destruction. |
 | [`src/ai/AIBotController.ts`](src/ai/AIBotController.ts) | Autonomous opponent AI with trajectory extrapolation & reaction speed curves. |
+| [`../../../shared/settingsOverlay.ts`](../../../shared/settingsOverlay.ts) | In-game settings modal (`⚙️` icon / `ESC`) with Control Mode, Sensitivity & Invert X/Y stored in `localStorage`. |
 
 ---
 

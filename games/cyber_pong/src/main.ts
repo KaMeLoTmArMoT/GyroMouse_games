@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SharedAudioManager } from '../../../shared/audioManager';
 import { MenuNav } from '../../../shared/menuNav';
 import { BaseGame } from '../../../shared/baseGame';
+import { SettingsOverlay } from '../../../shared/settingsOverlay';
 import { ArenaRenderer } from './graphics/ArenaRenderer';
 import { PhysicsWorld } from './physics/PhysicsWorld';
 import { AIBotController, AIDifficulty } from './ai/AIBotController';
@@ -11,6 +12,7 @@ export class CyberPongGame extends BaseGame {
   private physicsWorld!: PhysicsWorld;
   private aiBot!: AIBotController;
   private audioManager!: SharedAudioManager;
+  public settingsOverlay!: SettingsOverlay;
 
   // Game Settings & State
   public mode: '1p' | '2p' = '1p';
@@ -61,6 +63,10 @@ export class CyberPongGame extends BaseGame {
     this.renderer = new ArenaRenderer(canvas);
     this.audioManager = new SharedAudioManager();
     this.aiBot = new AIBotController('medium');
+    this.settingsOverlay = new SettingsOverlay({
+      gameId: 'cyber_pong',
+      inputManager: this.input
+    });
 
     this.physicsWorld = await PhysicsWorld.create(
       (id, side) => this.onBrickDestroyed(id, side),

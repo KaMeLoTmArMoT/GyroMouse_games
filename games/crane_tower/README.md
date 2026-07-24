@@ -41,6 +41,7 @@ A cooperative 2-Player / Dual-Axis 3D physics cargo stacker built with **Three.j
 | [`src/physics/cranePhysics.ts`](src/physics/cranePhysics.ts) | Rapier3D physics manager, pendulum angular acceleration, kinematic magnet body, crate colliders, momentum transfer logic. |
 | [`src/graphics/craneGraphics.ts`](src/graphics/craneGraphics.ts) | Three.js scene setup, industrial depot environment, yellow gantry beam, cable lines, magnet LED indicator, train flatbed. |
 | [`src/game/craneGameLogic.ts`](src/game/craneGameLogic.ts) | Level state machine, Aim Goal selector integration, 5s countdown, victory train animation, `localStorage` persistence. |
+| [`../../../shared/settingsOverlay.ts`](../../../shared/settingsOverlay.ts) | In-game settings modal (`⚙️` icon / `ESC`) with Control Mode, Sensitivity & Invert X/Y stored in `localStorage`. |
 
 ---
 
