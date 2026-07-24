@@ -1,6 +1,6 @@
 # GyroMouse Web Games 🎯🕹️
 
-A high-performance suite of 3D web games engineered for local execution, zero hosting, and seamless smartphone control via **GyroMouse** (Android Air-Mouse app) or physical keyboard inputs.
+A high-performance suite of 3D web games engineered for local execution, zero hosting, and seamless smartphone control via **GyroMouse** (Android Air-Mouse app over WebSocket) or physical keyboard inputs.
 
 ---
 
@@ -17,7 +17,7 @@ GyroMouse_games/
 ├── AGENTS.md                  # Project rules & guidelines
 │
 ├── shared/                    # 🧬 Shared Core Infrastructure
-│   ├── inputManager.ts        # Dual-input parser (Keyboard WASD/Arrows & GyroMouse cursor vectors)
+│   ├── inputManager.ts        # Input module (WASD/Arrows & GyroMouse WebSocket at ws://127.0.0.1:5006, Re-Center, getSteeringValue)
 │   └── audioManager.ts        # Web Audio API sound synthesizer (Muted by default)
 │
 ├── games/                     # 🎮 Web Games
@@ -36,7 +36,12 @@ GyroMouse_games/
 │   │   ├── README.md          # Game documentation & handoff state
 │   │   └── src/
 │   │
-│   └── artillery_siege/       # 💥 3D Artillery Siege (Cooperative dual-axis artillery bombardment)
+│   ├── artillery_siege/       # 💥 3D Artillery Siege (Cooperative dual-axis artillery bombardment)
+│   │   ├── index.html
+│   │   ├── README.md          # Game documentation & handoff state
+│   │   └── src/
+│   │
+│   └── cyber_pong/            # 🏓 3D Cyber Air Hockey / Cyber Pong (1P vs AI Bot & 2P local split-screen)
 │       ├── index.html
 │       ├── README.md          # Game documentation & handoff state
 │       └── src/
@@ -65,6 +70,7 @@ GyroMouse_games/
    - **3D Subway Runner:** `http://localhost:5173/games/subway_runner/index.html`
    - **3D Crane Tower:** `http://localhost:5173/games/crane_tower/index.html`
    - **3D Artillery Siege:** `http://localhost:5173/games/artillery_siege/index.html`
+   - **3D Cyber Air Hockey:** `http://localhost:5173/games/cyber_pong/index.html`
 
 ---
 
@@ -74,7 +80,7 @@ GyroMouse_games/
 * **Perspective:** Top-Down 90° overhead camera.
 * **Physics:** Rapier3D static floor colliders with gravity vector tilt simulation $\vec{g}$.
 * **Features:** Organic Voronoi terrain clusters (Snow/Ice/Asphalt, City, Forest), procedural pitfall holes, checkpoint respawns, and seed sharing.
-* **Controls:** Keyboard Arrow keys / `WASD` tilt. Pause via `ESC`.
+* **Controls:** GyroMouse tilt / Keyboard Arrow keys / `WASD`. Re-Center with `C`. Pause via `ESC`.
 
 ### 2. 🏃‍♂️ 3D Subway Runner (`games/subway_runner/`)
 * **Perspective:** Third-person runner camera.
@@ -96,6 +102,16 @@ GyroMouse_games/
 * **Perspective:** 3D overhead neon arena view.
 * **Gameplay:** 1-Player vs AI Bot (3 difficulties) or 2-Player local versus air hockey with brick shield destruction.
 * **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Start/Pause (`Space` / `ESC`).
+
+---
+
+## 📡 GyroMouse Input & WebSocket Protocol
+
+All games automatically receive gyroscope stream data via `SharedInputManager` from the GyroMouse WebSocket server (`ws://127.0.0.1:5006`).
+
+* **Auto-connect & Reconnect:** Automatically connects on launch and reconnects every 2s if connection is dropped.
+* **Re-Center Calibration:** Press **`C`** on keyboard or send `"buttons": { "calibrate": true }` to reset zero tilt reference.
+* **Unified Steering:** Exposes `getSteeringValue({ deadzone, sensitivity, invertX, invertY })` returning normalized `{ x, y }` values `[-1.0..1.0]`. Fallback to WASD/Arrows when no live gyro data is connected.
 
 ---
 

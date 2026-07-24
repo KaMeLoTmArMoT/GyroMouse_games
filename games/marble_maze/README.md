@@ -40,7 +40,9 @@ Surfaces are generated in **organic clusters** (Voronoi seed placement) rather t
 | Sand / Dirt / Mud | 0.90–0.95 | Heavy resistance / deceleration |
 
 #### ⌨️ Input Handling (InputManager)
-- Captures both `e.code` and `e.key` for maximum compatibility with physical keyboards, `pyautogui`, and Chrome Extension `dispatchEvent` (where `e.code` might be empty).
+- Captures both `e.code` and `e.key` for maximum compatibility with physical keyboards, `pyautogui`, and Chrome Extension `dispatchEvent`.
+- Auto-connects to GyroMouse WebSocket stream at `ws://127.0.0.1:5006` with auto-reconnect.
+- Supports zero-point calibration (Re-Center via `KeyC` hotkey or `calibrate` payload button).
 - `window.blur` listener clears `keysPressed` to prevent stuck arrow keys when switching windows or opening DevTools (F12).
 - Default mode: `mode: 'keyboard'`, `mouseEnabled: false` (toggleable in ⚙️ Settings).
 - **Audio:** Muted by default (`isMuted: true`).
@@ -56,7 +58,7 @@ Surfaces are generated in **organic clusters** (Voronoi seed placement) rather t
 | [`src/graphics/sceneManager.ts`](src/graphics/sceneManager.ts) | **Three.js:** Top-down camera, materials for 7 terrain types, biome atmosphere, hole rendering. |
 | [`src/maze/mazeGenerator.ts`](src/maze/mazeGenerator.ts) | **DFS Generator:** Themes, organic Voronoi biome clusters, dynamic `HoleConfig`. |
 | [`src/ui/hudManager.ts`](src/ui/hudManager.ts) | **UI HUD:** Timer, coin counter, terrain badge (7 types + icons), seed copying, modals. |
-| [`../../../shared/inputManager.ts`](../../../shared/inputManager.ts) | **Shared Input:** WASD/Arrow keys + GyroMouse air-mouse. `e.code`+`e.key` fix, `blur`-clear fix. |
+| [`../../../shared/inputManager.ts`](../../../shared/inputManager.ts) | **Shared Input:** WASD/Arrows + GyroMouse WebSocket `ws://127.0.0.1:5006`, Re-Center (`KeyC`), `getSteeringValue()`. |
 | [`../../../shared/audioManager.ts`](../../../shared/audioManager.ts) | **Shared Audio:** Web Audio API sound synthesizer (muted by default). |
 
 ---
