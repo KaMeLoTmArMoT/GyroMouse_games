@@ -75,7 +75,7 @@ class ArtilleryGame {
 
   private setupEventListeners() {
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape') {
+      if (e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc') {
         e.preventDefault();
         this.togglePause();
         return;
@@ -200,36 +200,36 @@ class ArtilleryGame {
     if (this.currentStage === 1 && (!this.physics.activeBall || !this.physics.activeBall.active)) {
       // Player 1 Elevation Pitch (Up lowers pitch, Down raises pitch)
       if (this.keysPressed.has('ArrowUp') || this.keysPressed.has('KeyW')) {
-        this.pitchDeg = Math.max(10.0, this.pitchDeg - dt * 25.0);
+        this.pitchDeg = Math.max(10.0, this.pitchDeg - dt * 17.0);
       }
       if (this.keysPressed.has('ArrowDown') || this.keysPressed.has('KeyS')) {
-        this.pitchDeg = Math.min(75.0, this.pitchDeg + dt * 25.0);
+        this.pitchDeg = Math.min(75.0, this.pitchDeg + dt * 17.0);
       }
 
       // Player 2 Azimuth Direction (Right = Turn Right, Left = Turn Left)
       if (this.keysPressed.has('ArrowRight') || this.keysPressed.has('KeyD')) {
-        this.yawDeg = Math.min(50.0, this.yawDeg + dt * 30.0);
+        this.yawDeg = Math.min(50.0, this.yawDeg + dt * 20.0);
       }
       if (this.keysPressed.has('ArrowLeft') || this.keysPressed.has('KeyA')) {
-        this.yawDeg = Math.max(-50.0, this.yawDeg - dt * 30.0);
+        this.yawDeg = Math.max(-50.0, this.yawDeg - dt * 20.0);
       }
 
       this.hud.updateAimValues(this.pitchDeg, this.yawDeg);
     } else if (this.currentStage === 2) {
       // P1 100% Manual Power adjustment (Up increases, Down decreases)
       if (this.keysPressed.has('ArrowUp') || this.keysPressed.has('KeyW')) {
-        this.powerMps = Math.min(65.0, this.powerMps + dt * 35.0);
+        this.powerMps = Math.min(65.0, this.powerMps + dt * 23.0);
       }
       if (this.keysPressed.has('ArrowDown') || this.keysPressed.has('KeyS')) {
-        this.powerMps = Math.max(15.0, this.powerMps - dt * 35.0);
+        this.powerMps = Math.max(15.0, this.powerMps - dt * 23.0);
       }
 
       // P2 Micro Wind / Angle Adjust (Right = Turn Right, Left = Turn Left)
       if (this.keysPressed.has('ArrowRight') || this.keysPressed.has('KeyD')) {
-        this.yawDeg = Math.min(50.0, this.yawDeg + dt * 10.0);
+        this.yawDeg = Math.min(50.0, this.yawDeg + dt * 6.5);
       }
       if (this.keysPressed.has('ArrowLeft') || this.keysPressed.has('KeyA')) {
-        this.yawDeg = Math.max(-50.0, this.yawDeg - dt * 10.0);
+        this.yawDeg = Math.max(-50.0, this.yawDeg - dt * 6.5);
       }
 
       const powerRatio = (this.powerMps - 15.0) / 50.0;

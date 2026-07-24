@@ -62,6 +62,7 @@ export class HudManager {
     });
 
     document.getElementById('btn-close-settings')?.addEventListener('click', () => this.closeSettingsModal());
+    document.getElementById('btn-quick-resume')?.addEventListener('click', () => this.closeSettingsModal());
     document.getElementById('btn-save-settings')?.addEventListener('click', () => this.saveSettings());
 
     document.getElementById('btn-win-next')?.addEventListener('click', () => {
@@ -81,7 +82,7 @@ export class HudManager {
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc') {
         if (this.settingsModal.classList.contains('active')) {
           this.closeSettingsModal();
         } else {

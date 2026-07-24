@@ -30,3 +30,8 @@ No test runner configured — validate changes manually via `npm run dev` and vi
 - **Input dual-mode**: `SharedInputManager` handles both GyroMouse (cursor offset) and keyboard (WASD/arrows). A `blur` listener clears `keysPressed` to prevent stuck keys.
 - **Audio muted by default**: `SharedAudioManager.isMuted = true`
 - **Seeded randomness**: `SeededRandom` (FNV hash + LCG) for reproducible mazes
+
+## Cyber Air Hockey Controls (STRICT)
+
+- **Player 1 (Left Paddle / Blue)**: `W` / `S` OR `Up` / `Down` Arrow keys
+- **Player 2 (Right Paddle / Red)**: `A` / `D` OR `Left` / `Right` Arrow keys

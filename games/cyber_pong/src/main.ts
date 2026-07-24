@@ -110,10 +110,24 @@ export class CyberPongGame {
       this.diffSelectEl.value = savedDiff;
     }
 
+    const updateControlsHint = () => {
+      const p1HintEl = document.getElementById('p1-controls-hint');
+      const p2HintEl = document.getElementById('p2-controls-hint');
+      if (this.mode === '2p') {
+        if (p1HintEl) p1HintEl.innerHTML = 'P1 (Blue): <span class="key-badge">W</span>/<span class="key-badge">S</span> or <span class="key-badge">↑</span>/<span class="key-badge">↓</span>';
+        if (p2HintEl) {
+          p2HintEl.innerHTML = 'P2 (Red): <span class="key-badge">A</span>/<span class="key-badge">D</span> or <span class="key-badge">←</span>/<span class="key-badge">→</span>';
+          p2HintEl.style.display = 'block';
+        }
+      } else {
+        if (p1HintEl) p1HintEl.innerHTML = 'P1 (Blue): <span class="key-badge">W</span>/<span class="key-badge">S</span> or <span class="key-badge">↑</span>/<span class="key-badge">↓</span>';
+        if (p2HintEl) p2HintEl.style.display = 'none';
+      }
+    };
+
     this.p2LabelEl.textContent = this.mode === '1p' ? 'Bot (Red)' : 'P2 (Red)';
     this.diffSelectEl.style.display = this.mode === '1p' ? 'inline-block' : 'none';
-    const hint = document.getElementById('p2-controls-hint');
-    if (hint) hint.style.display = this.mode === '2p' ? 'block' : 'none';
+    updateControlsHint();
 
     // Event Listeners
     this.modeSelectEl.addEventListener('change', () => {
@@ -121,8 +135,7 @@ export class CyberPongGame {
       localStorage.setItem('cyberpong-mode', this.mode);
       this.p2LabelEl.textContent = this.mode === '1p' ? 'Bot (Red)' : 'P2 (Red)';
       this.diffSelectEl.style.display = this.mode === '1p' ? 'inline-block' : 'none';
-      const hintEl = document.getElementById('p2-controls-hint');
-      if (hintEl) hintEl.style.display = this.mode === '2p' ? 'block' : 'none';
+      updateControlsHint();
       this.modeSelectEl.blur();
       this.resetMatch();
     });
@@ -158,7 +171,7 @@ export class CyberPongGame {
       return;
     }
 
-    if (e.code === 'Escape') {
+    if (e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc') {
       e.preventDefault();
       if (!this.isGameOver) {
         this.togglePause();
@@ -271,7 +284,7 @@ export class CyberPongGame {
   private updatePlayerMovement(dt: number) {
     this.inputManager.update(dt);
 
-    const moveSpeed = 18;
+    const moveSpeed = 12;
     const checkKey = (k: string) => this.inputManager.isKeyPressed(k);
 
     // Compute dynamic bounds so enlarged paddles never penetrate top/bottom walls
@@ -279,17 +292,16 @@ export class CyberPongGame {
     const p2MaxZ = Math.max(0, 9.8 - 1.6 * this.p2Scale);
 
     if (this.mode === '2p') {
-      // In 2P mode:
-      // Player 1 (Left) uses W / S or A / D
-      const isP1Up = checkKey('KeyW') || checkKey('w') || checkKey('W') || checkKey('KeyA') || checkKey('a') || checkKey('A');
-      const isP1Down = checkKey('KeyS') || checkKey('s') || checkKey('S') || checkKey('KeyD') || checkKey('d') || checkKey('D');
+      // Player 1 (Left Paddle): W / S OR ArrowUp / ArrowDown
+      const isP1Up = checkKey('KeyW') || checkKey('w') || checkKey('W') || checkKey('ArrowUp');
+      const isP1Down = checkKey('KeyS') || checkKey('s') || checkKey('S') || checkKey('ArrowDown');
 
       if (isP1Up) this.p1PaddleZ -= moveSpeed * dt;
       if (isP1Down) this.p1PaddleZ += moveSpeed * dt;
 
-      // Player 2 (Right) uses ArrowUp / ArrowDown or ArrowLeft / ArrowRight
-      const isP2Up = checkKey('ArrowUp') || checkKey('ArrowLeft');
-      const isP2Down = checkKey('ArrowDown') || checkKey('ArrowRight');
+      // Player 2 (Right Paddle): A / D OR ArrowLeft / ArrowRight
+      const isP2Up = checkKey('KeyA') || checkKey('a') || checkKey('A') || checkKey('ArrowLeft');
+      const isP2Down = checkKey('KeyD') || checkKey('d') || checkKey('D') || checkKey('ArrowRight');
 
       if (isP2Up) this.p2PaddleZ -= moveSpeed * dt;
       if (isP2Down) this.p2PaddleZ += moveSpeed * dt;
@@ -301,12 +313,16 @@ export class CyberPongGame {
         z: this.p2PaddleZ
       });
     } else {
-      // In 1P mode (Single player controls P1 with any keys: WASD or Arrow Keys)
-      const isP1Up = checkKey('KeyW') || checkKey('w') || checkKey('W') || checkKey('ArrowUp') || checkKey('ArrowLeft') || checkKey('KeyA') || checkKey('a') || checkKey('A');
-      const isP1Down = checkKey('KeyS') || checkKey('s') || checkKey('S') || checkKey('ArrowDown') || checkKey('ArrowRight') || checkKey('KeyD') || checkKey('d') || checkKey('D');
+      // In 1P mode: Player 1 uses W / S OR ArrowUp / ArrowDown (plus Gyro/Mouse vertical tilt)
+      const isP1Up = checkKey('KeyW') || checkKey('w') || checkKey('W') || checkKey('ArrowUp');
+      const isP1Down = checkKey('KeyS') || checkKey('s') || checkKey('S') || checkKey('ArrowDown');
 
       if (isP1Up) this.p1PaddleZ -= moveSpeed * dt;
       if (isP1Down) this.p1PaddleZ += moveSpeed * dt;
+
+      if (Math.abs(this.inputManager.normalizedDy) > 0.05) {
+        this.p1PaddleZ += this.inputManager.normalizedDy * moveSpeed * dt;
+      }
     }
 
     this.p1PaddleZ = Math.max(-p1MaxZ, Math.min(p1MaxZ, this.p1PaddleZ));

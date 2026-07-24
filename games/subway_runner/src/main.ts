@@ -4,6 +4,7 @@ import { TrackManager } from './game/trackManager';
 import { CollisionManager } from './game/collisionManager';
 import { RunnerSoundFX } from './audio/soundFX';
 import { MenuNav } from '../../../shared/menuNav';
+import { SharedInputManager } from '../../../shared/inputManager';
 
 class SubwayRunnerGame {
   private sceneManager!: SceneManager;
@@ -13,6 +14,7 @@ class SubwayRunnerGame {
   private soundFX!: RunnerSoundFX;
   private gameOverMenuNav!: MenuNav;
   private pauseMenuNav!: MenuNav;
+  private inputManager!: SharedInputManager;
 
   private isRunning: boolean = false;
   private isPaused: boolean = false;
@@ -24,6 +26,8 @@ class SubwayRunnerGame {
 
   // Keyboard input state tracking
   private keysPressed: Set<string> = new Set();
+  private lastGyroSteerTime: number = 0;
+  private lastGyroVerticalTime: number = 0;
 
   // UI Elements
   private scoreValEl = document.getElementById('score-val')!;
@@ -41,6 +45,10 @@ class SubwayRunnerGame {
     this.trackManager = new TrackManager(this.sceneManager.scene);
     this.collisionManager = new CollisionManager();
     this.soundFX = new RunnerSoundFX();
+    this.inputManager = new SharedInputManager();
+    this.inputManager.settings.mode = 'both';
+    this.inputManager.settings.mouseEnabled = true;
+
     this.gameOverMenuNav = new MenuNav({ container: this.gameoverScreenEl });
     this.pauseMenuNav = new MenuNav({ container: this.pauseScreenEl });
 
@@ -59,7 +67,7 @@ class SubwayRunnerGame {
         }
       }
 
-      if ((e.code === 'Escape' || e.code === 'Space' || e.key === ' ') && this.isRunning) {
+      if ((e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc' || e.code === 'Space' || e.key === ' ') && this.isRunning) {
         e.preventDefault();
         this.togglePause();
         return;
@@ -67,23 +75,26 @@ class SubwayRunnerGame {
 
       if (!this.isRunning || this.isPaused) return;
 
-      if (e.code === 'ArrowLeft' && !this.keysPressed.has('ArrowLeft')) {
+      const keyName = e.key || e.code;
+      if ((keyName === 'ArrowLeft' || e.code === 'ArrowLeft') && !this.keysPressed.has('ArrowLeft')) {
         this.runner.steer(-1);
-      } else if (e.code === 'ArrowRight' && !this.keysPressed.has('ArrowRight')) {
+      } else if ((keyName === 'ArrowRight' || e.code === 'ArrowRight') && !this.keysPressed.has('ArrowRight')) {
         this.runner.steer(1);
-      } else if (e.code === 'ArrowUp' && !this.keysPressed.has('ArrowUp')) {
+      } else if ((keyName === 'ArrowUp' || e.code === 'ArrowUp') && !this.keysPressed.has('ArrowUp')) {
         this.runner.jump();
         this.soundFX.playJump();
-      } else if (e.code === 'ArrowDown' && !this.keysPressed.has('ArrowDown')) {
+      } else if ((keyName === 'ArrowDown' || e.code === 'ArrowDown') && !this.keysPressed.has('ArrowDown')) {
         this.runner.slide();
         this.soundFX.playSlide();
       }
 
-      this.keysPressed.add(e.code);
+      if (e.code) this.keysPressed.add(e.code);
+      if (e.key) this.keysPressed.add(e.key);
     });
 
     window.addEventListener('keyup', (e: KeyboardEvent) => {
-      this.keysPressed.delete(e.code);
+      if (e.code) this.keysPressed.delete(e.code);
+      if (e.key) this.keysPressed.delete(e.key);
     });
 
     window.addEventListener('blur', () => this.keysPressed.clear());
@@ -153,6 +164,34 @@ class SubwayRunnerGame {
     this.lastTime = currentTime;
 
     if (this.isRunning && !this.isPaused) {
+      // Process Gyro / Mouse tilt input
+      this.inputManager.update(dt);
+      const nowMs = Date.now();
+
+      // Steering (Left / Right tilt threshold)
+      if (nowMs - this.lastGyroSteerTime > 250) {
+        if (this.inputManager.normalizedDx > 0.35) {
+          this.runner.steer(1);
+          this.lastGyroSteerTime = nowMs;
+        } else if (this.inputManager.normalizedDx < -0.35) {
+          this.runner.steer(-1);
+          this.lastGyroSteerTime = nowMs;
+        }
+      }
+
+      // Vertical action (Up tilt jump / Down tilt slide threshold)
+      if (nowMs - this.lastGyroVerticalTime > 350) {
+        if (this.inputManager.normalizedDy < -0.4) {
+          this.runner.jump();
+          this.soundFX.playJump();
+          this.lastGyroVerticalTime = nowMs;
+        } else if (this.inputManager.normalizedDy > 0.4) {
+          this.runner.slide();
+          this.soundFX.playSlide();
+          this.lastGyroVerticalTime = nowMs;
+        }
+      }
+
       // Speed up over time
       this.forwardSpeed += dt * 0.15;
       this.runner.update(dt, this.forwardSpeed);

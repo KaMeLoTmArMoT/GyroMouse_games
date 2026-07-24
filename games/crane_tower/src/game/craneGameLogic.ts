@@ -107,13 +107,25 @@ export class CraneGameLogic {
       });
     }
 
+    const canvas = document.getElementById('game-canvas');
+    if (canvas) {
+      canvas.addEventListener('pointerdown', (e) => {
+        // Prevent drop trigger if clicking top bar buttons / selects / modals
+        const target = e.target as HTMLElement;
+        if (target && target.closest('.top-bar, .modal-overlay, #countdown-overlay')) return;
+        if (this.state === 'PLAYING' || this.state === 'COUNTDOWN') {
+          this.triggerDropAction();
+        }
+      });
+    }
+
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape') {
+      if (e.code === 'Escape' || e.key === 'Escape' || e.key === 'Esc') {
         e.preventDefault();
         if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
           this.togglePause();
         }
-      } else if (e.code === 'Space') {
+      } else if (e.code === 'Space' || e.key === ' ' || e.key === 'Space') {
         e.preventDefault();
         if (this.isPaused) {
           this.togglePause(false);
