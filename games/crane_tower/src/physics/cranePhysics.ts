@@ -176,17 +176,25 @@ export class CranePhysicsManager {
     const crate = this.crates.get(this.currentHeldCrateId);
     if (crate) {
       crate.isAttachedToMagnet = false;
+
+      // Nudge crate position downward slightly (0.06 units) to avoid explosive Rapier contact separation
+      const curPos = crate.body.translation();
+      crate.body.setTranslation({ x: curPos.x, y: curPos.y - 0.06, z: curPos.z }, true);
+
       crate.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       crate.body.setEnabledTranslations(true, true, false, true);
       crate.body.setEnabledRotations(false, false, true, true);
 
-      // Inherit tangential pendulum velocity when dropped!
-      const tangentSpeed = this.cableAngVel * this.cableLength;
-      const vx = tangentSpeed * Math.cos(this.cableAngle);
-      const vy = -tangentSpeed * Math.sin(this.cableAngle);
+      // Inherit natural crane momentum (trolley linear speed + cable swing speed)
+      const cosAngle = Math.cos(this.cableAngle);
+      const sinAngle = Math.sin(this.cableAngle);
 
-      crate.body.setLinvel({ x: vx, y: vy, z: 0 }, true);
-      crate.body.setAngvel({ x: 0, y: 0, z: -this.cableAngVel }, true);
+      const vx = (this.lastTrolleyVx || 0) + (this.cableAngVel * this.cableLength * cosAngle);
+      const vy = this.cableAngVel * this.cableLength * sinAngle;
+
+      // Clean release velocity without wild artificial spin or inverted vertical velocity
+      crate.body.setLinvel({ x: vx * 0.7, y: Math.max(-1.5, vy * 0.5), z: 0 }, true);
+      crate.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
       crate.body.wakeUp();
     }
 
@@ -201,8 +209,8 @@ export class CranePhysicsManager {
    */
   public tryRegrabCrate(): boolean {
     if (this.currentHeldCrateId) return false;
-    // Don't re-grab immediately after dropping
-    if (Date.now() - this.lastReleaseTime < 600) return false;
+    // Don't re-grab immediately after dropping (1000ms cooldown)
+    if (Date.now() - this.lastReleaseTime < 1000) return false;
 
     const magnetPos = { x: this.magnetX, y: this.magnetY, z: 0 };
 
@@ -318,7 +326,7 @@ export class CranePhysicsManager {
 
     // 6. Magnetic Force & Attachment logic (Activated when Space is pressed / magnet action active)
     if (!this.currentHeldCrateId) {
-      if (isMagnetActive && Date.now() - this.lastReleaseTime >= 400) {
+      if (isMagnetActive && Date.now() - this.lastReleaseTime >= 1000) {
         const magTargetY = this.magnetY - 0.75; // Attract top of crate to bottom of magnet
         const magnetPos = { x: this.magnetX, y: magTargetY };
 
