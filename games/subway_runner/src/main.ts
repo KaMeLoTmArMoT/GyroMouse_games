@@ -14,7 +14,6 @@ class SubwayRunnerGame extends BaseGame {
   private collisionManager!: CollisionManager;
   private soundFX!: RunnerSoundFX;
   private gameOverMenuNav!: MenuNav;
-  private pauseMenuNav!: MenuNav;
   public settingsOverlay: SettingsOverlay;
 
   private isRunning: boolean = false;
@@ -28,7 +27,6 @@ class SubwayRunnerGame extends BaseGame {
   private scoreValEl = document.getElementById('score-val')!;
   private coinsValEl = document.getElementById('coins-val')!;
   private startScreenEl = document.getElementById('start-screen')!;
-  private pauseScreenEl = document.getElementById('pause-screen')!;
   private gameoverScreenEl = document.getElementById('gameover-screen')!;
   private finalScoreEl = document.getElementById('final-score')!;
   private finalCoinsEl = document.getElementById('final-coins')!;
@@ -37,8 +35,17 @@ class SubwayRunnerGame extends BaseGame {
     super();
     this.settingsOverlay = new SettingsOverlay({
       gameId: 'subway_runner',
-      inputManager: this.input
+      inputManager: this.input,
+      onPauseToggle: (paused) => {
+        if (!this.isRunning) return;
+        this.isPaused = paused;
+        if (!paused) {
+          this.lastTime = performance.now();
+        }
+      },
+      onRestart: () => this.restartGame()
     });
+
     const container = document.getElementById('canvas-container')!;
     this.sceneManager = new SceneManager(container);
     this.runner = new Runner(this.sceneManager.scene);
@@ -47,17 +54,21 @@ class SubwayRunnerGame extends BaseGame {
     this.soundFX = new RunnerSoundFX();
 
     this.gameOverMenuNav = new MenuNav({ container: this.gameoverScreenEl });
-    this.pauseMenuNav = new MenuNav({ container: this.pauseScreenEl });
 
     this.setupUI();
     this.animate(0);
+  }
+
+  protected override onEscape() {
+    if (!this.isRunning) return;
+    this.settingsOverlay.toggle();
   }
 
   protected override onSpace() {
     if (!this.isRunning && !this.isPaused) {
       this.startGame();
     } else if (this.isRunning) {
-      this.togglePause();
+      this.settingsOverlay.toggle();
     }
   }
 
@@ -88,27 +99,11 @@ class SubwayRunnerGame extends BaseGame {
   private setupUI() {
     this.startScreenEl.addEventListener('click', () => this.startGame());
     document.getElementById('btn-restart')?.addEventListener('click', () => this.restartGame());
-    document.getElementById('btn-resume')?.addEventListener('click', () => this.togglePause(false));
-  }
-
-  public override togglePause(forceState?: boolean) {
-    if (!this.isRunning) return;
-    super.togglePause(forceState);
-
-    if (this.isPaused) {
-      this.pauseScreenEl.classList.remove('hidden');
-      this.pauseMenuNav.activate();
-    } else {
-      this.pauseScreenEl.classList.add('hidden');
-      this.pauseMenuNav.deactivate();
-      this.lastTime = performance.now(); // Prevent large dt jump
-    }
   }
 
   private startGame() {
     this.startScreenEl.classList.add('hidden');
     this.gameoverScreenEl.classList.add('hidden');
-    this.pauseScreenEl.classList.add('hidden');
     this.gameOverMenuNav.deactivate();
     this.isPaused = false;
     this.resetGame();

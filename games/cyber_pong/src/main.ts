@@ -34,11 +34,9 @@ export class CyberPongGame extends BaseGame {
   private diffSelectEl!: HTMLSelectElement;
   private btnAudioEl!: HTMLButtonElement;
   private startModalEl!: HTMLElement;
-  private pauseModalEl!: HTMLElement;
   private gameoverModalEl!: HTMLElement;
   private winnerTitleEl!: HTMLElement;
   private winnerDescEl!: HTMLElement;
-  private btnResumeEl!: HTMLButtonElement;
   private btnRestartEl!: HTMLButtonElement;
 
   private p1PaddleZ: number = 0;
@@ -46,7 +44,6 @@ export class CyberPongGame extends BaseGame {
   private p1Scale: number = 1.0;
   private p2Scale: number = 1.0;
 
-  private pauseMenuNav!: MenuNav;
   private gameoverMenuNav!: MenuNav;
 
   constructor() {
@@ -63,9 +60,19 @@ export class CyberPongGame extends BaseGame {
     this.renderer = new ArenaRenderer(canvas);
     this.audioManager = new SharedAudioManager();
     this.aiBot = new AIBotController('medium');
+
     this.settingsOverlay = new SettingsOverlay({
       gameId: 'cyber_pong',
-      inputManager: this.input
+      inputManager: this.input,
+      onPauseToggle: (paused) => {
+        if (!this.isStarted || this.isGameOver) return;
+        this.isPaused = paused;
+        if (!paused) {
+          this.lastTime = performance.now();
+        }
+      },
+      onRestart: () => this.resetMatch(),
+      onToggleMute: () => this.audioManager.toggleMute()
     });
 
     this.physicsWorld = await PhysicsWorld.create(
@@ -75,7 +82,6 @@ export class CyberPongGame extends BaseGame {
 
     this.initUI();
 
-    this.pauseMenuNav = new MenuNav({ container: this.pauseModalEl });
     this.gameoverMenuNav = new MenuNav({ container: this.gameoverModalEl });
 
     this.resetMatch();
@@ -93,11 +99,9 @@ export class CyberPongGame extends BaseGame {
     this.diffSelectEl = document.getElementById('diff-select') as HTMLSelectElement;
     this.btnAudioEl = document.getElementById('btn-audio') as HTMLButtonElement;
     this.startModalEl = document.getElementById('start-modal')!;
-    this.pauseModalEl = document.getElementById('pause-modal')!;
     this.gameoverModalEl = document.getElementById('gameover-modal')!;
     this.winnerTitleEl = document.getElementById('winner-title')!;
     this.winnerDescEl = document.getElementById('winner-desc')!;
-    this.btnResumeEl = document.getElementById('btn-resume') as HTMLButtonElement;
     this.btnRestartEl = document.getElementById('btn-restart') as HTMLButtonElement;
 
     this.startModalEl.addEventListener('click', () => this.startGame());
@@ -156,7 +160,6 @@ export class CyberPongGame extends BaseGame {
       this.btnAudioEl.textContent = isMuted ? '🔇 Muted' : '🔊 Sound';
     });
 
-    this.btnResumeEl.addEventListener('click', () => this.togglePause(false));
     this.btnRestartEl.addEventListener('click', () => this.resetMatch());
   }
 
@@ -179,26 +182,15 @@ export class CyberPongGame extends BaseGame {
     if (e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc') {
       e.preventDefault();
       if (!this.isGameOver) {
-        this.togglePause();
+        this.settingsOverlay.toggle();
       }
     } else if (e.code === 'Space') {
       e.preventDefault();
       if (this.isGameOver) {
         this.resetMatch();
       } else {
-        this.togglePause();
+        this.settingsOverlay.toggle();
       }
-    }
-  }
-
-  public togglePause(forceState?: boolean) {
-    this.isPaused = forceState !== undefined ? forceState : !this.isPaused;
-    if (this.isPaused) {
-      this.pauseModalEl.classList.remove('hidden');
-      this.pauseMenuNav.activate();
-    } else {
-      this.pauseModalEl.classList.add('hidden');
-      this.pauseMenuNav.deactivate();
     }
   }
 
@@ -215,9 +207,7 @@ export class CyberPongGame extends BaseGame {
     this.scoreP1El.textContent = '0';
     this.scoreP2El.textContent = '0';
 
-    this.pauseModalEl.classList.add('hidden');
     this.gameoverModalEl.classList.add('hidden');
-    this.pauseMenuNav.deactivate();
     this.gameoverMenuNav.deactivate();
 
     // Reset paddle sizes (visuals & physics)

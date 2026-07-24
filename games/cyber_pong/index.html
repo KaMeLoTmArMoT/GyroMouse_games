@@ -99,97 +99,116 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      min-width: 90px;
     }
-
     .team-name {
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 1px;
+      font-size: 0.75rem;
+      font-weight: 800;
       text-transform: uppercase;
+      letter-spacing: 1px;
     }
-
     .score-val {
       font-size: 2.2rem;
       font-weight: 900;
-      line-height: 1;
+      line-height: 1.1;
     }
-
-    .p1-color { color: #38bdf8; text-shadow: 0 0 12px rgba(56, 189, 248, 0.6); }
-    .p2-color { color: #f43f5e; text-shadow: 0 0 12px rgba(244, 63, 94, 0.6); }
-
     .vs-divider {
-      font-size: 1rem;
-      font-weight: 800;
+      font-size: 0.9rem;
+      font-weight: 900;
       color: #64748b;
+      letter-spacing: 2px;
     }
+
+    .p1-color { color: #38bdf8; }
+    .p2-color { color: #ef4444; }
 
     .select-input {
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.15);
       color: #fff;
       padding: 8px 12px;
-      border-radius: 8px;
-      font-family: inherit;
+      border-radius: 10px;
+      font-weight: 700;
       font-size: 0.9rem;
       outline: none;
       cursor: pointer;
     }
+    .select-input:focus {
+      border-color: #38bdf8;
+    }
 
+    /* Controls Hint Bar */
     .controls-hint {
+      align-self: center;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 18px;
+      padding: 10px 24px;
       display: flex;
+      align-items: center;
       gap: 20px;
       font-size: 0.85rem;
-      color: #94a3b8;
-    }
-
-    .key-badge {
-      background: rgba(255, 255, 255, 0.15);
-      padding: 2px 8px;
-      border-radius: 6px;
-      color: #fff;
       font-weight: 700;
+      color: #cbd5e1;
+      pointer-events: auto;
+    }
+    .key-badge {
+      background: rgba(56, 189, 248, 0.2);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-weight: 800;
     }
 
-    /* Pause & Game Over Modal */
+    /* Modal Overlay */
     .modal-overlay {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(6, 9, 19, 0.8);
+      background: rgba(6, 9, 19, 0.85);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      z-index: 100;
       display: flex;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
+      z-index: 100;
+      pointer-events: auto;
+      transition: opacity 0.25s ease;
+    }
+    .modal-overlay.hidden {
+      display: none;
     }
 
     .modal-card {
-      background: rgba(15, 23, 42, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: #0f172a;
+      border: 1px solid rgba(56, 189, 248, 0.3);
       border-radius: 24px;
-      padding: 40px;
+      padding: 36px;
+      max-width: 420px;
       width: 90%;
-      max-width: 460px;
       text-align: center;
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
     }
 
     .modal-title {
       font-size: 2.2rem;
       font-weight: 900;
-      margin-bottom: 10px;
-      background: linear-gradient(135deg, #38bdf8, #f43f5e);
+      background: linear-gradient(135deg, #38bdf8, #a855f7);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
-
     .modal-desc {
+      color: #9ca3af;
       font-size: 1rem;
-      color: #94a3b8;
-      margin-bottom: 28px;
+      font-weight: 600;
     }
 
     .btn-action {
@@ -197,37 +216,26 @@
       color: #fff;
       border: none;
       padding: 14px 28px;
-      border-radius: 12px;
-      font-size: 1rem;
+      border-radius: 14px;
       font-weight: 800;
+      font-size: 1.1rem;
       cursor: pointer;
-      width: 100%;
-      margin-bottom: 12px;
-      transition: all 0.2s;
+      box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4);
+      transition: all 0.2s ease;
     }
     .btn-action:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
-    }
-
-    .btn-action.menu-focus {
-      outline: 3px solid #38bdf8;
-      box-shadow: 0 0 16px rgba(56, 189, 248, 0.8);
-    }
-
-    .hidden {
-      display: none !important;
+      box-shadow: 0 8px 25px rgba(2, 132, 199, 0.6);
     }
   </style>
 </head>
 <body>
+  <a href="../../index.html" class="gm-hub-btn"><span>🏠</span> Hub</a>
   <canvas id="game-canvas"></canvas>
 
   <div class="hud-layer">
-    <div class="top-bar">
-      <a href="../../index.html" class="nav-btn">
-        <span>🏠</span> Hub
-      </a>
+    <div class="top-bar gm-hud-container">
+      <div></div>
 
       <div class="card scoreboard-card">
         <div class="team-score">
@@ -280,16 +288,6 @@
       to { transform: scale(1.04); opacity: 1; }
     }
   </style>
-
-  <!-- Pause Overlay -->
-  <div id="pause-modal" class="modal-overlay hidden">
-    <div class="modal-card">
-      <h2 class="modal-title">GAME PAUSED</h2>
-      <p class="modal-desc">Take a breath or resume the match!</p>
-      <button id="btn-resume" class="btn-action menu-focus">Resume Match (Space / ESC)</button>
-      <a href="../../index.html" class="nav-btn" style="justify-content: center;"><span style="font-size: 1.2rem;">🏠</span> Return to Hub</a>
-    </div>
-  </div>
 
   <!-- Game Over Modal -->
   <div id="gameover-modal" class="modal-overlay hidden">

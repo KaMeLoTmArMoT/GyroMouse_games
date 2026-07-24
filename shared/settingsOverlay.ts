@@ -1,4 +1,5 @@
 import { SharedInputManager, ControlMode, InputSettings } from './inputManager';
+import { MenuNav } from './menuNav';
 import './settingsOverlay.css';
 
 export interface SavedSettings {
@@ -11,22 +12,36 @@ export interface SavedSettings {
 export interface SettingsOverlayOptions {
   gameId: string;
   inputManager: SharedInputManager;
+  onPauseToggle?: (isPaused: boolean) => void;
+  onRestart?: () => void;
+  onToggleMute?: () => boolean;
+  onQuitToHub?: () => void;
   onSettingsChanged?: (settings: InputSettings) => void;
+  customGameOptionsHtml?: string;
+  onBindCustomOptions?: (container: HTMLElement) => void;
 }
 
 export class SettingsOverlay {
   private storageKey: string;
   private inputManager: SharedInputManager;
+  private options: SettingsOverlayOptions;
   private onSettingsChanged?: (settings: InputSettings) => void;
 
   private overlayEl!: HTMLElement;
   private gearBtnEl!: HTMLElement;
-  private isOpen: boolean = false;
+  private menuNav!: MenuNav;
+  public isOpen: boolean = false;
+
   private boundKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc') this.toggle();
+    if (e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggle();
+    }
   };
 
   constructor(options: SettingsOverlayOptions) {
+    this.options = options;
     this.storageKey = `gyromouse_settings_${options.gameId}`;
     this.inputManager = options.inputManager;
     this.onSettingsChanged = options.onSettingsChanged;
@@ -68,7 +83,7 @@ export class SettingsOverlay {
     this.gearBtnEl = document.createElement('div');
     this.gearBtnEl.className = 'gm-gear-btn';
     this.gearBtnEl.innerHTML = '⚙️';
-    this.gearBtnEl.title = 'Game Settings (ESC)';
+    this.gearBtnEl.title = 'Pause & Settings (ESC)';
     this.gearBtnEl.onclick = () => this.toggle();
     document.body.appendChild(this.gearBtnEl);
 
@@ -79,12 +94,33 @@ export class SettingsOverlay {
     const { mode = 'gyromouse', sensitivity = 1.0, invertX, invertY } = this.inputManager.settings;
     const sensVal = sensitivity.toFixed(1);
 
+    const customSection = this.options.customGameOptionsHtml ? `
+      <div class="gm-section-divider"></div>
+      <div class="gm-section-title">🎯 Game Specific Options</div>
+      <div id="gm-custom-options-container">
+        ${this.options.customGameOptionsHtml}
+      </div>
+    ` : '';
+
     this.overlayEl.innerHTML = `
       <div class="gm-card">
         <div class="gm-header">
-          <div class="gm-title"><span>⚙️</span> Control Settings</div>
+          <div class="gm-title"><span>⏸️</span> Game Paused & Settings</div>
           <button class="gm-close-btn" id="gm-close-btn">&times;</button>
         </div>
+
+        <div class="gm-actions-grid">
+          <button class="gm-action-btn primary" id="gm-btn-resume">▶ Resume Game</button>
+          <button class="gm-action-btn secondary" id="gm-btn-restart">🔄 Restart</button>
+          <button class="gm-action-btn secondary" id="gm-btn-mute">🔊 Audio</button>
+          <a href="../../index.html" class="gm-action-btn danger" id="gm-btn-hub">🏠 Quit to Hub</a>
+        </div>
+
+        ${customSection}
+
+        <div class="gm-section-divider"></div>
+        <div class="gm-section-title">🎮 GyroMouse Input Controls</div>
+
         <div class="gm-group">
           <label class="gm-label" for="gm-mode-select">Control Mode</label>
           <select class="gm-select" id="gm-mode-select">
@@ -119,11 +155,37 @@ export class SettingsOverlay {
 
     document.body.appendChild(this.overlayEl);
 
+    // Initialize MenuNav for 2D spatial grid navigation in SettingsOverlay card
+    const cardEl = this.overlayEl.querySelector('.gm-card') as HTMLElement;
+    this.menuNav = new MenuNav({ container: cardEl, buttonSelector: 'button, input, select, a' });
+
+    // Custom options binding callback
+    if (this.options.onBindCustomOptions) {
+      const container = this.overlayEl.querySelector('#gm-custom-options-container') as HTMLElement | null;
+      if (container) {
+        this.options.onBindCustomOptions(container);
+      }
+    }
+
     // Event bindings
     const $ = <T extends HTMLElement>(sel: string) => this.overlayEl.querySelector<T>(sel);
 
     $('#gm-close-btn')?.addEventListener('click', () => this.close());
     $('#gm-done-btn')?.addEventListener('click', () => this.close());
+    $('#gm-btn-resume')?.addEventListener('click', () => this.close());
+
+    $('#gm-btn-restart')?.addEventListener('click', () => {
+      this.close();
+      this.options.onRestart?.();
+    });
+
+    $('#gm-btn-mute')?.addEventListener('click', (e) => {
+      if (this.options.onToggleMute) {
+        const isMuted = this.options.onToggleMute();
+        (e.currentTarget as HTMLElement).innerHTML = isMuted ? '🔇 Muted' : '🔊 Audio';
+      }
+    });
+
     this.overlayEl.addEventListener('click', (e) => { if (e.target === this.overlayEl) this.close(); });
 
     $<HTMLSelectElement>('#gm-mode-select')?.addEventListener('change', (e) => {
@@ -156,11 +218,15 @@ export class SettingsOverlay {
   public open() {
     this.isOpen = true;
     this.overlayEl.classList.add('open');
+    this.menuNav.activate();
+    this.options.onPauseToggle?.(true);
   }
 
   public close() {
     this.isOpen = false;
     this.overlayEl.classList.remove('open');
+    this.menuNav.deactivate();
+    this.options.onPauseToggle?.(false);
   }
 
   public toggle() {

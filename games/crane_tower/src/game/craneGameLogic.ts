@@ -4,6 +4,8 @@ import { SharedAudioManager } from '../../../../shared/audioManager';
 import { MenuNav } from '../../../../shared/menuNav';
 import { BaseGame } from '../../../../shared/baseGame';
 
+import { SettingsOverlay } from '../../../../shared/settingsOverlay';
+
 export type GameState = 'IDLE' | 'SPAWNING' | 'PLAYING' | 'COUNTDOWN' | 'VICTORY' | 'GAME_OVER';
 
 export class CraneGameLogic extends BaseGame {
@@ -25,8 +27,7 @@ export class CraneGameLogic extends BaseGame {
   private modalDesc: HTMLElement | null = null;
   private modalBtn: HTMLElement | null = null;
 
-  private pauseModalOverlay: HTMLElement | null = null;
-  private pauseMenuNav!: MenuNav;
+  public settingsOverlay?: SettingsOverlay;
 
   private physics: CranePhysicsManager;
   private graphics: CraneGraphicsManager;
@@ -44,13 +45,13 @@ export class CraneGameLogic extends BaseGame {
 
   protected override onEscape() {
     if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
-      this.togglePause();
+      this.settingsOverlay?.toggle();
     }
   }
 
   protected override onSpace() {
     if (this.isPaused) {
-      this.togglePause(false);
+      this.settingsOverlay?.toggle();
     } else if (this.state !== 'VICTORY' && this.state !== 'GAME_OVER') {
       this.triggerDropAction();
     }
@@ -64,18 +65,9 @@ export class CraneGameLogic extends BaseGame {
     this.modalTitle = document.getElementById('modal-title');
     this.modalDesc = document.getElementById('modal-desc');
     this.modalBtn = document.getElementById('modal-btn');
-    this.pauseModalOverlay = document.getElementById('pause-modal');
-
     if (this.modalOverlay) {
       this.modalMenuNav = new MenuNav({ container: this.modalOverlay });
     }
-    if (this.pauseModalOverlay) {
-      this.pauseMenuNav = new MenuNav({ container: this.pauseModalOverlay });
-    }
-
-    document.getElementById('btn-pause-resume')?.addEventListener('click', () => {
-      this.togglePause(false);
-    });
 
     if (this.modalBtn) {
       this.modalBtn.addEventListener('click', () => {
@@ -132,17 +124,6 @@ export class CraneGameLogic extends BaseGame {
           this.triggerDropAction();
         }
       });
-    }
-  }
-
-  public override togglePause(forceState?: boolean) {
-    super.togglePause(forceState);
-    if (this.isPaused) {
-      this.pauseModalOverlay?.classList.add('active');
-      this.pauseMenuNav?.activate();
-    } else {
-      this.pauseModalOverlay?.classList.remove('active');
-      this.pauseMenuNav?.deactivate();
     }
   }
 

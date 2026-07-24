@@ -21,6 +21,7 @@ class Game {
 
   private collectedCoinsCount: number = 0;
   private isGameOver: boolean = false;
+  private isPaused: boolean = false;
   private startPos: { x: number; y: number; z: number } = { x: 0, y: 0.8, z: 0 };
   private activatedCheckpoints: Set<string> = new Set();
   private lastCheckpoint: { x: number; y: number; z: number } | null = null;
@@ -34,9 +35,69 @@ class Game {
     this.physicsManager = new PhysicsManager();
     this.inputManager = new InputManager();
     this.audioManager = new AudioManager();
+
     this.settingsOverlay = new SettingsOverlay({
       gameId: 'marble_maze',
-      inputManager: this.inputManager
+      inputManager: this.inputManager,
+      onPauseToggle: (paused) => {
+        this.isPaused = paused;
+        if (paused) {
+          this.hudManager.stopTimer();
+        } else {
+          this.hudManager.startTimer();
+        }
+      },
+      onRestart: () => this.restartLevel(),
+      onToggleMute: () => this.audioManager.toggleMute(),
+      customGameOptionsHtml: `
+        <div class="gm-group">
+          <label class="gm-label" for="setting-difficulty">Difficulty & Maze Size</label>
+          <select id="setting-difficulty" class="gm-select">
+            <option value="easy">Easy (6x6)</option>
+            <option value="medium_easy">Standard (8x8)</option>
+            <option value="medium" selected>Medium (10x10)</option>
+            <option value="medium_hard">Advanced (12x12)</option>
+            <option value="hard">Extreme (14x14)</option>
+          </select>
+        </div>
+        <div class="gm-group">
+          <label class="gm-label" for="setting-seed">Custom Maze Seed</label>
+          <input type="text" id="setting-seed" placeholder="e.g. maze-12345" class="gm-select" />
+        </div>
+        <div class="gm-group" style="display: flex; align-items: center; justify-content: space-between;">
+          <label class="gm-label" for="setting-debug-path" style="cursor: pointer; margin: 0;">Show Debug Path</label>
+          <input type="checkbox" id="setting-debug-path" style="width: 18px; height: 18px; accent-color: #38bdf8; cursor: pointer;" />
+        </div>
+      `,
+      onBindCustomOptions: (container) => {
+        const diffEl = container.querySelector('#setting-difficulty') as HTMLSelectElement;
+        const seedEl = container.querySelector('#setting-seed') as HTMLInputElement;
+        const debugEl = container.querySelector('#setting-debug-path') as HTMLInputElement;
+
+        if (diffEl) {
+          diffEl.value = this.currentDifficulty;
+          diffEl.addEventListener('change', () => {
+            this.currentDifficulty = diffEl.value;
+            this.saveDifficulty();
+            this.generateNewLevel();
+          });
+        }
+        if (seedEl) {
+          seedEl.addEventListener('change', () => {
+            const seed = seedEl.value.trim();
+            if (seed) this.generateLevelFromSeed(seed);
+          });
+        }
+        if (debugEl) {
+          debugEl.checked = this.debugPathEnabled;
+          debugEl.addEventListener('change', () => {
+            this.debugPathEnabled = debugEl.checked;
+            this.saveDebugPathSetting();
+            this.hudManager.updateDebugPathSetting(this.debugPathEnabled);
+            this.generateNewLevel();
+          });
+        }
+      }
     });
 
     this.hudManager = new HudManager({
@@ -57,9 +118,6 @@ class Game {
 
   private loadSettings() {
     this.currentDifficulty = this.loadDifficulty();
-    const diffEl = document.getElementById('setting-difficulty') as HTMLSelectElement | null;
-    if (diffEl) diffEl.value = this.currentDifficulty;
-
     this.debugPathEnabled = this.loadDebugPathSetting();
     this.hudManager.updateDebugPathSetting(this.debugPathEnabled);
   }
@@ -100,10 +158,11 @@ class Game {
     const { size, diff } = diffMap[this.currentDifficulty] || diffMap.medium;
 
     this.currentMaze = MazeGenerator.generate(size, size, this.currentSeed, diff);
+
     this.collectedCoinsCount = 0;
     this.isGameOver = false;
 
-    const { startPos } =     this.physicsManager.buildMazePhysics(this.currentMaze, {
+    const { startPos } = this.physicsManager.buildMazePhysics(this.currentMaze, {
       onCollectCoin: (x, z, coinId) => this.handleCollectCoin(x, z, coinId),
       onFallInHole: () => this.handleFallInHole(),
       onReachGoal: () => this.handleReachGoal(),
@@ -153,10 +212,12 @@ class Game {
     this.sceneManager.updateMarble(this.startPos, { x: 0, y: 0, z: 0 });
     this.hudManager.updateCoins(0, this.currentMaze.coinsCount);
     this.hudManager.resetTimer();
+    this.hudManager.startTimer();
   }
 
-   private updateSettings(settings: Partial<InputSettings>, difficulty: string, debugPath?: boolean) {
+  private updateSettings(settings: Partial<InputSettings>, difficulty: string, debugPath?: boolean) {
     Object.assign(this.inputManager.settings, settings);
+
     if (difficulty !== this.currentDifficulty) {
       this.currentDifficulty = difficulty;
       this.saveDifficulty();
@@ -167,7 +228,7 @@ class Game {
       this.saveDebugPathSetting();
       this.generateNewLevel();
     }
-   }
+  }
 
   private handleCollectCoin(_gridX: number, _gridZ: number, coinId: string) {
     this.collectedCoinsCount++;
@@ -223,7 +284,7 @@ class Game {
     const dt = Math.min((now - this.lastFrameTime) / 1000, 0.05);
     this.lastFrameTime = now;
 
-    if (!this.isGameOver) {
+    if (!this.isGameOver && !this.isPaused) {
       this.inputManager.update(dt);
 
       const tiltX = this.inputManager.currentTiltX;

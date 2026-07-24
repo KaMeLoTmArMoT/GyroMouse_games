@@ -65,6 +65,14 @@ body {
   border-color: rgba(56, 189, 248, 0.5);
 }
 
+#hud-timer {
+  min-width: 105px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  text-align: center;
+}
+
 .brand-title {
   font-size: 1.3rem;
   font-weight: 800;

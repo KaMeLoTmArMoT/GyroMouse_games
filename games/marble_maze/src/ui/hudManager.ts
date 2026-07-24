@@ -16,7 +16,6 @@ export class HudManager {
   private seedEl!: HTMLElement;
   private surfaceEl!: HTMLElement;
 
-  private settingsModal!: HTMLElement;
   private winModal!: HTMLElement;
   private fallModal!: HTMLElement;
 
@@ -29,7 +28,6 @@ export class HudManager {
 
   private fallMenuNav!: MenuNav;
   private winMenuNav!: MenuNav;
-  private settingsMenuNav!: MenuNav;
 
   constructor(callbacks: HudCallbacks) {
     this.callbacks = callbacks;
@@ -42,7 +40,6 @@ export class HudManager {
     this.seedEl = document.getElementById('hud-seed')!;
     this.surfaceEl = document.getElementById('hud-surface')!;
 
-    this.settingsModal = document.getElementById('settings-modal')!;
     this.winModal = document.getElementById('win-modal')!;
     this.fallModal = document.getElementById('fall-modal')!;
 
@@ -51,19 +48,13 @@ export class HudManager {
 
     this.fallMenuNav = new MenuNav({ container: this.fallModal });
     this.winMenuNav = new MenuNav({ container: this.winModal });
-    this.settingsMenuNav = new MenuNav({ container: this.settingsModal, buttonSelector: 'button, input, select' });
 
     document.getElementById('btn-restart')?.addEventListener('click', () => this.callbacks.onRestart());
     document.getElementById('btn-new-level')?.addEventListener('click', () => this.callbacks.onNewRandom());
-    document.getElementById('btn-settings')?.addEventListener('click', () => this.openSettingsModal());
     document.getElementById('btn-mute')?.addEventListener('click', (e) => {
       const isMuted = this.callbacks.onToggleMute();
       (e.currentTarget as HTMLElement).innerText = isMuted ? '🔇 Muted' : '🔊 Audio';
     });
-
-    document.getElementById('btn-close-settings')?.addEventListener('click', () => this.closeSettingsModal());
-    document.getElementById('btn-quick-resume')?.addEventListener('click', () => this.closeSettingsModal());
-    document.getElementById('btn-save-settings')?.addEventListener('click', () => this.saveSettings());
 
     document.getElementById('btn-win-next')?.addEventListener('click', () => {
       this.closeWinModal();
@@ -79,18 +70,6 @@ export class HudManager {
       const seedText = this.seedEl.getAttribute('data-seed') || '';
       navigator.clipboard.writeText(seedText);
       alert(`Copied seed "${seedText}" to clipboard!`);
-    });
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' || e.code === 'Escape' || e.key === 'Esc') {
-        if (this.settingsModal.classList.contains('active')) {
-          this.closeSettingsModal();
-        } else {
-          this.openSettingsModal();
-        }
-      } else if (e.key === 'Enter' && this.settingsModal.classList.contains('active')) {
-        this.saveSettings();
-      }
     });
   }
 
@@ -173,46 +152,11 @@ export class HudManager {
     this.surfaceEl.style.color = color;
   }
 
-   public openSettingsModal() {
-    this.settingsModal.classList.add('active');
-    this.settingsMenuNav.activate();
-   }
-
-   public updateDebugPathSetting(enabled: boolean) {
+  public updateDebugPathSetting(enabled: boolean) {
     const debugPathCheckbox = document.getElementById('setting-debug-path') as HTMLInputElement;
     if (debugPathCheckbox) {
       debugPathCheckbox.checked = enabled;
     }
-   }
-
-  public closeSettingsModal() {
-    this.settingsModal.classList.remove('active');
-    this.settingsMenuNav.deactivate();
-  }
-
-  private saveSettings() {
-    const mode = (document.getElementById('setting-mode') as HTMLSelectElement).value as any;
-    const mouseEnabled = (document.getElementById('setting-mouse-enable') as HTMLInputElement).checked;
-    const difficulty = (document.getElementById('setting-difficulty') as HTMLSelectElement).value;
-    const sensitivity = parseFloat((document.getElementById('setting-sensitivity') as HTMLInputElement).value);
-    const customSeed = (document.getElementById('setting-seed') as HTMLInputElement).value.trim();
-    const debugPath = (document.getElementById('setting-debug-path') as HTMLInputElement).checked;
-
-    this.callbacks.onUpdateSettings(
-      {
-        mode,
-        mouseEnabled,
-        sensitivity
-      },
-      difficulty,
-      debugPath
-    );
-
-    if (customSeed) {
-      this.callbacks.onApplySeed(customSeed);
-    }
-
-    this.closeSettingsModal();
   }
 
   public showWinModal(finalTimeSec: number, coins: number, totalCoins: number) {

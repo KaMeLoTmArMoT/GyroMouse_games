@@ -7,12 +7,12 @@
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
+  <a href="../../index.html" class="gm-hub-btn"><span>🏠</span> Hub</a>
   <div id="canvas-container"></div>
   <div id="crosshair" title="Center Deadzone Reference"></div>
 
-  <div id="hud">
+  <div id="hud" class="gm-hud-container">
     <div class="hud-left">
-      <a href="../../index.html" class="icon-btn" style="text-decoration: none;">🏠 Hub</a>
       <div class="glass-card brand-title">
         <span>🔮</span> MARBLE MAZE
       </div>
@@ -26,65 +26,6 @@
       <button class="icon-btn" id="btn-mute">🔇 Muted</button>
       <button class="icon-btn" id="btn-restart">🔄 Restart</button>
       <button class="icon-btn primary" id="btn-new-level">🎲 New Level</button>
-      <button class="icon-btn" id="btn-settings">⚙️ Settings</button>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="settings-modal">
-    <div class="modal-box">
-      <div style="display: flex; gap: 12px; margin-bottom: 20px; width: 100%;">
-        <button class="icon-btn primary" id="btn-quick-resume" style="flex: 1; padding: 12px; font-weight: 800;">▶ Resume Game</button>
-        <a href="../../index.html" class="icon-btn" style="flex: 1; padding: 12px; text-decoration: none; text-align: center; font-weight: 800;">🏠 Quit to Hub</a>
-      </div>
-
-      <div class="modal-title">
-        <span>⚙️ Game Settings</span>
-      </div>
-
-      <div class="modal-group">
-        <label for="setting-mode">Control Input Source</label>
-        <select id="setting-mode" class="modal-select">
-          <option value="keyboard" selected>Keyboard Only (Arrow Keys / WASD)</option>
-          <option value="gyromouse">GyroMouse Air Mouse Only (Cursor Offset)</option>
-          <option value="both">Both (GyroMouse + Arrow Keys/WASD)</option>
-        </select>
-      </div>
-
-      <div class="modal-group" style="flex-direction: row; align-items: center; justify-content: space-between;">
-        <label for="setting-mouse-enable" style="cursor: pointer;">Enable PC Mouse Cursor Tracking</label>
-        <input type="checkbox" id="setting-mouse-enable" style="width: 20px; height: 20px; cursor: pointer;" />
-      </div>
-
-      <div class="modal-group">
-        <label for="setting-difficulty">Difficulty & Maze Size</label>
-        <select id="setting-difficulty" class="modal-select">
-          <option value="easy">Easy (6x6)</option>
-          <option value="medium_easy">Standard (8x8)</option>
-          <option value="medium" selected>Medium (10x10)</option>
-          <option value="medium_hard">Advanced (12x12)</option>
-          <option value="hard">Extreme (14x14)</option>
-        </select>
-      </div>
-
-      <div class="modal-group">
-        <label for="setting-sensitivity">Tilt Sensitivity</label>
-        <input type="range" id="setting-sensitivity" min="0.5" max="2.0" step="0.1" value="1.0" class="modal-input" />
-      </div>
-
-       <div class="modal-group">
-        <label for="setting-seed">Custom Maze Seed (Optional)</label>
-        <input type="text" id="setting-seed" placeholder="e.g. gyro-marble-99" class="modal-input" />
-      </div>
-      
-      <div class="modal-group" style="flex-direction: row; align-items: center; justify-content: space-between;">
-        <label for="setting-debug-path" style="cursor: pointer;">Show Debug Path Visualization</label>
-        <input type="checkbox" id="setting-debug-path" style="width: 20px; height: 20px; cursor: pointer;" />
-      </div>
-
-      <div class="modal-actions">
-        <button class="icon-btn" id="btn-close-settings">Cancel</button>
-        <button class="icon-btn primary" id="btn-save-settings">Save & Apply</button>
-      </div>
     </div>
   </div>
 

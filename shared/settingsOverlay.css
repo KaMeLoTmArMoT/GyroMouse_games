@@ -1,13 +1,16 @@
+@import './globalUI.css';
+
 .gm-gear-btn {
   position: fixed;
-  top: 16px;
-  right: 16px;
+  top: var(--gm-top-spacing);
+  right: var(--gm-side-spacing);
   z-index: 99990;
-  width: 44px;
-  height: 44px;
+  width: var(--gm-gear-size);
+  height: var(--gm-gear-size);
   border-radius: 50%;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(56, 189, 248, 0.4);
   color: #f3f4f6;
   font-size: 22px;
@@ -30,8 +33,9 @@
   position: fixed;
   inset: 0;
   z-index: 99999;
-  background: rgba(8, 11, 22, 0.75);
-  backdrop-filter: blur(12px);
+  background: rgba(8, 11, 22, 0.8);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -48,11 +52,11 @@
 
 .gm-card {
   background: #0f172a;
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 35px rgba(56, 189, 248, 0.2);
   border-radius: 20px;
-  width: 90%;
-  max-width: 400px;
+  width: 92%;
+  max-width: 440px;
   padding: 24px;
   color: #f3f4f6;
   transform: scale(0.95);
@@ -67,14 +71,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 12px;
 }
 
 .gm-title {
-  font-size: 1.3rem;
-  font-weight: 700;
+  font-size: 1.35rem;
+  font-weight: 800;
   background: linear-gradient(135deg, #38bdf8, #a855f7);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -87,7 +91,7 @@
   background: transparent;
   border: none;
   color: #9ca3af;
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 8px;
@@ -99,8 +103,83 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* Quick Action Grid (Resume, Restart, Mute, Quit) */
+.gm-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.gm-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(30, 41, 59, 0.8);
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.gm-action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.gm-action-btn.primary {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  border-color: #38bdf8;
+  grid-column: span 2;
+}
+.gm-action-btn.primary:hover {
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+}
+
+.gm-action-btn.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.gm-action-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.gm-action-btn.danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+.gm-action-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.gm-section-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 18px 0;
+}
+
+.gm-section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #38bdf8;
+  margin-bottom: 12px;
+}
+
 .gm-group {
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .gm-label {
@@ -174,7 +253,7 @@
 }
 
 .gm-footer {
-  margin-top: 24px;
+  margin-top: 20px;
   text-align: right;
 }
 
@@ -183,7 +262,7 @@
   color: #fff;
   border: none;
   font-weight: 700;
-  padding: 10px 20px;
+  padding: 10px 24px;
   border-radius: 10px;
   cursor: pointer;
   transition: opacity 0.2s;

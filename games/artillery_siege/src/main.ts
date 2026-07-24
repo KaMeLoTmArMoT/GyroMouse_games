@@ -43,7 +43,13 @@ class ArtilleryGame extends BaseGame {
     this.hud = new ArtilleryHUD();
     this.settingsOverlay = new SettingsOverlay({
       gameId: 'artillery_siege',
-      inputManager: this.input
+      inputManager: this.input,
+      onPauseToggle: (paused) => {
+        if (this.isLevelComplete || this.isGameOver) return;
+        this.isPaused = paused;
+      },
+      onRestart: () => this.startLevel(this.currentLevel),
+      onToggleMute: () => this.audio.toggleMute()
     });
 
     this.init();
@@ -70,15 +76,14 @@ class ArtilleryGame extends BaseGame {
     requestAnimationFrame(tick);
   }
 
-  public override togglePause(forceState?: boolean) {
+  protected override onEscape() {
     if (this.isLevelComplete || this.isGameOver) return;
-    super.togglePause(forceState);
-    this.hud.togglePauseModal(this.isPaused, () => this.togglePause(false));
+    this.settingsOverlay.toggle();
   }
 
   protected override onSpace() {
     if (this.isPaused) {
-      this.togglePause(false);
+      this.settingsOverlay.toggle();
       return;
     }
     if (!this.spaceDebounce) {

@@ -1,4 +1,4 @@
-import { ImpactRecord, TargetStructure } from '../physics/artilleryPhysics';
+import { TargetStructure } from '../physics/artilleryPhysics';
 import { MenuNav } from '../../../../shared/menuNav';
 
 export class ArtilleryHUD {
@@ -24,9 +24,6 @@ export class ArtilleryHUD {
   private modalBtn: HTMLElement;
   private modalMenuNav: MenuNav;
 
-  private pauseModalOverlay: HTMLElement;
-  private pauseMenuNav: MenuNav;
-
   constructor() {
     this.radarCanvas = document.getElementById('radar-canvas') as HTMLCanvasElement;
     this.radarCtx = this.radarCanvas.getContext('2d')!;
@@ -49,23 +46,6 @@ export class ArtilleryHUD {
     this.modalDesc = document.getElementById('modal-desc')!;
     this.modalBtn = document.getElementById('modal-btn')!;
     this.modalMenuNav = new MenuNav({ container: this.modalOverlay });
-
-    this.pauseModalOverlay = document.getElementById('pause-modal')!;
-    this.pauseMenuNav = new MenuNav({ container: this.pauseModalOverlay });
-  }
-
-  public togglePauseModal(isPaused: boolean, onResume?: () => void) {
-    if (isPaused) {
-      this.pauseModalOverlay.classList.add('active');
-      this.pauseMenuNav.activate();
-      const btn = document.getElementById('btn-pause-resume');
-      if (btn && onResume) {
-        btn.onclick = () => onResume();
-      }
-    } else {
-      this.pauseModalOverlay.classList.remove('active');
-      this.pauseMenuNav.deactivate();
-    }
   }
 
   public showModal(title: string, desc: string, btnText: string, onBtnClick: () => void) {
@@ -82,136 +62,103 @@ export class ArtilleryHUD {
     };
   }
 
+  public hideModal() {
+    this.modalOverlay.classList.remove('active');
+    this.modalMenuNav.deactivate();
+  }
+
   public updateStats(level: number, hitTargets: number, totalTargets: number, shellsLeft: number) {
     this.hudLevel.innerText = `${level}`;
     this.hudTargets.innerText = `${hitTargets} / ${totalTargets}`;
     this.hudShells.innerText = `${shellsLeft}`;
   }
 
-  public updateAimValues(pitchDeg: number, yawDeg: number) {
-    this.pitchVal.innerText = `${pitchDeg.toFixed(1)}°`;
-    this.yawVal.innerText = `${yawDeg.toFixed(1)}°`;
-  }
-
   public setStage(stage: 1 | 2) {
     if (stage === 1) {
       this.stageBadge.innerText = 'STAGE 1: COARSE TURRET AIM';
-      this.stageBadge.style.background = 'rgba(239, 68, 68, 0.2)';
-      this.stageBadge.style.color = '#f87171';
-
       this.stage1Controls.style.display = 'flex';
       this.stage2Controls.style.display = 'none';
     } else {
-      this.stageBadge.innerText = 'STAGE 2: CHARGE POWER (P1 UP/DOWN) & WIND TUNE (P2 L/R)';
-      this.stageBadge.style.background = 'rgba(245, 158, 11, 0.2)';
-      this.stageBadge.style.color = '#fbbf24';
-
+      this.stageBadge.innerText = 'STAGE 2: CHARGE & LOCK POWER';
       this.stage1Controls.style.display = 'none';
       this.stage2Controls.style.display = 'flex';
     }
   }
 
+  public updateAimDisplay(pitchDeg: number, yawDeg: number) {
+    this.pitchVal.innerText = `${pitchDeg.toFixed(1)}°`;
+    const yawDir = yawDeg > 0 ? 'R' : yawDeg < 0 ? 'L' : '';
+    this.yawVal.innerText = `${Math.abs(yawDeg).toFixed(1)}° ${yawDir}`.trim();
+  }
+
+  public updateAimValues(pitchDeg: number, yawDeg: number) {
+    this.updateAimDisplay(pitchDeg, yawDeg);
+  }
+
+  public updatePowerDisplay(powerMps: number, minPower: number, maxPower: number) {
+    this.powerVal.innerText = `${powerMps.toFixed(1)} m/s`;
+    const pct = ((powerMps - minPower) / (maxPower - minPower)) * 100;
+    this.powerBarFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  }
+
   public updatePowerBar(powerMps: number, powerRatio: number) {
-    const pct = Math.max(0, Math.min(100, powerRatio * 100));
-    this.powerBarFill.style.width = `${pct}%`;
-    if (this.powerVal) {
-      this.powerVal.innerText = `${powerMps.toFixed(1)} m/s (${Math.round(pct)}%)`;
-    }
+    this.powerVal.innerText = `${powerMps.toFixed(1)} m/s`;
+    this.powerBarFill.style.width = `${Math.max(0, Math.min(100, powerRatio * 100))}%`;
   }
 
-  public setSpotterMessage(msg: string) {
-    this.spotterText.innerText = msg;
+  public setSpotterMessage(text: string) {
+    this.spotterText.innerText = text;
   }
 
-  public drawRadarMap(
-    targets: Map<string, TargetStructure>,
-    impactHistory: ImpactRecord[],
-    currentYaw: number,
-    windVector: { x: number; z: number }
-  ) {
+  public drawRadar(targets: Map<string, TargetStructure> | TargetStructure[], _cannonPos?: any) {
     const ctx = this.radarCtx;
     const w = this.radarCanvas.width;
     const h = this.radarCanvas.height;
-    const centerX = w / 2;
-    const centerY = h - 15;
-    const scale = 1.3;
+    const cx = w / 2;
+    const cy = h / 2;
 
     ctx.clearRect(0, 0, w, h);
 
-    // Background circle grid
-    ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
+    // Radar grid rings
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.2)';
     ctx.lineWidth = 1;
-
-    [25, 55, 85, 115].forEach((r) => {
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, r, Math.PI, 0, false);
-      ctx.stroke();
-    });
-
-    // Cannon Aim Line (positive currentYaw points towards +X Right)
-    const yawRad = (currentYaw * Math.PI) / 180;
-    const lineLen = 120;
-    const aimX = centerX + Math.sin(yawRad) * lineLen;
-    const aimY = centerY - Math.cos(yawRad) * lineLen;
-
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 2.0;
-    ctx.setLineDash([4, 4]);
     ctx.beginPath();
-    ctx.moveTo(centerX, centerY);
-    ctx.lineTo(aimX, aimY);
+    ctx.arc(cx, cy, w * 0.2, 0, Math.PI * 2);
+    ctx.arc(cx, cy, w * 0.4, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.setLineDash([]);
 
-    // Wind Vector Indicator
-    if (Math.hypot(windVector.x, windVector.z) > 0.1) {
-      ctx.strokeStyle = '#a855f7';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(w - 25, 25);
-      ctx.lineTo(w - 25 + windVector.x * 3, 25 - windVector.z * 3);
-      ctx.stroke();
+    // Radar sweep line
+    const angle = (Date.now() / 1000) % (Math.PI * 2);
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * (w / 2), cy + Math.sin(angle) * (h / 2));
+    ctx.stroke();
 
-      ctx.fillStyle = '#a855f7';
-      ctx.font = '9px monospace';
-      ctx.fillText('WIND', w - 34, 14);
-    }
-
-    // Past Impact Craters
-    impactHistory.forEach((imp) => {
-      const rx = centerX + imp.position.x * scale;
-      const ry = centerY - imp.position.z * scale;
-
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(rx, ry, 3.5, 0, Math.PI * 2);
-      ctx.stroke();
-    });
-
-    // Draw Targets
-    targets.forEach((t) => {
-      const rx = centerX + t.position.x * scale;
-      const ry = centerY - t.position.z * scale;
-
-      if (t.isDestroyed) {
-        ctx.fillStyle = '#475569';
-        ctx.beginPath();
-        ctx.arc(rx, ry, 3, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.fillStyle = '#ef4444';
-        ctx.shadowColor = '#ef4444';
-        ctx.shadowBlur = 6;
-        ctx.fillRect(rx - 4, ry - 4, 8, 8);
-        ctx.shadowBlur = 0;
-      }
-    });
-
-    // Cannon icon at origin
+    // Cannon icon at center
     ctx.fillStyle = '#38bdf8';
     ctx.beginPath();
-    ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
     ctx.fill();
+
+    const radarScale = (w * 0.4) / 100.0;
+    const targetList = targets instanceof Map ? Array.from(targets.values()) : targets;
+
+    targetList.forEach((t) => {
+      const relX = t.position.x;
+      const relZ = t.position.z;
+
+      const rx = cx + relX * radarScale;
+      const ry = cy - relZ * radarScale;
+
+      ctx.fillStyle = t.isDestroyed ? '#6b7280' : '#ef4444';
+      ctx.beginPath();
+      ctx.arc(rx, ry, t.isDestroyed ? 3 : 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  public drawRadarMap(targets: any, _history?: any, _yaw?: any, _wind?: any) {
+    this.drawRadar(targets);
   }
 }

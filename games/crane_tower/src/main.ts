@@ -17,11 +17,6 @@ async function main() {
   const input = new SharedInputManager();
   input.settings.mode = 'keyboard'; // Dual split keyboard / gyromouse
 
-  void new SettingsOverlay({
-    gameId: 'crane_tower',
-    inputManager: input
-  });
-
   // 2. Initialize Physics & Graphics
   const physics = new CranePhysicsManager();
   await physics.init();
@@ -29,8 +24,20 @@ async function main() {
   const graphics = new CraneGraphicsManager(canvas);
   graphics.init();
 
-  // 3. Initialize Game Logic
+  // 3. Initialize Game Logic & Settings Overlay
   const game = new CraneGameLogic(physics, graphics, audio);
+
+  const settingsOverlay = new SettingsOverlay({
+    gameId: 'crane_tower',
+    inputManager: input,
+    onPauseToggle: (paused) => {
+      game.isPaused = paused;
+    },
+    onRestart: () => game.startLevel(game.currentLevel),
+    onToggleMute: () => audio.toggleMute()
+  });
+
+  game.settingsOverlay = settingsOverlay;
   game.startLevel(1);
 
   // 4. Main Game Loop
@@ -45,43 +52,19 @@ async function main() {
     // Update Input
     input.update(dt);
 
-    // Read dual-axis inputs continuously (Player 1 Y = Up/Down, Player 2 X = Left/Right)
-    let inputX = 0;
-    let inputY = 0;
-
-    const keys = (input as unknown as { keysPressed: Set<string> }).keysPressed;
-    if (keys) {
-      if (keys.has('KeyD') || keys.has('ArrowRight')) inputX += 1.0;
-      if (keys.has('KeyA') || keys.has('ArrowLeft')) inputX -= 1.0;
-      if (keys.has('KeyW') || keys.has('ArrowUp')) inputY += 1.0;
-      if (keys.has('KeyS') || keys.has('ArrowDown')) inputY -= 1.0;
-    }
-
-    // Combine with gyro/mouse if active
-    if (Math.abs(input.normalizedDx) > 0.05) inputX += input.normalizedDx;
-    if (Math.abs(input.normalizedDy) > 0.05) inputY -= input.normalizedDy;
-
-    // Clamp input range [-1, 1]
-    inputX = Math.max(-1.0, Math.min(1.0, inputX));
-    inputY = Math.max(-1.0, Math.min(1.0, inputY));
-
-    // Check magnet active state (Space key or UI drop button)
-    const isMagnetActive = Boolean(keys && keys.has('Space'));
+    // Read steering values (steer.x = Left/Right, steer.y = Up/Down pitch)
+    const steer = input.getSteeringValue();
+    const inputX = steer.x;
+    const inputY = -steer.y; // W/Up (steer.y < 0) raises crane (inputY > 0), S/Down (steer.y > 0) lowers crane (inputY < 0)
 
     if (!game.isPaused) {
-      // Update Crane Hook movement
       if (game.state === 'PLAYING' || game.state === 'COUNTDOWN') {
-        physics.updateCranePosition(inputX, inputY, dt, isMagnetActive);
+        physics.updateCranePosition(inputX, inputY, dt, false);
       }
-
-      // Step Physics
       physics.step(dt);
-
-      // Update Game Rules & Countdown
       game.update(dt);
     }
 
-    // Sync 3D Graphics
     graphics.syncGraphics(physics);
     graphics.render();
   }
@@ -89,6 +72,4 @@ async function main() {
   requestAnimationFrame(animate);
 }
 
-main().catch((err) => {
-  console.error('Failed to initialize 3D Crane Tower:', err);
-});
+main().catch(console.error);
