@@ -1,6 +1,6 @@
 # 🐛💥 Wormix (Turn-Based Elemental Artillery)
 
-A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) built with **Canvas 2D**, featuring an **Offscreen Pixel-Mask Destructible Terrain Engine**, **30 FPS locked simulation tick**, elemental terrain physics (Grass, Dirt, Stone, Bedrock, Sand, Water, Acid, Portals), wind vectors, trajectory sighting arcs, smart tactical AI, and **dual control modes** (GyroMouse Restricted Mode & PC Mouse/Keyboard Mode).
+A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) built with **Canvas 2D**, featuring an **Offscreen Pixel-Mask Destructible Terrain Engine**, **Live Dynamic Water Physics & Lakes**, **Interactive Map Objects**, **Canvas Map Editor with LocalStorage & JSON Save/Load**, **Match Lobby & Game Modes**, **30 FPS locked simulation tick**, elemental terrain physics (Grass, Dirt, Stone, Bedrock, Sand, Water, Acid, Portals), wind vectors, trajectory sighting arcs, smart tactical AI, and **dual control modes** (GyroMouse Restricted Mode & PC Mouse/Keyboard Mode).
 
 ---
 
@@ -9,7 +9,7 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 ### Dual Control Support
 
 1. **GyroMouse / Restricted Mode** (`WASD` / Arrow Keys + `Space` + `ESC`):
-   * **Step 1 — Move (`WALK`)**: `A` / `D` or `←` / `→` (or Gyro Roll tilt) to walk. `W` / `↑` tap to jump. Tap `Space` to proceed to Weapon Selection.
+   * **Step 1 — Move (`WALK`)**: `A` / `D` or `←` / `→` (or Gyro Roll tilt) to walk. `W` / `↑` tap to jump / swim upward in water. Tap `Space` to proceed to Weapon Selection.
    * **Step 2 — Select Weapon (`WEAPON_SELECT`)**: `A` / `D` or `←` / `→` to cycle toolbar. Tap `Space` to equip weapon. Tap `S` / `↓` to return to Movement.
    * **Step 3 — Aim & Fire (`AIM_FIRE`)**: `W` / `S` or `↑` / `↓` (or Gyro Pitch tilt) to adjust aim angle. **Hold `Space`** to charge launch power meter $\rightarrow$ **Release `Space`** to FIRE!
    * **Re-Center Calibration**: `KeyC` (letter C).
@@ -22,26 +22,48 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 
 ## ⚙️ Game Features & Mechanics
 
-1. **Offscreen Pixel-Mask Destructible Terrain**:
-   * True 2D circular crater carving using `destination-out` composite blending on an offscreen terrain canvas.
-   * Fixed geological layers: Grass green (`#15803d`), Dirt brown (`#78350f`), Stone grey (`#64748b`), Bedrock dark charcoal (`#1c1917`), and Sand dunes golden yellow (`#f59e0b`).
-   * Sand slumping physics into adjacent craters.
-   * Bottom Water layer (`waterY`): Falling into water causes drowning and instant defeat for that unit.
-2. **Arsenal**:
+1. **🧪 2D Cellular Automata Grid Physics Engine**:
+   * Powered by a discrete 2D grid (`Uint8Array`) running a **Falling Sand Cellular Automata Simulation Algorithm** with bottom-to-top processing sweeps and directional shuffling.
+   * **🌊 Water Mechanics**: Falls down into empty space, flows diagonally down hill slopes, and levels out horizontally into smooth flat liquid pools.
+   * **🧪 Acid Mechanics**: Flows like water and actively dissolves adjacent solid terrain and sand cells into empty air on contact with bubbling particles.
+   * **⏳ Sand Mechanics**: Falls down, slumps down slopes into craters, and sinks through water cells (displacing water upward).
+   * **Real-time Waterfall Cascades**: Carving holes beneath liquid pools causes water and acid to cascade down into newly carved craters in real-time.
+
+2. **🌊 Submersion, Buoyancy & Swimming**:
+   * Worms submerged in water or acid experience dynamic buoyancy force and fluid drag based on surrounding liquid grid cell density, allowing them to swim upward (`W` / `↑` key).
+   * **Oxygen Breath Meter**: Submerged worms have an Oxygen meter (100 $\rightarrow$ 0). When oxygen runs out, worms take gradual drowning damage (-0.4 HP/tick).
+
+3. **🛢️ Interactive Map Objects**:
+   * 🛢️ **Explosive Barrels**: 50 HP. Detonate when shot or hit by explosions, causing a 55px explosion + flying fire debris.
+   * 💣 **Landmines**: Triggers a 1-second countdown beep when a worm steps within 28px distance, then explodes!
+   * 🧰 **Health Supply Crates**: Walking or jumping into crates collects them, restoring +30 HP to the worm with a healing sound effect!
+
+4. **🛠️ Interactive Map Editor & Real-Time Streams**:
+   * In-game canvas map sculpting tool accessible directly from the Main Menu or ESC Settings screen.
+   * **Live Stream Brushes**: Paint Grass, Dirt, Stone, Sand, 🌊 Water, 🧪 Acid, or Eraser in real-time and watch liquids flow and settle into valleys directly inside the editor.
+   * **Entity Placement**: Drag & drop Red Spawns, Blue Spawns, Oil Barrels, Landmines, and Health Crates.
+   * **Storage**: Save maps to browser `localStorage`, export as `.wormix.json` files, or import custom JSON map files.
+   * **Test Play**: Test your custom created maps immediately with one click!
+
+5. **⚔️ Match Lobby & Game Modes**:
+   * **Team Configurations**: 1v1, 2v2, 3v3 team sizes.
+   * **Custom Health**: 50 HP, 100 HP, 150 HP, 200 HP per worm.
+   * **Game Modes**:
+     * *Classic Deathmatch*
+     * *🌊 Rising Water (Sudden Death)*: Ocean water level constantly rises by +0.08px each tick!
+     * *🏰 Fort Warfare*: Pre-built fortress maps.
+
+6. **Arsenal**:
    * 🚀 **Bazooka**: Wind-affected heavy explosive missile.
    * 💣 **Grenade**: Bouncing projectile with 3-second fuse timer.
    * 💥 **Cluster Bomb**: Splits into 5 mini-bombs on impact.
-   * 🧪 **Acid Bomb**: Spawns acid particles that dissolve terrain layers.
+   * 🧪 **Acid Bomb**: Spawns a stream of corrosive `CELL_ACID` cells that melt terrain layers.
    * ⏳ **Sand Bomb**: Generates a new sand dune mound on impact.
    * 🌀 **Portal Gun**: Deploys an Orange or Blue portal pair on terrain surfaces to warp incoming projectiles and worms.
    * 🔫 **Shotgun**: Direct line-of-sight double shot.
-3. **Trajectory Sighting Arc**:
-   * Dotted ballistic arc preview projected in real time from cannon tip, calculated using current aim angle, charge power, gravity, and wind vector.
-4. **Dynamic Wind Vector**:
-   * Wind direction and speed update every turn, affecting Bazooka and Cluster bomb trajectories.
-5. **Smart Tactical AI**:
-   * Single-player bot target solver (`easy`, `normal`, `hard` difficulty levels) using inverse parabolic trajectory math.
-6. **Fixed 30 FPS Lock**:
+
+
+7. **Fixed 30 FPS Lock**:
    * Game loop simulation locked at `1000/30` ms tick rate for consistent physics across all hardware.
 
 ---
@@ -51,13 +73,17 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 | File | Role & Features |
 | :--- | :--- |
 | [`index.html`](index.html) | Canvas container, back button to main hub, styling. |
-| [`src/main.ts`](src/main.ts) | Game orchestrator, 30 FPS tick loop, 3-step turn state machine, input handling. |
-| [`src/terrain/terrainManager.ts`](src/terrain/terrainManager.ts) | Offscreen pixel-mask terrain engine, Bezier curve surface generation, crater carving, water/acid/sand physics, portal rendering. |
-| [`src/entities/worm.ts`](src/entities/worm.ts) | Worm unit physics, walking, jumping, terrain collision, health bar, team colors. |
+| [`src/main.ts`](src/main.ts) | Game orchestrator, 30 FPS tick loop, 3-step turn state machine, menu/editor management. |
+| [`src/terrain/terrainManager.ts`](src/terrain/terrainManager.ts) | Offscreen pixel-mask terrain engine, Bezier curve surface generation, live dynamic water physics, lake breaching & waterfall particles. |
+| [`src/entities/worm.ts`](src/entities/worm.ts) | Worm unit physics, walking, jumping, terrain collision, water buoyancy, oxygen breath meter, health bar. |
+| [`src/entities/mapObject.ts`](src/entities/mapObject.ts) | Interactive map entities: Explosive Barrels, Landmines proximity triggers, Health Crates pickup. |
+| [`src/editor/mapEditor.ts`](src/editor/mapEditor.ts) | Interactive canvas map editor with material brushes, spawn/object placement, and instant test play. |
+| [`src/editor/mapStorage.ts`](src/editor/mapStorage.ts) | Map storage utility for LocalStorage map registry, preset maps, and JSON file export/import. |
+| [`src/ui/menuModal.ts`](src/ui/menuModal.ts) | Glassmorphism main menu & match lobby (Quick Play, Team Size, Health, Game Modes, Map Selector). |
 | [`src/physics/projectile.ts`](src/physics/projectile.ts) | Projectile simulation, wind force, gravity, portal warping, explosion damage & knockback. |
 | [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI trajectory calculation and difficulty levels. |
 | [`src/ui/hud.ts`](src/ui/hud.ts) | Glassmorphism HUD, turn phase banner, trajectory arc preview, power meter, weapon selector toolbar. |
-| [`src/types.ts`](src/types.ts) | Type interfaces for turn phases, materials, weapons, portals, and particles. |
+| [`src/types.ts`](src/types.ts) | Type interfaces for turn phases, materials, weapons, map objects, water bodies, map data, and lobby config. |
 
 ---
 

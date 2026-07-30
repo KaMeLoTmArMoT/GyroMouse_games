@@ -15,6 +15,11 @@ export class Worm {
   public health: number = 100;
   public maxHealth: number = 100;
 
+  // Oxygen & Water Submersion
+  public oxygen: number = 100;
+  public maxOxygen: number = 100;
+  public isInWater: boolean = false;
+
   public aimAngle: number = 0; // Degrees (-90 = straight up, 0 = right, 180 = left)
   public facingRight: boolean = true;
   public isGrounded: boolean = false;
@@ -37,21 +42,39 @@ export class Worm {
   public update(terrain: TerrainManager): void {
     if (!this.isAlive) return;
 
-    // Apply Gravity
-    this.vy += 0.5;
+    // Cellular Automata Water Density & Submersion Check
+    const waterCells = terrain.getWaterDensityAt(this.x, this.y, 22);
+    if (waterCells > 2 || this.y >= terrain.waterY - 10) {
+      this.isInWater = true;
+      this.vy += 0.1; // Reduced effective gravity in water
+      this.vy -= Math.min(0.5, waterCells * 0.04); // Buoyancy force upward!
+      this.vx *= 0.75; // Fluid drag
+      this.vy *= 0.8;
+
+      // Deplete oxygen while submerged
+      this.oxygen = Math.max(0, this.oxygen - 0.5);
+      if (this.oxygen <= 0) {
+        this.takeDamage(0.4); // Gradual drowning damage per tick
+      }
+    } else {
+      this.isInWater = false;
+      this.oxygen = Math.min(this.maxOxygen, this.oxygen + 2.0); // Replenish breath
+      this.vy += 0.5; // Normal gravity
+      this.vx *= 0.85; // Normal friction
+    }
+
     this.x += this.vx;
     this.y += this.vy;
 
-    // Friction
-    this.vx *= 0.85;
+
 
     // Terrain Collision
     const surfaceY = terrain.getSurfaceY(this.x);
     const feetY = this.y + this.radius;
 
-    if (feetY >= surfaceY && this.y < terrain.waterY) {
+    if (feetY >= surfaceY) {
       // Check fall damage
-      if (!this.isGrounded && this.vy > 8) {
+      if (!this.isGrounded && this.vy > 8 && !this.isInWater) {
         const fallDist = Math.max(0, this.y - this.fallStartY);
         if (fallDist > 120) {
           const dmg = Math.floor((fallDist - 120) * 0.35);
@@ -72,8 +95,8 @@ export class Worm {
     // Screen Bounds
     this.x = Math.max(this.radius, Math.min(terrain.width - this.radius, this.x));
 
-    // Water Drowning Check
-    if (this.y + this.radius >= terrain.waterY) {
+    // Bottom Ocean Void Death Check
+    if (this.y > terrain.height + 20) {
       this.isDrowned = true;
       this.health = 0;
       this.isAlive = false;
@@ -81,18 +104,26 @@ export class Worm {
   }
 
   public walk(direction: number): void {
-    if (!this.isGrounded || !this.isAlive) return;
-    this.vx = direction * 2.5;
+    if (!this.isAlive) return;
+    const speed = this.isInWater ? 1.5 : 2.5;
+    if (this.isGrounded || this.isInWater) {
+      this.vx = direction * speed;
+    }
     if (direction !== 0) {
       this.facingRight = direction > 0;
     }
   }
 
   public jump(): void {
-    if (!this.isGrounded || !this.isAlive) return;
-    this.vy = -6.5;
-    this.vx = (this.facingRight ? 1 : -1) * 3.0;
-    this.isGrounded = false;
+    if (!this.isAlive) return;
+    if (this.isInWater) {
+      this.vy = -4.5; // Swim upward!
+      this.vx = (this.facingRight ? 1 : -1) * 2.0;
+    } else if (this.isGrounded) {
+      this.vy = -6.5;
+      this.vx = (this.facingRight ? 1 : -1) * 3.0;
+      this.isGrounded = false;
+    }
   }
 
   public takeDamage(amount: number): void {
@@ -166,7 +197,7 @@ export class Worm {
 
     ctx.restore();
 
-    // Floating Health Bar & Name Label above worm
+    // Floating Health & Oxygen Bar
     const barWidth = 32;
     const barHeight = 5;
     const barX = this.x - barWidth / 2;
@@ -179,10 +210,18 @@ export class Worm {
     ctx.fillStyle = hpRatio > 0.5 ? '#22c55e' : hpRatio > 0.25 ? '#eab308' : '#ef4444';
     ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
 
+    // Oxygen Bubble Bar when submerged
+    if (this.oxygen < 100) {
+      const oxyRatio = Math.max(0, this.oxygen / this.maxOxygen);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(barX, barY - 4, barWidth * oxyRatio, 3);
+    }
+
     // Name Label
     ctx.font = '10px sans-serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.fillText(this.name, this.x, barY - 3);
+    ctx.fillText(this.name, this.x, barY - 5);
   }
 }
+

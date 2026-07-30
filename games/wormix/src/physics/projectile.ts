@@ -1,4 +1,5 @@
-import { WeaponId, Portal } from '../types';
+import { WeaponId, Portal, CELL_ACID } from '../types';
+
 import { TerrainManager } from '../terrain/terrainManager';
 import { Worm } from '../entities/worm';
 
@@ -139,21 +140,9 @@ export class Projectile {
     if (this.weaponId === 'sand_bomb') {
       terrain.depositSand(this.x, 35);
     } else if (this.weaponId === 'acid_bomb') {
-      // Spawn acid particles
-      for (let i = 0; i < 15; i++) {
-        terrain.particles.push({
-          x: this.x + (Math.random() - 0.5) * 20,
-          y: this.y,
-          vx: (Math.random() - 0.5) * 6,
-          vy: -Math.random() * 4,
-          life: 0,
-          maxLife: 60,
-          color: '#84cc16',
-          size: 4,
-          isAcid: true
-        });
-      }
+      terrain.spawnElementStream(this.x, this.y, CELL_ACID, 18);
     } else if (this.weaponId === 'portal_gun') {
+
       // Deploy portal
       const isOrange = terrain.orangePortal === null;
       const portal: Portal = {

@@ -1,12 +1,15 @@
 import { SharedInputManager } from '../../../shared/inputManager';
 import { SettingsOverlay } from '../../../shared/settingsOverlay';
 import { SharedAudioManager } from '../../../shared/audioManager';
-import { TurnPhase, AIDifficulty } from './types';
+import { TurnPhase, AIDifficulty, LobbyConfig, CustomMapData } from './types';
 import { TerrainManager } from './terrain/terrainManager';
 import { Worm } from './entities/worm';
+import { MapObject } from './entities/mapObject';
 import { Projectile } from './physics/projectile';
 import { WormAI } from './ai/wormAI';
 import { HUD, WEAPON_LIST } from './ui/hud';
+import { MenuModal } from './ui/menuModal';
+import { MapEditor } from './editor/mapEditor';
 
 export class WormixGame {
   private canvas: HTMLCanvasElement;
@@ -16,19 +19,29 @@ export class WormixGame {
   private settingsOverlay: SettingsOverlay;
   private audioManager: SharedAudioManager;
   private hud: HUD;
+  private menuModal: MenuModal;
+  private mapEditor: MapEditor | null = null;
 
   public terrain: TerrainManager;
   public worms: Worm[] = [];
+  public mapObjects: MapObject[] = [];
   public projectiles: Projectile[] = [];
 
-  public phase: TurnPhase = 'MOVE';
+  public phase: TurnPhase = 'MENU';
   public activeWormIndex: number = 0;
   public activeWeaponIndex: number = 0;
 
-  // Turn Timer & Wind
+  // Turn Timer, Wind & Lobby Config
   public turnTimer: number = 45.0; // 45s countdown
   public windX: number = 0.0; // -2.5 to +2.5
   public aiDifficulty: AIDifficulty = 'normal';
+  public lobbyConfig: LobbyConfig = {
+    teamSize: 2,
+    wormHealth: 100,
+    gameMode: 'deathmatch',
+    mapId: 'random',
+    aiDifficulty: 'normal'
+  };
 
   // Charge Power State
   public isCharging: boolean = false;
@@ -48,16 +61,39 @@ export class WormixGame {
     this.hud = new HUD();
     this.terrain = new TerrainManager(window.innerWidth, window.innerHeight);
 
-    // Initialize Settings Overlay
+    // Initialize Settings Overlay with custom Game Modes & Map Editor actions
     this.settingsOverlay = new SettingsOverlay({
       gameId: 'wormix',
-      inputManager: this.inputManager
+      inputManager: this.inputManager,
+      customGameOptionsHtml: `
+        <div style="display:flex; flex-direction:column; gap:8px; width:100%;">
+          <button class="gm-action-btn primary" id="gm-btn-lobby" style="background: linear-gradient(135deg, #16a34a, #22c55e);">⚔️ Match Lobby & Game Modes</button>
+          <button class="gm-action-btn secondary" id="gm-btn-editor" style="background: linear-gradient(135deg, #7c3aed, #8b5cf6);">🛠️ Map Editor</button>
+        </div>
+      `,
+      onBindCustomOptions: (container) => {
+        container.querySelector('#gm-btn-lobby')?.addEventListener('click', () => {
+          this.settingsOverlay.toggle();
+          this.menuModal.show();
+        });
+        container.querySelector('#gm-btn-editor')?.addEventListener('click', () => {
+          this.settingsOverlay.toggle();
+          this.openMapEditor();
+        });
+      }
     });
+
+    // Initialize Main Menu Modal
+    this.menuModal = new MenuModal(
+      (config, mapData) => this.startMatch(config, mapData),
+      () => this.openMapEditor(),
+      () => this.settingsOverlay.toggle()
+    );
+
 
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
 
-    this.initGame();
     this.setupInputs();
 
     // Start locked 30 FPS loop
@@ -70,21 +106,96 @@ export class WormixGame {
     this.terrain.resize(this.canvas.width, this.canvas.height);
   }
 
-  private initGame(): void {
-    const xPositions = [
-      this.canvas.width * 0.2,
-      this.canvas.width * 0.35,
-      this.canvas.width * 0.65,
-      this.canvas.width * 0.8
-    ];
+  public openMapEditor(): void {
+    this.phase = 'EDITOR';
+    this.mapEditor = new MapEditor(
+      this.canvas,
+      (customMap) => {
+        if (this.mapEditor) this.mapEditor.exit();
+        this.startMatch(this.lobbyConfig, customMap);
+      },
+      () => {
+        this.mapEditor = null;
+        this.phase = 'MENU';
+        this.menuModal.show();
+      }
+    );
+  }
 
-    this.worms = [
-      new Worm('p1', 'Red Commando', 'player', xPositions[0], this.terrain.getSurfaceY(xPositions[0]) - 12),
-      new Worm('p2', 'Red Gunner', 'player', xPositions[1], this.terrain.getSurfaceY(xPositions[1]) - 12),
-      new Worm('ai1', 'Blue Sniper', 'ai', xPositions[2], this.terrain.getSurfaceY(xPositions[2]) - 12),
-      new Worm('ai2', 'Blue Heavy', 'ai', xPositions[3], this.terrain.getSurfaceY(xPositions[3]) - 12)
-    ];
+  public startMatch(config: LobbyConfig, mapData?: CustomMapData): void {
+    this.menuModal.hide();
+    this.lobbyConfig = config;
+    this.aiDifficulty = config.aiDifficulty;
+    if (this.mapEditor) {
+      this.mapEditor.exit();
+      this.mapEditor = null;
+    }
 
+    // 1. Generate or Load Terrain
+    if (mapData && mapData.terrainHeights && mapData.terrainHeights.length > 0) {
+      this.terrain.width = mapData.width || this.canvas.width;
+      this.terrain.height = mapData.height || this.canvas.height;
+      this.terrain.waterY = mapData.waterY || this.canvas.height - 40;
+      this.terrain.buildTerrainFromHeights(
+        mapData.terrainHeights,
+        mapData.waterY,
+        mapData.terrainMaterials,
+        mapData.gridData
+      );
+    } else {
+      this.terrain.resize(this.canvas.width, this.canvas.height);
+    }
+
+
+
+    // 2. Initialize Worm Teams based on LobbyConfig
+    this.worms = [];
+    const teamSize = config.teamSize;
+    const hp = config.wormHealth;
+
+    for (let i = 0; i < teamSize; i++) {
+      const redX = mapData?.spawnPoints[i]?.x || this.canvas.width * (0.15 + i * 0.12);
+      const redWorm = new Worm(`p_${i}`, `Red #${i + 1}`, 'player', redX, this.terrain.getSurfaceY(redX) - 12);
+      redWorm.health = hp;
+      redWorm.maxHealth = hp;
+      this.worms.push(redWorm);
+    }
+
+    for (let i = 0; i < teamSize; i++) {
+      const blueX = mapData?.spawnPoints[i + 2]?.x || this.canvas.width * (0.65 + i * 0.12);
+      const blueWorm = new Worm(`ai_${i}`, `Blue #${i + 1}`, 'ai', blueX, this.terrain.getSurfaceY(blueX) - 12);
+      blueWorm.health = hp;
+      blueWorm.maxHealth = hp;
+      this.worms.push(blueWorm);
+    }
+
+    // 3. Initialize Interactive Map Objects (Barrels, Mines, Health Crates)
+    this.mapObjects = [];
+    if (mapData && mapData.mapObjects && mapData.mapObjects.length > 0) {
+      mapData.mapObjects.forEach((objData) => {
+        this.mapObjects.push(new MapObject(objData));
+      });
+    } else {
+      // Default Random Objects
+      const objSpawns = [
+        { type: 'barrel' as const, x: this.canvas.width * 0.3 },
+        { type: 'barrel' as const, x: this.canvas.width * 0.7 },
+        { type: 'landmine' as const, x: this.canvas.width * 0.5 },
+        { type: 'health_crate' as const, x: this.canvas.width * 0.45 }
+      ];
+      objSpawns.forEach((s) => {
+        this.mapObjects.push(
+          new MapObject({
+            id: `obj_${Math.random()}`,
+            type: s.type,
+            x: s.x,
+            y: this.terrain.getSurfaceY(s.x) - 14
+          })
+        );
+      });
+    }
+
+    this.projectiles = [];
     this.activeWormIndex = 0;
     this.phase = 'MOVE';
     this.turnTimer = 45.0;
@@ -102,9 +213,13 @@ export class WormixGame {
         return;
       }
       if (e.code === 'Escape') {
+        if (this.phase === 'EDITOR') return;
         this.settingsOverlay.toggle();
         return;
       }
+
+
+      if (this.phase === 'MENU' || this.phase === 'EDITOR') return;
 
       // 3-Step Turn Flow on Space Bar Press / Release
       if (e.code === 'Space' && !e.repeat) {
@@ -150,6 +265,7 @@ export class WormixGame {
 
     // PC Mode Mouse Clicks
     this.canvas.addEventListener('mousedown', () => {
+      if (this.phase === 'MENU' || this.phase === 'EDITOR') return;
       if (this.inputManager.settings.mode !== 'pointer') return;
       const activeWorm = this.getActiveWorm();
       if (!activeWorm || activeWorm.team !== 'player') return;
@@ -172,6 +288,7 @@ export class WormixGame {
 
     // PC Mode Mouse Aiming
     this.canvas.addEventListener('mousemove', (e) => {
+      if (this.phase === 'MENU' || this.phase === 'EDITOR') return;
       if (this.inputManager.settings.mode !== 'pointer') return;
       const activeWorm = this.getActiveWorm();
       if (!activeWorm || activeWorm.team !== 'player' || this.phase !== 'AIM_FIRE') return;
@@ -205,10 +322,17 @@ export class WormixGame {
       // Immediate Shotgun Raycast
       this.audioManager.playHit(1.5);
       this.terrain.explode(tip.x + vx * 2, tip.y + vy * 2, 25);
+
+      // Damage worms & objects in shotgun line
       for (const w of this.worms) {
         if (w !== activeWorm && w.isAlive) {
           const dist = Math.hypot(w.x - tip.x, w.y - tip.y);
           if (dist < 120) w.takeDamage(40);
+        }
+      }
+      for (const obj of this.mapObjects) {
+        if (Math.hypot(obj.x - tip.x, obj.y - tip.y) < 120) {
+          obj.takeDamage(40);
         }
       }
       this.phase = 'PROJECTILE_FLIGHT';
@@ -233,25 +357,65 @@ export class WormixGame {
     // Fixed 30 FPS Tick Lock
     if (elapsed >= this.frameInterval) {
       this.lastTickTime = timestamp - (elapsed % this.frameInterval);
-      this.updateFixedTick();
-      this.render();
+      if (this.phase === 'EDITOR' && this.mapEditor) {
+        this.mapEditor.render();
+      } else if (this.phase !== 'MENU') {
+        this.updateFixedTick();
+        this.render();
+      }
     }
 
     requestAnimationFrame((ts) => this.gameLoop(ts));
   }
 
   private updateFixedTick(): void {
-    // 1. Update Terrain & Elemental Physics
+    // Sudden Death / Rising Water Mode Tick
+    if (this.lobbyConfig.gameMode === 'rising_water') {
+      this.terrain.waterY = Math.max(100, this.terrain.waterY - 0.08);
+    }
+
+    // 1. Update Terrain & Live Dynamic Water Physics
     this.terrain.updatePhysics();
 
-    // 2. Update Worm Physics
+    // 2. Update Worm Physics & Water Oxygen
     for (const worm of this.worms) {
       worm.update(this.terrain);
     }
 
+    // 3. Update Interactive Map Objects (Barrels, Mines, Crates)
+    for (let i = this.mapObjects.length - 1; i >= 0; i--) {
+      const obj = this.mapObjects[i];
+      obj.update(
+        this.terrain,
+        this.worms,
+        (x, y, radius, damage) => {
+          this.audioManager.playHit(2.5);
+          this.terrain.explode(x, y, radius);
+
+          // Explosion damage to nearby worms
+          for (const w of this.worms) {
+            if (w.isAlive) {
+              const d = Math.hypot(w.x - x, w.y - y);
+              if (d < radius + 15) {
+                w.takeDamage(Math.floor(damage * (1 - d / (radius + 15))));
+              }
+            }
+          }
+        },
+        (worm, healAmount) => {
+          this.audioManager.playWin();
+          worm.health = Math.min(worm.maxHealth, worm.health + healAmount);
+        }
+      );
+
+      if (obj.isDestroyed) {
+        this.mapObjects.splice(i, 1);
+      }
+    }
+
     const activeWorm = this.getActiveWorm();
 
-    // 3. Process Active Turn Input (If Player Turn)
+    // 4. Process Active Turn Input (If Player Turn)
     if (activeWorm && activeWorm.isAlive && activeWorm.team === 'player') {
       const keys = this.inputManager.keysPressed;
 
@@ -306,7 +470,7 @@ export class WormixGame {
       }
     }
 
-    // 4. AI Turn Logic
+    // 5. AI Turn Logic
     if (activeWorm && activeWorm.isAlive && activeWorm.team === 'ai') {
       if (this.phase === 'MOVE' || this.phase === 'WEAPON_SELECT') {
         const playerWorms = this.worms.filter((w) => w.team === 'player');
@@ -324,11 +488,19 @@ export class WormixGame {
       }
     }
 
-    // 5. Update Projectiles Physics & Collisions
+    // 6. Update Projectiles Physics & Collisions
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
       proj.update(this.terrain, this.worms, this.windX, (p, x, y) => {
         this.audioManager.playHit(2.0);
+
+        // Damage objects hit by projectile explosion
+        for (const obj of this.mapObjects) {
+          if (Math.hypot(obj.x - x, obj.y - y) < 40) {
+            obj.takeDamage(40);
+          }
+        }
+
         // Handle Cluster Split
         if (p.weaponId === 'cluster' && !p.isClusterChild) {
           for (let c = 0; c < 5; c++) {
@@ -346,7 +518,7 @@ export class WormixGame {
       }
     }
 
-    // 6. Turn Resolution Check
+    // 7. Turn Resolution Check
     if (this.phase === 'PROJECTILE_FLIGHT' && this.projectiles.length === 0) {
       this.checkTurnEnd();
     }
@@ -379,6 +551,9 @@ export class WormixGame {
 
     // Render Terrain, Water, Particles, Portals
     this.terrain.draw(this.ctx);
+
+    // Render Interactive Map Objects (Barrels, Mines, Crates)
+    this.mapObjects.forEach((obj) => obj.draw(this.ctx));
 
     // Render Worms
     const activeWorm = this.getActiveWorm();

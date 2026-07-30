@@ -1,29 +1,55 @@
-import { Portal, Particle } from '../types';
+import {
+  Portal,
+  Particle,
+  CELL_AIR,
+  CELL_GRASS,
+  CELL_DIRT,
+  CELL_STONE,
+  CELL_BEDROCK,
+  CELL_SAND,
+  CELL_WATER,
+  CELL_ACID
+} from '../types';
 
 export class TerrainManager {
   public width: number = 1200;
   public height: number = 700;
   public waterY: number = 660;
 
-  // Offscreen Canvas for Pixel-Perfect Destructible Terrain
+  // Cellular Automata Grid
+  public readonly cellScale: number = 2; // 2px per cell for performance
+  public gridWidth: number;
+  public gridHeight: number;
+  public grid: Uint8Array;
+  public surfaceYCache: Float32Array;
+
+  // Offscreen Canvas for Grid Rendering
   private offscreenCanvas: HTMLCanvasElement;
   private offscreenCtx: CanvasRenderingContext2D;
-  private surfaceYCache: Float32Array;
+  private gridImageData: ImageData;
 
-  // Portals
+  // Portals & Particles
   public orangePortal: Portal | null = null;
   public bluePortal: Portal | null = null;
-
-  // Active Acid & Particles
   public particles: Particle[] = [];
 
   constructor(width: number, height: number) {
-    this.offscreenCanvas = document.createElement('canvas');
-    this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true })!;
     this.width = Math.max(800, width);
     this.height = Math.max(500, height);
+    this.waterY = this.height - 40;
+
+    this.gridWidth = Math.floor(this.width / this.cellScale);
+    this.gridHeight = Math.floor(this.height / this.cellScale);
+    this.grid = new Uint8Array(this.gridWidth * this.gridHeight);
     this.surfaceYCache = new Float32Array(this.width);
-    this.resize(width, height);
+
+    this.offscreenCanvas = document.createElement('canvas');
+    this.offscreenCanvas.width = this.gridWidth;
+    this.offscreenCanvas.height = this.gridHeight;
+    this.offscreenCtx = this.offscreenCanvas.getContext('2d')!;
+    this.gridImageData = this.offscreenCtx.createImageData(this.gridWidth, this.gridHeight);
+
+    this.generateTerrain();
   }
 
   public resize(w: number, h: number): void {
@@ -31,103 +57,126 @@ export class TerrainManager {
     this.height = Math.max(500, h);
     this.waterY = this.height - 40;
 
-    this.offscreenCanvas.width = this.width;
-    this.offscreenCanvas.height = this.height;
+    this.gridWidth = Math.floor(this.width / this.cellScale);
+    this.gridHeight = Math.floor(this.height / this.cellScale);
+    this.grid = new Uint8Array(this.gridWidth * this.gridHeight);
     this.surfaceYCache = new Float32Array(this.width);
+
+    this.offscreenCanvas.width = this.gridWidth;
+    this.offscreenCanvas.height = this.gridHeight;
+    this.gridImageData = this.offscreenCtx.createImageData(this.gridWidth, this.gridHeight);
 
     this.generateTerrain();
   }
 
+  public getCell(gx: number, gy: number): number {
+    if (gx < 0 || gx >= this.gridWidth || gy < 0 || gy >= this.gridHeight) {
+      return gy >= Math.floor(this.waterY / this.cellScale) ? CELL_BEDROCK : CELL_AIR;
+    }
+    return this.grid[gy * this.gridWidth + gx];
+  }
+
+  public setCell(gx: number, gy: number, type: number): void {
+    if (gx >= 0 && gx < this.gridWidth && gy >= 0 && gy < this.gridHeight) {
+      this.grid[gy * this.gridWidth + gx] = type;
+    }
+  }
+
   public generateTerrain(): void {
-    const ctx = this.offscreenCtx;
-    ctx.clearRect(0, 0, this.width, this.height);
+    this.grid.fill(CELL_AIR);
 
-    const baseGroundY = this.height * 0.62;
-    const bedrockY = this.waterY - 20;
+    const bedrockGY = Math.floor((this.waterY - 20) / this.cellScale);
 
-    const sandStart = Math.floor(this.width * 0.38);
-    const sandEnd = Math.floor(this.width * 0.62);
+    const sandStartG = Math.floor((this.width * 0.38) / this.cellScale);
+    const sandEndG = Math.floor((this.width * 0.62) / this.cellScale);
 
-    // 1. Calculate Hill Surface Y array
-    const grassHeights = new Float32Array(this.width);
-    for (let x = 0; x < this.width; x++) {
-      const hillSin1 = Math.sin(x * 0.005) * 65;
-      const hillSin2 = Math.sin(x * 0.015) * 35;
-      const hillSin3 = Math.cos(x * 0.03) * 15;
+    for (let gx = 0; gx < this.gridWidth; gx++) {
+      const xWorld = gx * this.cellScale;
+      const hillSin1 = Math.sin(xWorld * 0.005) * 65;
+      const hillSin2 = Math.sin(xWorld * 0.015) * 35;
+      const hillSin3 = Math.cos(xWorld * 0.03) * 15;
       const heightOffset = hillSin1 + hillSin2 + hillSin3;
 
-      let groundY = Math.min(this.waterY - 70, Math.max(120, baseGroundY + heightOffset));
-
-      if (x >= sandStart && x <= sandEnd) {
-        const sandPeak = Math.sin(((x - sandStart) / (sandEnd - sandStart)) * Math.PI) * 25;
+      let groundY = Math.min(this.waterY - 70, Math.max(120, this.height * 0.62 + heightOffset));
+      if (gx >= sandStartG && gx <= sandEndG) {
+        const sandPeak = Math.sin(((gx - sandStartG) / (sandEndG - sandStartG)) * Math.PI) * 25;
         groundY -= sandPeak;
       }
-      grassHeights[x] = groundY;
-    }
 
-    // 2. Draw Geological Layers onto Offscreen Canvas
+      const groundGY = Math.floor(groundY / this.cellScale);
 
-    // A. Bedrock Layer (Bottom Charcoal)
-    ctx.fillStyle = '#1c1917';
-    ctx.fillRect(0, bedrockY, this.width, this.height - bedrockY);
-
-    // B. Stone Layer (Grey)
-    ctx.fillStyle = '#64748b';
-    ctx.beginPath();
-    ctx.moveTo(0, bedrockY);
-    for (let x = 0; x < this.width; x++) {
-      const stoneTop = grassHeights[x] + 55;
-      ctx.lineTo(x, Math.min(bedrockY, stoneTop));
-    }
-    ctx.lineTo(this.width, bedrockY);
-    ctx.closePath();
-    ctx.fill();
-
-    // C. Dirt Layer (Brown)
-    ctx.fillStyle = '#78350f';
-    ctx.beginPath();
-    ctx.moveTo(0, bedrockY);
-    for (let x = 0; x < this.width; x++) {
-      const dirtTop = grassHeights[x] + 10;
-      ctx.lineTo(x, dirtTop);
-    }
-    ctx.lineTo(this.width, bedrockY);
-    ctx.closePath();
-    ctx.fill();
-
-    // D. Grass Layer (Green Surface)
-    ctx.fillStyle = '#15803d';
-    ctx.beginPath();
-    ctx.moveTo(0, grassHeights[0]);
-    for (let x = 1; x < this.width - 2; x += 2) {
-      const xc = (x + (x + 1)) / 2;
-      const yc = (grassHeights[x] + grassHeights[x + 1]) / 2;
-      ctx.quadraticCurveTo(x, grassHeights[x], xc, yc);
-    }
-    ctx.lineTo(this.width, bedrockY);
-    ctx.lineTo(0, bedrockY);
-    ctx.closePath();
-    ctx.fill();
-
-    // E. Sand Dunes Layer (Golden Yellow)
-    ctx.fillStyle = '#f59e0b';
-    ctx.beginPath();
-    let inSand = false;
-    for (let x = sandStart; x <= sandEnd; x++) {
-      if (!inSand) {
-        ctx.moveTo(x, grassHeights[x] + 12);
-        inSand = true;
+      for (let gy = 0; gy < this.gridHeight; gy++) {
+        if (gy >= bedrockGY) {
+          this.setCell(gx, gy, CELL_BEDROCK);
+        } else if (gy >= groundGY + 25) {
+          this.setCell(gx, gy, CELL_STONE);
+        } else if (gy >= groundGY + 5) {
+          this.setCell(gx, gy, CELL_DIRT);
+        } else if (gy >= groundGY) {
+          if (gx >= sandStartG && gx <= sandEndG) {
+            this.setCell(gx, gy, CELL_SAND);
+          } else {
+            this.setCell(gx, gy, CELL_GRASS);
+          }
+        }
       }
-      ctx.lineTo(x, grassHeights[x]);
-    }
-    if (inSand) {
-      ctx.lineTo(sandEnd, grassHeights[sandEnd] + 12);
-      ctx.closePath();
-      ctx.fill();
     }
 
-    // 3. Populate Surface Y Cache
-    this.rebuildSurfaceCache(0, this.width);
+    // Default Lake Water Pool
+    const lakeStartG = Math.floor((this.width * 0.15) / this.cellScale);
+    const lakeEndG = Math.floor((this.width * 0.28) / this.cellScale);
+    for (let gx = lakeStartG; gx <= lakeEndG; gx++) {
+      const surfaceGY = Math.floor(this.getSurfaceY(gx * this.cellScale) / this.cellScale);
+      for (let gy = surfaceGY - 12; gy < surfaceGY; gy++) {
+        if (gy > 0) this.setCell(gx, gy, CELL_WATER);
+      }
+    }
+
+    this.rebuildSurfaceCache();
+  }
+
+  public buildTerrainFromHeights(
+    customHeights: number[] | Float32Array,
+    waterY?: number,
+    customMaterials?: string[],
+    gridData?: number[]
+  ): void {
+    if (waterY) this.waterY = waterY;
+    this.grid.fill(CELL_AIR);
+
+    if (gridData && gridData.length === this.grid.length) {
+      this.grid.set(gridData);
+      this.rebuildSurfaceCache();
+      return;
+    }
+
+    const bedrockGY = Math.floor((this.waterY - 20) / this.cellScale);
+
+    for (let gx = 0; gx < this.gridWidth; gx++) {
+      const xWorld = gx * this.cellScale;
+      const groundY = customHeights[xWorld] !== undefined ? customHeights[xWorld] : this.height * 0.65;
+      const groundGY = Math.floor(groundY / this.cellScale);
+      const matColor = customMaterials ? customMaterials[xWorld] : '#15803d';
+
+      let topCell = CELL_GRASS;
+      if (matColor === '#78350f') topCell = CELL_DIRT;
+      else if (matColor === '#64748b') topCell = CELL_STONE;
+      else if (matColor === '#f59e0b') topCell = CELL_SAND;
+
+      for (let gy = 0; gy < this.gridHeight; gy++) {
+        if (gy >= bedrockGY) {
+          this.setCell(gx, gy, CELL_BEDROCK);
+        } else if (gy >= groundGY + 20) {
+          this.setCell(gx, gy, CELL_STONE);
+        } else if (gy >= groundGY + 6) {
+          this.setCell(gx, gy, CELL_DIRT);
+        } else if (gy >= groundGY) {
+          this.setCell(gx, gy, topCell);
+        }
+      }
+    }
+
+    this.rebuildSurfaceCache();
   }
 
   public getSurfaceY(x: number): number {
@@ -135,28 +184,52 @@ export class TerrainManager {
     return this.surfaceYCache[colX] || this.waterY;
   }
 
-  public explode(centerX: number, centerY: number, radius: number): void {
-    // Cut out circular hole from Offscreen Terrain
-    const ctx = this.offscreenCtx;
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+  public getWaterDensityAt(x: number, y: number, radiusWorld: number = 24): number {
+    const centerGX = Math.floor(x / this.cellScale);
+    const centerGY = Math.floor(y / this.cellScale);
+    const radiusG = Math.ceil(radiusWorld / this.cellScale);
 
-    // Rebuild surface cache in affected X range
-    const minX = Math.floor(Math.max(0, centerX - radius - 2));
-    const maxX = Math.floor(Math.min(this.width - 1, centerX + radius + 2));
-    this.rebuildSurfaceCache(minX, maxX);
+    let waterCount = 0;
+    for (let dy = -radiusG; dy <= radiusG; dy++) {
+      for (let dx = -radiusG; dx <= radiusG; dx++) {
+        if (dx * dx + dy * dy <= radiusG * radiusG) {
+          const cell = this.getCell(centerGX + dx, centerGY + dy);
+          if (cell === CELL_WATER || cell === CELL_ACID) {
+            waterCount++;
+          }
+        }
+      }
+    }
+    return waterCount;
+  }
+
+  public explode(centerX: number, centerY: number, radiusWorld: number): void {
+    const centerGX = Math.floor(centerX / this.cellScale);
+    const centerGY = Math.floor(centerY / this.cellScale);
+    const radiusG = Math.ceil(radiusWorld / this.cellScale);
+
+    for (let dy = -radiusG; dy <= radiusG; dy++) {
+      for (let dx = -radiusG; dx <= radiusG; dx++) {
+        if (dx * dx + dy * dy <= radiusG * radiusG) {
+          const gx = centerGX + dx;
+          const gy = centerGY + dy;
+          const currentCell = this.getCell(gx, gy);
+          if (currentCell !== CELL_BEDROCK && currentCell !== CELL_AIR) {
+            this.setCell(gx, gy, CELL_AIR);
+          }
+        }
+      }
+    }
+
+    this.rebuildSurfaceCache();
 
     // Spawn flying debris particles
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 20; i++) {
       const pAngle = Math.random() * Math.PI * 2;
       const pSpeed = Math.random() * 8 + 2;
       this.particles.push({
-        x: centerX + Math.cos(pAngle) * (radius * 0.3),
-        y: centerY + Math.sin(pAngle) * (radius * 0.3),
+        x: centerX + Math.cos(pAngle) * (radiusWorld * 0.3),
+        y: centerY + Math.sin(pAngle) * (radiusWorld * 0.3),
         vx: Math.cos(pAngle) * pSpeed,
         vy: Math.sin(pAngle) * pSpeed - 2,
         life: 0,
@@ -167,71 +240,191 @@ export class TerrainManager {
     }
   }
 
-  public depositSand(centerX: number, amount: number = 30): void {
-    const ctx = this.offscreenCtx;
-    ctx.fillStyle = '#f59e0b';
-    ctx.beginPath();
-    ctx.arc(centerX, this.getSurfaceY(centerX) - 10, amount, 0, Math.PI * 2);
-    ctx.fill();
+  public depositSand(centerX: number, radiusWorld: number = 25): void {
+    const centerGX = Math.floor(centerX / this.cellScale);
+    const surfaceGY = Math.floor(this.getSurfaceY(centerX) / this.cellScale);
+    const radiusG = Math.ceil(radiusWorld / this.cellScale);
 
-    const minX = Math.max(0, Math.floor(centerX - amount - 5));
-    const maxX = Math.min(this.width - 1, Math.ceil(centerX + amount + 5));
-    this.rebuildSurfaceCache(minX, maxX);
-  }
-
-  private rebuildSurfaceCache(minX: number, maxX: number): void {
-    const width = maxX - minX + 1;
-    if (width <= 0) return;
-
-    try {
-      const imgData = this.offscreenCtx.getImageData(minX, 0, width, this.height);
-      const data = imgData.data;
-
-      for (let relX = 0; relX < width; relX++) {
-        const x = minX + relX;
-        let foundY = this.waterY;
-
-        for (let y = 0; y < this.height; y++) {
-          const alphaIndex = (y * width + relX) * 4 + 3;
-          if (data[alphaIndex] > 30) { // Non-transparent pixel
-            foundY = y;
-            break;
-          }
+    for (let dy = -radiusG; dy <= 0; dy++) {
+      for (let dx = -radiusG; dx <= radiusG; dx++) {
+        if (dx * dx + dy * dy <= radiusG * radiusG) {
+          this.setCell(centerGX + dx, surfaceGY + dy, CELL_SAND);
         }
-        this.surfaceYCache[x] = foundY;
-      }
-    } catch {
-      // Fallback if canvas context fails
-      for (let x = minX; x <= maxX; x++) {
-        this.surfaceYCache[x] = this.waterY;
       }
     }
+    this.rebuildSurfaceCache();
+  }
+
+  public spawnElementStream(xWorld: number, yWorld: number, cellType: number, radiusWorld: number = 15): void {
+    const centerGX = Math.floor(xWorld / this.cellScale);
+    const centerGY = Math.floor(yWorld / this.cellScale);
+    const radiusG = Math.ceil(radiusWorld / this.cellScale);
+
+    for (let dy = -radiusG; dy <= radiusG; dy++) {
+      for (let dx = -radiusG; dx <= radiusG; dx++) {
+        if (dx * dx + dy * dy <= radiusG * radiusG) {
+          this.setCell(centerGX + dx, centerGY + dy, cellType);
+        }
+      }
+    }
+    this.rebuildSurfaceCache();
   }
 
   public updatePhysics(): void {
-    // Update Particles (Debris & Acid)
+    // Cellular Automata Bottom-to-Top Processing Sweep
+    const updateGrid = new Uint8Array(this.grid);
+    const dirLeftFirst = Math.random() < 0.5;
+
+    for (let gy = this.gridHeight - 2; gy >= 0; gy--) {
+      const xStart = dirLeftFirst ? 0 : this.gridWidth - 1;
+      const xEnd = dirLeftFirst ? this.gridWidth : -1;
+      const xStep = dirLeftFirst ? 1 : -1;
+
+      for (let gx = xStart; gx !== xEnd; gx += xStep) {
+        const idx = gy * this.gridWidth + gx;
+        const cell = updateGrid[idx];
+
+        if (cell === CELL_AIR || cell === CELL_GRASS || cell === CELL_DIRT || cell === CELL_STONE || cell === CELL_BEDROCK) {
+          continue;
+        }
+
+        const belowIdx = (gy + 1) * this.gridWidth + gx;
+        const cellBelow = updateGrid[belowIdx];
+
+        // 1. WATER & ACID SIMULATION
+        if (cell === CELL_WATER || cell === CELL_ACID) {
+          // Acid reaction: dissolve adjacent terrain
+          if (cell === CELL_ACID) {
+            let dissolved = false;
+            const neighbors = [
+              belowIdx,
+              gy * this.gridWidth + Math.max(0, gx - 1),
+              gy * this.gridWidth + Math.min(this.gridWidth - 1, gx + 1)
+            ];
+            for (const nIdx of neighbors) {
+              const targetMat = updateGrid[nIdx];
+              if (targetMat === CELL_GRASS || targetMat === CELL_DIRT || targetMat === CELL_STONE || targetMat === CELL_SAND) {
+                this.grid[idx] = CELL_AIR;
+                this.grid[nIdx] = CELL_AIR;
+                updateGrid[idx] = CELL_AIR;
+                updateGrid[nIdx] = CELL_AIR;
+                dissolved = true;
+                break;
+              }
+            }
+            if (dissolved) continue;
+          }
+
+          // Liquid movement: Down -> Diagonals -> Horizontal
+          if (cellBelow === CELL_AIR) {
+            this.grid[idx] = CELL_AIR;
+            this.grid[belowIdx] = cell;
+            updateGrid[idx] = CELL_AIR;
+            updateGrid[belowIdx] = cell;
+          } else {
+            const checkDir = Math.random() < 0.5 ? -1 : 1;
+            const diag1GX = gx + checkDir;
+            const diag2GX = gx - checkDir;
+
+            if (diag1GX >= 0 && diag1GX < this.gridWidth && updateGrid[(gy + 1) * this.gridWidth + diag1GX] === CELL_AIR) {
+              const diag1Idx = (gy + 1) * this.gridWidth + diag1GX;
+              this.grid[idx] = CELL_AIR;
+              this.grid[diag1Idx] = cell;
+              updateGrid[idx] = CELL_AIR;
+              updateGrid[diag1Idx] = cell;
+            } else if (diag2GX >= 0 && diag2GX < this.gridWidth && updateGrid[(gy + 1) * this.gridWidth + diag2GX] === CELL_AIR) {
+              const diag2Idx = (gy + 1) * this.gridWidth + diag2GX;
+              this.grid[idx] = CELL_AIR;
+              this.grid[diag2Idx] = cell;
+              updateGrid[idx] = CELL_AIR;
+              updateGrid[diag2Idx] = cell;
+            } else if (diag1GX >= 0 && diag1GX < this.gridWidth && updateGrid[gy * this.gridWidth + diag1GX] === CELL_AIR) {
+              const horiz1Idx = gy * this.gridWidth + diag1GX;
+              this.grid[idx] = CELL_AIR;
+              this.grid[horiz1Idx] = cell;
+              updateGrid[idx] = CELL_AIR;
+              updateGrid[horiz1Idx] = cell;
+            } else if (diag2GX >= 0 && diag2GX < this.gridWidth && updateGrid[gy * this.gridWidth + diag2GX] === CELL_AIR) {
+              const horiz2Idx = gy * this.gridWidth + diag2GX;
+              this.grid[idx] = CELL_AIR;
+              this.grid[horiz2Idx] = cell;
+              updateGrid[idx] = CELL_AIR;
+              updateGrid[horiz2Idx] = cell;
+            }
+          }
+        }
+
+        // 2. SAND SIMULATION
+        if (cell === CELL_SAND) {
+          if (cellBelow === CELL_AIR) {
+            this.grid[idx] = CELL_AIR;
+            this.grid[belowIdx] = CELL_SAND;
+            updateGrid[idx] = CELL_AIR;
+            updateGrid[belowIdx] = CELL_SAND;
+          } else if (cellBelow === CELL_WATER) {
+            // Sand displaces water upward!
+            this.grid[idx] = CELL_WATER;
+            this.grid[belowIdx] = CELL_SAND;
+            updateGrid[idx] = CELL_WATER;
+            updateGrid[belowIdx] = CELL_SAND;
+          } else {
+            const checkDir = Math.random() < 0.5 ? -1 : 1;
+            const diag1GX = gx + checkDir;
+            const diag2GX = gx - checkDir;
+
+            if (diag1GX >= 0 && diag1GX < this.gridWidth && updateGrid[(gy + 1) * this.gridWidth + diag1GX] === CELL_AIR) {
+              const diag1Idx = (gy + 1) * this.gridWidth + diag1GX;
+              this.grid[idx] = CELL_AIR;
+              this.grid[diag1Idx] = CELL_SAND;
+              updateGrid[idx] = CELL_AIR;
+              updateGrid[diag1Idx] = CELL_SAND;
+            } else if (diag2GX >= 0 && diag2GX < this.gridWidth && updateGrid[(gy + 1) * this.gridWidth + diag2GX] === CELL_AIR) {
+              const diag2Idx = (gy + 1) * this.gridWidth + diag2GX;
+              this.grid[idx] = CELL_AIR;
+              this.grid[diag2Idx] = CELL_SAND;
+              updateGrid[idx] = CELL_AIR;
+              updateGrid[diag2Idx] = CELL_SAND;
+            }
+          }
+        }
+      }
+    }
+
+    // Update Debris Particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.x += p.vx;
       p.y += p.vy;
-      p.vy += 0.3; // Gravity
+      p.vy += 0.3;
       p.life++;
 
-      // Acid particle terrain erosion check
-      if (p.isAcid && p.y >= this.getSurfaceY(p.x)) {
-        this.explode(p.x, p.y, 10);
+      if (p.life >= p.maxLife || p.y > this.height) {
         this.particles.splice(i, 1);
-        continue;
       }
+    }
 
-      if (p.life >= p.maxLife || p.y > this.waterY) {
-        this.particles.splice(i, 1);
+    this.rebuildSurfaceCache();
+  }
+
+  private rebuildSurfaceCache(): void {
+    const waterGY = Math.floor(this.waterY / this.cellScale);
+    for (let x = 0; x < this.width; x++) {
+      const gx = Math.floor(x / this.cellScale);
+      let foundGY = waterGY;
+
+      for (let gy = 0; gy < this.gridHeight; gy++) {
+        const cell = this.getCell(gx, gy);
+        if (cell === CELL_GRASS || cell === CELL_DIRT || cell === CELL_STONE || cell === CELL_BEDROCK || cell === CELL_SAND) {
+          foundGY = gy;
+          break;
+        }
       }
+      this.surfaceYCache[x] = foundGY * this.cellScale;
     }
   }
 
   public draw(ctx: CanvasRenderingContext2D): void {
-    // 1. Background Sky Gradient
+    // 1. Background Sky
     const skyGrad = ctx.createLinearGradient(0, 0, 0, this.height);
     skyGrad.addColorStop(0, '#0f172a');
     skyGrad.addColorStop(0.7, '#1e293b');
@@ -239,21 +432,54 @@ export class TerrainManager {
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // 2. Draw Destructible Terrain Offscreen Canvas
-    ctx.drawImage(this.offscreenCanvas, 0, 0);
+    // 2. Render Grid onto Offscreen Canvas ImageData
+    const imgData = this.gridImageData;
+    const data = imgData.data;
+    const time = Date.now() * 0.003;
 
-    // 3. Draw Water Layer at bottom
+    for (let gy = 0; gy < this.gridHeight; gy++) {
+      for (let gx = 0; gx < this.gridWidth; gx++) {
+        const cell = this.grid[gy * this.gridWidth + gx];
+        const ptr = (gy * this.gridWidth + gx) * 4;
+
+        if (cell === CELL_AIR) {
+          data[ptr + 3] = 0;
+        } else if (cell === CELL_GRASS) {
+          data[ptr] = 0x15; data[ptr + 1] = 0x80; data[ptr + 2] = 0x3d; data[ptr + 3] = 255;
+        } else if (cell === CELL_DIRT) {
+          data[ptr] = 0x78; data[ptr + 1] = 0x35; data[ptr + 2] = 0x0f; data[ptr + 3] = 255;
+        } else if (cell === CELL_STONE) {
+          data[ptr] = 0x64; data[ptr + 1] = 0x74; data[ptr + 2] = 0x8b; data[ptr + 3] = 255;
+        } else if (cell === CELL_BEDROCK) {
+          data[ptr] = 0x1c; data[ptr + 1] = 0x19; data[ptr + 2] = 0x17; data[ptr + 3] = 255;
+        } else if (cell === CELL_SAND) {
+          data[ptr] = 0xf5; data[ptr + 1] = 0x9e; data[ptr + 2] = 0x0b; data[ptr + 3] = 255;
+        } else if (cell === CELL_WATER) {
+          data[ptr] = 0x38; data[ptr + 1] = 0xbd; data[ptr + 2] = 0xf8; data[ptr + 3] = 220;
+        } else if (cell === CELL_ACID) {
+          data[ptr] = 0x22; data[ptr + 1] = 0xc5; data[ptr + 2] = 0x5e; data[ptr + 3] = 240;
+        }
+      }
+    }
+
+    this.offscreenCtx.putImageData(imgData, 0, 0);
+
+    // Render scaled Offscreen Grid Canvas
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.offscreenCanvas, 0, 0, this.width, this.height);
+    ctx.restore();
+
+    // 3. Render Ocean Floor Wave at Bottom
     const waterGrad = ctx.createLinearGradient(0, this.waterY, 0, this.height);
-    waterGrad.addColorStop(0, 'rgba(14, 165, 233, 0.75)');
+    waterGrad.addColorStop(0, 'rgba(14, 165, 233, 0.8)');
     waterGrad.addColorStop(1, 'rgba(3, 105, 161, 0.95)');
     ctx.fillStyle = waterGrad;
     ctx.fillRect(0, this.waterY, this.width, this.height - this.waterY);
 
-    // Draw Water Surface Wave
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    const time = Date.now() * 0.003;
     for (let x = 0; x < this.width; x += 5) {
       const waveY = this.waterY + Math.sin(x * 0.04 + time) * 3;
       if (x === 0) ctx.moveTo(x, waveY);
@@ -265,7 +491,7 @@ export class TerrainManager {
     if (this.orangePortal) this.drawPortal(ctx, this.orangePortal, '#f97316');
     if (this.bluePortal) this.drawPortal(ctx, this.bluePortal, '#3b82f6');
 
-    // 5. Draw Debris & Acid Particles
+    // 5. Draw Debris Particles
     for (const p of this.particles) {
       ctx.fillStyle = p.color;
       ctx.beginPath();
@@ -278,7 +504,6 @@ export class TerrainManager {
     ctx.save();
     ctx.translate(portal.x, portal.y);
 
-    // Glowing outer ring
     ctx.shadowColor = color;
     ctx.shadowBlur = 12;
     ctx.strokeStyle = color;
@@ -287,7 +512,6 @@ export class TerrainManager {
     ctx.arc(0, 0, portal.radius, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Swirling inner core
     ctx.fillStyle = color;
     ctx.globalAlpha = 0.4;
     ctx.beginPath();
