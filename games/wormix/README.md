@@ -1,6 +1,6 @@
 # 🐛💥 Wormix (Turn-Based Elemental Artillery)
 
-A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) built with **Canvas 2D**, featuring an **Offscreen Pixel-Mask Destructible Terrain Engine**, **Live Dynamic Water Physics & Lakes**, **Interactive Map Objects**, **Canvas Map Editor with LocalStorage & JSON Save/Load**, **Match Lobby & Game Modes**, **30 FPS locked simulation tick**, elemental terrain physics (Grass, Dirt, Stone, Bedrock, Sand, Water, Acid, Portals), wind vectors, trajectory sighting arcs, smart tactical AI, and **dual control modes** (GyroMouse Restricted Mode & PC Mouse/Keyboard Mode).
+A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) built with **Canvas 2D**, featuring an **Offscreen Pixel-Mask Destructible Terrain Engine**, **Live Dynamic Water & Acid Physics**, **Interactive Map Objects**, **Canvas Map Editor with LocalStorage & JSON Save/Load**, **Match Lobby with PvP & AI Modes**, **30 FPS locked simulation tick**, elemental terrain physics (Grass, Dirt, Stone, Bedrock, Sand, Water, Acid, Iron, Portals), wind vectors, trajectory sighting arcs, smart tactical AI with selectable difficulty, and **dual control modes** (GyroMouse Restricted Mode & PC Mouse/Keyboard Mode).
 
 ---
 
@@ -11,21 +11,25 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 1. **GyroMouse / Restricted Mode** (`WASD` / Arrow Keys + `Space` + `ESC`):
    * **Step 1 — Move (`WALK`)**: `A` / `D` or `←` / `→` (or Gyro Roll tilt) to walk. `W` / `↑` tap to jump / swim upward in water. Tap `Space` to proceed to Weapon Selection.
    * **Step 2 — Select Weapon (`WEAPON_SELECT`)**: `A` / `D` or `←` / `→` to cycle toolbar. Tap `Space` to equip weapon. Tap `S` / `↓` to return to Movement.
-   * **Step 3 — Aim & Fire (`AIM_FIRE`)**: `W` / `S` or `↑` / `↓` (or Gyro Pitch tilt) to adjust aim angle. **Hold `Space`** to charge launch power meter $\rightarrow$ **Release `Space`** to FIRE!
+   * **Step 3 — Aim & Fire (`AIM_FIRE`)**: `W` / `S` or `↑` / `↓` (or Gyro Pitch tilt) to adjust aim angle. **Hold `Space`** to charge launch power meter → **Release `Space`** to FIRE!
    * **Re-Center Calibration**: `KeyC` (letter C).
    * **Settings Overlay**: `ESC` or floating gear icon `⚙️`.
 
 2. **PC Mode** (Mouse + Keyboard):
    * `WASD` / Arrow keys to walk, mouse cursor to aim cannon angle, click or hold `Space` to charge launch power meter and fire!
 
--1. **🧪 2D Cellular Automata Grid Physics Engine**:
+---
+
+## ⚙️ Game Features & Mechanics
+
+1. **🧪 2D Cellular Automata Grid Physics Engine**:
    * Powered by a discrete 2D grid (`Uint8Array`) running a **Falling Sand Cellular Automata Simulation Algorithm** with bottom-to-top processing sweeps and directional shuffling.
    * **⚙️ Iron / Metal Mechanics**: Acid-immune material (`CELL_IRON`) rendered in dark steel slate (`#334155`). Acid pools against or flows past Iron without dissolving it, while explosive weapons and projectiles can destroy Iron terrain normally.
    * **🌊 Water & Liquid Mechanics**:
      * **Multi-Pass Fluid Dispersion**: 2-pass liquid physics loop for fast, natural fluid flow without jelly sloshing.
      * **Free Hill Slope Tumbles**: Liquids flow freely down steep terrain slopes and cascade down into valley craters without sticking.
      * **Smooth Lake Surface Wave Lines**: Contiguous horizontal liquid pools feature animated surface wave highlights (`rgba(186, 230, 253, 0.85)`) rendered dynamically over flat lake tops.
-   * **🧪 Acid Mechanics**: Flows like water and actively dissolves adjacent solid terrain and sand cells into empty air on contact with bubbling particles (Iron is immune to acid).
+   * **🧪 Acid Mechanics**: Flows like water and actively dissolves adjacent solid terrain and sand cells into empty air on contact with bubbling particles. Iron cells are immune to acid dissolution.
    * **⏳ Sand Mechanics**: Falls down, slumps down slopes into craters, and sinks through water cells (displacing water upward).
    * **Real-time Waterfall Cascades**: Carving holes beneath liquid pools causes water and acid to cascade down into newly carved craters in real-time.
    * **🌊 Global Ocean & Subterranean Bedrock**: Smooth animated ocean liquid level at `waterY = height - 40` with an indestructible bedrock foundation (`CELL_BEDROCK`) safely layered beneath the ocean floor.
@@ -39,7 +43,7 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 
 3. **🌊 Submersion, Buoyancy & Swimming**:
    * Worms submerged in water or acid experience dynamic buoyancy force and fluid drag based on surrounding liquid grid cell density, allowing them to swim upward (`W` / `↑` key).
-   * **Oxygen Breath Meter**: Submerged worms have an Oxygen meter (100 $\rightarrow$ 0). When oxygen runs out, worms take gradual drowning damage (-0.4 HP/tick).
+   * **Oxygen Breath Meter**: Submerged worms have an Oxygen meter (100 → 0). When oxygen runs out, worms take gradual drowning damage (-0.4 HP/tick).
 
 4. **🛢️ Interactive Map Objects**:
    * 🛢️ **Explosive Barrels**: 50 HP. Detonate when shot or hit by explosions, causing a 55px explosion + flying fire debris.
@@ -49,23 +53,38 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 5. **🛠️ Interactive Map Editor, Physics Flow & Preview Workflow**:
    * In-game canvas map sculpting tool accessible directly from the Main Menu or ESC Settings screen.
    * **Live Stream Brushes & Adjustable Brush Size**: Paint Grass, Dirt, Stone, Sand, 🌊 Water, 🧪 Acid, ⚙️ Iron, or Eraser in real-time. Adjust brush radius from **6px to 40px** using the top slider control, with a live dashed cursor ring indicating brush size on canvas.
-   * **↩️ Undo / ↪️ Redo History (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`)**: Built-in 30-step undo/redo buffer allowing step-back and step-forward state recovery via top-toolbar buttons or standard keyboard shortcuts.
-   * **👁️ Preview <-> ✏️ Edit Mode**: Toggle between active editing tools and a clean fullscreen **Preview Mode** (hides toolbar overlays) to observe falling sand, water leveling, and acid reactions across the entire canvas without UI clutter.
+   * **↩️ Undo / ↪️ Redo (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`)**: Built-in 30-step undo/redo buffer for step-back and step-forward recovery via top-toolbar buttons or standard keyboard shortcuts.
+   * **👁️ Preview ↔ ✏️ Edit Mode**: Toggle between active editing tools and a clean fullscreen **Preview Mode** (hides toolbar overlays) to observe falling sand, water leveling, and acid reactions across the entire canvas without UI clutter.
    * **⏸️ Pause / ▶️ Resume Physics Flow**: Freeze cellular physics tick while painting steep sand dunes or liquid containers, or unpause to test fluid flow dynamics.
-   * **🔄 Reset Grid Snapshot**: One-click grid snapshot restore button with a confirmation safety prompt before clearing unsaved edits.
+   * **🔄 Reset Grid Snapshot**: One-click grid snapshot restore button with a **confirmation safety prompt** before clearing unsaved edits.
    * **Entity Placement**: Drag & drop Red Spawns, Blue Spawns, Oil Barrels, Landmines, and Health Crates.
    * **Storage**: Save maps to browser `localStorage`, export as `.wormix.json` files, or import custom JSON map files.
-   * **Seamless Test Play Loop & Dedicated Shortcut**: Test your custom map in an active match with one click (`▶️ Test Play`), and return instantly to editing via the floating **`✏️ Return to Editor`** HUD button (`top: 60px; right: 16px;`) or ESC Settings (`✏️ Map Editor`).ay`), and return instantly to editing via the floating **`✏️ Return to Editor`** HUD button or ESC Settings (`✏️ Map Editor`).
+   * **Seamless Test Play Loop**: Test your custom map in an active match with one click (`▶️ Test Play`), and return instantly to editing via the floating **`✏️ Return to Editor`** button (`top: 85px; right: 16px;`) or ESC Settings (`✏️ Map Editor`).
 
-5. **⚔️ Match Lobby & Game Modes**:
+6. **⚔️ Match Lobby & Game Modes**:
+   * **Match Type**:
+     * 🤖 **Player vs AI**: Red Team (human) vs Blue Team (bot). Select bot difficulty below.
+     * 👥 **Local PvP (Pass & Play)**: Both Red and Blue teams are human-controlled. Players take turns passing the keyboard. HUD turn banners display `🔴 RED PLAYER TURN` / `🔵 BLUE PLAYER TURN` to indicate whose turn it is. AI logic is completely disabled.
+   * **🤖 Bot Difficulty** (Player vs AI only):
+     * 🐣 **Easy**: Random target selection, large aim scatter (±20°), no wind compensation, Bazooka & Shotgun only.
+     * 🎯 **Normal**: Closest target focus, moderate scatter (±6°), partial wind compensation (×1.2), Bazooka / Grenade / Cluster.
+     * 🔥 **Hard**: Precise parabolic trajectory solver (±1.25°), full wind vector compensation (×2.8), tactical weapon selection (Cluster for grouped enemies, Acid Bomb for cover terrain, Grenade, Bazooka).
    * **Team Configurations**: 1v1, 2v2, 3v3 team sizes.
    * **Custom Health**: 50 HP, 100 HP, 150 HP, 200 HP per worm.
    * **Game Modes**:
      * *Classic Deathmatch*
-     * *🌊 Rising Water (Sudden Death)*: Ocean water level constantly rises by +0.08px each tick!
+     * *🌊 Rising Water (Sudden Death)*: Ocean water level rises by +0.08px per tick!
      * *🏰 Fort Warfare*: Pre-built fortress maps.
+   * **⚔️ Lobby Shortcut**: Floating green **`⚔️ Lobby`** button (`top: 85px; left: 16px;`) visible during all active matches. Click to jump back to the Match Lobby without using ESC.
 
-6. **Arsenal**:
+7. **🗺️ Preset Maps**:
+   * 🎲 **Random Procedural**: Freshly generated Bezier-curve terrain each match.
+   * 🏝️ **Floating Archipelago**: Two isolated islands separated by a wide ocean channel with a Health Crate in the gap.
+   * 🏰 **Twin Fortresses**: Mirror fortified towers on each side with a low valley battlefield in the center.
+   * ⚙️ **Iron Citadel**: Raised Iron-material bunker towers on each flank — acid-immune, explosives-only breachable.
+   * 🌋 **Volcano Acid Crater**: Concave central crater terrain, ideal for acid-lake flooding matches.
+
+8. **Arsenal**:
    * 🚀 **Bazooka**: Wind-affected heavy explosive missile.
    * 💣 **Grenade**: Bouncing projectile with 3-second fuse timer.
    * 💥 **Cluster Bomb**: Splits into 5 mini-bombs on impact.
@@ -74,8 +93,7 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * 🌀 **Portal Gun**: Deploys an Orange or Blue portal pair on terrain surfaces to warp incoming projectiles and worms.
    * 🔫 **Shotgun**: Direct line-of-sight double shot.
 
-
-7. **Fixed 30 FPS Lock**:
+9. **Fixed 30 FPS Lock**:
    * Game loop simulation locked at `1000/30` ms tick rate for consistent physics across all hardware.
 
 ---
@@ -85,17 +103,17 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 | File | Role & Features |
 | :--- | :--- |
 | [`index.html`](index.html) | Canvas container, back button to main hub, styling. |
-| [`src/main.ts`](src/main.ts) | Game orchestrator, 30 FPS tick loop, 3-step turn state machine, menu/editor management. |
-| [`src/terrain/terrainManager.ts`](src/terrain/terrainManager.ts) | Offscreen pixel-mask terrain engine, Bezier curve surface generation, live dynamic water physics, lake breaching & waterfall particles. |
+| [`src/main.ts`](src/main.ts) | Game orchestrator, 30 FPS tick loop, 3-step turn state machine, PvP/AI mode, floating HUD buttons, menu/editor management. |
+| [`src/terrain/terrainManager.ts`](src/terrain/terrainManager.ts) | Offscreen pixel-mask terrain engine, Bezier curve surface generation, live dynamic water physics, Iron acid-immunity, lake breaching & waterfall particles. |
 | [`src/entities/worm.ts`](src/entities/worm.ts) | Worm unit physics, walking, jumping, terrain collision, water buoyancy, oxygen breath meter, health bar. |
 | [`src/entities/mapObject.ts`](src/entities/mapObject.ts) | Interactive map entities: Explosive Barrels, Landmines proximity triggers, Health Crates pickup. |
-| [`src/editor/mapEditor.ts`](src/editor/mapEditor.ts) | Interactive canvas map editor with material brushes, spawn/object placement, and instant test play. |
-| [`src/editor/mapStorage.ts`](src/editor/mapStorage.ts) | Map storage utility for LocalStorage map registry, preset maps, and JSON file export/import. |
-| [`src/ui/menuModal.ts`](src/ui/menuModal.ts) | Glassmorphism main menu & match lobby (Quick Play, Team Size, Health, Game Modes, Map Selector). |
+| [`src/editor/mapEditor.ts`](src/editor/mapEditor.ts) | Interactive canvas map editor with material brushes (incl. Iron), spawn/object placement, 30-step Undo/Redo, and instant test play. |
+| [`src/editor/mapStorage.ts`](src/editor/mapStorage.ts) | Map storage utility for LocalStorage map registry, 4 preset maps, and JSON file export/import. |
+| [`src/ui/menuModal.ts`](src/ui/menuModal.ts) | Glassmorphism match lobby — Match Type (PvP / AI), Bot Difficulty (Easy / Normal / Hard), Team Size, Health, Game Modes, Map Selector. |
 | [`src/physics/projectile.ts`](src/physics/projectile.ts) | Projectile simulation, wind force, gravity, portal warping, explosion damage & knockback. |
-| [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI trajectory calculation and difficulty levels. |
-| [`src/ui/hud.ts`](src/ui/hud.ts) | Glassmorphism HUD, turn phase banner, trajectory arc preview, power meter, weapon selector toolbar. |
-| [`src/types.ts`](src/types.ts) | Type interfaces for turn phases, materials, weapons, map objects, water bodies, map data, and lobby config. |
+| [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI trajectory solver with Easy / Normal / Hard difficulty modes, wind compensation, and tactical weapon selection. |
+| [`src/ui/hud.ts`](src/ui/hud.ts) | Glassmorphism HUD, PvP team turn banners, trajectory arc preview, power meter, weapon selector toolbar. |
+| [`src/types.ts`](src/types.ts) | Type interfaces for turn phases, materials, weapons, map objects, water bodies, lobby config (incl. `matchType`). |
 
 ---
 
