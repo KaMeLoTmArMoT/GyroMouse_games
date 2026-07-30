@@ -1,6 +1,6 @@
 # 🐛💥 Wormix (Turn-Based Elemental Artillery)
 
-A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) built with **Canvas 2D**, featuring an **Offscreen Pixel-Mask Destructible Terrain Engine**, **Live Dynamic Water & Acid Physics**, **Interactive Map Objects**, **Canvas Map Editor with LocalStorage & JSON Save/Load**, **Match Lobby with PvP & AI Modes**, **30 FPS locked simulation tick**, elemental terrain physics (Grass, Dirt, Stone, Bedrock, Sand, Water, Acid, Iron, Portals), wind vectors, trajectory sighting arcs, smart tactical AI with selectable difficulty, and **dual control modes** (GyroMouse Restricted Mode & PC Mouse/Keyboard Mode).
+A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) built with **Canvas 2D**, featuring an **Offscreen Pixel-Mask Destructible Terrain Engine**, **Live Dynamic Water & Acid Physics**, **Interactive Map Objects**, **Canvas Map Editor with LocalStorage & JSON Save/Load**, **Map Manager with Visual Gallery & CRUD Actions**, **Match Lobby with PvP & AI Modes**, **30 FPS locked simulation tick**, elemental terrain physics (Grass, Dirt, Stone, Bedrock, Sand, Water, Acid, Iron, Portals), wind vectors, trajectory sighting arcs, smart tactical AI with selectable difficulty, and **dual control modes** (GyroMouse Restricted Mode & PC Mouse/Keyboard Mode).
 
 ---
 
@@ -61,7 +61,22 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * **Storage**: Save maps to browser `localStorage`, export as `.wormix.json` files, or import custom JSON map files.
    * **Seamless Test Play Loop**: Test your custom map in an active match with one click (`▶️ Test Play`), and return instantly to editing via the floating **`✏️ Return to Editor`** button (`top: 85px; right: 16px;`) or ESC Settings (`✏️ Map Editor`).
 
-6. **⚔️ Match Lobby & Game Modes**:
+6. **🗂️ Map Manager — Visual Gallery & CRUD**:
+   * Dedicated gallery modal accessible from the Main Menu via the **`🗂️ Map Manager`** button (cyan gradient).
+   * **On-the-fly Terrain Thumbnails**: Each map card renders a live canvas preview (220×90px) from `terrainHeights[]` — green grass, brown dirt, gray stone gradient, blue water level, and colored spawn point dots. Zero localStorage overhead.
+   * **Card Layout**: Scrollable grid of map cards showing thumbnail, map name, creation date, and last-edited timestamp (falls back to creation date for pre-existing maps).
+   * **Custom Map Actions**:
+     * ✏️ **Edit** — Opens the Map Editor with the selected map loaded for editing.
+     * 📋 **Clone** — Deep-clones the map with a new unique `id` and `(Copy)` suffix name. All arrays (terrain, spawns, objects) are independently copied.
+     * ✏️ **Rename** — Inline editable text input on the card; saves on Enter/blur, cancels on Escape.
+     * 🗑️ **Delete** — Confirmation prompt → permanently removes the map from `localStorage`.
+     * 💾 **Export** — Downloads the map as a `.wormix.json` file.
+   * **Preset Map Cards**: Displayed in a separate section with a `PRESET` badge. Each offers **👁️ View** (clones the preset and opens it in the editor for viewing/editing) and **📋 Clone as Custom** (copies the preset into custom storage as an editable map).
+   * **➕ Create New Map**: Dashed-border card at the start of the custom grid — opens a blank map in the editor.
+   * **📥 Import**: File picker button at the bottom to import `.wormix.json` files directly into the gallery.
+   * **Backward-Compatible Data Model**: `updatedAt` field on `CustomMapData` is optional (`updatedAt?`) — existing saved maps display creation date only.
+
+7. **⚔️ Match Lobby & Game Modes**:
    * **Match Type**:
      * 🤖 **Player vs AI**: Red Team (human) vs Blue Team (bot). Select bot difficulty below.
      * 👥 **Local PvP (Pass & Play)**: Both Red and Blue teams are human-controlled. Players take turns passing the keyboard. HUD turn banners display `🔴 RED PLAYER TURN` / `🔵 BLUE PLAYER TURN` to indicate whose turn it is. AI logic is completely disabled.
@@ -77,14 +92,14 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
      * *🏰 Fort Warfare*: Pre-built fortress maps.
    * **⚔️ Lobby Shortcut**: Floating green **`⚔️ Lobby`** button (`top: 85px; left: 16px;`) visible during all active matches. Click to jump back to the Match Lobby without using ESC.
 
-7. **🗺️ Preset Maps**:
+8. **🗺️ Preset Maps**:
    * 🎲 **Random Procedural**: Freshly generated Bezier-curve terrain each match.
    * 🏝️ **Floating Archipelago**: Two isolated islands separated by a wide ocean channel with a Health Crate in the gap.
    * 🏰 **Twin Fortresses**: Mirror fortified towers on each side with a low valley battlefield in the center.
    * ⚙️ **Iron Citadel**: Raised Iron-material bunker towers on each flank — acid-immune, explosives-only breachable.
    * 🌋 **Volcano Acid Crater**: Concave central crater terrain, ideal for acid-lake flooding matches.
 
-8. **Arsenal**:
+9. **Arsenal**:
    * 🚀 **Bazooka**: Wind-affected heavy explosive missile.
    * 💣 **Grenade**: Bouncing projectile with 3-second fuse timer.
    * 💥 **Cluster Bomb**: Splits into 5 mini-bombs on impact.
@@ -93,7 +108,7 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * 🌀 **Portal Gun**: Deploys an Orange or Blue portal pair on terrain surfaces to warp incoming projectiles and worms.
    * 🔫 **Shotgun**: Direct line-of-sight double shot.
 
-9. **Fixed 30 FPS Lock**:
+10. **Fixed 30 FPS Lock**:
    * Game loop simulation locked at `1000/30` ms tick rate for consistent physics across all hardware.
 
 ---
@@ -103,17 +118,18 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 | File | Role & Features |
 | :--- | :--- |
 | [`index.html`](index.html) | Canvas container, back button to main hub, styling. |
-| [`src/main.ts`](src/main.ts) | Game orchestrator, 30 FPS tick loop, 3-step turn state machine, PvP/AI mode, floating HUD buttons, menu/editor management. |
+| [`src/main.ts`](src/main.ts) | Game orchestrator, 30 FPS tick loop, 3-step turn state machine, PvP/AI mode, floating HUD buttons, menu/editor/MapManager lifecycle management. |
 | [`src/terrain/terrainManager.ts`](src/terrain/terrainManager.ts) | Offscreen pixel-mask terrain engine, Bezier curve surface generation, live dynamic water physics, Iron acid-immunity, lake breaching & waterfall particles. |
 | [`src/entities/worm.ts`](src/entities/worm.ts) | Worm unit physics, walking, jumping, terrain collision, water buoyancy, oxygen breath meter, health bar. |
 | [`src/entities/mapObject.ts`](src/entities/mapObject.ts) | Interactive map entities: Explosive Barrels, Landmines proximity triggers, Health Crates pickup. |
 | [`src/editor/mapEditor.ts`](src/editor/mapEditor.ts) | Interactive canvas map editor with material brushes (incl. Iron), spawn/object placement, 30-step Undo/Redo, and instant test play. |
-| [`src/editor/mapStorage.ts`](src/editor/mapStorage.ts) | Map storage utility for LocalStorage map registry, 4 preset maps, and JSON file export/import. |
-| [`src/ui/menuModal.ts`](src/ui/menuModal.ts) | Glassmorphism match lobby — Match Type (PvP / AI), Bot Difficulty (Easy / Normal / Hard), Team Size, Health, Game Modes, Map Selector. |
+| [`src/editor/mapStorage.ts`](src/editor/mapStorage.ts) | Map storage utility for LocalStorage map registry, 4 preset maps, rename/clone/delete operations, and JSON file export/import. |
+| [`src/ui/menuModal.ts`](src/ui/menuModal.ts) | Glassmorphism match lobby — Match Type (PvP / AI), Bot Difficulty (Easy / Normal / Hard), Team Size, Health, Game Modes, Map Selector, Map Manager shortcut. |
+| [`src/ui/mapManager.ts`](src/ui/mapManager.ts) | Visual gallery modal for map management — on-the-fly terrain thumbnails, card grid, Edit/Clone/Rename/Delete/Export actions, preset cloning, JSON import. |
 | [`src/physics/projectile.ts`](src/physics/projectile.ts) | Projectile simulation, wind force, gravity, portal warping, explosion damage & knockback. |
 | [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI trajectory solver with Easy / Normal / Hard difficulty modes, wind compensation, and tactical weapon selection. |
 | [`src/ui/hud.ts`](src/ui/hud.ts) | Glassmorphism HUD, PvP team turn banners, trajectory arc preview, power meter, weapon selector toolbar. |
-| [`src/types.ts`](src/types.ts) | Type interfaces for turn phases, materials, weapons, map objects, water bodies, lobby config (incl. `matchType`). |
+| [`src/types.ts`](src/types.ts) | Type interfaces for turn phases, materials, weapons, map objects, water bodies, lobby config (incl. `matchType`), and `CustomMapData` (incl. `updatedAt`). |
 
 ---
 

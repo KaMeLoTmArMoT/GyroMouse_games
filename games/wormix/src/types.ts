@@ -120,6 +120,7 @@ export interface CustomMapData {
   id: string;
   name: string;
   createdAt: number;
+  updatedAt?: number;
   width: number;
   height: number;
   terrainHeights: number[];

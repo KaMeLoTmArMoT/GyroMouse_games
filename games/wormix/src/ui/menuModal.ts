@@ -16,15 +16,18 @@ export class MenuModal {
   private onStartMatchCallback: (config: LobbyConfig, mapData?: CustomMapData) => void;
   private onOpenEditorCallback: () => void;
   private onOpenSettingsCallback: () => void;
+  private onOpenMapManagerCallback: () => void;
 
   constructor(
     onStartMatch: (config: LobbyConfig, mapData?: CustomMapData) => void,
     onOpenEditor: () => void,
-    onOpenSettings: () => void
+    onOpenSettings: () => void,
+    onOpenMapManager: () => void
   ) {
     this.onStartMatchCallback = onStartMatch;
     this.onOpenEditorCallback = onOpenEditor;
     this.onOpenSettingsCallback = onOpenSettings;
+    this.onOpenMapManagerCallback = onOpenMapManager;
 
     this.overlayEl = document.createElement('div');
     this.overlayEl.id = 'wormixMenuModal';
@@ -183,6 +186,7 @@ export class MenuModal {
 
           <button class="menu-action-btn btn-secondary" id="btnStartLobbyMatch">⚔️ START CUSTOM MATCH</button>
           <button class="menu-action-btn btn-purple" id="btnOpenEditorModal">🛠️ MAP EDITOR</button>
+          <button class="menu-action-btn btn-purple" id="btnOpenMapManager" style="background: linear-gradient(135deg, #0891b2, #22d3ee);">🗂️ MAP MANAGER</button>
           <button class="menu-action-btn" id="btnOpenSettingsModal" style="background:rgba(255,255,255,0.1); color:#94a3b8">⚙️ SETTINGS</button>
         </div>
       </div>
@@ -262,6 +266,11 @@ export class MenuModal {
     el.querySelector('#btnOpenEditorModal')?.addEventListener('click', () => {
       this.hide();
       this.onOpenEditorCallback();
+    });
+
+    el.querySelector('#btnOpenMapManager')?.addEventListener('click', () => {
+      this.hide();
+      this.onOpenMapManagerCallback();
     });
 
     el.querySelector('#btnOpenSettingsModal')?.addEventListener('click', () => {

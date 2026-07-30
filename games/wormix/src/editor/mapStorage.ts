@@ -143,6 +143,7 @@ export class MapStorage {
   }
 
   public static saveMap(map: CustomMapData): void {
+    map.updatedAt = Date.now();
     const saved = this.getSavedMaps();
     const existingIdx = saved.findIndex((m) => m.id === map.id);
     if (existingIdx !== -1) {
@@ -156,6 +157,40 @@ export class MapStorage {
   public static deleteMap(mapId: string): void {
     const saved = this.getSavedMaps().filter((m) => m.id !== mapId);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  }
+
+  public static renameMap(mapId: string, newName: string): void {
+    const saved = this.getSavedMaps();
+    const map = saved.find((m) => m.id === mapId);
+    if (map) {
+      map.name = newName;
+      map.updatedAt = Date.now();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    }
+  }
+
+  public static cloneMap(mapId: string): CustomMapData | null {
+    const saved = this.getSavedMaps();
+    const original = saved.find((m) => m.id === mapId);
+    if (!original) return null;
+
+    const cloned: CustomMapData = {
+      ...original,
+      id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `${original.name} (Copy)`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      terrainHeights: [...original.terrainHeights],
+      spawnPoints: original.spawnPoints.map((sp) => ({ ...sp })),
+      mapObjects: original.mapObjects.map((obj) => ({ ...obj })),
+      waterBodies: original.waterBodies.map((wb) => ({ ...wb })),
+      gridData: original.gridData ? [...original.gridData] : undefined,
+      terrainMaterials: original.terrainMaterials ? [...original.terrainMaterials] : undefined
+    };
+
+    saved.push(cloned);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    return cloned;
   }
 
   public static exportJSON(map: CustomMapData): void {

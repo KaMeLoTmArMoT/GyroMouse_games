@@ -10,6 +10,7 @@ import { WormAI } from './ai/wormAI';
 import { HUD, WEAPON_LIST } from './ui/hud';
 import { MenuModal } from './ui/menuModal';
 import { MapEditor } from './editor/mapEditor';
+import { MapManager } from './ui/mapManager';
 
 export class WormixGame {
   private canvas: HTMLCanvasElement;
@@ -21,6 +22,7 @@ export class WormixGame {
   private hud: HUD;
   private menuModal: MenuModal;
   private mapEditor: MapEditor | null = null;
+  private mapManager: MapManager | null = null;
 
   public terrain: TerrainManager;
   public worms: Worm[] = [];
@@ -90,7 +92,14 @@ export class WormixGame {
     this.menuModal = new MenuModal(
       (config, mapData) => this.startMatch(config, mapData),
       () => this.openMapEditor(),
-      () => this.settingsOverlay.toggle()
+      () => this.settingsOverlay.toggle(),
+      () => this.openMapManager()
+    );
+
+    // Initialize Map Manager
+    this.mapManager = new MapManager(
+      (map) => this.openMapEditor(map),
+      () => this.menuModal.show()
     );
 
     this.resizeCanvas();
@@ -134,6 +143,12 @@ export class WormixGame {
       },
       targetMap
     );
+  }
+
+  public openMapManager(): void {
+    if (this.mapManager) {
+      this.mapManager.show();
+    }
   }
 
   public startMatch(config: LobbyConfig, mapData?: CustomMapData, isTestPlay: boolean = false): void {
