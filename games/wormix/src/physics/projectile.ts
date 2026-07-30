@@ -71,12 +71,12 @@ export class Projectile {
     // Portal Teleport Check
     this.checkPortalWarp(terrain);
 
-    // Collision with Terrain Surface
-    const surfaceY = terrain.getSurfaceY(this.x);
-    if (this.y >= surfaceY) {
+    // Collision with Terrain (local solid grid check)
+    const isSolidNow = terrain.isSolidAt(this.x, this.y);
+    const isSolidNext = terrain.isSolidAt(this.x + this.vx, this.y + this.vy);
+    if (isSolidNow || isSolidNext) {
       if (this.weaponId === 'grenade' || (this.weaponId === 'cluster' && !this.isClusterChild)) {
-        // Bounce
-        this.y = surfaceY - 2;
+        // Bounce off local terrain surface
         this.vy = -this.vy * this.bounciness;
         this.vx *= 0.7;
       } else {

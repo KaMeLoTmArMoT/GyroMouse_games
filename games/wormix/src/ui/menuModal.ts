@@ -9,7 +9,8 @@ export class MenuModal {
     wormHealth: 100,
     gameMode: 'deathmatch',
     mapId: 'random',
-    aiDifficulty: 'normal'
+    aiDifficulty: 'normal',
+    matchType: 'ai'
   };
 
   private onStartMatchCallback: (config: LobbyConfig, mapData?: CustomMapData) => void;
@@ -131,6 +132,23 @@ export class MenuModal {
           <button class="menu-action-btn btn-primary" id="btnQuickPlay">🎮 QUICK PLAY</button>
           
           <div class="menu-row">
+            <span class="menu-label">🎮 Match Type</span>
+            <select class="menu-select" id="selectMatchType">
+              <option value="ai" selected>🤖 Player vs AI</option>
+              <option value="pvp">👥 Local PvP (Pass &amp; Play)</option>
+            </select>
+          </div>
+
+          <div class="menu-row" id="rowDifficulty">
+            <span class="menu-label">🤖 Bot Difficulty</span>
+            <select class="menu-select" id="selectDifficulty">
+              <option value="easy">🐣 Easy</option>
+              <option value="normal" selected>🎯 Normal</option>
+              <option value="hard">🔥 Hard</option>
+            </select>
+          </div>
+
+          <div class="menu-row">
             <span class="menu-label">👥 Team Size</span>
             <select class="menu-select" id="selectTeamSize">
               <option value="1">1 vs 1</option>
@@ -208,16 +226,27 @@ export class MenuModal {
       this.onStartMatchCallback(this.config);
     });
 
+    // Toggle difficulty row visibility based on match type
+    const matchTypeSelect = el.querySelector('#selectMatchType') as HTMLSelectElement;
+    const difficultyRow = el.querySelector('#rowDifficulty') as HTMLElement;
+    matchTypeSelect?.addEventListener('change', () => {
+      difficultyRow.style.display = matchTypeSelect.value === 'pvp' ? 'none' : 'flex';
+    });
+
     el.querySelector('#btnStartLobbyMatch')?.addEventListener('click', () => {
       const teamSize = parseInt((el.querySelector('#selectTeamSize') as HTMLSelectElement).value, 10);
       const wormHealth = parseInt((el.querySelector('#selectHealth') as HTMLSelectElement).value, 10);
       const gameMode = (el.querySelector('#selectGameMode') as HTMLSelectElement).value as any;
       const mapId = (el.querySelector('#selectMap') as HTMLSelectElement).value;
+      const matchType = (el.querySelector('#selectMatchType') as HTMLSelectElement).value as 'ai' | 'pvp';
+      const aiDifficulty = (el.querySelector('#selectDifficulty') as HTMLSelectElement).value as any;
 
       this.config.teamSize = teamSize;
       this.config.wormHealth = wormHealth;
       this.config.gameMode = gameMode;
       this.config.mapId = mapId;
+      this.config.matchType = matchType;
+      this.config.aiDifficulty = aiDifficulty;
 
       let mapData: CustomMapData | undefined;
       if (mapId !== 'random') {

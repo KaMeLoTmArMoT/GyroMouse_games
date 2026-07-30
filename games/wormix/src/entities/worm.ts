@@ -42,7 +42,7 @@ export class Worm {
   public update(terrain: TerrainManager): void {
     if (!this.isAlive) return;
 
-    // Cellular Automata Water Density & Submersion Check
+    // 1. Water Density & Submersion Check
     const waterCells = terrain.getWaterDensityAt(this.x, this.y, 22);
     if (waterCells > 2 || this.y >= terrain.waterY - 10) {
       this.isInWater = true;
@@ -63,17 +63,56 @@ export class Worm {
       this.vx *= 0.85; // Normal friction
     }
 
-    this.x += this.vx;
-    this.y += this.vy;
+    // 2. Ceiling / Head Collision (when jumping or swimming upward)
+    if (this.vy < 0) {
+      if (terrain.isSolidAt(this.x, this.y - this.radius)) {
+        this.vy = Math.max(0, this.vy);
+      }
+    }
 
-
-
-    // Terrain Collision
-    const surfaceY = terrain.getSurfaceY(this.x);
+    // 3. Horizontal Movement & Slope / Cliff Collision Check
+    const nextX = this.x + this.vx;
     const feetY = this.y + this.radius;
 
-    if (feetY >= surfaceY) {
-      // Check fall damage
+    if (Math.abs(this.vx) > 0.01) {
+      const maxStepHeight = 10; // Max climbable step height in pixels
+      const headBlocked = terrain.isSolidAt(nextX, this.y - 4);
+      const wallBlocked = terrain.isSolidAt(nextX, feetY - maxStepHeight);
+
+      if (headBlocked || wallBlocked) {
+        // High wall / cliff or overhead obstacle blocks horizontal movement
+        this.vx = 0;
+      } else {
+        // Probe local step surface height at nextX
+        const localStepY = terrain.getLocalGroundY(nextX, feetY, 12, maxStepHeight + 2);
+        if (localStepY !== null) {
+          const stepDiff = feetY - localStepY;
+          if (stepDiff > 0 && stepDiff <= maxStepHeight) {
+            // Smoothly step up slope over frames
+            const maxClimbPerTick = 3.0;
+            this.y -= Math.min(stepDiff, maxClimbPerTick);
+            this.x = nextX;
+          } else if (stepDiff <= 0 && stepDiff >= -10 && this.isGrounded) {
+            // Smoothly step down slope
+            const maxDescentPerTick = 3.0;
+            this.y += Math.min(Math.abs(stepDiff), maxDescentPerTick);
+            this.x = nextX;
+          } else {
+            this.x = nextX;
+          }
+        } else {
+          this.x = nextX;
+        }
+      }
+    }
+
+    // 4. Vertical Position & Landing Collision
+    this.y += this.vy;
+    const currentFeetY = this.y + this.radius;
+    const localGroundY = terrain.getLocalGroundY(this.x, currentFeetY, 15, 12);
+
+    if (localGroundY !== null && currentFeetY >= localGroundY) {
+      // Landing on local ground surface
       if (!this.isGrounded && this.vy > 8 && !this.isInWater) {
         const fallDist = Math.max(0, this.y - this.fallStartY);
         if (fallDist > 120) {
@@ -82,7 +121,7 @@ export class Worm {
         }
       }
 
-      this.y = surfaceY - this.radius;
+      this.y = localGroundY - this.radius;
       this.vy = 0;
       this.isGrounded = true;
     } else {
@@ -148,6 +187,12 @@ export class Worm {
 
     ctx.save();
     ctx.translate(this.x, this.y);
+
+    // Waddle rotation during movement
+    if (Math.abs(this.vx) > 0.1 && this.isGrounded) {
+      const walkWaddle = Math.sin(Date.now() * 0.018) * 0.12;
+      ctx.rotate(walkWaddle);
+    }
 
     const bodyColor = this.team === 'player' ? '#ef4444' : '#3b82f6';
     const accentColor = this.team === 'player' ? '#b91c1c' : '#1d4ed8';

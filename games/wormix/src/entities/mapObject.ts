@@ -38,10 +38,11 @@ export class MapObject {
     this.vy += 0.5;
     this.y += this.vy;
 
-    // Terrain surface collision
-    const surfaceY = terrain.getSurfaceY(this.x);
-    if (this.y + this.radius >= surfaceY) {
-      this.y = surfaceY - this.radius;
+    // Terrain surface collision (local ground probe)
+    const currentFeetY = this.y + this.radius;
+    const localGroundY = terrain.getLocalGroundY(this.x, currentFeetY, 15, 12);
+    if (localGroundY !== null && currentFeetY >= localGroundY) {
+      this.y = localGroundY - this.radius;
       this.vy = 0;
       this.isGrounded = true;
     } else {

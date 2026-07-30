@@ -7,7 +7,8 @@ import {
   CELL_STONE,
   CELL_SAND,
   CELL_WATER,
-  CELL_ACID
+  CELL_ACID,
+  CELL_IRON
 } from '../types';
 import { TerrainManager } from '../terrain/terrainManager';
 import { MapStorage } from './mapStorage';
@@ -27,9 +28,18 @@ export class MapEditor {
   private currentCellType: number = CELL_GRASS;
   private brushRadius: number = 18;
 
+  private hoverX: number = -100;
+  private hoverY: number = -100;
+  private isHovering: boolean = false;
+
   public physicsEnabled: boolean = true;
   public previewMode: boolean = false;
   private savedSnapshot: Uint8Array | null = null;
+  private undoBuffer: Uint8Array[] = [];
+  private redoBuffer: Uint8Array[] = [];
+  private readonly maxUndoSteps: number = 30;
+
+  private boundKeyDown?: (e: KeyboardEvent) => void;
 
   private onTestPlayCallback: (map: CustomMapData) => void;
   private onExitCallback: () => void;
@@ -77,9 +87,35 @@ export class MapEditor {
 
   public restoreSnapshot(): void {
     if (this.savedSnapshot) {
+      this.pushUndoState();
       this.terrainInstance.grid.set(this.savedSnapshot);
       this.terrainInstance.rebuildSurfaceCache();
     }
+  }
+
+  public pushUndoState(): void {
+    const snapshot = new Uint8Array(this.terrainInstance.grid);
+    this.undoBuffer.push(snapshot);
+    if (this.undoBuffer.length > this.maxUndoSteps) {
+      this.undoBuffer.shift();
+    }
+    this.redoBuffer = [];
+  }
+
+  public undo(): void {
+    if (this.undoBuffer.length === 0) return;
+    this.redoBuffer.push(new Uint8Array(this.terrainInstance.grid));
+    const previousState = this.undoBuffer.pop()!;
+    this.terrainInstance.grid.set(previousState);
+    this.terrainInstance.rebuildSurfaceCache();
+  }
+
+  public redo(): void {
+    if (this.redoBuffer.length === 0) return;
+    this.undoBuffer.push(new Uint8Array(this.terrainInstance.grid));
+    const nextState = this.redoBuffer.pop()!;
+    this.terrainInstance.grid.set(nextState);
+    this.terrainInstance.rebuildSurfaceCache();
   }
 
   private createBlankMap(name: string): CustomMapData {
@@ -116,25 +152,27 @@ export class MapEditor {
       <style>
         .wormix-editor-overlay {
           position: absolute;
-          top: 16px;
+          top: 14px;
           left: 50%;
           transform: translateX(-50%);
           z-index: 6000;
           display: flex;
           flex-wrap: wrap;
-          gap: 6px;
+          gap: 5px;
           align-items: center;
           justify-content: center;
-          padding: 8px 14px;
+          padding: 6px 12px;
           background: rgba(15, 23, 42, 0.92);
           backdrop-filter: blur(16px);
           border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 18px;
+          border-radius: 16px;
           box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
           color: white;
           font-family: 'Outfit', system-ui, sans-serif;
           user-select: none;
-          max-width: 95vw;
+          margin-left: 60px;
+          margin-right: 35px;
+          max-width: calc(100vw - 220px);
           transition: all 0.2s ease;
         }
         .wormix-editor-overlay.preview-active .editor-hide-in-preview {
@@ -149,9 +187,9 @@ export class MapEditor {
           background: rgba(255, 255, 255, 0.1);
           border: 1px solid rgba(255, 255, 255, 0.2);
           color: #f8fafc;
-          padding: 6px 10px;
+          padding: 5px 9px;
           border-radius: 8px;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 700;
           cursor: pointer;
           transition: all 0.15s ease;
@@ -168,7 +206,7 @@ export class MapEditor {
         }
         .editor-divider {
           width: 1px;
-          height: 22px;
+          height: 20px;
           background: rgba(255, 255, 255, 0.2);
           margin: 0 2px;
         }
@@ -180,7 +218,19 @@ export class MapEditor {
         <button class="editor-btn" id="btnMatSand" style="background:#f59e0b">Sand</button>
         <button class="editor-btn" id="btnWater" style="background:#0284c7">🌊 Water</button>
         <button class="editor-btn" id="btnAcid" style="background:#22c55e">🧪 Acid</button>
+        <button class="editor-btn" id="btnMatIron" style="background:#334155">⚙️ Iron</button>
         <button class="editor-btn" id="btnMatEraser" style="background:#ef4444">Eraser</button>
+      </div>
+      <div class="editor-divider editor-hide-in-preview"></div>
+      <div class="editor-group editor-hide-in-preview" style="align-items:center;">
+        <label style="font-size:11px;font-weight:700;color:#9ca3af;margin-right:2px;">SIZE:</label>
+        <input type="range" id="inputBrushSize" min="6" max="40" value="18" style="width:75px;accent-color:#38bdf8;cursor:pointer;" />
+        <span id="lblBrushSize" style="font-size:11px;font-weight:700;min-width:28px;color:#38bdf8;">18px</span>
+      </div>
+      <div class="editor-divider editor-hide-in-preview"></div>
+      <div class="editor-group editor-hide-in-preview">
+        <button class="editor-btn" id="btnUndo" style="background:#475569">↩️ Undo</button>
+        <button class="editor-btn" id="btnRedo" style="background:#475569">↪️ Redo</button>
       </div>
       <div class="editor-divider editor-hide-in-preview"></div>
       <div class="editor-group editor-hide-in-preview">
@@ -263,6 +313,12 @@ export class MapEditor {
       this.highlightActiveButton('btnAcid');
     });
 
+    el.querySelector('#btnMatIron')?.addEventListener('click', () => {
+      this.currentTool = 'brush';
+      this.currentCellType = CELL_IRON;
+      this.highlightActiveButton('btnMatIron');
+    });
+
     el.querySelector('#btnMatEraser')?.addEventListener('click', () => {
       this.currentTool = 'brush';
       this.currentCellType = CELL_AIR;
@@ -306,6 +362,39 @@ export class MapEditor {
       this.highlightActiveButton('btnCrate');
     });
 
+    // Brush Size Slider
+    el.querySelector('#inputBrushSize')?.addEventListener('input', (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value, 10);
+      this.brushRadius = val;
+      const lbl = el.querySelector('#lblBrushSize');
+      if (lbl) lbl.textContent = `${val}px`;
+    });
+
+    // Undo & Redo Actions
+    el.querySelector('#btnUndo')?.addEventListener('click', () => {
+      this.undo();
+    });
+
+    el.querySelector('#btnRedo')?.addEventListener('click', () => {
+      this.redo();
+    });
+
+    // Keyboard Shortcuts (Ctrl+Z for Undo, Ctrl+Shift+Z / Ctrl+Y for Redo)
+    this.boundKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.ctrlKey || e.metaKey;
+      if (isCmdOrCtrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        this.redo();
+      } else if (isCmdOrCtrl && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        this.redo();
+      } else if (isCmdOrCtrl && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        this.undo();
+      }
+    };
+    window.addEventListener('keydown', this.boundKeyDown);
+
     // Physics Controls & Preview Toggle
     const physBtn = el.querySelector('#btnTogglePhysics');
     physBtn?.addEventListener('click', () => {
@@ -317,7 +406,9 @@ export class MapEditor {
     });
 
     el.querySelector('#btnResetPhysics')?.addEventListener('click', () => {
-      this.restoreSnapshot();
+      if (confirm('Reset grid to initial state? All unsaved painting will be lost.')) {
+        this.restoreSnapshot();
+      }
     });
 
     const prevBtn = el.querySelector('#btnTogglePreview');
@@ -346,14 +437,20 @@ export class MapEditor {
     });
     el.querySelector('#btnExitEditor')?.addEventListener('click', () => this.exit());
 
-    // Mouse Canvas Painting
+    // Mouse Canvas Painting & Hover Radius Cursor
     this.canvas.addEventListener('mousedown', (e) => {
       if (this.previewMode) return;
+      this.pushUndoState();
       this.isDrawing = true;
       this.paintAt(e.clientX, e.clientY);
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.hoverX = Math.floor(e.clientX - rect.left);
+      this.hoverY = Math.floor(e.clientY - rect.top);
+      this.isHovering = true;
+
       if (this.previewMode) return;
       if (this.isDrawing) {
         this.paintAt(e.clientX, e.clientY);
@@ -363,6 +460,11 @@ export class MapEditor {
     this.canvas.addEventListener('mouseup', () => {
       this.isDrawing = false;
     });
+
+    this.canvas.addEventListener('mouseleave', () => {
+      this.isDrawing = false;
+      this.isHovering = false;
+    });
   }
 
   private paintAt(mouseX: number, mouseY: number): void {
@@ -370,22 +472,20 @@ export class MapEditor {
     const x = Math.floor(mouseX - rect.left);
     const y = Math.floor(mouseY - rect.top);
 
+    const localGround = this.terrainInstance.getLocalGroundY(x, y, 200, 100);
+    const groundY = localGround !== null ? localGround - 14 : this.terrainInstance.getSurfaceY(x) - 14;
+
     if (this.currentTool === 'brush') {
       this.terrainInstance.spawnElementStream(x, y, this.currentCellType, this.brushRadius);
     } else if (this.currentTool === 'red_spawn_1') {
-      const groundY = this.terrainInstance.getSurfaceY(x) - 14;
       this.activeMap.spawnPoints[0] = { x, y: groundY, team: 'player' };
     } else if (this.currentTool === 'red_spawn_2') {
-      const groundY = this.terrainInstance.getSurfaceY(x) - 14;
       this.activeMap.spawnPoints[1] = { x, y: groundY, team: 'player' };
     } else if (this.currentTool === 'blue_spawn_1') {
-      const groundY = this.terrainInstance.getSurfaceY(x) - 14;
       this.activeMap.spawnPoints[2] = { x, y: groundY, team: 'ai' };
     } else if (this.currentTool === 'blue_spawn_2') {
-      const groundY = this.terrainInstance.getSurfaceY(x) - 14;
       this.activeMap.spawnPoints[3] = { x, y: groundY, team: 'ai' };
     } else if (this.currentTool === 'barrel' || this.currentTool === 'landmine' || this.currentTool === 'health_crate') {
-      const groundY = this.terrainInstance.getSurfaceY(x) - 14;
       this.activeMap.mapObjects.push({
         id: `obj_${Date.now()}_${Math.random()}`,
         type: this.currentTool as MapObjectType,
@@ -446,9 +546,24 @@ export class MapEditor {
       ctx.fillText(icon, obj.x, obj.y + 6);
       ctx.restore();
     });
+
+    // 5. Render Live Brush Hover Circle Indicator
+    if (!this.previewMode && this.isHovering && this.currentTool === 'brush') {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(this.hoverX, this.hoverY, this.brushRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   public exit(): void {
+    if (this.boundKeyDown) {
+      window.removeEventListener('keydown', this.boundKeyDown);
+    }
     if (this.containerEl.parentNode) {
       this.containerEl.parentNode.removeChild(this.containerEl);
     }

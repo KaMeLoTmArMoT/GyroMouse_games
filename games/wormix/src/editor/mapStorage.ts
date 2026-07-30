@@ -69,7 +69,68 @@ export class MapStorage {
       waterBodies: []
     };
 
-    return [map1, map2];
+    // 3. Iron Citadel (Acid-Immune Bunker Towers)
+    const citadelHeights = new Array(width).fill(baseGroundY);
+    for (let x = 0; x < width; x++) {
+      if ((x > width * 0.12 && x < width * 0.28) || (x > width * 0.72 && x < width * 0.88)) {
+        citadelHeights[x] = baseGroundY - 110;
+      }
+    }
+
+    const map3: CustomMapData = {
+      id: 'preset_iron_citadel',
+      name: '⚙️ Iron Citadel',
+      createdAt: Date.now(),
+      width,
+      height,
+      waterY,
+      terrainHeights: citadelHeights,
+      terrainMaterials: new Array(width).fill('#64748b'),
+      spawnPoints: [
+        { x: width * 0.18, y: baseGroundY - 125, team: 'player' },
+        { x: width * 0.24, y: baseGroundY - 125, team: 'player' },
+        { x: width * 0.76, y: baseGroundY - 125, team: 'ai' },
+        { x: width * 0.82, y: baseGroundY - 125, team: 'ai' }
+      ],
+      mapObjects: [
+        { id: 'b1', type: 'barrel', x: width * 0.2, y: baseGroundY - 130 },
+        { id: 'b2', type: 'barrel', x: width * 0.8, y: baseGroundY - 130 },
+        { id: 'm1', type: 'landmine', x: width * 0.5, y: baseGroundY - 15 }
+      ],
+      waterBodies: []
+    };
+
+    // 4. Volcano Acid Crater
+    const volcanoHeights = new Array(width).fill(baseGroundY);
+    for (let x = 0; x < width; x++) {
+      const distFromCenter = Math.abs(x - width * 0.5);
+      if (distFromCenter < width * 0.35) {
+        volcanoHeights[x] = baseGroundY + 60 - Math.sin((distFromCenter / (width * 0.35)) * Math.PI) * 110;
+      }
+    }
+
+    const map4: CustomMapData = {
+      id: 'preset_volcano_crater',
+      name: '🌋 Volcano Acid Crater',
+      createdAt: Date.now(),
+      width,
+      height,
+      waterY,
+      terrainHeights: volcanoHeights,
+      spawnPoints: [
+        { x: width * 0.18, y: baseGroundY - 70, team: 'player' },
+        { x: width * 0.28, y: baseGroundY - 20, team: 'player' },
+        { x: width * 0.72, y: baseGroundY - 20, team: 'ai' },
+        { x: width * 0.82, y: baseGroundY - 70, team: 'ai' }
+      ],
+      mapObjects: [
+        { id: 'm1', type: 'landmine', x: width * 0.5, y: baseGroundY + 50 },
+        { id: 'c1', type: 'health_crate', x: width * 0.5, y: baseGroundY - 100 }
+      ],
+      waterBodies: []
+    };
+
+    return [map1, map2, map3, map4];
   }
 
   public static getSavedMaps(): CustomMapData[] {

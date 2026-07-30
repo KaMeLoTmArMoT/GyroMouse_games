@@ -114,6 +114,7 @@ export const CELL_BEDROCK = 4;
 export const CELL_SAND = 5;
 export const CELL_WATER = 6;
 export const CELL_ACID = 7;
+export const CELL_IRON = 8;
 
 export interface CustomMapData {
   id: string;
@@ -142,5 +143,6 @@ export interface LobbyConfig {
   gameMode: GameMode;
   mapId: string;
   aiDifficulty: AIDifficulty;
+  matchType: 'ai' | 'pvp';
 }
 

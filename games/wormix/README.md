@@ -18,39 +18,44 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 2. **PC Mode** (Mouse + Keyboard):
    * `WASD` / Arrow keys to walk, mouse cursor to aim cannon angle, click or hold `Space` to charge launch power meter and fire!
 
----
-
-## ⚙️ Game Features & Mechanics
-
-1. **🧪 2D Cellular Automata Grid Physics Engine**:
+-1. **🧪 2D Cellular Automata Grid Physics Engine**:
    * Powered by a discrete 2D grid (`Uint8Array`) running a **Falling Sand Cellular Automata Simulation Algorithm** with bottom-to-top processing sweeps and directional shuffling.
+   * **⚙️ Iron / Metal Mechanics**: Acid-immune material (`CELL_IRON`) rendered in dark steel slate (`#334155`). Acid pools against or flows past Iron without dissolving it, while explosive weapons and projectiles can destroy Iron terrain normally.
    * **🌊 Water & Liquid Mechanics**:
      * **Multi-Pass Fluid Dispersion**: 2-pass liquid physics loop for fast, natural fluid flow without jelly sloshing.
      * **Free Hill Slope Tumbles**: Liquids flow freely down steep terrain slopes and cascade down into valley craters without sticking.
      * **Smooth Lake Surface Wave Lines**: Contiguous horizontal liquid pools feature animated surface wave highlights (`rgba(186, 230, 253, 0.85)`) rendered dynamically over flat lake tops.
-   * **🧪 Acid Mechanics**: Flows like water and actively dissolves adjacent solid terrain and sand cells into empty air on contact with bubbling particles.
+   * **🧪 Acid Mechanics**: Flows like water and actively dissolves adjacent solid terrain and sand cells into empty air on contact with bubbling particles (Iron is immune to acid).
    * **⏳ Sand Mechanics**: Falls down, slumps down slopes into craters, and sinks through water cells (displacing water upward).
    * **Real-time Waterfall Cascades**: Carving holes beneath liquid pools causes water and acid to cascade down into newly carved craters in real-time.
    * **🌊 Global Ocean & Subterranean Bedrock**: Smooth animated ocean liquid level at `waterY = height - 40` with an indestructible bedrock foundation (`CELL_BEDROCK`) safely layered beneath the ocean floor.
 
-2. **🌊 Submersion, Buoyancy & Swimming**:
+2. **🏔️ Terrain Collision & Smooth Slope Physics**:
+   * **Smooth Slope Traversal**: Worms walk up gentle and moderate hills with smooth frame-by-frame vertical interpolation instead of instant teleport snapping.
+   * **10px Max Step-Up Limit & Cliff Blocking**: Steep cliffs, vertical walls, or island sides higher than 10px block horizontal movement (`vx = 0`). Worms must **jump** (`W` / `↑` / `Space`) to climb up high ledges!
+   * **Local 2D Grid Collision & Floating Islands**: Ground surface detection probes local terrain cells around feet level instead of sky-column scanning, eliminating teleportation onto floating islands overhead and allowing natural cave/tunnel navigation.
+   * **Ceiling & Head Collision**: Worms bump their heads (`vy = 0`) against overhangs or floating island undersides when jumping or swimming upward.
+   * **Dynamic Waddle Animation**: Worm bodies feature subtle waddle rotation while walking across terrain for organic motion.
+
+3. **🌊 Submersion, Buoyancy & Swimming**:
    * Worms submerged in water or acid experience dynamic buoyancy force and fluid drag based on surrounding liquid grid cell density, allowing them to swim upward (`W` / `↑` key).
    * **Oxygen Breath Meter**: Submerged worms have an Oxygen meter (100 $\rightarrow$ 0). When oxygen runs out, worms take gradual drowning damage (-0.4 HP/tick).
 
-3. **🛢️ Interactive Map Objects**:
+4. **🛢️ Interactive Map Objects**:
    * 🛢️ **Explosive Barrels**: 50 HP. Detonate when shot or hit by explosions, causing a 55px explosion + flying fire debris.
    * 💣 **Landmines**: Triggers a 1-second countdown beep when a worm steps within 28px distance, then explodes!
    * 🧰 **Health Supply Crates**: Walking or jumping into crates collects them, restoring +30 HP to the worm with a healing sound effect!
 
-4. **🛠️ Interactive Map Editor, Physics Flow & Preview Workflow**:
+5. **🛠️ Interactive Map Editor, Physics Flow & Preview Workflow**:
    * In-game canvas map sculpting tool accessible directly from the Main Menu or ESC Settings screen.
-   * **Live Stream Brushes**: Paint Grass, Dirt, Stone, Sand, 🌊 Water, 🧪 Acid, or Eraser in real-time and watch liquids flow and settle into valleys directly inside the editor.
-   * **👁️ Preview <-> ✏️ Edit Mode**: Toggle between active editing tools and a clean fullscreen **Preview Mode** to observe falling sand, water leveling, and acid dissolution without UI distraction.
+   * **Live Stream Brushes & Adjustable Brush Size**: Paint Grass, Dirt, Stone, Sand, 🌊 Water, 🧪 Acid, ⚙️ Iron, or Eraser in real-time. Adjust brush radius from **6px to 40px** using the top slider control, with a live dashed cursor ring indicating brush size on canvas.
+   * **↩️ Undo / ↪️ Redo History (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`)**: Built-in 30-step undo/redo buffer allowing step-back and step-forward state recovery via top-toolbar buttons or standard keyboard shortcuts.
+   * **👁️ Preview <-> ✏️ Edit Mode**: Toggle between active editing tools and a clean fullscreen **Preview Mode** (hides toolbar overlays) to observe falling sand, water leveling, and acid reactions across the entire canvas without UI clutter.
    * **⏸️ Pause / ▶️ Resume Physics Flow**: Freeze cellular physics tick while painting steep sand dunes or liquid containers, or unpause to test fluid flow dynamics.
-   * **🔄 Reset Grid Snapshot**: One-click grid snapshot restore button to instantly reset terrain back to its initial state before physics simulation ran.
+   * **🔄 Reset Grid Snapshot**: One-click grid snapshot restore button with a confirmation safety prompt before clearing unsaved edits.
    * **Entity Placement**: Drag & drop Red Spawns, Blue Spawns, Oil Barrels, Landmines, and Health Crates.
    * **Storage**: Save maps to browser `localStorage`, export as `.wormix.json` files, or import custom JSON map files.
-   * **Seamless Test Play Loop**: Test your custom map in an active match with one click, and return to the editor at any time via ESC Settings (`✏️ Map Editor / Return to Edit`).
+   * **Seamless Test Play Loop & Dedicated Shortcut**: Test your custom map in an active match with one click (`▶️ Test Play`), and return instantly to editing via the floating **`✏️ Return to Editor`** HUD button (`top: 60px; right: 16px;`) or ESC Settings (`✏️ Map Editor`).ay`), and return instantly to editing via the floating **`✏️ Return to Editor`** HUD button or ESC Settings (`✏️ Map Editor`).
 
 5. **⚔️ Match Lobby & Game Modes**:
    * **Team Configurations**: 1v1, 2v2, 3v3 team sizes.

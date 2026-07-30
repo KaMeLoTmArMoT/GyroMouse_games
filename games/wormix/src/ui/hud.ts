@@ -25,7 +25,8 @@ export class HUD {
     turnTimer: number,
     playerTeamHp: number,
     aiTeamHp: number,
-    isPcMode: boolean
+    isPcMode: boolean,
+    isPvP: boolean
   ): void {
     ctx.save();
 
@@ -33,7 +34,7 @@ export class HUD {
     this.drawTopBar(ctx, width, playerTeamHp, aiTeamHp, windX, turnTimer);
 
     // 2. Center Turn Phase Banner
-    this.drawPhaseBanner(ctx, width, phase, isPcMode);
+    this.drawPhaseBanner(ctx, width, phase, isPcMode, isPvP, activeWorm?.team ?? 'player');
 
     // 3. Trajectory Sighting Arc (When Aiming or Charging)
     if (activeWorm && activeWorm.isAlive && (phase === 'AIM_FIRE' || phase === 'MOVE')) {
@@ -62,16 +63,16 @@ export class HUD {
     windX: number,
     timer: number
   ): void {
-    // Red Team (Player) HP
+    // Red Team (Player) HP (Padded to clear top-left Main Hub button at x=16..125)
     ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
     ctx.font = 'bold 16px Outfit, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`🔴 RED TEAM: ${playerHp} HP`, 20, 30);
+    ctx.fillText(`🔴 RED TEAM: ${playerHp} HP`, 145, 30);
 
-    // Blue Team (AI) HP
+    // Blue Team (AI) HP (Padded to clear top-right Settings Gear icon at x=width-60..width-16)
     ctx.fillStyle = 'rgba(59, 130, 246, 0.85)';
     ctx.textAlign = 'right';
-    ctx.fillText(`🔵 BLUE TEAM: ${aiHp} HP`, width - 20, 30);
+    ctx.fillText(`🔵 BLUE TEAM: ${aiHp} HP`, width - 75, 30);
 
     // Center Timer & Wind Gauge
     ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
@@ -100,7 +101,9 @@ export class HUD {
     ctx: CanvasRenderingContext2D,
     width: number,
     phase: TurnPhase,
-    isPcMode: boolean
+    isPcMode: boolean,
+    isPvP: boolean = false,
+    activeTeam: 'player' | 'ai' = 'player'
   ): void {
     if (phase === 'GAME_OVER' || phase === 'PROJECTILE_FLIGHT') return;
 
@@ -108,17 +111,23 @@ export class HUD {
     let hintText = '';
 
     if (phase === 'MOVE') {
-      bannerText = 'STEP 1: MOVEMENT PHASE';
+      bannerText = isPvP
+        ? (activeTeam === 'player' ? '🔴 RED PLAYER TURN — MOVE' : '🔵 BLUE PLAYER TURN — MOVE')
+        : 'STEP 1: MOVEMENT PHASE';
       hintText = isPcMode
         ? 'WASD to Move/Jump • Space or Click to Select Weapon'
         : 'A/D to Walk • W to Jump • Space to Select Weapon';
     } else if (phase === 'WEAPON_SELECT') {
-      bannerText = 'STEP 2: WEAPON SELECT';
+      bannerText = isPvP
+        ? (activeTeam === 'player' ? '🔴 RED — WEAPON SELECT' : '🔵 BLUE — WEAPON SELECT')
+        : 'STEP 2: WEAPON SELECT';
       hintText = isPcMode
         ? 'A/D / Arrows to Cycle • Space to Equip • S to Back'
         : 'A/D / Arrows to Cycle • Space to Equip • S to Back';
     } else if (phase === 'AIM_FIRE') {
-      bannerText = 'STEP 3: AIM & FIRE';
+      bannerText = isPvP
+        ? (activeTeam === 'player' ? '🔴 RED — AIM & FIRE' : '🔵 BLUE — AIM & FIRE')
+        : 'STEP 3: AIM & FIRE';
       hintText = isPcMode
         ? 'W/S or Mouse to Aim • Hold SPACE to Charge & Release to FIRE!'
         : 'W/S or Gyro Pitch to Aim • Hold SPACE to Charge & Release to FIRE!';

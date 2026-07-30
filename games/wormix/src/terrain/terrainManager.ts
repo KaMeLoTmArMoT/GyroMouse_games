@@ -8,7 +8,8 @@ import {
   CELL_BEDROCK,
   CELL_SAND,
   CELL_WATER,
-  CELL_ACID
+  CELL_ACID,
+  CELL_IRON
 } from '../types';
 
 export class TerrainManager {
@@ -187,6 +188,53 @@ export class TerrainManager {
   public getSurfaceY(x: number): number {
     const colX = Math.floor(Math.max(0, Math.min(this.width - 1, x)));
     return this.surfaceYCache[colX] || this.waterY;
+  }
+
+  public isSolidCell(cell: number): boolean {
+    return (
+      cell === CELL_GRASS ||
+      cell === CELL_DIRT ||
+      cell === CELL_STONE ||
+      cell === CELL_BEDROCK ||
+      cell === CELL_SAND ||
+      cell === CELL_IRON
+    );
+  }
+
+  public isSolidAt(x: number, y: number): boolean {
+    const gx = Math.floor(x / this.cellScale);
+    const gy = Math.floor(y / this.cellScale);
+    return this.isSolidCell(this.getCell(gx, gy));
+  }
+
+  public getLocalGroundY(
+    x: number,
+    startY: number,
+    maxSearchDown: number = 40,
+    maxSearchUp: number = 25
+  ): number | null {
+    const colX = Math.floor(Math.max(0, Math.min(this.width - 1, x)));
+    const gx = Math.floor(colX / this.cellScale);
+    const startGY = Math.floor(startY / this.cellScale);
+    const maxDownGY = Math.min(this.gridHeight - 1, startGY + Math.ceil(maxSearchDown / this.cellScale));
+    const maxUpGY = Math.max(0, startGY - Math.ceil(maxSearchUp / this.cellScale));
+
+    if (this.isSolidCell(this.getCell(gx, startGY))) {
+      for (let gy = startGY; gy >= maxUpGY; gy--) {
+        if (!this.isSolidCell(this.getCell(gx, gy))) {
+          return (gy + 1) * this.cellScale;
+        }
+      }
+      return maxUpGY * this.cellScale;
+    }
+
+    for (let gy = startGY; gy <= maxDownGY; gy++) {
+      if (this.isSolidCell(this.getCell(gx, gy))) {
+        return gy * this.cellScale;
+      }
+    }
+
+    return null;
   }
 
   public getWaterDensityAt(x: number, y: number, radiusWorld: number = 24): number {
@@ -434,7 +482,7 @@ export class TerrainManager {
 
       for (let gy = 0; gy < this.gridHeight; gy++) {
         const cell = this.grid[gy * this.gridWidth + gx];
-        if (cell === CELL_GRASS || cell === CELL_DIRT || cell === CELL_STONE || cell === CELL_BEDROCK || cell === CELL_SAND) {
+        if (cell === CELL_GRASS || cell === CELL_DIRT || cell === CELL_STONE || cell === CELL_BEDROCK || cell === CELL_SAND || cell === CELL_IRON) {
           foundGY = gy;
           break;
         }
@@ -473,6 +521,8 @@ export class TerrainManager {
           data[ptr] = 0x38; data[ptr + 1] = 0xbd; data[ptr + 2] = 0xf8; data[ptr + 3] = 220;
         } else if (cell === CELL_ACID) {
           data[ptr] = 0x22; data[ptr + 1] = 0xc5; data[ptr + 2] = 0x5e; data[ptr + 3] = 240;
+        } else if (cell === CELL_IRON) {
+          data[ptr] = 0x33; data[ptr + 1] = 0x41; data[ptr + 2] = 0x55; data[ptr + 3] = 255;
         }
       }
     }

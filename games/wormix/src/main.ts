@@ -40,7 +40,8 @@ export class WormixGame {
     wormHealth: 100,
     gameMode: 'deathmatch',
     mapId: 'random',
-    aiDifficulty: 'normal'
+    aiDifficulty: 'normal',
+    matchType: 'ai'
   };
 
   // Charge Power State
@@ -107,7 +108,12 @@ export class WormixGame {
     this.terrain.resize(this.canvas.width, this.canvas.height);
   }
 
+  private returnToEditorBtn: HTMLElement | null = null;
+  private lobbyBtn: HTMLElement | null = null;
+
   public openMapEditor(initialMap?: CustomMapData): void {
+    this.hideReturnToEditorBtn();
+    this.hideLobbyBtn();
     if (this.mapEditor) {
       this.mapEditor.exit();
       this.mapEditor = null;
@@ -119,7 +125,7 @@ export class WormixGame {
       (customMap) => {
         this.editingMap = customMap;
         if (this.mapEditor) this.mapEditor.exit();
-        this.startMatch(this.lobbyConfig, customMap);
+        this.startMatch(this.lobbyConfig, customMap, true);
       },
       () => {
         this.mapEditor = null;
@@ -130,14 +136,24 @@ export class WormixGame {
     );
   }
 
-  public startMatch(config: LobbyConfig, mapData?: CustomMapData): void {
+  public startMatch(config: LobbyConfig, mapData?: CustomMapData, isTestPlay: boolean = false): void {
     this.menuModal.hide();
     this.lobbyConfig = config;
     this.aiDifficulty = config.aiDifficulty;
+
     if (this.mapEditor) {
       this.mapEditor.exit();
       this.mapEditor = null;
     }
+
+    if (isTestPlay) {
+      this.showReturnToEditorBtn();
+    } else {
+      this.hideReturnToEditorBtn();
+    }
+
+    // Show Lobby button during all active matches
+    this.showLobbyBtn();
 
     // 1. Generate or Load Terrain
     if (mapData && mapData.terrainHeights && mapData.terrainHeights.length > 0) {
@@ -163,7 +179,8 @@ export class WormixGame {
 
     for (let i = 0; i < teamSize; i++) {
       const redX = mapData?.spawnPoints[i]?.x || this.canvas.width * (0.15 + i * 0.12);
-      const redWorm = new Worm(`p_${i}`, `Red #${i + 1}`, 'player', redX, this.terrain.getSurfaceY(redX) - 12);
+      const redY = mapData?.spawnPoints[i]?.y ?? (this.terrain.getSurfaceY(redX) - 12);
+      const redWorm = new Worm(`p_${i}`, `Red #${i + 1}`, 'player', redX, redY);
       redWorm.health = hp;
       redWorm.maxHealth = hp;
       this.worms.push(redWorm);
@@ -171,7 +188,8 @@ export class WormixGame {
 
     for (let i = 0; i < teamSize; i++) {
       const blueX = mapData?.spawnPoints[i + 2]?.x || this.canvas.width * (0.65 + i * 0.12);
-      const blueWorm = new Worm(`ai_${i}`, `Blue #${i + 1}`, 'ai', blueX, this.terrain.getSurfaceY(blueX) - 12);
+      const blueY = mapData?.spawnPoints[i + 2]?.y ?? (this.terrain.getSurfaceY(blueX) - 12);
+      const blueWorm = new Worm(`ai_${i}`, `Blue #${i + 1}`, 'ai', blueX, blueY);
       blueWorm.health = hp;
       blueWorm.maxHealth = hp;
       this.worms.push(blueWorm);
@@ -232,7 +250,8 @@ export class WormixGame {
       // 3-Step Turn Flow on Space Bar Press / Release
       if (e.code === 'Space' && !e.repeat) {
         const activeWorm = this.getActiveWorm();
-        if (activeWorm && activeWorm.team === 'player') {
+        const isPvP = this.lobbyConfig.matchType === 'pvp';
+        if (activeWorm && (activeWorm.team === 'player' || isPvP)) {
           if (this.phase === 'MOVE') {
             this.phase = 'WEAPON_SELECT';
             this.audioManager.playTone(440, 0.05, 'sine');
@@ -276,7 +295,8 @@ export class WormixGame {
       if (this.phase === 'MENU' || this.phase === 'EDITOR') return;
       if (this.inputManager.settings.mode !== 'pointer') return;
       const activeWorm = this.getActiveWorm();
-      if (!activeWorm || activeWorm.team !== 'player') return;
+      const isPvP = this.lobbyConfig.matchType === 'pvp';
+      if (!activeWorm || (activeWorm.team !== 'player' && !isPvP)) return;
 
       if (this.phase === 'MOVE') {
         this.phase = 'WEAPON_SELECT';
@@ -299,7 +319,8 @@ export class WormixGame {
       if (this.phase === 'MENU' || this.phase === 'EDITOR') return;
       if (this.inputManager.settings.mode !== 'pointer') return;
       const activeWorm = this.getActiveWorm();
-      if (!activeWorm || activeWorm.team !== 'player' || this.phase !== 'AIM_FIRE') return;
+      const isPvP = this.lobbyConfig.matchType === 'pvp';
+      if (!activeWorm || (activeWorm.team !== 'player' && !isPvP) || this.phase !== 'AIM_FIRE') return;
 
       const rect = this.canvas.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -423,8 +444,13 @@ export class WormixGame {
 
     const activeWorm = this.getActiveWorm();
 
-    // 4. Process Active Turn Input (If Player Turn)
-    if (activeWorm && activeWorm.isAlive && activeWorm.team === 'player') {
+    // 4. Process Active Turn Input
+    // In PvP mode both teams are human-controlled; in AI mode only 'player' team is human.
+    const isPvP = this.lobbyConfig.matchType === 'pvp';
+    const isHumanTurn = activeWorm && activeWorm.isAlive &&
+      (activeWorm.team === 'player' || isPvP);
+
+    if (isHumanTurn) {
       const keys = this.inputManager.keysPressed;
 
       // Movement Phase Controls
@@ -478,8 +504,8 @@ export class WormixGame {
       }
     }
 
-    // 5. AI Turn Logic
-    if (activeWorm && activeWorm.isAlive && activeWorm.team === 'ai') {
+    // 5. AI Turn Logic (only in AI match mode and only for Blue team worms)
+    if (!isPvP && activeWorm && activeWorm.isAlive && activeWorm.team === 'ai') {
       if (this.phase === 'MOVE' || this.phase === 'WEAPON_SELECT') {
         const playerWorms = this.worms.filter((w) => w.team === 'player');
         const plan = WormAI.calculateTurn(activeWorm, playerWorms, this.aiDifficulty, this.windX);
@@ -588,7 +614,8 @@ export class WormixGame {
       this.turnTimer,
       playerHp,
       aiHp,
-      this.inputManager.settings.mode === 'pointer'
+      this.inputManager.settings.mode === 'pointer',
+      this.lobbyConfig.matchType === 'pvp'
     );
 
     // Game Over Overlay
@@ -605,6 +632,104 @@ export class WormixGame {
       this.ctx.fillStyle = '#9ca3af';
       this.ctx.font = '16px Outfit, sans-serif';
       this.ctx.fillText('Press ESC to open menu or refresh to replay', this.canvas.width / 2, this.canvas.height / 2 + 30);
+    }
+  }
+
+  private showReturnToEditorBtn(): void {
+    if (!this.returnToEditorBtn) {
+      const btn = document.createElement('button');
+      btn.id = 'btnReturnToEditor';
+      btn.className = 'wormix-return-editor-btn';
+      btn.innerHTML = '✏️ Return to Editor';
+      btn.style.cssText = `
+        position: fixed;
+        top: 85px;
+        right: 16px;
+        z-index: 100;
+        background: rgba(124, 58, 237, 0.9);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: #ffffff;
+        padding: 8px 14px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        font-family: 'Outfit', sans-serif;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+      `;
+      btn.addEventListener('mouseenter', () => {
+        btn.style.transform = 'scale(1.05)';
+        btn.style.background = 'rgba(139, 92, 246, 1)';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'scale(1)';
+        btn.style.background = 'rgba(124, 58, 237, 0.9)';
+      });
+      btn.addEventListener('click', () => {
+        this.hideReturnToEditorBtn();
+        this.openMapEditor(this.editingMap || undefined);
+      });
+      document.body.appendChild(btn);
+      this.returnToEditorBtn = btn;
+    } else {
+      this.returnToEditorBtn.style.display = 'block';
+    }
+  }
+
+  private hideReturnToEditorBtn(): void {
+    if (this.returnToEditorBtn) {
+      this.returnToEditorBtn.style.display = 'none';
+    }
+  }
+
+  private showLobbyBtn(): void {
+    if (!this.lobbyBtn) {
+      const btn = document.createElement('button');
+      btn.id = 'btnLobbyShortcut';
+      btn.innerHTML = '⚔️ Lobby';
+      btn.style.cssText = `
+        position: fixed;
+        top: 85px;
+        left: 16px;
+        z-index: 100;
+        background: rgba(22, 163, 74, 0.9);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: #ffffff;
+        padding: 8px 14px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        font-family: 'Outfit', sans-serif;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+      `;
+      btn.addEventListener('mouseenter', () => {
+        btn.style.transform = 'scale(1.05)';
+        btn.style.background = 'rgba(34, 197, 94, 1)';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'scale(1)';
+        btn.style.background = 'rgba(22, 163, 74, 0.9)';
+      });
+      btn.addEventListener('click', () => {
+        this.hideLobbyBtn();
+        this.hideReturnToEditorBtn();
+        this.menuModal.show();
+      });
+      document.body.appendChild(btn);
+      this.lobbyBtn = btn;
+    } else {
+      this.lobbyBtn.style.display = 'block';
+    }
+  }
+
+  private hideLobbyBtn(): void {
+    if (this.lobbyBtn) {
+      this.lobbyBtn.style.display = 'none';
     }
   }
 }
