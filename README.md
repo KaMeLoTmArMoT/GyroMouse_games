@@ -45,7 +45,12 @@ GyroMouse_games/
 │   │   ├── README.md          # Game documentation & handoff state
 │   │   └── src/
 │   │
-│   └── cyber_pong/            # 🏓 3D Cyber Air Hockey / Cyber Pong (1P vs AI Bot & 2P local split-screen)
+│   ├── cyber_pong/            # 🏓 3D Cyber Air Hockey / Cyber Pong (1P vs AI Bot & 2P local split-screen)
+│   │   ├── index.html
+│   │   ├── README.md          # Game documentation & handoff state
+│   │   └── src/
+│   │
+│   └── wormix/                # 🐛💥 Wormix (Turn-based 2D elemental artillery battle)
 │       ├── index.html
 │       ├── README.md          # Game documentation & handoff state
 │       └── src/
@@ -75,6 +80,7 @@ GyroMouse_games/
    - **3D Crane Tower:** `http://localhost:5173/games/crane_tower/index.html`
    - **3D Artillery Siege:** `http://localhost:5173/games/artillery_siege/index.html`
    - **3D Cyber Air Hockey:** `http://localhost:5173/games/cyber_pong/index.html`
+   - **Wormix Artillery:** `http://localhost:5173/games/wormix/index.html`
 
 ---
 
@@ -106,6 +112,11 @@ GyroMouse_games/
 * **Perspective:** 3D overhead neon arena view.
 * **Gameplay:** 1-Player vs AI Bot (3 difficulties) or 2-Player local versus air hockey with brick shield destruction.
 * **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Start/Pause (`Space` / `ESC`).
+
+### 6. 🐛💥 Wormix Artillery (`games/wormix/`)
+* **Perspective:** 2D profile tactical arena.
+* **Gameplay:** Turn-based elemental artillery with Offscreen Pixel-Mask Destructible Terrain (Grass, Dirt, Stone, Bedrock, Sand, Water, Acid, Portals), wind physics, trajectory arcs, and smart AI opponents.
+* **Controls:** GyroMouse Restricted Mode (3-step turn flow with `WASD`/Arrows + `Space`) & PC Mode (Mouse aiming/clicking). 30 FPS locked simulation tick.
 
 ---
 
