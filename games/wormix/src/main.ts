@@ -48,6 +48,8 @@ export class WormixGame {
   public chargePower: number = 0.0; // 0 to 1.0
   public chargeSpeed: number = 0.025; // Speed per tick (30fps)
 
+  public editingMap: CustomMapData | null = null;
+
   // 30 FPS Lock Loop Variables
   private lastTickTime: number = 0;
   private readonly frameInterval: number = 1000 / 30; // 33.33ms
@@ -78,7 +80,7 @@ export class WormixGame {
         });
         container.querySelector('#gm-btn-editor')?.addEventListener('click', () => {
           this.settingsOverlay.toggle();
-          this.openMapEditor();
+          this.openMapEditor(this.editingMap || undefined);
         });
       }
     });
@@ -89,7 +91,6 @@ export class WormixGame {
       () => this.openMapEditor(),
       () => this.settingsOverlay.toggle()
     );
-
 
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
@@ -106,11 +107,17 @@ export class WormixGame {
     this.terrain.resize(this.canvas.width, this.canvas.height);
   }
 
-  public openMapEditor(): void {
+  public openMapEditor(initialMap?: CustomMapData): void {
+    if (this.mapEditor) {
+      this.mapEditor.exit();
+      this.mapEditor = null;
+    }
     this.phase = 'EDITOR';
+    const targetMap = initialMap || this.editingMap || undefined;
     this.mapEditor = new MapEditor(
       this.canvas,
       (customMap) => {
+        this.editingMap = customMap;
         if (this.mapEditor) this.mapEditor.exit();
         this.startMatch(this.lobbyConfig, customMap);
       },
@@ -118,7 +125,8 @@ export class WormixGame {
         this.mapEditor = null;
         this.phase = 'MENU';
         this.menuModal.show();
-      }
+      },
+      targetMap
     );
   }
 

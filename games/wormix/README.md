@@ -24,10 +24,14 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 
 1. **🧪 2D Cellular Automata Grid Physics Engine**:
    * Powered by a discrete 2D grid (`Uint8Array`) running a **Falling Sand Cellular Automata Simulation Algorithm** with bottom-to-top processing sweeps and directional shuffling.
-   * **🌊 Water Mechanics**: Falls down into empty space, flows diagonally down hill slopes, and levels out horizontally into smooth flat liquid pools.
+   * **🌊 Water & Liquid Mechanics**:
+     * **Multi-Pass Fluid Dispersion**: 2-pass liquid physics loop for fast, natural fluid flow without jelly sloshing.
+     * **Free Hill Slope Tumbles**: Liquids flow freely down steep terrain slopes and cascade down into valley craters without sticking.
+     * **Smooth Lake Surface Wave Lines**: Contiguous horizontal liquid pools feature animated surface wave highlights (`rgba(186, 230, 253, 0.85)`) rendered dynamically over flat lake tops.
    * **🧪 Acid Mechanics**: Flows like water and actively dissolves adjacent solid terrain and sand cells into empty air on contact with bubbling particles.
    * **⏳ Sand Mechanics**: Falls down, slumps down slopes into craters, and sinks through water cells (displacing water upward).
    * **Real-time Waterfall Cascades**: Carving holes beneath liquid pools causes water and acid to cascade down into newly carved craters in real-time.
+   * **🌊 Global Ocean & Subterranean Bedrock**: Smooth animated ocean liquid level at `waterY = height - 40` with an indestructible bedrock foundation (`CELL_BEDROCK`) safely layered beneath the ocean floor.
 
 2. **🌊 Submersion, Buoyancy & Swimming**:
    * Worms submerged in water or acid experience dynamic buoyancy force and fluid drag based on surrounding liquid grid cell density, allowing them to swim upward (`W` / `↑` key).
@@ -38,12 +42,15 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * 💣 **Landmines**: Triggers a 1-second countdown beep when a worm steps within 28px distance, then explodes!
    * 🧰 **Health Supply Crates**: Walking or jumping into crates collects them, restoring +30 HP to the worm with a healing sound effect!
 
-4. **🛠️ Interactive Map Editor & Real-Time Streams**:
+4. **🛠️ Interactive Map Editor, Physics Flow & Preview Workflow**:
    * In-game canvas map sculpting tool accessible directly from the Main Menu or ESC Settings screen.
    * **Live Stream Brushes**: Paint Grass, Dirt, Stone, Sand, 🌊 Water, 🧪 Acid, or Eraser in real-time and watch liquids flow and settle into valleys directly inside the editor.
+   * **👁️ Preview <-> ✏️ Edit Mode**: Toggle between active editing tools and a clean fullscreen **Preview Mode** to observe falling sand, water leveling, and acid dissolution without UI distraction.
+   * **⏸️ Pause / ▶️ Resume Physics Flow**: Freeze cellular physics tick while painting steep sand dunes or liquid containers, or unpause to test fluid flow dynamics.
+   * **🔄 Reset Grid Snapshot**: One-click grid snapshot restore button to instantly reset terrain back to its initial state before physics simulation ran.
    * **Entity Placement**: Drag & drop Red Spawns, Blue Spawns, Oil Barrels, Landmines, and Health Crates.
    * **Storage**: Save maps to browser `localStorage`, export as `.wormix.json` files, or import custom JSON map files.
-   * **Test Play**: Test your custom created maps immediately with one click!
+   * **Seamless Test Play Loop**: Test your custom map in an active match with one click, and return to the editor at any time via ESC Settings (`✏️ Map Editor / Return to Edit`).
 
 5. **⚔️ Match Lobby & Game Modes**:
    * **Team Configurations**: 1v1, 2v2, 3v3 team sizes.

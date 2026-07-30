@@ -85,7 +85,7 @@ export class TerrainManager {
   public generateTerrain(): void {
     this.grid.fill(CELL_AIR);
 
-    const bedrockGY = Math.floor((this.waterY - 20) / this.cellScale);
+    const bedrockGY = Math.floor((this.waterY + 10) / this.cellScale);
 
     const sandStartG = Math.floor((this.width * 0.38) / this.cellScale);
     const sandEndG = Math.floor((this.width * 0.62) / this.cellScale);
@@ -122,13 +122,18 @@ export class TerrainManager {
       }
     }
 
-    // Default Lake Water Pool
+    this.rebuildSurfaceCache();
+
+    // Default Lake Water Pool in terrain valley
     const lakeStartG = Math.floor((this.width * 0.15) / this.cellScale);
     const lakeEndG = Math.floor((this.width * 0.28) / this.cellScale);
     for (let gx = lakeStartG; gx <= lakeEndG; gx++) {
       const surfaceGY = Math.floor(this.getSurfaceY(gx * this.cellScale) / this.cellScale);
-      for (let gy = surfaceGY - 12; gy < surfaceGY; gy++) {
-        if (gy > 0) this.setCell(gx, gy, CELL_WATER);
+      const targetWaterGY = Math.floor((this.waterY - 75) / this.cellScale);
+      if (surfaceGY > targetWaterGY) {
+        for (let gy = targetWaterGY; gy < surfaceGY; gy++) {
+          if (gy > 0) this.setCell(gx, gy, CELL_WATER);
+        }
       }
     }
 
@@ -150,7 +155,7 @@ export class TerrainManager {
       return;
     }
 
-    const bedrockGY = Math.floor((this.waterY - 20) / this.cellScale);
+    const bedrockGY = Math.floor((this.waterY + 10) / this.cellScale);
 
     for (let gx = 0; gx < this.gridWidth; gx++) {
       const xWorld = gx * this.cellScale;
@@ -271,30 +276,27 @@ export class TerrainManager {
   }
 
   public updatePhysics(): void {
-    // Cellular Automata Bottom-to-Top Processing Sweep
-    const updateGrid = new Uint8Array(this.grid);
-    const dirLeftFirst = Math.random() < 0.5;
+    // 1. Double-pass Liquid Physics Loop for smooth, fast fluid dispersion (prevents jelly sloshing)
+    for (let pass = 0; pass < 2; pass++) {
+      const updateGrid = new Uint8Array(this.grid);
+      const dirLeftFirst = Math.random() < 0.5;
 
-    for (let gy = this.gridHeight - 2; gy >= 0; gy--) {
-      const xStart = dirLeftFirst ? 0 : this.gridWidth - 1;
-      const xEnd = dirLeftFirst ? this.gridWidth : -1;
-      const xStep = dirLeftFirst ? 1 : -1;
+      for (let gy = this.gridHeight - 2; gy >= 0; gy--) {
+        const xStart = dirLeftFirst ? 0 : this.gridWidth - 1;
+        const xEnd = dirLeftFirst ? this.gridWidth : -1;
+        const xStep = dirLeftFirst ? 1 : -1;
 
-      for (let gx = xStart; gx !== xEnd; gx += xStep) {
-        const idx = gy * this.gridWidth + gx;
-        const cell = updateGrid[idx];
+        for (let gx = xStart; gx !== xEnd; gx += xStep) {
+          const idx = gy * this.gridWidth + gx;
+          const cell = updateGrid[idx];
 
-        if (cell === CELL_AIR || cell === CELL_GRASS || cell === CELL_DIRT || cell === CELL_STONE || cell === CELL_BEDROCK) {
-          continue;
-        }
+          if (cell !== CELL_WATER && cell !== CELL_ACID) continue;
 
-        const belowIdx = (gy + 1) * this.gridWidth + gx;
-        const cellBelow = updateGrid[belowIdx];
+          const belowIdx = (gy + 1) * this.gridWidth + gx;
+          const cellBelow = updateGrid[belowIdx];
 
-        // 1. WATER & ACID SIMULATION
-        if (cell === CELL_WATER || cell === CELL_ACID) {
           // Acid reaction: dissolve adjacent terrain
-          if (cell === CELL_ACID) {
+          if (cell === CELL_ACID && pass === 0) {
             let dissolved = false;
             const neighbors = [
               belowIdx,
@@ -315,7 +317,7 @@ export class TerrainManager {
             if (dissolved) continue;
           }
 
-          // Liquid movement: Down -> Diagonals -> Horizontal
+          // Liquid movement: Down -> Diagonals -> Leveling only when target column is lower
           if (cellBelow === CELL_AIR) {
             this.grid[idx] = CELL_AIR;
             this.grid[belowIdx] = cell;
@@ -338,53 +340,71 @@ export class TerrainManager {
               this.grid[diag2Idx] = cell;
               updateGrid[idx] = CELL_AIR;
               updateGrid[diag2Idx] = cell;
-            } else if (diag1GX >= 0 && diag1GX < this.gridWidth && updateGrid[gy * this.gridWidth + diag1GX] === CELL_AIR) {
-              const horiz1Idx = gy * this.gridWidth + diag1GX;
-              this.grid[idx] = CELL_AIR;
-              this.grid[horiz1Idx] = cell;
-              updateGrid[idx] = CELL_AIR;
-              updateGrid[horiz1Idx] = cell;
-            } else if (diag2GX >= 0 && diag2GX < this.gridWidth && updateGrid[gy * this.gridWidth + diag2GX] === CELL_AIR) {
-              const horiz2Idx = gy * this.gridWidth + diag2GX;
-              this.grid[idx] = CELL_AIR;
-              this.grid[horiz2Idx] = cell;
-              updateGrid[idx] = CELL_AIR;
-              updateGrid[horiz2Idx] = cell;
+            } else {
+              // Horizontal flow into adjacent AIR cell (allows cascading down hill slopes)
+              for (const dir of [checkDir, -checkDir]) {
+                const hGX = gx + dir;
+                if (hGX >= 0 && hGX < this.gridWidth && updateGrid[gy * this.gridWidth + hGX] === CELL_AIR) {
+                  const targetIdx = gy * this.gridWidth + hGX;
+                  this.grid[idx] = CELL_AIR;
+                  this.grid[targetIdx] = cell;
+                  updateGrid[idx] = CELL_AIR;
+                  updateGrid[targetIdx] = cell;
+                  break;
+                }
+              }
             }
           }
         }
+      }
+    }
 
-        // 2. SAND SIMULATION
-        if (cell === CELL_SAND) {
-          if (cellBelow === CELL_AIR) {
+    // 2. Sand Physics Sweep
+    const updateGridSand = new Uint8Array(this.grid);
+    const dirLeftFirstSand = Math.random() < 0.5;
+
+    for (let gy = this.gridHeight - 2; gy >= 0; gy--) {
+      const xStart = dirLeftFirstSand ? 0 : this.gridWidth - 1;
+      const xEnd = dirLeftFirstSand ? this.gridWidth : -1;
+      const xStep = dirLeftFirstSand ? 1 : -1;
+
+      for (let gx = xStart; gx !== xEnd; gx += xStep) {
+        const idx = gy * this.gridWidth + gx;
+        const cell = updateGridSand[idx];
+
+        if (cell !== CELL_SAND) continue;
+
+        const belowIdx = (gy + 1) * this.gridWidth + gx;
+        const cellBelow = updateGridSand[belowIdx];
+
+        if (cellBelow === CELL_AIR) {
+          this.grid[idx] = CELL_AIR;
+          this.grid[belowIdx] = CELL_SAND;
+          updateGridSand[idx] = CELL_AIR;
+          updateGridSand[belowIdx] = CELL_SAND;
+        } else if (cellBelow === CELL_WATER) {
+          // Sand displaces water upward!
+          this.grid[idx] = CELL_WATER;
+          this.grid[belowIdx] = CELL_SAND;
+          updateGridSand[idx] = CELL_WATER;
+          updateGridSand[belowIdx] = CELL_SAND;
+        } else {
+          const checkDir = Math.random() < 0.5 ? -1 : 1;
+          const diag1GX = gx + checkDir;
+          const diag2GX = gx - checkDir;
+
+          if (diag1GX >= 0 && diag1GX < this.gridWidth && updateGridSand[(gy + 1) * this.gridWidth + diag1GX] === CELL_AIR) {
+            const diag1Idx = (gy + 1) * this.gridWidth + diag1GX;
             this.grid[idx] = CELL_AIR;
-            this.grid[belowIdx] = CELL_SAND;
-            updateGrid[idx] = CELL_AIR;
-            updateGrid[belowIdx] = CELL_SAND;
-          } else if (cellBelow === CELL_WATER) {
-            // Sand displaces water upward!
-            this.grid[idx] = CELL_WATER;
-            this.grid[belowIdx] = CELL_SAND;
-            updateGrid[idx] = CELL_WATER;
-            updateGrid[belowIdx] = CELL_SAND;
-          } else {
-            const checkDir = Math.random() < 0.5 ? -1 : 1;
-            const diag1GX = gx + checkDir;
-            const diag2GX = gx - checkDir;
-
-            if (diag1GX >= 0 && diag1GX < this.gridWidth && updateGrid[(gy + 1) * this.gridWidth + diag1GX] === CELL_AIR) {
-              const diag1Idx = (gy + 1) * this.gridWidth + diag1GX;
-              this.grid[idx] = CELL_AIR;
-              this.grid[diag1Idx] = CELL_SAND;
-              updateGrid[idx] = CELL_AIR;
-              updateGrid[diag1Idx] = CELL_SAND;
-            } else if (diag2GX >= 0 && diag2GX < this.gridWidth && updateGrid[(gy + 1) * this.gridWidth + diag2GX] === CELL_AIR) {
-              const diag2Idx = (gy + 1) * this.gridWidth + diag2GX;
-              this.grid[idx] = CELL_AIR;
-              this.grid[diag2Idx] = CELL_SAND;
-              updateGrid[idx] = CELL_AIR;
-              updateGrid[diag2Idx] = CELL_SAND;
-            }
+            this.grid[diag1Idx] = CELL_SAND;
+            updateGridSand[idx] = CELL_AIR;
+            updateGridSand[diag1Idx] = CELL_SAND;
+          } else if (diag2GX >= 0 && diag2GX < this.gridWidth && updateGridSand[(gy + 1) * this.gridWidth + diag2GX] === CELL_AIR) {
+            const diag2Idx = (gy + 1) * this.gridWidth + diag2GX;
+            this.grid[idx] = CELL_AIR;
+            this.grid[diag2Idx] = CELL_SAND;
+            updateGridSand[idx] = CELL_AIR;
+            updateGridSand[diag2Idx] = CELL_SAND;
           }
         }
       }
@@ -406,14 +426,14 @@ export class TerrainManager {
     this.rebuildSurfaceCache();
   }
 
-  private rebuildSurfaceCache(): void {
+  public rebuildSurfaceCache(): void {
     const waterGY = Math.floor(this.waterY / this.cellScale);
     for (let x = 0; x < this.width; x++) {
       const gx = Math.floor(x / this.cellScale);
       let foundGY = waterGY;
 
       for (let gy = 0; gy < this.gridHeight; gy++) {
-        const cell = this.getCell(gx, gy);
+        const cell = this.grid[gy * this.gridWidth + gx];
         if (cell === CELL_GRASS || cell === CELL_DIRT || cell === CELL_STONE || cell === CELL_BEDROCK || cell === CELL_SAND) {
           foundGY = gy;
           break;
@@ -424,13 +444,8 @@ export class TerrainManager {
   }
 
   public draw(ctx: CanvasRenderingContext2D): void {
-    // 1. Background Sky
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, this.height);
-    skyGrad.addColorStop(0, '#0f172a');
-    skyGrad.addColorStop(0.7, '#1e293b');
-    skyGrad.addColorStop(1, '#0c4a6e');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, this.width, this.height);
+    // 1. Clear Screen
+    ctx.clearRect(0, 0, this.width, this.height);
 
     // 2. Render Grid onto Offscreen Canvas ImageData
     const imgData = this.gridImageData;
@@ -468,6 +483,78 @@ export class TerrainManager {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.offscreenCanvas, 0, 0, this.width, this.height);
+    ctx.restore();
+
+    // 2.5 Render Smooth Contiguous Horizontal Surface Wave Lines
+    ctx.save();
+    ctx.lineWidth = 2;
+    const waveTime = Date.now() * 0.004;
+
+    const rawTopY = new Float32Array(this.gridWidth).fill(-1);
+    const liquidType = new Uint8Array(this.gridWidth);
+
+    for (let gx = 0; gx < this.gridWidth; gx++) {
+      for (let gy = 0; gy < this.gridHeight; gy++) {
+        const cell = this.grid[gy * this.gridWidth + gx];
+        if (cell === CELL_WATER || cell === CELL_ACID) {
+          rawTopY[gx] = gy * this.cellScale;
+          liquidType[gx] = cell;
+          break;
+        }
+      }
+    }
+
+    // Identify flat / mild slope surface columns (ignore steep cascades)
+    const validSurface = new Uint8Array(this.gridWidth);
+    for (let gx = 0; gx < this.gridWidth; gx++) {
+      if (rawTopY[gx] < 0) continue;
+      const leftY = gx > 0 && rawTopY[gx - 1] >= 0 ? rawTopY[gx - 1] : rawTopY[gx];
+      const rightY = gx < this.gridWidth - 1 && rawTopY[gx + 1] >= 0 ? rawTopY[gx + 1] : rawTopY[gx];
+      if (Math.abs(leftY - rawTopY[gx]) <= 6 && Math.abs(rightY - rawTopY[gx]) <= 6) {
+        validSurface[gx] = 1;
+      }
+    }
+
+    let inLiquid = false;
+    let currentType = CELL_WATER;
+    let segStart = -1;
+
+    for (let gx = 0; gx <= this.gridWidth; gx++) {
+      const active = gx < this.gridWidth && validSurface[gx] === 1;
+      const type = gx < this.gridWidth ? liquidType[gx] : 0;
+
+      if (active) {
+        if (!inLiquid) {
+          inLiquid = true;
+          currentType = type;
+          segStart = gx;
+        }
+      }
+
+      if ((!active || type !== currentType) && inLiquid) {
+        const segEnd = gx - 1;
+        if (segEnd - segStart >= 2) {
+          const isWater = currentType === CELL_WATER;
+          ctx.strokeStyle = isWater ? 'rgba(186, 230, 253, 0.85)' : 'rgba(187, 247, 208, 0.9)';
+          ctx.shadowColor = isWater ? '#38bdf8' : '#22c55e';
+          ctx.shadowBlur = 3;
+
+          ctx.beginPath();
+          for (let x = segStart; x <= segEnd; x++) {
+            const xW = x * this.cellScale;
+            const waveOffset = Math.sin(xW * 0.06 + waveTime) * 1.2;
+            const yW = rawTopY[x] + waveOffset;
+            if (x === segStart) ctx.moveTo(xW, yW);
+            else ctx.lineTo(xW, yW);
+          }
+          ctx.stroke();
+        }
+
+        inLiquid = active;
+        currentType = type;
+        segStart = gx;
+      }
+    }
     ctx.restore();
 
     // 3. Render Ocean Floor Wave at Bottom

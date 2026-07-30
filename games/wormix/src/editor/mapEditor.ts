@@ -27,13 +27,18 @@ export class MapEditor {
   private currentCellType: number = CELL_GRASS;
   private brushRadius: number = 18;
 
+  public physicsEnabled: boolean = true;
+  public previewMode: boolean = false;
+  private savedSnapshot: Uint8Array | null = null;
+
   private onTestPlayCallback: (map: CustomMapData) => void;
   private onExitCallback: () => void;
 
   constructor(
     canvas: HTMLCanvasElement,
     onTestPlay: (map: CustomMapData) => void,
-    onExit: () => void
+    onExit: () => void,
+    initialMap?: CustomMapData
   ) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
@@ -45,9 +50,36 @@ export class MapEditor {
     this.containerEl.className = 'wormix-editor-overlay';
 
     this.terrainInstance = new TerrainManager(canvas.width, canvas.height);
-    this.activeMap = this.createBlankMap('New Custom Map');
+    if (initialMap) {
+      this.activeMap = initialMap;
+      if (initialMap.gridData && initialMap.gridData.length === this.terrainInstance.grid.length) {
+        this.terrainInstance.grid.set(initialMap.gridData);
+        this.terrainInstance.rebuildSurfaceCache();
+      } else if (initialMap.terrainHeights) {
+        this.terrainInstance.buildTerrainFromHeights(
+          initialMap.terrainHeights,
+          initialMap.waterY,
+          initialMap.terrainMaterials,
+          initialMap.gridData
+        );
+      }
+    } else {
+      this.activeMap = this.createBlankMap('New Custom Map');
+    }
+    this.saveSnapshot();
     this.setupUI();
     this.bindEvents();
+  }
+
+  public saveSnapshot(): void {
+    this.savedSnapshot = new Uint8Array(this.terrainInstance.grid);
+  }
+
+  public restoreSnapshot(): void {
+    if (this.savedSnapshot) {
+      this.terrainInstance.grid.set(this.savedSnapshot);
+      this.terrainInstance.rebuildSurfaceCache();
+    }
   }
 
   private createBlankMap(name: string): CustomMapData {
@@ -103,6 +135,10 @@ export class MapEditor {
           font-family: 'Outfit', system-ui, sans-serif;
           user-select: none;
           max-width: 95vw;
+          transition: all 0.2s ease;
+        }
+        .wormix-editor-overlay.preview-active .editor-hide-in-preview {
+          display: none !important;
         }
         .editor-group {
           display: flex;
@@ -137,7 +173,7 @@ export class MapEditor {
           margin: 0 2px;
         }
       </style>
-      <div class="editor-group">
+      <div class="editor-group editor-hide-in-preview">
         <button class="editor-btn active" id="btnMatGrass" style="background:#15803d">Grass</button>
         <button class="editor-btn" id="btnMatDirt" style="background:#78350f">Dirt</button>
         <button class="editor-btn" id="btnMatStone" style="background:#64748b">Stone</button>
@@ -146,21 +182,27 @@ export class MapEditor {
         <button class="editor-btn" id="btnAcid" style="background:#22c55e">🧪 Acid</button>
         <button class="editor-btn" id="btnMatEraser" style="background:#ef4444">Eraser</button>
       </div>
-      <div class="editor-divider"></div>
-      <div class="editor-group">
+      <div class="editor-divider editor-hide-in-preview"></div>
+      <div class="editor-group editor-hide-in-preview">
         <button class="editor-btn" id="btnRed1">🔴 Red #1</button>
         <button class="editor-btn" id="btnRed2">🔴 Red #2</button>
         <button class="editor-btn" id="btnBlue1">🔵 Blue #1</button>
         <button class="editor-btn" id="btnBlue2">🔵 Blue #2</button>
       </div>
-      <div class="editor-divider"></div>
-      <div class="editor-group">
+      <div class="editor-divider editor-hide-in-preview"></div>
+      <div class="editor-group editor-hide-in-preview">
         <button class="editor-btn" id="btnBarrel">🛢️ Barrel</button>
         <button class="editor-btn" id="btnMine">💣 Mine</button>
         <button class="editor-btn" id="btnCrate">🧰 Crate</button>
       </div>
-      <div class="editor-divider"></div>
+      <div class="editor-divider editor-hide-in-preview"></div>
       <div class="editor-group">
+        <button class="editor-btn" id="btnTogglePhysics" style="background:#0284c7">⏸️ Pause Flow</button>
+        <button class="editor-btn editor-hide-in-preview" id="btnResetPhysics" style="background:#d97706">🔄 Reset Grid</button>
+        <button class="editor-btn" id="btnTogglePreview" style="background:#6366f1">👁️ Preview</button>
+      </div>
+      <div class="editor-divider editor-hide-in-preview"></div>
+      <div class="editor-group editor-hide-in-preview">
         <button class="editor-btn" id="btnSaveMap" style="background:#16a34a">💾 Save</button>
         <button class="editor-btn" id="btnTestPlay" style="background:#8b5cf6">▶️ Test Play</button>
         <button class="editor-btn" id="btnExitEditor" style="background:#dc2626">✕ Exit</button>
@@ -264,6 +306,38 @@ export class MapEditor {
       this.highlightActiveButton('btnCrate');
     });
 
+    // Physics Controls & Preview Toggle
+    const physBtn = el.querySelector('#btnTogglePhysics');
+    physBtn?.addEventListener('click', () => {
+      this.physicsEnabled = !this.physicsEnabled;
+      if (physBtn) {
+        physBtn.textContent = this.physicsEnabled ? '⏸️ Pause Flow' : '▶️ Resume Flow';
+        (physBtn as HTMLElement).style.background = this.physicsEnabled ? '#0284c7' : '#16a34a';
+      }
+    });
+
+    el.querySelector('#btnResetPhysics')?.addEventListener('click', () => {
+      this.restoreSnapshot();
+    });
+
+    const prevBtn = el.querySelector('#btnTogglePreview');
+    prevBtn?.addEventListener('click', () => {
+      this.previewMode = !this.previewMode;
+      if (this.previewMode) {
+        this.containerEl.classList.add('preview-active');
+        if (prevBtn) {
+          prevBtn.textContent = '✏️ Edit Mode';
+          (prevBtn as HTMLElement).style.background = '#2563eb';
+        }
+      } else {
+        this.containerEl.classList.remove('preview-active');
+        if (prevBtn) {
+          prevBtn.textContent = '👁️ Preview';
+          (prevBtn as HTMLElement).style.background = '#6366f1';
+        }
+      }
+    });
+
     // Actions
     el.querySelector('#btnSaveMap')?.addEventListener('click', () => this.saveCurrentMap());
     el.querySelector('#btnTestPlay')?.addEventListener('click', () => {
@@ -274,11 +348,13 @@ export class MapEditor {
 
     // Mouse Canvas Painting
     this.canvas.addEventListener('mousedown', (e) => {
+      if (this.previewMode) return;
       this.isDrawing = true;
       this.paintAt(e.clientX, e.clientY);
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
+      if (this.previewMode) return;
       if (this.isDrawing) {
         this.paintAt(e.clientX, e.clientY);
       }
@@ -333,7 +409,9 @@ export class MapEditor {
 
   public render(): void {
     // 1. Update Cellular Automata Physics Engine in real-time inside Editor
-    this.terrainInstance.updatePhysics();
+    if (this.physicsEnabled || this.previewMode) {
+      this.terrainInstance.updatePhysics();
+    }
 
     // 2. Render Cellular Automata Grid
     this.terrainInstance.draw(this.ctx);
