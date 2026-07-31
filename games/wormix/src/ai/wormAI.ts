@@ -115,14 +115,14 @@ export class WormAI {
     // --- Fine evaluation ---
     let bestPlan: { pos: PositionEval; shot: ShotResult; score: number } | null = null;
     const fineAngles = difficulty === 'easy' ? 4 : difficulty === 'normal' ? 6 : 8;
-    const allWeaponIds: WeaponId[] = ['bazooka', 'grenade', 'cluster', 'acid_bomb', 'sand_bomb', 'portal_gun', 'shotgun'];
+    const allWeaponIds: WeaponId[] = ['bazooka', 'grenade', 'cluster', 'acid_bomb', 'sand_bomb', 'drill', 'mortar', 'dynamite', 'rifle', 'shotgun'];
 
     for (const fin of finalists) {
       if (!fin.bestShot) continue;
 
       for (const wid of allWeaponIds) {
         if (!hasAmmo(wid)) continue;
-        if (difficulty === 'easy' && wid !== 'bazooka' && wid !== 'shotgun') continue;
+        if (difficulty === 'easy' && wid !== 'bazooka' && wid !== 'shotgun' && wid !== 'rifle') continue;
 
         const shots = this.simulateWeapon(
           fin.x, fin.y, wid, enemies, allies, terrain, mapObjects, windX, fineAngles
@@ -327,7 +327,9 @@ export class WormAI {
     let x = originX + Math.cos(rad) * 20; // barrel tip offset
     let y = originY + Math.sin(rad) * 20;
     const gravity = 0.45;
-    const isBouncy = weaponId === 'grenade' || weaponId === 'cluster';
+    const isBouncy = weaponId === 'grenade' || weaponId === 'cluster' || weaponId === 'dynamite';
+    const hasGravity = weaponId !== 'rifle';
+    const hasWind = weaponId === 'bazooka' || weaponId === 'cluster' || weaponId === 'drill' || weaponId === 'mortar';
     let bounces = 0;
     const maxTicks = 180;
 
@@ -335,9 +337,9 @@ export class WormAI {
     const explosionCenters: { x: number; y: number; radius: number }[] = [];
 
     for (let tick = 0; tick < maxTicks; tick++) {
-      // Wind (bazooka & cluster only)
-      if (weaponId === 'bazooka' || weaponId === 'cluster') vx += windX * 0.05;
-      vy += gravity;
+      // Wind (bazooka, cluster, drill, mortar)
+      if (hasWind) vx += windX * 0.05;
+      if (hasGravity) vy += gravity;
       x += vx;
       y += vy;
 
@@ -375,8 +377,11 @@ export class WormAI {
         explosionCenters.push({ x: cx, y: cy, radius: 28 });
       }
     } else {
-      const radius = weaponId === 'bazooka' ? 42 : weaponId === 'grenade' ? 38
-        : weaponId === 'acid_bomb' ? 45 : 30;
+      const radiusMap: Record<string, number> = {
+        bazooka: 42, grenade: 38, acid_bomb: 30, sand_bomb: 25,
+        drill: 35, mortar: 15, dynamite: 65, rifle: 18, shotgun: 18
+      };
+      const radius = radiusMap[weaponId] || 30;
       explosionCenters.push({ x, y, radius });
     }
 
@@ -483,7 +488,7 @@ export class WormAI {
     windX: number, w: WeightVector, numAngles: number,
     hasAmmo: (wid: WeaponId) => boolean
   ): ShotResult | null {
-    const weaponsToTry: WeaponId[] = ['bazooka', 'grenade', 'cluster', 'acid_bomb'];
+    const weaponsToTry: WeaponId[] = ['bazooka', 'grenade', 'cluster', 'acid_bomb', 'dynamite', 'mortar', 'drill'];
     let best: ShotResult | null = null;
     let bestScore = -Infinity;
 

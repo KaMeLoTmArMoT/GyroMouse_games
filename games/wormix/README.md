@@ -104,10 +104,13 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * 🚀 **Bazooka**: Wind-affected heavy explosive missile. **∞ ammo** — always available.
    * 💣 **Grenade**: Bouncing projectile with 3-second fuse timer. **×4 ammo**.
    * 💥 **Cluster Bomb**: Splits into 5 mini-bombs on impact. **×2 ammo**.
-   * 🧪 **Acid Bomb**: Spawns a stream of corrosive `CELL_ACID` cells that melt terrain layers. **×2 ammo**.
+   * 🧪 **Acid Bomb**: Small explosion + large corrosive acid pool that melts terrain. **×2 ammo**.
    * ⏳ **Sand Bomb**: Generates a new sand dune mound on impact. **×3 ammo**.
-   * 🌀 **Portal Gun**: Deploys an Orange or Blue portal pair on terrain surfaces to warp incoming projectiles and worms. **×2 ammo**.
-   * 🔫 **Shotgun**: Direct line-of-sight double shot. **×3 ammo**.
+   * 🔨 **Drill Missile**: Wind-affected penetrates through one terrain wall before exploding. **×2 ammo**.
+   * 💣 **Mortar**: Wind-affected airburst on fuse timer, rains shrapnel fragments downward. **×2 ammo**.
+   * 🧨 **Dynamite**: Short throw bounces, massive blast radius (65px), 4-second fuse. **×1 ammo**.
+   * 🎯 **Rifle**: Perfectly straight line — no gravity, no wind, no terrain destruction. **∞ ammo**.
+   * 🔫 **Shotgun**: Raycast along aim direction with double-tap. **×3 ammo**.
    * **Ammo Display**: Weapon toolbar shows `×N` badges on each card. Depleted weapons are grayed out and skipped during cycling.
 
 10. **Fixed 30 FPS Lock**:
@@ -128,7 +131,7 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 | [`src/editor/mapStorage.ts`](src/editor/mapStorage.ts) | Map storage utility for LocalStorage map registry, 4 preset maps, rename/clone/delete operations, and JSON file export/import. |
 | [`src/ui/menuModal.ts`](src/ui/menuModal.ts) | Glassmorphism match lobby — Match Type (PvP / AI), Bot Difficulty (Easy / Normal / Hard), Team Size, Health, Game Modes, Map Selector, Map Manager shortcut. |
 | [`src/ui/mapManager.ts`](src/ui/mapManager.ts) | Visual gallery modal for map management — on-the-fly terrain thumbnails, card grid, Edit/Clone/Rename/Delete/Export actions, preset cloning, JSON import. |
-| [`src/physics/projectile.ts`](src/physics/projectile.ts) | Projectile simulation, wind force, gravity, portal warping, explosion damage & knockback. |
+| [`src/physics/projectile.ts`](src/physics/projectile.ts) | Projectile simulation, wind force, gravity, drill penetration, mortar airburst, explosion damage & knockback, map object collision. |
 | [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI with utility-based scoring, trajectory simulation, 5 personality presets, position candidate evaluation, cover/crate scoring, ammo-aware weapon selection, and target-based movement (walks to optimal position, no random jumping). |
 | [`src/ui/hud.ts`](src/ui/hud.ts) | Glassmorphism HUD, PvP team turn banners, trajectory arc preview, power meter, weapon selector toolbar with ammo count badges (`×N`), depleted weapon dimming. |
 | [`src/types.ts`](src/types.ts) | Type interfaces for turn phases (incl. `REPOSITION`), materials, weapons, map objects, water bodies, lobby config (incl. `matchType`), `TeamAmmo`, `CustomMapData` (incl. `updatedAt`). |

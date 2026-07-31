@@ -28,7 +28,10 @@ export type WeaponId =
   | 'cluster'
   | 'acid_bomb'
   | 'sand_bomb'
-  | 'portal_gun'
+  | 'drill'
+  | 'mortar'
+  | 'dynamite'
+  | 'rifle'
   | 'shotgun';
 
 export interface WeaponInfo {

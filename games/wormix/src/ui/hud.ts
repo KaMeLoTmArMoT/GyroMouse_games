@@ -5,10 +5,13 @@ export const WEAPON_LIST: WeaponInfo[] = [
   { id: 'bazooka', name: 'Bazooka', icon: '🚀', description: 'Heavy explosive missile, affected by wind', affectedByWind: true },
   { id: 'grenade', name: 'Grenade', icon: '💣', description: 'Bounces off terrain, 3s fuse explosion', affectedByWind: false },
   { id: 'cluster', name: 'Cluster Bomb', icon: '💥', description: 'Splits into 5 mini-bombs on impact', affectedByWind: true },
-  { id: 'acid_bomb', name: 'Acid Bomb', icon: '🧪', description: 'Releases acid that dissolves terrain', affectedByWind: false },
+  { id: 'acid_bomb', name: 'Acid Bomb', icon: '🧪', description: 'Explosion + releases acid that dissolves terrain', affectedByWind: false },
   { id: 'sand_bomb', name: 'Sand Bomb', icon: '⏳', description: 'Creates a sand mound on impact', affectedByWind: false },
-  { id: 'portal_gun', name: 'Portal Gun', icon: '🌀', description: 'Places Orange/Blue portals on terrain', affectedByWind: false },
-  { id: 'shotgun', name: 'Shotgun', icon: '🔫', description: 'Direct line-of-fire double shot', affectedByWind: false }
+  { id: 'drill', name: 'Drill Missile', icon: '🔨', description: 'Penetrates through terrain walls before exploding', affectedByWind: true },
+  { id: 'mortar', name: 'Mortar', icon: '💣', description: 'Airburst on fuse timer, rains shrapnel downward', affectedByWind: true },
+  { id: 'dynamite', name: 'Dynamite', icon: '🧨', description: 'Short throw, massive blast radius, 4s fuse', affectedByWind: false },
+  { id: 'rifle', name: 'Rifle', icon: '🎯', description: 'Perfectly straight line, no drop, no terrain destruction', affectedByWind: false },
+  { id: 'shotgun', name: 'Shotgun', icon: '🔫', description: 'Raycast along aim direction, double tap', affectedByWind: false }
 ];
 
 export class HUD {
@@ -41,7 +44,10 @@ export class HUD {
     // 3. Trajectory Sighting Arc (When Aiming or Charging)
     if (activeWorm && activeWorm.isAlive && (phase === 'AIM_FIRE' || phase === 'MOVE')) {
       const powerToDraw = isCharging ? chargePower : 0.6;
-      this.drawTrajectoryArc(ctx, activeWorm, powerToDraw, windX, WEAPON_LIST[activeWeaponIndex].affectedByWind);
+      const wid = WEAPON_LIST[activeWeaponIndex].id;
+      const hasGravity = wid !== 'rifle';
+      const arcWind = WEAPON_LIST[activeWeaponIndex].affectedByWind ? windX : 0;
+      this.drawTrajectoryArc(ctx, activeWorm, powerToDraw, arcWind, hasGravity);
     }
 
     // 4. Power Charge Meter (When holding Space)
@@ -166,7 +172,7 @@ export class HUD {
     worm: Worm,
     power: number,
     windX: number,
-    affectedByWind: boolean
+    hasGravity: boolean = true
   ): void {
     const tip = worm.getCannonTip();
     const rad = (worm.aimAngle * Math.PI) / 180;
@@ -184,8 +190,8 @@ export class HUD {
     ctx.moveTo(px, py);
 
     for (let step = 0; step < 25; step++) {
-      if (affectedByWind) vx += windX * 0.05;
-      vy += 0.45; // Gravity
+      vx += windX * 0.05;
+      if (hasGravity) vy += 0.45;
       px += vx;
       py += vy;
       ctx.lineTo(px, py);

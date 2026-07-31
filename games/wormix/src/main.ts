@@ -264,7 +264,9 @@ export class WormixGame {
       cluster: 2,
       acid_bomb: 2,
       sand_bomb: 3,
-      portal_gun: 2,
+      drill: 2,
+      mortar: 2,
+      dynamite: 1,
       shotgun: 3,
     };
     this.teamAmmo = {
@@ -410,29 +412,57 @@ export class WormixGame {
     const vy = Math.sin(rad) * launchSpeed;
 
     if (weapon.id === 'shotgun') {
-      // Immediate Shotgun Raycast
+      // Shotgun: raycast along aim direction, double-tap
       this.audioManager.playHit(1.5);
-      this.terrain.explode(tip.x + vx * 2, tip.y + vy * 2, 25);
+      const rayLen = 250;
+      const rayStep = 4;
+      const shotDamage = 40;
 
-      // Damage worms & objects in shotgun line
-      for (const w of this.worms) {
-        if (w !== activeWorm && w.isAlive) {
-          const dist = Math.hypot(w.x - tip.x, w.y - tip.y);
-          if (dist < 120) w.takeDamage(40);
+      const shootRay = (damageMult: number) => {
+        for (let d = 0; d < rayLen; d += rayStep) {
+          const rx = tip.x + Math.cos(rad) * d;
+          const ry = tip.y + Math.sin(rad) * d;
+
+          // Stop at first terrain hit
+          if (this.terrain.isSolidAt(rx, ry)) {
+            this.terrain.explode(rx, ry, 18);
+            break;
+          }
+
+          // Damage worms along the ray
+          for (const w of this.worms) {
+            if (w !== activeWorm && w.isAlive) {
+              if (Math.hypot(w.x - rx, w.y - ry) < 14) {
+                w.takeDamage(Math.floor(shotDamage * damageMult));
+                const kAngle = Math.atan2(w.y - tip.y, w.x - tip.x);
+                w.vx += Math.cos(kAngle) * 6;
+                w.vy += Math.sin(kAngle) * 4 - 2;
+              }
+            }
+          }
+
+          // Damage objects along the ray
+          for (const obj of this.mapObjects) {
+            if (!obj.isDestroyed && Math.hypot(obj.x - rx, obj.y - ry) < 14) {
+              obj.takeDamage(Math.floor(shotDamage * damageMult));
+            }
+          }
         }
-      }
-      for (const obj of this.mapObjects) {
-        if (Math.hypot(obj.x - tip.x, obj.y - tip.y) < 120) {
-          obj.takeDamage(40);
-        }
-      }
-      this.lastExplosionX = tip.x + vx * 2;
+      };
+
+      // First shot (full damage)
+      shootRay(1.0);
+      // Second shot (75% damage, slight delay feel)
+      shootRay(0.75);
+
+      this.lastExplosionX = tip.x + Math.cos(rad) * 60;
       this.phase = 'PROJECTILE_FLIGHT';
     } else {
       // Spawn Projectile
       this.audioManager.playTone(220, 0.15, 'sawtooth');
+      const fuseTime = weapon.id === 'dynamite' ? 4 : weapon.id === 'mortar' ? 2.5 : 3;
       this.projectiles.push(
-        new Projectile(weapon.id, tip.x, tip.y, vx, vy, activeWorm.team, 3)
+        new Projectile(weapon.id, tip.x, tip.y, vx, vy, activeWorm.team, fuseTime)
       );
       this.lastExplosionX = tip.x;
       this.phase = 'PROJECTILE_FLIGHT';
@@ -496,6 +526,16 @@ export class WormixGame {
               const d = Math.hypot(w.x - x, w.y - y);
               if (d < radius + 15) {
                 w.takeDamage(Math.floor(damage * (1 - d / (radius + 15))));
+              }
+            }
+          }
+
+          // Chain explosion: damage nearby barrels/objects (for barrel chain reactions)
+          for (const other of this.mapObjects) {
+            if (other !== obj && !other.isDestroyed) {
+              const d = Math.hypot(other.x - x, other.y - y);
+              if (d < radius + 30) {
+                other.takeDamage(Math.floor(damage * 0.8));
               }
             }
           }
@@ -659,14 +699,14 @@ export class WormixGame {
     // 6. Update Projectiles Physics & Collisions
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
-      proj.update(this.terrain, this.worms, this.windX, (p, x, y) => {
+      proj.update(this.terrain, this.worms, this.mapObjects, this.windX, (p, x, y) => {
         this.audioManager.playHit(2.0);
         this.lastExplosionX = x;
 
-        // Damage objects hit by projectile explosion
+        // Damage map objects hit by projectile explosion (barrel chain explosions!)
         for (const obj of this.mapObjects) {
-          if (Math.hypot(obj.x - x, obj.y - y) < 40) {
-            obj.takeDamage(40);
+          if (!obj.isDestroyed && Math.hypot(obj.x - x, obj.y - y) < 45) {
+            obj.takeDamage(45);
           }
         }
 
