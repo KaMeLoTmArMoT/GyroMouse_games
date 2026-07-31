@@ -106,7 +106,6 @@ export class WormixGame {
     this.menuModal = new MenuModal(
       (config, mapData) => this.startMatch(config, mapData),
       () => this.openMapEditor(),
-      () => this.settingsOverlay.toggle(),
       () => this.openMapManager()
     );
 
