@@ -136,6 +136,16 @@ export interface CustomMapData {
 
 
 
+export type AIPersonality = 'aggressive' | 'sniper' | 'looter' | 'chaotic' | 'default';
+
+export interface WeightVector {
+  attack: number;   // enemy damage weight
+  selfRisk: number; // self-damage avoidance
+  cover: number;    // cover quality at position
+  crates: number;   // health crate proximity
+  chain: number;    // barrel chain explosion bonus
+}
+
 export type GameMode = 'deathmatch' | 'rising_water' | 'fort_warfare';
 
 export interface LobbyConfig {

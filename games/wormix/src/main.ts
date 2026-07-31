@@ -1,12 +1,12 @@
 import { SharedInputManager } from '../../../shared/inputManager';
 import { SettingsOverlay } from '../../../shared/settingsOverlay';
 import { SharedAudioManager } from '../../../shared/audioManager';
-import { TurnPhase, AIDifficulty, LobbyConfig, CustomMapData } from './types';
+import { TurnPhase, AIDifficulty, AIPersonality, LobbyConfig, CustomMapData } from './types';
 import { TerrainManager } from './terrain/terrainManager';
 import { Worm } from './entities/worm';
 import { MapObject } from './entities/mapObject';
 import { Projectile } from './physics/projectile';
-import { WormAI } from './ai/wormAI';
+import { WormAI, AITurnPlan } from './ai/wormAI';
 import { HUD, WEAPON_LIST } from './ui/hud';
 import { MenuModal } from './ui/menuModal';
 import { MapEditor } from './editor/mapEditor';
@@ -50,6 +50,12 @@ export class WormixGame {
   public isCharging: boolean = false;
   public chargePower: number = 0.0; // 0 to 1.0
   public chargeSpeed: number = 0.025; // Speed per tick (30fps)
+
+  // AI Turn State
+  private aiPlan: AITurnPlan | null = null;
+  private aiWalkTicksLeft: number = 0;
+  private aiPersonality: AIPersonality = 'default';
+  private aiFiringPending: boolean = false;
 
   public editingMap: CustomMapData | null = null;
 
@@ -155,6 +161,7 @@ export class WormixGame {
     this.menuModal.hide();
     this.lobbyConfig = config;
     this.aiDifficulty = config.aiDifficulty;
+    this.aiPersonality = WormAI.rollPersonality(config.aiDifficulty);
 
     if (this.mapEditor) {
       this.mapEditor.exit();
@@ -240,6 +247,8 @@ export class WormixGame {
     this.activeWormIndex = 0;
     this.phase = 'MOVE';
     this.turnTimer = 45.0;
+    this.aiPlan = null;
+    this.aiFiringPending = false;
     this.updateWind();
   }
 
@@ -521,19 +530,50 @@ export class WormixGame {
 
     // 5. AI Turn Logic (only in AI match mode and only for Blue team worms)
     if (!isPvP && activeWorm && activeWorm.isAlive && activeWorm.team === 'ai') {
-      if (this.phase === 'MOVE' || this.phase === 'WEAPON_SELECT') {
-        const playerWorms = this.worms.filter((w) => w.team === 'player');
-        const plan = WormAI.calculateTurn(activeWorm, playerWorms, this.aiDifficulty, this.windX);
+      if (this.phase === 'MOVE') {
+        // Evaluate once at start of turn
+        if (!this.aiPlan) {
+          const playerWorms = this.worms.filter((w) => w.team === 'player');
+          this.aiPlan = WormAI.evaluateTurn(
+            activeWorm, this.worms, this.terrain, this.mapObjects,
+            this.windX, this.aiDifficulty, this.aiPersonality
+          );
+          this.aiWalkTicksLeft = this.aiPlan.walkTicks;
+          activeWorm.aimAngle = this.aiPlan.targetAngle;
+          activeWorm.facingRight = Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
+        }
 
-        activeWorm.aimAngle = plan.targetAngle;
-        activeWorm.facingRight = Math.cos((plan.targetAngle * Math.PI) / 180) >= 0;
-
-        const weaponIdx = WEAPON_LIST.findIndex((w) => w.id === plan.weaponId);
-        if (weaponIdx !== -1) this.activeWeaponIndex = weaponIdx;
-
-        this.chargePower = plan.targetPower;
+        // Walk toward target position
+        if (this.aiWalkTicksLeft > 0) {
+          activeWorm.walk(this.aiPlan.walkDir);
+          if (activeWorm.isGrounded && this.aiWalkTicksLeft % 6 === 0 && Math.random() > 0.5) {
+            activeWorm.jump();
+          }
+          this.aiWalkTicksLeft--;
+        } else {
+          this.phase = 'WEAPON_SELECT';
+        }
+      } else if (this.phase === 'WEAPON_SELECT' && this.aiPlan) {
         this.phase = 'AIM_FIRE';
-        setTimeout(() => this.fireActiveWeapon(), 1000);
+      } else if (this.phase === 'AIM_FIRE' && this.aiPlan && !this.aiFiringPending) {
+        this.aiFiringPending = true;
+
+        // Set final aim from plan
+        activeWorm.aimAngle = this.aiPlan.targetAngle;
+        activeWorm.facingRight = Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
+
+        // Set weapon
+        const weaponIdx = WEAPON_LIST.findIndex((w) => w.id === this.aiPlan!.weaponId);
+        if (weaponIdx !== -1) this.activeWeaponIndex = weaponIdx;
+        this.chargePower = this.aiPlan.targetPower;
+        this.aiPlan = null;
+
+        // Delay fire so player can see the aim. Phase stays AIM_FIRE until
+        // projectile actually exists — prevents premature turn resolution.
+        setTimeout(() => {
+          this.fireActiveWeapon(); // sets phase = 'PROJECTILE_FLIGHT' inside
+          this.aiFiringPending = false;
+        }, 300);
       }
     }
 
@@ -592,6 +632,8 @@ export class WormixGame {
     this.activeWormIndex = nextIdx;
     this.phase = 'MOVE';
     this.turnTimer = 45.0;
+    this.aiPlan = null;
+    this.aiFiringPending = false;
     this.updateWind();
   }
 
