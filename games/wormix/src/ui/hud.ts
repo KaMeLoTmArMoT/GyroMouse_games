@@ -1,4 +1,4 @@
-import { TurnPhase, WeaponInfo } from '../types';
+import { TurnPhase, WeaponInfo, TeamAmmo } from '../types';
 import { Worm } from '../entities/worm';
 
 export const WEAPON_LIST: WeaponInfo[] = [
@@ -26,7 +26,9 @@ export class HUD {
     playerTeamHp: number,
     aiTeamHp: number,
     isPcMode: boolean,
-    isPvP: boolean
+    isPvP: boolean,
+    teamAmmo: TeamAmmo = {},
+    repositionTimer: number = 0
   ): void {
     ctx.save();
 
@@ -34,7 +36,7 @@ export class HUD {
     this.drawTopBar(ctx, width, playerTeamHp, aiTeamHp, windX, turnTimer);
 
     // 2. Center Turn Phase Banner
-    this.drawPhaseBanner(ctx, width, phase, isPcMode, isPvP, activeWorm?.team ?? 'player');
+    this.drawPhaseBanner(ctx, width, phase, isPcMode, isPvP, activeWorm?.team ?? 'player', repositionTimer);
 
     // 3. Trajectory Sighting Arc (When Aiming or Charging)
     if (activeWorm && activeWorm.isAlive && (phase === 'AIM_FIRE' || phase === 'MOVE')) {
@@ -47,9 +49,9 @@ export class HUD {
       this.drawPowerMeter(ctx, width, height, chargePower);
     }
 
-    // 5. Weapon Selection Toolbar (Bottom)
+    // 5. Weapon Selection Toolbar (Bottom) — hide during REPOSITION and PROJECTILE_FLIGHT
     if (phase === 'WEAPON_SELECT' || phase === 'AIM_FIRE' || phase === 'MOVE') {
-      this.drawWeaponToolbar(ctx, width, height, activeWeaponIndex, phase === 'WEAPON_SELECT');
+      this.drawWeaponToolbar(ctx, width, height, activeWeaponIndex, phase === 'WEAPON_SELECT', teamAmmo);
     }
 
     ctx.restore();
@@ -103,7 +105,8 @@ export class HUD {
     phase: TurnPhase,
     isPcMode: boolean,
     isPvP: boolean = false,
-    activeTeam: 'player' | 'ai' = 'player'
+    activeTeam: 'player' | 'ai' = 'player',
+    repositionTimer: number = 0
   ): void {
     if (phase === 'GAME_OVER' || phase === 'PROJECTILE_FLIGHT') return;
 
@@ -131,6 +134,11 @@ export class HUD {
       hintText = isPcMode
         ? 'W/S or Mouse to Aim • Hold SPACE to Charge & Release to FIRE!'
         : 'W/S or Gyro Pitch to Aim • Hold SPACE to Charge & Release to FIRE!';
+    } else if (phase === 'REPOSITION') {
+      bannerText = isPvP
+        ? (activeTeam === 'player' ? '🔴 RED — RUN FOR COVER!' : '🔵 BLUE — RUN FOR COVER!')
+        : '🏃 RUN FOR COVER!';
+      hintText = `${Math.ceil(repositionTimer)}s — WASD to move, W to jump`;
     }
 
     if (!bannerText) return;
@@ -224,7 +232,8 @@ export class HUD {
     width: number,
     height: number,
     activeIndex: number,
-    isSelecting: boolean
+    isSelecting: boolean,
+    teamAmmo: TeamAmmo = {}
   ): void {
     const cardW = 60;
     const cardH = 50;
@@ -241,6 +250,9 @@ export class HUD {
     WEAPON_LIST.forEach((w, i) => {
       const x = startX + i * (cardW + gap);
       const isSelected = i === activeIndex;
+      const ammoCount = teamAmmo[w.id];
+      const isInfinite = ammoCount === undefined; // bazooka (absent from map)
+      const isDepleted = ammoCount !== undefined && ammoCount <= 0;
 
       ctx.fillStyle = isSelected ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255, 255, 255, 0.05)';
       ctx.strokeStyle = isSelected ? (isSelecting ? '#facc15' : '#38bdf8') : 'rgba(255, 255, 255, 0.15)';
@@ -251,6 +263,12 @@ export class HUD {
       ctx.fill();
       ctx.stroke();
 
+      // Dim depleted weapons
+      if (isDepleted) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fillRect(x, startY, cardW, cardH);
+      }
+
       ctx.font = '20px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(w.icon, x + cardW / 2, startY + 28);
@@ -258,6 +276,13 @@ export class HUD {
       ctx.font = '9px Outfit, sans-serif';
       ctx.fillStyle = isSelected ? '#ffffff' : '#9ca3af';
       ctx.fillText(w.name, x + cardW / 2, startY + 44);
+
+      // Ammo count badge (skip infinite weapons)
+      if (!isInfinite) {
+        ctx.font = 'bold 10px Outfit, sans-serif';
+        ctx.fillStyle = isDepleted ? '#ef4444' : '#22c55e';
+        ctx.fillText(`×${ammoCount}`, x + cardW / 2, startY + cardH + 12);
+      }
     });
   }
 }

@@ -1,7 +1,7 @@
 import { SharedInputManager } from '../../../shared/inputManager';
 import { SettingsOverlay } from '../../../shared/settingsOverlay';
 import { SharedAudioManager } from '../../../shared/audioManager';
-import { TurnPhase, AIDifficulty, AIPersonality, LobbyConfig, CustomMapData } from './types';
+import { TurnPhase, AIDifficulty, AIPersonality, LobbyConfig, CustomMapData, TeamAmmo } from './types';
 import { TerrainManager } from './terrain/terrainManager';
 import { Worm } from './entities/worm';
 import { MapObject } from './entities/mapObject';
@@ -53,9 +53,17 @@ export class WormixGame {
 
   // AI Turn State
   private aiPlan: AITurnPlan | null = null;
-  private aiWalkTicksLeft: number = 0;
   private aiPersonality: AIPersonality = 'default';
   private aiFiringPending: boolean = false;
+  private aiTargetX: number = 0;
+  private aiWalkTimeLeft: number = 0;
+
+  // Reposition State (post-fire movement window)
+  private repositionTimer: number = 0;
+  private lastExplosionX: number = 0;
+
+  // Team Ammo Inventory
+  private teamAmmo: Record<'player' | 'ai', TeamAmmo> = { player: {}, ai: {} };
 
   public editingMap: CustomMapData | null = null;
 
@@ -249,6 +257,22 @@ export class WormixGame {
     this.turnTimer = 45.0;
     this.aiPlan = null;
     this.aiFiringPending = false;
+    this.repositionTimer = 0;
+
+    // Initialize team ammo (bazooka is always infinite — absent from map)
+    const defaultAmmo: TeamAmmo = {
+      grenade: 4,
+      cluster: 2,
+      acid_bomb: 2,
+      sand_bomb: 3,
+      portal_gun: 2,
+      shotgun: 3,
+    };
+    this.teamAmmo = {
+      player: { ...defaultAmmo },
+      ai: { ...defaultAmmo },
+    };
+
     this.updateWind();
   }
 
@@ -298,11 +322,20 @@ export class WormixGame {
 
       // Cycle weapons with A/D or Left/Right during WEAPON_SELECT
       if (this.phase === 'WEAPON_SELECT') {
+        const activeWormTeam = this.getActiveWorm()?.team ?? 'player';
+        const ammo = this.teamAmmo[activeWormTeam];
+        const hasAmmo = (wid: string) => wid === 'bazooka' || (ammo[wid as keyof TeamAmmo] ?? 0) > 0;
+
+        const startIdx = this.activeWeaponIndex;
         if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
-          this.activeWeaponIndex = (this.activeWeaponIndex - 1 + WEAPON_LIST.length) % WEAPON_LIST.length;
+          do {
+            this.activeWeaponIndex = (this.activeWeaponIndex - 1 + WEAPON_LIST.length) % WEAPON_LIST.length;
+          } while (!hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id) && this.activeWeaponIndex !== startIdx);
           this.audioManager.playTone(600, 0.03, 'sine');
         } else if (e.code === 'KeyD' || e.code === 'ArrowRight') {
-          this.activeWeaponIndex = (this.activeWeaponIndex + 1) % WEAPON_LIST.length;
+          do {
+            this.activeWeaponIndex = (this.activeWeaponIndex + 1) % WEAPON_LIST.length;
+          } while (!hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id) && this.activeWeaponIndex !== startIdx);
           this.audioManager.playTone(600, 0.03, 'sine');
         }
       }
@@ -362,14 +395,20 @@ export class WormixGame {
     const activeWorm = this.getActiveWorm();
     if (!activeWorm) return;
 
+    const weapon = WEAPON_LIST[this.activeWeaponIndex];
+    const team = activeWorm.team as 'player' | 'ai';
+    const teamAmmo = this.teamAmmo[team];
+    const ammoCount = teamAmmo[weapon.id];
+
+    // Guard: skip if no ammo (bazooka is always infinite — ammoCount is undefined)
+    if (ammoCount !== undefined && ammoCount <= 0) return;
+
     const tip = activeWorm.getCannonTip();
     const rad = (activeWorm.aimAngle * Math.PI) / 180;
     const launchSpeed = Math.max(0.15, this.chargePower) * 22.0;
 
     const vx = Math.cos(rad) * launchSpeed;
     const vy = Math.sin(rad) * launchSpeed;
-
-    const weapon = WEAPON_LIST[this.activeWeaponIndex];
 
     if (weapon.id === 'shotgun') {
       // Immediate Shotgun Raycast
@@ -388,6 +427,7 @@ export class WormixGame {
           obj.takeDamage(40);
         }
       }
+      this.lastExplosionX = tip.x + vx * 2;
       this.phase = 'PROJECTILE_FLIGHT';
     } else {
       // Spawn Projectile
@@ -395,7 +435,13 @@ export class WormixGame {
       this.projectiles.push(
         new Projectile(weapon.id, tip.x, tip.y, vx, vy, activeWorm.team, 3)
       );
+      this.lastExplosionX = tip.x;
       this.phase = 'PROJECTILE_FLIGHT';
+    }
+
+    // Decrement ammo (skip if undefined = infinite bazooka)
+    if (ammoCount !== undefined) {
+      this.teamAmmo[team][weapon.id] = ammoCount - 1;
     }
   }
 
@@ -528,29 +574,63 @@ export class WormixGame {
       }
     }
 
-    // 5. AI Turn Logic (only in AI match mode and only for Blue team worms)
+    // 5. REPOSITION Phase — post-fire movement window (separate from turn timer)
+    if (this.phase === 'REPOSITION' && activeWorm && activeWorm.isAlive) {
+      this.repositionTimer -= 1 / 30;
+
+      if (this.repositionTimer <= 0) {
+        this.checkTurnEnd();
+      } else if (isHumanTurn) {
+        // Human: allow walk + jump only (no weapon switch, no firing)
+        const keys = this.inputManager.keysPressed;
+        let dir = 0;
+        if (keys.has('KeyA') || keys.has('ArrowLeft')) dir -= 1;
+        if (keys.has('KeyD') || keys.has('ArrowRight')) dir += 1;
+        activeWorm.walk(dir);
+        if (keys.has('KeyW') || keys.has('ArrowUp')) {
+          activeWorm.jump();
+        }
+      } else if (activeWorm.team === 'ai') {
+        // AI: walk away from last explosion toward cover
+        const awayDir = activeWorm.x > this.lastExplosionX ? 1 : -1;
+        // Check if there's ground ahead before walking
+        const nextX = activeWorm.x + awayDir * 30;
+        if (this.terrain.getLocalGroundY(nextX, activeWorm.y + activeWorm.radius + 5, 15, 12) !== null) {
+          activeWorm.walk(awayDir);
+          // Jump if hitting a wall (stuck with zero horizontal velocity)
+          if (activeWorm.isGrounded && activeWorm.vx === 0) {
+            activeWorm.jump();
+          }
+        } else {
+          activeWorm.walk(0); // stop if no ground ahead
+        }
+      }
+    }
+
+    // 6. AI Turn Logic (only in AI match mode and only for Blue team worms)
     if (!isPvP && activeWorm && activeWorm.isAlive && activeWorm.team === 'ai') {
       if (this.phase === 'MOVE') {
         // Evaluate once at start of turn
         if (!this.aiPlan) {
-          const playerWorms = this.worms.filter((w) => w.team === 'player');
           this.aiPlan = WormAI.evaluateTurn(
             activeWorm, this.worms, this.terrain, this.mapObjects,
-            this.windX, this.aiDifficulty, this.aiPersonality
+            this.windX, this.aiDifficulty, this.aiPersonality,
+            this.teamAmmo.ai
           );
-          this.aiWalkTicksLeft = this.aiPlan.walkTicks;
+          this.aiTargetX = this.aiPlan.targetX;
+          this.aiWalkTimeLeft = 150; // 5 seconds max at 30fps
           activeWorm.aimAngle = this.aiPlan.targetAngle;
           activeWorm.facingRight = Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
         }
 
         // Walk toward target position
-        if (this.aiWalkTicksLeft > 0) {
-          activeWorm.walk(this.aiPlan.walkDir);
-          if (activeWorm.isGrounded && this.aiWalkTicksLeft % 6 === 0 && Math.random() > 0.5) {
-            activeWorm.jump();
-          }
-          this.aiWalkTicksLeft--;
+        const distToTarget = Math.abs(this.aiTargetX - activeWorm.x);
+        if (distToTarget > 15 && this.aiWalkTimeLeft > 0) {
+          const dir = this.aiTargetX > activeWorm.x ? 1 : -1;
+          activeWorm.walk(dir);
+          this.aiWalkTimeLeft--;
         } else {
+          activeWorm.walk(0); // stop
           this.phase = 'WEAPON_SELECT';
         }
       } else if (this.phase === 'WEAPON_SELECT' && this.aiPlan) {
@@ -582,6 +662,7 @@ export class WormixGame {
       const proj = this.projectiles[i];
       proj.update(this.terrain, this.worms, this.windX, (p, x, y) => {
         this.audioManager.playHit(2.0);
+        this.lastExplosionX = x;
 
         // Damage objects hit by projectile explosion
         for (const obj of this.mapObjects) {
@@ -607,9 +688,10 @@ export class WormixGame {
       }
     }
 
-    // 7. Turn Resolution Check
+    // 7. Turn Resolution Check — enter REPOSITION phase after projectiles expire
     if (this.phase === 'PROJECTILE_FLIGHT' && this.projectiles.length === 0) {
-      this.checkTurnEnd();
+      this.phase = 'REPOSITION';
+      this.repositionTimer = 3.0; // 3 seconds to reposition
     }
   }
 
@@ -634,6 +716,7 @@ export class WormixGame {
     this.turnTimer = 45.0;
     this.aiPlan = null;
     this.aiFiringPending = false;
+    this.repositionTimer = 0;
     this.updateWind();
   }
 
@@ -658,6 +741,7 @@ export class WormixGame {
     const aiHp = this.worms.filter((w) => w.team === 'ai').reduce((acc, w) => acc + w.health, 0);
 
     // Render Glassmorphism HUD overlay
+    const activeTeam = activeWorm?.team ?? 'player';
     this.hud.draw(
       this.ctx,
       this.canvas.width,
@@ -672,7 +756,9 @@ export class WormixGame {
       playerHp,
       aiHp,
       this.inputManager.settings.mode === 'pointer',
-      this.lobbyConfig.matchType === 'pvp'
+      this.lobbyConfig.matchType === 'pvp',
+      this.teamAmmo[activeTeam as 'player' | 'ai'],
+      this.repositionTimer
     );
 
     // Game Over Overlay

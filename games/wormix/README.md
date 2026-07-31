@@ -10,8 +10,9 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 
 1. **GyroMouse / Restricted Mode** (`WASD` / Arrow Keys + `Space` + `ESC`):
    * **Step 1 — Move (`WALK`)**: `A` / `D` or `←` / `→` (or Gyro Roll tilt) to walk. `W` / `↑` tap to jump / swim upward in water. Tap `Space` to proceed to Weapon Selection.
-   * **Step 2 — Select Weapon (`WEAPON_SELECT`)**: `A` / `D` or `←` / `→` to cycle toolbar. Tap `Space` to equip weapon. Tap `S` / `↓` to return to Movement.
+   * **Step 2 — Select Weapon (`WEAPON_SELECT`)**: `A` / `D` or `←` / `→` to cycle toolbar (depleted weapons are skipped). Tap `Space` to equip weapon. Tap `S` / `↓` to return to Movement.
    * **Step 3 — Aim & Fire (`AIM_FIRE`)**: `W` / `S` or `↑` / `↓` (or Gyro Pitch tilt) to adjust aim angle. **Hold `Space`** to charge launch power meter → **Release `Space`** to FIRE!
+   * **Step 4 — Reposition (`REPOSITION`)**: After firing, you have **3 seconds** to move before the turn ends. Use `A` / `D` / `W` to take cover or reposition. No weapon switching during this phase.
    * **Re-Center Calibration**: `KeyC` (letter C).
    * **Settings Overlay**: `ESC` or floating gear icon `⚙️`.
 
@@ -77,20 +78,20 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * **Backward-Compatible Data Model**: `updatedAt` field on `CustomMapData` is optional (`updatedAt?`) — existing saved maps display creation date only.
 
 7. **⚔️ Match Lobby & Game Modes**:
-   * **Match Type**:
-     * 🤖 **Player vs AI**: Red Team (human) vs Blue Team (bot). Select bot difficulty below.
-     * 👥 **Local PvP (Pass & Play)**: Both Red and Blue teams are human-controlled. Players take turns passing the keyboard. HUD turn banners display `🔴 RED PLAYER TURN` / `🔵 BLUE PLAYER TURN` to indicate whose turn it is. AI logic is completely disabled.
-   * **🤖 Bot Difficulty** (Player vs AI only):
-     * 🐣 **Easy**: Random target selection, large aim scatter (±20°), no wind compensation, Bazooka & Shotgun only.
-     * 🎯 **Normal**: Closest target focus, moderate scatter (±6°), partial wind compensation (×1.2), Bazooka / Grenade / Cluster.
-     * 🔥 **Hard**: Precise parabolic trajectory solver (±1.25°), full wind vector compensation (×2.8), tactical weapon selection (Cluster for grouped enemies, Acid Bomb for cover terrain, Grenade, Bazooka).
-   * **Team Configurations**: 1v1, 2v2, 3v3 team sizes.
-   * **Custom Health**: 50 HP, 100 HP, 150 HP, 200 HP per worm.
-   * **Game Modes**:
-     * *Classic Deathmatch*
-     * *🌊 Rising Water (Sudden Death)*: Ocean water level rises by +0.08px per tick!
-     * *🏰 Fort Warfare*: Pre-built fortress maps.
-   * **⚔️ Lobby Shortcut**: Floating green **`⚔️ Lobby`** button (`top: 85px; left: 16px;`) visible during all active matches. Click to jump back to the Match Lobby without using ESC.
+    * **Match Type**:
+      * 🤖 **Player vs AI**: Red Team (human) vs Blue Team (bot). Select bot difficulty below.
+      * 👥 **Local PvP (Pass & Play)**: Both Red and Blue teams are human-controlled. Players take turns passing the keyboard. HUD turn banners display `🔴 RED PLAYER TURN` / `🔵 BLUE PLAYER TURN` to indicate whose turn it is. AI logic is completely disabled.
+    * **🤖 Bot Difficulty** (Player vs AI only):
+      * 🐣 **Easy**: Random target selection, large aim scatter (±20°), no wind compensation, Bazooka & Shotgun only.
+      * 🎯 **Normal**: Closest target focus, moderate scatter (±6°), partial wind compensation (×1.2), Bazooka / Grenade / Cluster.
+      * 🔥 **Hard**: Precise parabolic trajectory solver (±1.25°), full wind vector compensation (×2.8), tactical weapon selection (Cluster for grouped enemies, Acid Bomb for cover terrain, Grenade, Bazooka). **Utility-based AI** with 5 personality presets (aggressive, sniper, looter, chaotic, default), trajectory simulation, position scoring, and ammo-aware weapon selection.
+    * **Team Configurations**: 1v1, 2v2, 3v3 team sizes.
+    * **Custom Health**: 50 HP, 100 HP, 150 HP, 200 HP per worm.
+    * **Game Modes**:
+      * *Classic Deathmatch*
+      * *🌊 Rising Water (Sudden Death)*: Ocean water level rises by +0.08px per tick!
+      * *🏰 Fort Warfare*: Pre-built fortress maps.
+    * **⚔️ Lobby Shortcut**: Floating green **`⚔️ Lobby`** button (`top: 85px; left: 16px;`) visible during all active matches. Click to jump back to the Match Lobby without using ESC.
 
 8. **🗺️ Preset Maps**:
    * 🎲 **Random Procedural**: Freshly generated Bezier-curve terrain each match.
@@ -99,14 +100,15 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * ⚙️ **Iron Citadel**: Raised Iron-material bunker towers on each flank — acid-immune, explosives-only breachable.
    * 🌋 **Volcano Acid Crater**: Concave central crater terrain, ideal for acid-lake flooding matches.
 
-9. **Arsenal**:
-   * 🚀 **Bazooka**: Wind-affected heavy explosive missile.
-   * 💣 **Grenade**: Bouncing projectile with 3-second fuse timer.
-   * 💥 **Cluster Bomb**: Splits into 5 mini-bombs on impact.
-   * 🧪 **Acid Bomb**: Spawns a stream of corrosive `CELL_ACID` cells that melt terrain layers.
-   * ⏳ **Sand Bomb**: Generates a new sand dune mound on impact.
-   * 🌀 **Portal Gun**: Deploys an Orange or Blue portal pair on terrain surfaces to warp incoming projectiles and worms.
-   * 🔫 **Shotgun**: Direct line-of-sight double shot.
+9. **Arsenal** (per-team shared ammo pool):
+   * 🚀 **Bazooka**: Wind-affected heavy explosive missile. **∞ ammo** — always available.
+   * 💣 **Grenade**: Bouncing projectile with 3-second fuse timer. **×4 ammo**.
+   * 💥 **Cluster Bomb**: Splits into 5 mini-bombs on impact. **×2 ammo**.
+   * 🧪 **Acid Bomb**: Spawns a stream of corrosive `CELL_ACID` cells that melt terrain layers. **×2 ammo**.
+   * ⏳ **Sand Bomb**: Generates a new sand dune mound on impact. **×3 ammo**.
+   * 🌀 **Portal Gun**: Deploys an Orange or Blue portal pair on terrain surfaces to warp incoming projectiles and worms. **×2 ammo**.
+   * 🔫 **Shotgun**: Direct line-of-sight double shot. **×3 ammo**.
+   * **Ammo Display**: Weapon toolbar shows `×N` badges on each card. Depleted weapons are grayed out and skipped during cycling.
 
 10. **Fixed 30 FPS Lock**:
    * Game loop simulation locked at `1000/30` ms tick rate for consistent physics across all hardware.
@@ -118,7 +120,7 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 | File | Role & Features |
 | :--- | :--- |
 | [`index.html`](index.html) | Canvas container, back button to main hub, styling. |
-| [`src/main.ts`](src/main.ts) | Game orchestrator, 30 FPS tick loop, 3-step turn state machine, PvP/AI mode, floating HUD buttons, menu/editor/MapManager lifecycle management. |
+| [`src/main.ts`](src/main.ts) | Game orchestrator, 30 FPS tick loop, 4-step turn state machine (MOVE → WEAPON_SELECT → AIM_FIRE → PROJECTILE_FLIGHT → REPOSITION), PvP/AI mode, ammo inventory system, floating HUD buttons, menu/editor/MapManager lifecycle management. |
 | [`src/terrain/terrainManager.ts`](src/terrain/terrainManager.ts) | Offscreen pixel-mask terrain engine, Bezier curve surface generation, live dynamic water physics, Iron acid-immunity, lake breaching & waterfall particles. |
 | [`src/entities/worm.ts`](src/entities/worm.ts) | Worm unit physics, walking, jumping, terrain collision, water buoyancy, oxygen breath meter, health bar. |
 | [`src/entities/mapObject.ts`](src/entities/mapObject.ts) | Interactive map entities: Explosive Barrels, Landmines proximity triggers, Health Crates pickup. |
@@ -127,9 +129,9 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 | [`src/ui/menuModal.ts`](src/ui/menuModal.ts) | Glassmorphism match lobby — Match Type (PvP / AI), Bot Difficulty (Easy / Normal / Hard), Team Size, Health, Game Modes, Map Selector, Map Manager shortcut. |
 | [`src/ui/mapManager.ts`](src/ui/mapManager.ts) | Visual gallery modal for map management — on-the-fly terrain thumbnails, card grid, Edit/Clone/Rename/Delete/Export actions, preset cloning, JSON import. |
 | [`src/physics/projectile.ts`](src/physics/projectile.ts) | Projectile simulation, wind force, gravity, portal warping, explosion damage & knockback. |
-| [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI trajectory solver with Easy / Normal / Hard difficulty modes, wind compensation, and tactical weapon selection. |
-| [`src/ui/hud.ts`](src/ui/hud.ts) | Glassmorphism HUD, PvP team turn banners, trajectory arc preview, power meter, weapon selector toolbar. |
-| [`src/types.ts`](src/types.ts) | Type interfaces for turn phases, materials, weapons, map objects, water bodies, lobby config (incl. `matchType`), and `CustomMapData` (incl. `updatedAt`). |
+| [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI with utility-based scoring, trajectory simulation, 5 personality presets, position candidate evaluation, cover/crate scoring, ammo-aware weapon selection, and target-based movement (walks to optimal position, no random jumping). |
+| [`src/ui/hud.ts`](src/ui/hud.ts) | Glassmorphism HUD, PvP team turn banners, trajectory arc preview, power meter, weapon selector toolbar with ammo count badges (`×N`), depleted weapon dimming. |
+| [`src/types.ts`](src/types.ts) | Type interfaces for turn phases (incl. `REPOSITION`), materials, weapons, map objects, water bodies, lobby config (incl. `matchType`), `TeamAmmo`, `CustomMapData` (incl. `updatedAt`). |
 
 ---
 

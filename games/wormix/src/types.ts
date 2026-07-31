@@ -6,8 +6,12 @@ export type TurnPhase =
   | 'WEAPON_SELECT'
   | 'AIM_FIRE'
   | 'PROJECTILE_FLIGHT'
+  | 'REPOSITION'
   | 'TURN_RESOLVE'
   | 'GAME_OVER';
+
+/** Per-team weapon ammo stock. Bazooka is always infinite (absent from map). */
+export type TeamAmmo = Partial<Record<WeaponId, number>>;
 
 export type MaterialType =
   | 'bedrock'

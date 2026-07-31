@@ -1,5 +1,5 @@
 import { Worm } from '../entities/worm';
-import { AIDifficulty, AIPersonality, WeightVector, WeaponId } from '../types';
+import { AIDifficulty, AIPersonality, WeightVector, WeaponId, TeamAmmo } from '../types';
 import { TerrainManager } from '../terrain/terrainManager';
 import { MapObject } from '../entities/mapObject';
 
@@ -8,7 +8,7 @@ export interface AITurnPlan {
   targetPower: number;
   weaponId: WeaponId;
   walkDir: number;       // -1, 0, 1
-  walkTicks: number;     // how many ticks to walk before firing
+  targetX: number;       // x position to walk toward
 }
 
 interface ShotResult {
@@ -64,15 +64,22 @@ export class WormAI {
     mapObjects: MapObject[],
     windX: number,
     difficulty: AIDifficulty,
-    personality: AIPersonality = 'default'
+    personality: AIPersonality = 'default',
+    availableAmmo: TeamAmmo = {}
   ): AITurnPlan {
     const w = WEIGHTS[personality];
     const enemies = allWorms.filter((e) => e.isAlive && e.team !== aiWorm.team);
     const allies  = allWorms.filter((e) => e.isAlive && e.team === aiWorm.team && e !== aiWorm);
 
     if (enemies.length === 0) {
-      return { targetAngle: -45, targetPower: 0.5, weaponId: 'bazooka', walkDir: 0, walkTicks: 0 };
+      return { targetAngle: -45, targetPower: 0.5, weaponId: 'bazooka', walkDir: 0, targetX: aiWorm.x };
     }
+
+    // --- Helper: check if weapon has ammo (bazooka is always available) ---
+    const hasAmmo = (wid: WeaponId): boolean => {
+      if (wid === 'bazooka') return true;
+      return (availableAmmo[wid] ?? 0) > 0;
+    };
 
     // --- Generate candidate positions ---
     const positions = this.getCandidatePositions(aiWorm, terrain, mapObjects, enemies);
@@ -84,7 +91,7 @@ export class WormAI {
     for (const pos of positions) {
       const coverScore = this.evaluateCover(pos.x, pos.y, terrain, enemies);
       const bestShot = this.coarseBestShot(
-        pos.x, pos.y, aiWorm, enemies, allies, terrain, mapObjects, windX, w, numAngles
+        pos.x, pos.y, aiWorm, enemies, allies, terrain, mapObjects, windX, w, numAngles, hasAmmo
       );
       const crateScore = this.evaluateCrates(pos.x, pos.y, mapObjects);
       const noise = this.difficultyNoise(difficulty);
@@ -114,6 +121,7 @@ export class WormAI {
       if (!fin.bestShot) continue;
 
       for (const wid of allWeaponIds) {
+        if (!hasAmmo(wid)) continue;
         if (difficulty === 'easy' && wid !== 'bazooka' && wid !== 'shotgun') continue;
 
         const shots = this.simulateWeapon(
@@ -145,12 +153,13 @@ export class WormAI {
       const dx = target.x - aiWorm.x;
       const dy = target.y - aiWorm.y;
       const angle = (dx >= 0 ? -1 : 1) * (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180 / Math.PI);
+      const fallbackWeapon: WeaponId = minDist < 100 && hasAmmo('shotgun') ? 'shotgun' : 'bazooka';
       return {
         targetAngle: Math.max(-175, Math.min(-5, angle)),
         targetPower: 0.5,
-        weaponId: minDist < 100 ? 'shotgun' : 'bazooka',
+        weaponId: fallbackWeapon,
         walkDir: 0,
-        walkTicks: 0
+        targetX: aiWorm.x
       };
     }
 
@@ -162,7 +171,7 @@ export class WormAI {
         const d = Math.hypot(e.x - bestPlan.pos.x, e.y - bestPlan.pos.y);
         if (d < closestEnemyDist) closestEnemyDist = d;
       }
-      if (closestEnemyDist < 100 && chosenWeapon !== 'shotgun') {
+      if (closestEnemyDist < 100 && chosenWeapon !== 'shotgun' && hasAmmo('shotgun')) {
         chosenWeapon = 'shotgun';
       }
     }
@@ -179,19 +188,12 @@ export class WormAI {
     let walkDir = 0;
     if (Math.abs(dx) > 15) walkDir = dx > 0 ? 1 : -1;
 
-    // --- Walk ticks by difficulty ---
-    let walkTicks = 0;
-    if (difficulty !== 'easy') {
-      const dist = Math.abs(dx);
-      walkTicks = dist > 30 ? 18 : dist > 10 ? 8 : 0;
-    }
-
     return {
       targetAngle: finalAngle,
       targetPower: Math.min(1.0, Math.max(0.15, bestPlan.shot.power)),
       weaponId: chosenWeapon,
       walkDir,
-      walkTicks
+      targetX: bestPlan.pos.x
     };
   }
 
@@ -478,13 +480,15 @@ export class WormAI {
     originX: number, originY: number,
     aiWorm: Worm, enemies: Worm[], allies: Worm[],
     terrain: TerrainManager, mapObjects: MapObject[],
-    windX: number, w: WeightVector, numAngles: number
+    windX: number, w: WeightVector, numAngles: number,
+    hasAmmo: (wid: WeaponId) => boolean
   ): ShotResult | null {
     const weaponsToTry: WeaponId[] = ['bazooka', 'grenade', 'cluster', 'acid_bomb'];
     let best: ShotResult | null = null;
     let bestScore = -Infinity;
 
     for (const wid of weaponsToTry) {
+      if (!hasAmmo(wid)) continue;
       const shots = this.simulateWeapon(
         originX, originY, wid, enemies, allies, terrain, mapObjects, windX, numAngles
       );
