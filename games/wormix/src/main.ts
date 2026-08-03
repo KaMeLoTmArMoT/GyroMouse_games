@@ -17,6 +17,7 @@ import type {
 	TurnPhase,
 	WeaponId,
 } from "./types";
+import { PROJECTILE_MAX_SPEED } from "./types";
 import { HUD, WEAPON_LIST } from "./ui/hud";
 import { MapManager } from "./ui/mapManager";
 import { MenuModal } from "./ui/menuModal";
@@ -422,6 +423,7 @@ export class WormixGame {
 				if (activeWorm && (activeWorm.team === "player" || isPvP)) {
 					if (this.phase === "MOVE") {
 						this.phase = "WEAPON_SELECT";
+						this.ensureActiveWeaponHasAmmo();
 						this.audioManager.playTone(440, 0.05, "sine");
 					} else if (this.phase === "WEAPON_SELECT") {
 						this.phase = "AIM_FIRE";
@@ -490,6 +492,7 @@ export class WormixGame {
 
 			if (this.phase === "MOVE") {
 				this.phase = "WEAPON_SELECT";
+				this.ensureActiveWeaponHasAmmo();
 			} else if (this.phase === "WEAPON_SELECT") {
 				this.phase = "AIM_FIRE";
 			} else if (this.phase === "AIM_FIRE") {
@@ -528,6 +531,22 @@ export class WormixGame {
 		});
 	}
 
+	/**
+	 * Ensure activeWeaponIndex points at a weapon the active worm's team still has
+	 * ammo for (bazooka is always infinite). Keeps the current selection if valid,
+	 * otherwise falls back to bazooka.
+	 */
+	private ensureActiveWeaponHasAmmo(): void {
+		const team = (this.getActiveWorm()?.team ?? "player") as "player" | "ai";
+		const ammo = this.teamAmmo[team];
+		const hasAmmo = (wid: string) =>
+			wid === "bazooka" || (ammo[wid as keyof TeamAmmo] ?? 0) > 0;
+
+		if (hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id)) return;
+
+		this.activeWeaponIndex = WEAPON_LIST.findIndex((w) => w.id === "bazooka");
+	}
+
 	private fireActiveWeapon(): void {
 		this.isCharging = false;
 		const activeWorm = this.getActiveWorm();
@@ -538,12 +557,19 @@ export class WormixGame {
 		const teamAmmo = this.teamAmmo[team];
 		const ammoCount = teamAmmo[weapon.id];
 
-		// Guard: skip if no ammo (bazooka is always infinite — ammoCount is undefined)
-		if (ammoCount !== undefined && ammoCount <= 0) return;
+		// Guard: no ammo for selected weapon — drop back to weapon select so the
+		// player can pick another (bazooka is always infinite — ammoCount undefined)
+		if (ammoCount !== undefined && ammoCount <= 0) {
+			this.ensureActiveWeaponHasAmmo();
+			this.phase = "WEAPON_SELECT";
+			this.audioManager.playTone(220, 0.1, "square");
+			return;
+		}
 
 		const tip = activeWorm.getCannonTip();
 		const rad = (activeWorm.aimAngle * Math.PI) / 180;
-		const launchSpeed = Math.max(0.15, this.chargePower) * 22.0;
+		const launchSpeed =
+			Math.max(0.15, this.chargePower) * PROJECTILE_MAX_SPEED[weapon.id];
 
 		this.effects.spawnMuzzleFlash(tip.x, tip.y, rad);
 

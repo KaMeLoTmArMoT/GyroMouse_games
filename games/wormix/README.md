@@ -106,7 +106,7 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * 💥 **Cluster Bomb**: Splits into 5 mini-bombs on impact. **×2 ammo**.
    * 🧪 **Acid Bomb**: Small explosion + large corrosive acid pool that melts terrain. **×2 ammo**.
    * ⏳ **Sand Bomb**: Generates a new sand dune mound on impact. **×3 ammo**.
-   * 🔨 **Drill Missile**: Wind-affected, bores through terrain for up to ~1.5s (timer pauses in air, resumes on next contact) before exploding. **×2 ammo**.
+   * 🔨 **Drill Missile**: Wind-affected, bores through terrain for up to ~0.5s (timer pauses in air, resumes on next contact) before exploding. **×2 ammo**.
    * 💣 **Mortar**: Wind-affected airburst on fuse timer, rains shrapnel fragments downward. **×2 ammo**.
    * 🧨 **Dynamite**: Short throw bounces, massive blast radius (65px), 4-second fuse. **×1 ammo**.
    * 🎯 **Rifle**: Perfectly straight line — no gravity, no wind, no terrain destruction. **∞ ammo**.

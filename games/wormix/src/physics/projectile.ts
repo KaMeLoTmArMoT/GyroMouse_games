@@ -1,7 +1,7 @@
 import type { MapObject } from "../entities/mapObject";
 import type { Worm } from "../entities/worm";
 import type { TerrainManager } from "../terrain/terrainManager";
-import { CELL_ACID, type WeaponId } from "../types";
+import { CELL_ACID, PROJECTILE_GRAVITY, type WeaponId } from "../types";
 
 export class Projectile {
 	public weaponId: WeaponId;
@@ -23,7 +23,7 @@ export class Projectile {
 	public prevX: number = 0;
 	public prevY: number = 0;
 	private drillEngaged: boolean = false;
-	private static readonly MAX_DRILL_FRAMES: number = 45; // ~1.5 seconds
+	private static readonly MAX_DRILL_FRAMES: number = 15; // ~0.5 seconds
 
 	// Mortar-specific state
 	public mortarFragments: boolean = false;
@@ -45,6 +45,12 @@ export class Projectile {
 		this.vy = vy;
 		this.teamId = teamId;
 		this.isClusterChild = isClusterChild;
+
+		if (weaponId === "drill" || weaponId === "bazooka") {
+			console.log(
+				`[proj] ${weaponId} spawn @ ${x.toFixed(1)},${y.toFixed(1)} v=${vx.toFixed(1)},${vy.toFixed(1)}`,
+			);
+		}
 
 		if (
 			weaponId === "grenade" ||
@@ -89,7 +95,7 @@ export class Projectile {
 
 		// Apply Gravity — NOT for rifle (straight line)
 		if (this.weaponId !== "rifle") {
-			this.vy += 0.45;
+			this.vy += PROJECTILE_GRAVITY[this.weaponId];
 		}
 
 		// Position Step
@@ -176,6 +182,11 @@ export class Projectile {
 				this.vx *= 0.7;
 			} else if (this.weaponId === "drill") {
 				// Begin/continue boring — carving & drill-time budget handled after terrain collision
+				if (!this.drillPenetrated) {
+					console.log(
+						`[drill] engage @ ${this.x.toFixed(1)},${this.y.toFixed(1)} frame ${this.age}`,
+					);
+				}
 				this.drillPenetrated = true;
 				this.drillEngaged = true;
 			} else if (this.weaponId === "rifle") {
@@ -194,7 +205,15 @@ export class Projectile {
 		if (this.weaponId === "drill" && this.drillEngaged) {
 			this.drillTime++;
 			this.carveDrillTunnel(terrain, this.prevX, this.prevY);
+			if (this.drillTime % 5 === 0) {
+				console.log(
+					`[drill] boring ${this.drillTime}/${Projectile.MAX_DRILL_FRAMES} @ ${this.x.toFixed(1)},${this.y.toFixed(1)}`,
+				);
+			}
 			if (this.drillTime >= Projectile.MAX_DRILL_FRAMES) {
+				console.log(
+					`[drill] explode (budget) @ ${this.x.toFixed(1)},${this.y.toFixed(1)}`,
+				);
 				this.triggerExplosion(terrain, worms, mapObjects, onExplode);
 				return;
 			}
@@ -206,6 +225,11 @@ export class Projectile {
 			this.x < -100 ||
 			this.x > terrain.width + 100
 		) {
+			if (this.weaponId === "drill" || this.weaponId === "bazooka") {
+				console.log(
+					`[proj] ${this.weaponId} expire @ ${this.x.toFixed(1)},${this.y.toFixed(1)}`,
+				);
+			}
 			this.isExpired = true;
 		}
 	}

@@ -1,5 +1,12 @@
 import type { Worm } from "../entities/worm";
-import type { TeamAmmo, TurnPhase, WeaponInfo } from "../types";
+import {
+	PROJECTILE_GRAVITY,
+	PROJECTILE_MAX_SPEED,
+	type TeamAmmo,
+	type TurnPhase,
+	type WeaponId,
+	type WeaponInfo,
+} from "../types";
 
 export const WEAPON_LIST: WeaponInfo[] = [
 	{
@@ -113,9 +120,8 @@ export class HUD {
 		if (activeWorm?.isAlive && (phase === "AIM_FIRE" || phase === "MOVE")) {
 			const powerToDraw = isCharging ? chargePower : 0.6;
 			const wid = WEAPON_LIST[activeWeaponIndex].id;
-			const hasGravity = wid !== "rifle";
 			const arcWind = WEAPON_LIST[activeWeaponIndex].affectedByWind ? windX : 0;
-			this.drawTrajectoryArc(ctx, activeWorm, powerToDraw, arcWind, hasGravity);
+			this.drawTrajectoryArc(ctx, activeWorm, powerToDraw, arcWind, wid);
 		}
 
 		// 4. Power Charge Meter (When holding Space)
@@ -255,11 +261,11 @@ export class HUD {
 		worm: Worm,
 		power: number,
 		windX: number,
-		hasGravity: boolean = true,
+		weaponId: WeaponId,
 	): void {
 		const tip = worm.getCannonTip();
 		const rad = (worm.aimAngle * Math.PI) / 180;
-		const speed = power * 22.0;
+		const speed = power * PROJECTILE_MAX_SPEED[weaponId];
 
 		let vx = Math.cos(rad) * speed;
 		let vy = Math.sin(rad) * speed;
@@ -274,7 +280,7 @@ export class HUD {
 
 		for (let step = 0; step < 25; step++) {
 			vx += windX * 0.05;
-			if (hasGravity) vy += 0.45;
+			if (weaponId !== "rifle") vy += PROJECTILE_GRAVITY[weaponId];
 			px += vx;
 			py += vy;
 			ctx.lineTo(px, py);

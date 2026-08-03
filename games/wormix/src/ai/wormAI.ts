@@ -1,12 +1,14 @@
 import type { MapObject } from "../entities/mapObject";
 import type { Worm } from "../entities/worm";
 import type { TerrainManager } from "../terrain/terrainManager";
-import type {
-	AIDifficulty,
-	AIPersonality,
-	TeamAmmo,
-	WeaponId,
-	WeightVector,
+import {
+	type AIDifficulty,
+	type AIPersonality,
+	PROJECTILE_GRAVITY,
+	PROJECTILE_MAX_SPEED,
+	type TeamAmmo,
+	type WeaponId,
+	type WeightVector,
 } from "../types";
 
 export interface AITurnPlan {
@@ -438,13 +440,13 @@ export class WormAI {
 		mapObjects: MapObject[],
 	): ShotResult {
 		const rad = (angleDeg * Math.PI) / 180;
-		const maxSpeed = 22.0;
+		const maxSpeed = PROJECTILE_MAX_SPEED[weaponId];
 		const speed = power * maxSpeed;
 		let vx = Math.cos(rad) * speed;
 		let vy = Math.sin(rad) * speed;
 		let x = originX + Math.cos(rad) * 20; // barrel tip offset
 		let y = originY + Math.sin(rad) * 20;
-		const gravity = 0.45;
+		const gravity = PROJECTILE_GRAVITY[weaponId];
 		const isBouncy =
 			weaponId === "grenade" ||
 			weaponId === "cluster" ||
@@ -605,9 +607,12 @@ export class WormAI {
 				targetDist * Math.sin(2 * rad) - 2 * dy * Math.cos(rad) * Math.cos(rad);
 			if (denom > 0) {
 				const requiredSpeed = Math.sqrt(
-					(0.45 * targetDist * targetDist) / denom,
+					(PROJECTILE_GRAVITY[weaponId] * targetDist * targetDist) / denom,
 				);
-				bestPower = Math.min(1.0, Math.max(0.15, requiredSpeed / 22.0));
+				bestPower = Math.min(
+					1.0,
+					Math.max(0.15, requiredSpeed / PROJECTILE_MAX_SPEED[weaponId]),
+				);
 			}
 		}
 

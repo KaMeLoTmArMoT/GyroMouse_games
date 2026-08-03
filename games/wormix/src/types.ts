@@ -43,6 +43,40 @@ export interface WeaponInfo {
 	affectedByWind: boolean;
 }
 
+/**
+ * Launch speed multiplier (max charge power) per weapon.
+ * Bazooka & Drill are tuned slower for controlled, flatter arcs.
+ */
+export const PROJECTILE_MAX_SPEED: Record<WeaponId, number> = {
+	bazooka: 18,
+	grenade: 22,
+	cluster: 22,
+	acid_bomb: 22,
+	sand_bomb: 22,
+	drill: 18,
+	mortar: 22,
+	dynamite: 22,
+	rifle: 22,
+	shotgun: 22,
+};
+
+/**
+ * Gravity (drop) per weapon. Bazooka & Drill drop less for a flatter arc.
+ * Rifle skips gravity entirely.
+ */
+export const PROJECTILE_GRAVITY: Record<WeaponId, number> = {
+	bazooka: 0.3,
+	grenade: 0.45,
+	cluster: 0.45,
+	acid_bomb: 0.45,
+	sand_bomb: 0.45,
+	drill: 0.3,
+	mortar: 0.45,
+	dynamite: 0.45,
+	rifle: 0.45,
+	shotgun: 0.45,
+};
+
 export type AIDifficulty = "easy" | "normal" | "hard";
 
 export interface Vector2D {
