@@ -10,6 +10,10 @@ export type TurnPhase =
 	| "TURN_RESOLVE"
 	| "GAME_OVER";
 
+/** Fixed logical world size for matches — independent of the browser window size. */
+export const WORLD_WIDTH = 1600;
+export const WORLD_HEIGHT = 900;
+
 /** Per-team weapon ammo stock. Bazooka is always infinite (absent from map). */
 export type TeamAmmo = Partial<Record<WeaponId, number>>;
 

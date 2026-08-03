@@ -14,6 +14,7 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    * **Step 3 — Aim & Fire (`AIM_FIRE`)**: `W` / `S` or `↑` / `↓` (or Gyro Pitch tilt) to adjust aim angle. **Hold `Space`** to charge launch power meter → **Release `Space`** to FIRE!
    * **Step 4 — Reposition (`REPOSITION`)**: After firing, you have **3 seconds** to move before the turn ends. Use `A` / `D` / `W` to take cover or reposition. No weapon switching during this phase.
    * **Re-Center Calibration**: `KeyC` (letter C).
+   * **Camera Zoom & Focus**: `+` / `=` to zoom in, `-` to zoom out, `F` to focus on the currently active worm. The camera auto-follows the active worm (or the flying projectile during flight). The map has a fixed world size, so resizing the window (e.g. F12 / devtools) never resets the terrain.
    * **Settings Overlay**: `ESC` or floating gear icon `⚙️`.
 
 2. **PC Mode** (Mouse + Keyboard):

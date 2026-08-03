@@ -46,12 +46,6 @@ export class Projectile {
 		this.teamId = teamId;
 		this.isClusterChild = isClusterChild;
 
-		if (weaponId === "drill" || weaponId === "bazooka") {
-			console.log(
-				`[proj] ${weaponId} spawn @ ${x.toFixed(1)},${y.toFixed(1)} v=${vx.toFixed(1)},${vy.toFixed(1)}`,
-			);
-		}
-
 		if (
 			weaponId === "grenade" ||
 			weaponId === "cluster" ||
@@ -182,11 +176,6 @@ export class Projectile {
 				this.vx *= 0.7;
 			} else if (this.weaponId === "drill") {
 				// Begin/continue boring — carving & drill-time budget handled after terrain collision
-				if (!this.drillPenetrated) {
-					console.log(
-						`[drill] engage @ ${this.x.toFixed(1)},${this.y.toFixed(1)} frame ${this.age}`,
-					);
-				}
 				this.drillPenetrated = true;
 				this.drillEngaged = true;
 			} else if (this.weaponId === "rifle") {
@@ -205,15 +194,7 @@ export class Projectile {
 		if (this.weaponId === "drill" && this.drillEngaged) {
 			this.drillTime++;
 			this.carveDrillTunnel(terrain, this.prevX, this.prevY);
-			if (this.drillTime % 5 === 0) {
-				console.log(
-					`[drill] boring ${this.drillTime}/${Projectile.MAX_DRILL_FRAMES} @ ${this.x.toFixed(1)},${this.y.toFixed(1)}`,
-				);
-			}
 			if (this.drillTime >= Projectile.MAX_DRILL_FRAMES) {
-				console.log(
-					`[drill] explode (budget) @ ${this.x.toFixed(1)},${this.y.toFixed(1)}`,
-				);
 				this.triggerExplosion(terrain, worms, mapObjects, onExplode);
 				return;
 			}
@@ -225,11 +206,6 @@ export class Projectile {
 			this.x < -100 ||
 			this.x > terrain.width + 100
 		) {
-			if (this.weaponId === "drill" || this.weaponId === "bazooka") {
-				console.log(
-					`[proj] ${this.weaponId} expire @ ${this.x.toFixed(1)},${this.y.toFixed(1)}`,
-				);
-			}
 			this.isExpired = true;
 		}
 	}

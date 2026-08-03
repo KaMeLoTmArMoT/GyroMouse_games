@@ -116,15 +116,7 @@ export class HUD {
 			repositionTimer,
 		);
 
-		// 3. Trajectory Sighting Arc (When Aiming or Charging)
-		if (activeWorm?.isAlive && (phase === "AIM_FIRE" || phase === "MOVE")) {
-			const powerToDraw = isCharging ? chargePower : 0.6;
-			const wid = WEAPON_LIST[activeWeaponIndex].id;
-			const arcWind = WEAPON_LIST[activeWeaponIndex].affectedByWind ? windX : 0;
-			this.drawTrajectoryArc(ctx, activeWorm, powerToDraw, arcWind, wid);
-		}
-
-		// 4. Power Charge Meter (When holding Space)
+		// 3. Power Charge Meter (When holding Space)
 		if (isCharging && activeWorm) {
 			this.drawPowerMeter(ctx, width, height, chargePower);
 		}
@@ -256,7 +248,8 @@ export class HUD {
 		ctx.fillText(hintText, width / 2, 98);
 	}
 
-	private drawTrajectoryArc(
+	/** Draw the trajectory sighting arc in world space (call under the camera transform). */
+	public drawTrajectoryArc(
 		ctx: CanvasRenderingContext2D,
 		worm: Worm,
 		power: number,

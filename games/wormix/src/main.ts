@@ -17,7 +17,7 @@ import type {
 	TurnPhase,
 	WeaponId,
 } from "./types";
-import { PROJECTILE_MAX_SPEED } from "./types";
+import { PROJECTILE_MAX_SPEED, WORLD_HEIGHT, WORLD_WIDTH } from "./types";
 import { HUD, WEAPON_LIST } from "./ui/hud";
 import { MapManager } from "./ui/mapManager";
 import { MenuModal } from "./ui/menuModal";
@@ -62,6 +62,14 @@ export class WormixGame {
 	public chargePower: number = 0.0; // 0 to 1.0
 	public chargeSpeed: number = 0.025; // Speed per tick (30fps)
 
+	// Camera (static world + zoom). camX/camY = world coordinate at screen center.
+	private camScale: number = 1;
+	private camX: number = WORLD_WIDTH / 2;
+	private camY: number = WORLD_HEIGHT / 2;
+	private readonly MIN_CAM_SCALE: number = 0.3;
+	private readonly MAX_CAM_SCALE: number = 2.5;
+	private readonly ZOOM_STEP: number = 1.2;
+
 	// AI Turn State
 	private aiPlan: AITurnPlan | null = null;
 	private aiPersonality: AIPersonality = "default";
@@ -90,7 +98,7 @@ export class WormixGame {
 		this.audioManager = new SharedAudioManager();
 		this.hud = new HUD();
 		this.effects = new EffectSystem();
-		this.terrain = new TerrainManager(window.innerWidth, window.innerHeight);
+		this.terrain = new TerrainManager(WORLD_WIDTH, WORLD_HEIGHT);
 
 		// Initialize Settings Overlay with custom Game Modes & Map Editor actions
 		this.settingsOverlay = new SettingsOverlay({
@@ -141,9 +149,11 @@ export class WormixGame {
 	}
 
 	private resizeCanvas(): void {
+		// Only the viewport canvas resizes — the world/terrain stays static.
+		// Never regenerate terrain here, or every resize would wipe explosion
+		// holes, shift the land and teleport worms (F12/open-devtools bug).
 		this.canvas.width = window.innerWidth;
 		this.canvas.height = window.innerHeight;
-		this.terrain.resize(this.canvas.width, this.canvas.height);
 	}
 
 	private returnToEditorBtn: HTMLElement | null = null;
@@ -204,11 +214,12 @@ export class WormixGame {
 		// Show Lobby button during all active matches
 		this.showLobbyBtn();
 
-		// 1. Generate or Load Terrain
+		// 1. Generate or Load Terrain (fixed world size, independent of the window)
 		if (mapData?.terrainHeights && mapData.terrainHeights.length > 0) {
-			this.terrain.width = mapData.width || this.canvas.width;
-			this.terrain.height = mapData.height || this.canvas.height;
-			this.terrain.waterY = mapData.waterY || this.canvas.height - 40;
+			const mw = mapData.width || WORLD_WIDTH;
+			const mh = mapData.height || WORLD_HEIGHT;
+			this.terrain.resize(mw, mh);
+			this.terrain.waterY = mapData.waterY || mh - 40;
 			this.terrain.buildTerrainFromHeights(
 				mapData.terrainHeights,
 				mapData.waterY,
@@ -216,8 +227,22 @@ export class WormixGame {
 				mapData.gridData,
 			);
 		} else {
-			this.terrain.resize(this.canvas.width, this.canvas.height);
+			this.terrain.resize(WORLD_WIDTH, WORLD_HEIGHT);
 		}
+
+		// Reset camera to fit the freshly generated map
+		this.camScale = Math.max(
+			this.MIN_CAM_SCALE,
+			Math.min(
+				this.MAX_CAM_SCALE,
+				Math.min(
+					this.canvas.width / this.terrain.width,
+					this.canvas.height / this.terrain.height,
+				),
+			),
+		);
+		this.camX = this.terrain.width / 2;
+		this.camY = this.terrain.height / 2;
 
 		// 2. Initialize Worm Teams based on LobbyConfig
 		this.worms = [];
@@ -226,7 +251,7 @@ export class WormixGame {
 
 		for (let i = 0; i < teamSize; i++) {
 			const redX =
-				mapData?.spawnPoints[i]?.x || this.canvas.width * (0.15 + i * 0.12);
+				mapData?.spawnPoints[i]?.x || this.terrain.width * (0.15 + i * 0.12);
 			const redY =
 				mapData?.spawnPoints[i]?.y ?? this.terrain.getSurfaceY(redX) - 12;
 			const redWorm = new Worm(`p_${i}`, `Red #${i + 1}`, "player", redX, redY);
@@ -237,7 +262,8 @@ export class WormixGame {
 
 		for (let i = 0; i < teamSize; i++) {
 			const blueX =
-				mapData?.spawnPoints[i + 2]?.x || this.canvas.width * (0.65 + i * 0.12);
+				mapData?.spawnPoints[i + 2]?.x ||
+				this.terrain.width * (0.65 + i * 0.12);
 			const blueY =
 				mapData?.spawnPoints[i + 2]?.y ?? this.terrain.getSurfaceY(blueX) - 12;
 			const blueWorm = new Worm(
@@ -261,10 +287,10 @@ export class WormixGame {
 		} else {
 			// Default Random Objects
 			const objSpawns = [
-				{ type: "barrel" as const, x: this.canvas.width * 0.3 },
-				{ type: "barrel" as const, x: this.canvas.width * 0.7 },
-				{ type: "landmine" as const, x: this.canvas.width * 0.5 },
-				{ type: "health_crate" as const, x: this.canvas.width * 0.45 },
+				{ type: "barrel" as const, x: this.terrain.width * 0.3 },
+				{ type: "barrel" as const, x: this.terrain.width * 0.7 },
+				{ type: "landmine" as const, x: this.terrain.width * 0.5 },
+				{ type: "health_crate" as const, x: this.terrain.width * 0.45 },
 			];
 			objSpawns.forEach((s) => {
 				this.mapObjects.push(
@@ -416,6 +442,32 @@ export class WormixGame {
 
 			if (this.phase === "MENU" || this.phase === "EDITOR") return;
 
+			// Camera zoom (in/out) — view only, not steering
+			if (e.code === "Equal" || e.code === "NumpadAdd") {
+				this.camScale = Math.min(
+					this.MAX_CAM_SCALE,
+					this.camScale * this.ZOOM_STEP,
+				);
+				return;
+			}
+			if (e.code === "Minus" || e.code === "NumpadSubtract") {
+				this.camScale = Math.max(
+					this.MIN_CAM_SCALE,
+					this.camScale / this.ZOOM_STEP,
+				);
+				return;
+			}
+
+			// Focus camera on the currently active worm (F key)
+			if (e.code === "KeyF") {
+				const focusWorm = this.getActiveWorm();
+				if (focusWorm) {
+					this.camX = focusWorm.x;
+					this.camY = focusWorm.y - 30;
+				}
+				return;
+			}
+
 			// 3-Step Turn Flow on Space Bar Press / Release
 			if (e.code === "Space" && !e.repeat) {
 				const activeWorm = this.getActiveWorm();
@@ -524,8 +576,14 @@ export class WormixGame {
 			const mouseX = e.clientX - rect.left;
 			const mouseY = e.clientY - rect.top;
 
-			const dx = mouseX - activeWorm.x;
-			const dy = mouseY - activeWorm.y;
+			// Convert screen -> world (camera zoom + pan)
+			const worldX =
+				(mouseX - this.canvas.width / 2) / this.camScale + this.camX;
+			const worldY =
+				(mouseY - this.canvas.height / 2) / this.camScale + this.camY;
+
+			const dx = worldX - activeWorm.x;
+			const dy = worldY - activeWorm.y;
 			activeWorm.aimAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
 			activeWorm.facingRight = dx >= 0;
 		});
@@ -662,6 +720,33 @@ export class WormixGame {
 
 	private getActiveWorm(): Worm | null {
 		return this.worms[this.activeWormIndex] || null;
+	}
+
+	/**
+	 * Smoothly keep the camera centered on the active worm (or the live projectile
+	 * while one is flying) so gameplay stays in view regardless of zoom.
+	 */
+	private updateCamera(): void {
+		let targetX: number | null = null;
+		let targetY: number | null = null;
+
+		if (this.phase === "PROJECTILE_FLIGHT" && this.projectiles.length > 0) {
+			const p = this.projectiles[0];
+			targetX = p.x;
+			targetY = p.y;
+		} else {
+			const focusWorm = this.getActiveWorm();
+			if (focusWorm) {
+				targetX = focusWorm.x;
+				targetY = focusWorm.y - 30;
+			}
+		}
+
+		if (targetX === null || targetY === null) return;
+
+		const k = 0.15;
+		this.camX += (targetX - this.camX) * k;
+		this.camY += (targetY - this.camY) * k;
 	}
 
 	private gameLoop(timestamp: number): void {
@@ -996,7 +1081,23 @@ export class WormixGame {
 	}
 
 	private render(): void {
+		this.updateCamera();
+
+		// Screen space: clear + fill background
+		this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+		this.ctx.fillStyle = "#0f172a";
+		this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+		// World space: apply camera zoom + pan so all game entities keep world coords
+		this.ctx.setTransform(
+			this.camScale,
+			0,
+			0,
+			this.camScale,
+			this.canvas.width / 2 - this.camX * this.camScale,
+			this.canvas.height / 2 - this.camY * this.camScale,
+		);
 
 		// Render Terrain, Water, Particles, Portals
 		this.terrain.draw(this.ctx);
@@ -1013,6 +1114,28 @@ export class WormixGame {
 
 		// Render Visual Effect Particles (trails, flashes, smoke)
 		this.effects.draw(this.ctx);
+
+		// Trajectory sighting arc (world space — matches real flight path)
+		if (
+			activeWorm?.isAlive &&
+			(this.phase === "AIM_FIRE" || this.phase === "MOVE")
+		) {
+			const wid = WEAPON_LIST[this.activeWeaponIndex].id;
+			const powerToDraw = this.isCharging ? this.chargePower : 0.6;
+			const arcWind = WEAPON_LIST[this.activeWeaponIndex].affectedByWind
+				? this.windX
+				: 0;
+			this.hud.drawTrajectoryArc(
+				this.ctx,
+				activeWorm,
+				powerToDraw,
+				arcWind,
+				wid,
+			);
+		}
+
+		// Back to screen space for UI overlay
+		this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
 		// Calculate Team Total HPs
 		const playerHp = this.worms
