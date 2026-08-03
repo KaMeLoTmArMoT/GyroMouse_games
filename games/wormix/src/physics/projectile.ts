@@ -19,6 +19,11 @@ export class Projectile {
 
 	// Drill-specific state
 	public drillPenetrated: boolean = false;
+	public drillTime: number = 0; // frames spent actively boring (30fps)
+	public prevX: number = 0;
+	public prevY: number = 0;
+	private drillEngaged: boolean = false;
+	private static readonly MAX_DRILL_FRAMES: number = 45; // ~1.5 seconds
 
 	// Mortar-specific state
 	public mortarFragments: boolean = false;
@@ -68,6 +73,9 @@ export class Projectile {
 	): void {
 		if (this.isExpired) return;
 		this.age++;
+		this.drillEngaged = false;
+		this.prevX = this.x;
+		this.prevY = this.y;
 
 		// Apply Wind Force (bazooka, cluster, drill, mortar only)
 		if (
@@ -167,42 +175,26 @@ export class Projectile {
 				this.vy = -this.vy * this.bounciness;
 				this.vx *= 0.7;
 			} else if (this.weaponId === "drill") {
-				if (!this.drillPenetrated) {
-					// First terrain hit: penetrate through ~30px, mark as used
-					this.drillPenetrated = true;
-					// Destroy a narrow tunnel through terrain (6px wide, 30px deep in movement direction)
-					const angle = Math.atan2(this.vy, this.vx);
-					const tunnelLen = 30;
-					const tunnelWidth = 6;
-					for (let d = 0; d < tunnelLen; d += 3) {
-						const px = this.x + Math.cos(angle) * d;
-						const py = this.y + Math.sin(angle) * d;
-						const gx = Math.floor(px / terrain.cellScale);
-						const gy = Math.floor(py / terrain.cellScale);
-						// Clear a narrow band perpendicular to movement
-						for (
-							let w = -Math.ceil(tunnelWidth / terrain.cellScale);
-							w <= Math.ceil(tunnelWidth / terrain.cellScale);
-							w++
-						) {
-							const ngx = gx + Math.round(Math.cos(angle + Math.PI / 2) * w);
-							const ngy = gy + Math.round(Math.sin(angle + Math.PI / 2) * w);
-							terrain.setCell(ngx, ngy, 0); // CELL_AIR
-						}
-					}
-					terrain.rebuildSurfaceCache();
-					// Continue through — don't explode yet
-				} else {
-					// Second terrain hit: NOW explode
-					this.triggerExplosion(terrain, worms, mapObjects, onExplode);
-					return;
-				}
+				// Begin/continue boring — carving & drill-time budget handled after terrain collision
+				this.drillPenetrated = true;
+				this.drillEngaged = true;
 			} else if (this.weaponId === "rifle") {
 				// Rifle: small impact, no terrain destruction
 				this.triggerImpactDamage(terrain, worms, mapObjects, onExplode);
 				return;
 			} else {
 				// Standard impact detonation (bazooka, cluster child, sand bomb)
+				this.triggerExplosion(terrain, worms, mapObjects, onExplode);
+				return;
+			}
+		}
+
+		// Drill: bore through terrain while engaged, up to a max total drill duration.
+		// The timer persists across wall exits — it only accumulates while boring.
+		if (this.weaponId === "drill" && this.drillEngaged) {
+			this.drillTime++;
+			this.carveDrillTunnel(terrain, this.prevX, this.prevY);
+			if (this.drillTime >= Projectile.MAX_DRILL_FRAMES) {
 				this.triggerExplosion(terrain, worms, mapObjects, onExplode);
 				return;
 			}
@@ -216,6 +208,50 @@ export class Projectile {
 		) {
 			this.isExpired = true;
 		}
+	}
+
+	/**
+	 * Carve a clean, continuous bore through terrain along the path traveled this frame.
+	 * Clears every cell within a capsule (segment + radius) so consecutive frames leave a
+	 * smooth tunnel instead of scalloped tire-track ridges.
+	 */
+	private carveDrillTunnel(
+		terrain: TerrainManager,
+		fromX: number,
+		fromY: number,
+	): void {
+		const cellScale = terrain.cellScale;
+		const boreRadius = 7;
+		const lead = 14;
+		const angle = Math.atan2(this.y - fromY, this.x - fromX);
+		const endX = this.x + Math.cos(angle) * lead;
+		const endY = this.y + Math.sin(angle) * lead;
+
+		const minGX = Math.floor((Math.min(fromX, endX) - boreRadius) / cellScale);
+		const maxGX = Math.floor((Math.max(fromX, endX) + boreRadius) / cellScale);
+		const minGY = Math.floor((Math.min(fromY, endY) - boreRadius) / cellScale);
+		const maxGY = Math.floor((Math.max(fromY, endY) + boreRadius) / cellScale);
+
+		const segDX = endX - fromX;
+		const segDY = endY - fromY;
+		const segLenSq = segDX * segDX + segDY * segDY || 1;
+
+		for (let gy = minGY; gy <= maxGY; gy++) {
+			for (let gx = minGX; gx <= maxGX; gx++) {
+				const cx = (gx + 0.5) * cellScale;
+				const cy = (gy + 0.5) * cellScale;
+				const t = Math.max(
+					0,
+					Math.min(1, ((cx - fromX) * segDX + (cy - fromY) * segDY) / segLenSq),
+				);
+				const px = fromX + segDX * t;
+				const py = fromY + segDY * t;
+				if (Math.hypot(cx - px, cy - py) <= boreRadius) {
+					terrain.setCell(gx, gy, 0); // CELL_AIR
+				}
+			}
+		}
+		terrain.rebuildSurfaceCache();
 	}
 
 	/**

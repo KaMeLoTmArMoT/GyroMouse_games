@@ -41,7 +41,7 @@ export const WEAPON_LIST: WeaponInfo[] = [
 		id: "drill",
 		name: "Drill Missile",
 		icon: "🔨",
-		description: "Penetrates through terrain walls before exploding",
+		description: "Bores through terrain up to ~1.5s before exploding",
 		affectedByWind: true,
 	},
 	{
