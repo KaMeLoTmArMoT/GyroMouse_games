@@ -1,116 +1,116 @@
 export type TurnPhase =
-  | 'MENU'
-  | 'LOBBY'
-  | 'EDITOR'
-  | 'MOVE'
-  | 'WEAPON_SELECT'
-  | 'AIM_FIRE'
-  | 'PROJECTILE_FLIGHT'
-  | 'REPOSITION'
-  | 'TURN_RESOLVE'
-  | 'GAME_OVER';
+	| "MENU"
+	| "LOBBY"
+	| "EDITOR"
+	| "MOVE"
+	| "WEAPON_SELECT"
+	| "AIM_FIRE"
+	| "PROJECTILE_FLIGHT"
+	| "REPOSITION"
+	| "TURN_RESOLVE"
+	| "GAME_OVER";
 
 /** Per-team weapon ammo stock. Bazooka is always infinite (absent from map). */
 export type TeamAmmo = Partial<Record<WeaponId, number>>;
 
 export type MaterialType =
-  | 'bedrock'
-  | 'stone'
-  | 'dirt'
-  | 'grass'
-  | 'sand'
-  | 'water'
-  | 'acid';
+	| "bedrock"
+	| "stone"
+	| "dirt"
+	| "grass"
+	| "sand"
+	| "water"
+	| "acid";
 
 export type WeaponId =
-  | 'bazooka'
-  | 'grenade'
-  | 'cluster'
-  | 'acid_bomb'
-  | 'sand_bomb'
-  | 'drill'
-  | 'mortar'
-  | 'dynamite'
-  | 'rifle'
-  | 'shotgun';
+	| "bazooka"
+	| "grenade"
+	| "cluster"
+	| "acid_bomb"
+	| "sand_bomb"
+	| "drill"
+	| "mortar"
+	| "dynamite"
+	| "rifle"
+	| "shotgun";
 
 export interface WeaponInfo {
-  id: WeaponId;
-  name: string;
-  icon: string;
-  description: string;
-  fuseSelectable?: boolean;
-  affectedByWind: boolean;
+	id: WeaponId;
+	name: string;
+	icon: string;
+	description: string;
+	fuseSelectable?: boolean;
+	affectedByWind: boolean;
 }
 
-export type AIDifficulty = 'easy' | 'normal' | 'hard';
+export type AIDifficulty = "easy" | "normal" | "hard";
 
 export interface Vector2D {
-  x: number;
-  y: number;
+	x: number;
+	y: number;
 }
 
 export interface Portal {
-  id: 'orange' | 'blue';
-  x: number;
-  y: number;
-  normalX: number;
-  normalY: number;
-  radius: number;
+	id: "orange" | "blue";
+	x: number;
+	y: number;
+	normalX: number;
+	normalY: number;
+	radius: number;
 }
 
 export interface TerrainColumn {
-  grassY: number;
-  dirtY: number;
-  stoneY: number;
-  bedrockY: number;
-  sandY: number;
-  destruction: {
-    grass: number;
-    dirt: number;
-    stone: number;
-    sand: number;
-  };
+	grassY: number;
+	dirtY: number;
+	stoneY: number;
+	bedrockY: number;
+	sandY: number;
+	destruction: {
+		grass: number;
+		dirt: number;
+		stone: number;
+		sand: number;
+	};
 }
 
 export interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  color: string;
-  size: number;
-  isAcid?: boolean;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	life: number;
+	maxLife: number;
+	color: string;
+	size: number;
+	isAcid?: boolean;
 }
 
-export type MapObjectType = 'barrel' | 'landmine' | 'health_crate';
+export type MapObjectType = "barrel" | "landmine" | "health_crate";
 
 export interface MapObjectData {
-  id: string;
-  type: MapObjectType;
-  x: number;
-  y: number;
-  health?: number;
-  triggered?: boolean;
-  triggerTimer?: number;
+	id: string;
+	type: MapObjectType;
+	x: number;
+	y: number;
+	health?: number;
+	triggered?: boolean;
+	triggerTimer?: number;
 }
 
 export interface WaterParticle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	radius: number;
 }
 
 export interface WaterBody {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  waterLevel: number;
+	id: string;
+	x: number;
+	y: number;
+	width: number;
+	waterLevel: number;
 }
 
 export const CELL_AIR = 0;
@@ -124,43 +124,44 @@ export const CELL_ACID = 7;
 export const CELL_IRON = 8;
 
 export interface CustomMapData {
-  id: string;
-  name: string;
-  createdAt: number;
-  updatedAt?: number;
-  width: number;
-  height: number;
-  terrainHeights: number[];
-  terrainMaterials?: string[];
-  gridData?: number[];
-  spawnPoints: { x: number; y: number; team: 'player' | 'ai' }[];
-  mapObjects: MapObjectData[];
-  waterBodies: WaterBody[];
-  waterParticles?: { x: number; y: number }[];
-  waterY: number;
+	id: string;
+	name: string;
+	createdAt: number;
+	updatedAt?: number;
+	width: number;
+	height: number;
+	terrainHeights: number[];
+	terrainMaterials?: string[];
+	gridData?: number[];
+	spawnPoints: { x: number; y: number; team: "player" | "ai" }[];
+	mapObjects: MapObjectData[];
+	waterBodies: WaterBody[];
+	waterParticles?: { x: number; y: number }[];
+	waterY: number;
 }
 
-
-
-
-export type AIPersonality = 'aggressive' | 'sniper' | 'looter' | 'chaotic' | 'default';
+export type AIPersonality =
+	| "aggressive"
+	| "sniper"
+	| "looter"
+	| "chaotic"
+	| "default";
 
 export interface WeightVector {
-  attack: number;   // enemy damage weight
-  selfRisk: number; // self-damage avoidance
-  cover: number;    // cover quality at position
-  crates: number;   // health crate proximity
-  chain: number;    // barrel chain explosion bonus
+	attack: number; // enemy damage weight
+	selfRisk: number; // self-damage avoidance
+	cover: number; // cover quality at position
+	crates: number; // health crate proximity
+	chain: number; // barrel chain explosion bonus
 }
 
-export type GameMode = 'deathmatch' | 'rising_water' | 'fort_warfare';
+export type GameMode = "deathmatch" | "rising_water" | "fort_warfare";
 
 export interface LobbyConfig {
-  teamSize: number;
-  wormHealth: number;
-  gameMode: GameMode;
-  mapId: string;
-  aiDifficulty: AIDifficulty;
-  matchType: 'ai' | 'pvp';
+	teamSize: number;
+	wormHealth: number;
+	gameMode: GameMode;
+	mapId: string;
+	aiDifficulty: AIDifficulty;
+	matchType: "ai" | "pvp";
 }
-

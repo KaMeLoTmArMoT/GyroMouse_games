@@ -1,50 +1,50 @@
 /* Global GyroMouse Games Layout Tokens & Reserved UI Zones */
 :root {
-  --gm-top-spacing: 16px;
-  --gm-side-spacing: 20px;
-  --gm-gear-size: 44px;
-  --gm-hub-width: 100px;
+	--gm-top-spacing: 16px;
+	--gm-side-spacing: 20px;
+	--gm-gear-size: 44px;
+	--gm-hub-width: 100px;
 
-  /* Explicit reserved UI zones for top-left Hub and top-right Settings Gear button */
-  --gm-reserved-left: 120px;
-  --gm-reserved-right: 75px;
+	/* Explicit reserved UI zones for top-left Hub and top-right Settings Gear button */
+	--gm-reserved-left: 120px;
+	--gm-reserved-right: 75px;
 }
 
 /* Helper class for game HUD headers/containers to automatically avoid reserved zones */
 .gm-hud-container {
-  padding-left: var(--gm-reserved-left) !important;
-  padding-right: var(--gm-reserved-right) !important;
+	padding-left: var(--gm-reserved-left);
+	padding-right: var(--gm-reserved-right);
 }
 
 /* Standardized position for top-left Hub button across games */
 .gm-hub-btn {
-  position: fixed;
-  top: var(--gm-top-spacing);
-  left: var(--gm-side-spacing);
-  z-index: 99990;
-  height: var(--gm-gear-size);
-  padding: 0 16px;
-  border-radius: 22px;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.95rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  user-select: none;
+	position: fixed;
+	top: var(--gm-top-spacing);
+	left: var(--gm-side-spacing);
+	z-index: 99990;
+	height: var(--gm-gear-size);
+	padding: 0 16px;
+	border-radius: 22px;
+	background: rgba(15, 23, 42, 0.85);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	color: #fff;
+	font-weight: 700;
+	font-size: 0.95rem;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	text-decoration: none;
+	box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+	user-select: none;
 }
 
 .gm-hub-btn:hover {
-  background: rgba(56, 189, 248, 0.25);
-  border-color: #38bdf8;
-  color: #38bdf8;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.3);
+	background: rgba(56, 189, 248, 0.25);
+	border-color: #38bdf8;
+	color: #38bdf8;
+	transform: translateY(-2px);
+	box-shadow: 0 6px 20px rgba(56, 189, 248, 0.3);
 }

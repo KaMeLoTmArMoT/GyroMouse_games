@@ -1,121 +1,121 @@
-import { CustomMapData } from '../types';
-import { MapStorage } from '../editor/mapStorage';
+import { MapStorage } from "../editor/mapStorage";
+import type { CustomMapData } from "../types";
 
 export class MapManager {
-  private overlayEl: HTMLElement;
+	private overlayEl: HTMLElement;
 
-  private onEditMapCallback: (map: CustomMapData) => void;
-  private onCloseCallback: () => void;
+	private onEditMapCallback: (map: CustomMapData) => void;
+	private onCloseCallback: () => void;
 
-  constructor(onEditMap: (map: CustomMapData) => void, onClose: () => void) {
-    this.onEditMapCallback = onEditMap;
-    this.onCloseCallback = onClose;
+	constructor(onEditMap: (map: CustomMapData) => void, onClose: () => void) {
+		this.onEditMapCallback = onEditMap;
+		this.onCloseCallback = onClose;
 
-    this.overlayEl = document.createElement('div');
-    this.overlayEl.id = 'wormixMapManager';
-    this.overlayEl.className = 'wormix-map-manager-backdrop';
-  }
+		this.overlayEl = document.createElement("div");
+		this.overlayEl.id = "wormixMapManager";
+		this.overlayEl.className = "wormix-map-manager-backdrop";
+	}
 
-  public show(): void {
-    this.setupDOM();
-    this.overlayEl.style.display = 'flex';
-  }
+	public show(): void {
+		this.setupDOM();
+		this.overlayEl.style.display = "flex";
+	}
 
-  public hide(): void {
-    this.overlayEl.style.display = 'none';
-    if (this.overlayEl.parentNode) {
-      this.overlayEl.parentNode.removeChild(this.overlayEl);
-    }
-  }
+	public hide(): void {
+		this.overlayEl.style.display = "none";
+		if (this.overlayEl.parentNode) {
+			this.overlayEl.parentNode.removeChild(this.overlayEl);
+		}
+	}
 
-  private formatDate(ts: number): string {
-    const d = new Date(ts);
-    const month = d.toLocaleString('default', { month: 'short' });
-    const day = d.getDate();
-    const year = d.getFullYear();
-    const now = new Date();
-    if (d.toDateString() === now.toDateString()) {
-      return `Today ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-    }
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) {
-      return `Yesterday ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-    }
-    return `${month} ${day}, ${year}`;
-  }
+	private formatDate(ts: number): string {
+		const d = new Date(ts);
+		const month = d.toLocaleString("default", { month: "short" });
+		const day = d.getDate();
+		const year = d.getFullYear();
+		const now = new Date();
+		if (d.toDateString() === now.toDateString()) {
+			return `Today ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+		}
+		const yesterday = new Date(now);
+		yesterday.setDate(yesterday.getDate() - 1);
+		if (d.toDateString() === yesterday.toDateString()) {
+			return `Yesterday ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+		}
+		return `${month} ${day}, ${year}`;
+	}
 
-  private renderThumbnail(map: CustomMapData): string {
-    const thumbW = 220;
-    const thumbH = 90;
-    const canvas = document.createElement('canvas');
-    canvas.width = thumbW;
-    canvas.height = thumbH;
-    const ctx = canvas.getContext('2d')!;
+	private renderThumbnail(map: CustomMapData): string {
+		const thumbW = 220;
+		const thumbH = 90;
+		const canvas = document.createElement("canvas");
+		canvas.width = thumbW;
+		canvas.height = thumbH;
+		const ctx = canvas.getContext("2d")!;
 
-    // Dark background
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, thumbW, thumbH);
+		// Dark background
+		ctx.fillStyle = "#0f172a";
+		ctx.fillRect(0, 0, thumbW, thumbH);
 
-    const heights = map.terrainHeights;
-    if (!heights || heights.length === 0) return canvas.toDataURL();
+		const heights = map.terrainHeights;
+		if (!heights || heights.length === 0) return canvas.toDataURL();
 
-    const scaleX = thumbW / map.width;
-    const scaleY = thumbH / map.height;
-    const waterScreenY = map.waterY * scaleY;
+		const scaleX = thumbW / map.width;
+		const scaleY = thumbH / map.height;
+		const waterScreenY = map.waterY * scaleY;
 
-    // Water fill (below water level)
-    ctx.fillStyle = 'rgba(14, 116, 144, 0.4)';
-    ctx.fillRect(0, waterScreenY, thumbW, thumbH - waterScreenY);
+		// Water fill (below water level)
+		ctx.fillStyle = "rgba(14, 116, 144, 0.4)";
+		ctx.fillRect(0, waterScreenY, thumbW, thumbH - waterScreenY);
 
-    // Terrain silhouette fill
-    ctx.beginPath();
-    ctx.moveTo(0, thumbH);
-    for (let i = 0; i < heights.length; i++) {
-      const x = i * scaleX;
-      const y = heights[i] * scaleY;
-      ctx.lineTo(x, y);
-    }
-    ctx.lineTo(thumbW, thumbH);
-    ctx.closePath();
+		// Terrain silhouette fill
+		ctx.beginPath();
+		ctx.moveTo(0, thumbH);
+		for (let i = 0; i < heights.length; i++) {
+			const x = i * scaleX;
+			const y = heights[i] * scaleY;
+			ctx.lineTo(x, y);
+		}
+		ctx.lineTo(thumbW, thumbH);
+		ctx.closePath();
 
-    // Terrain gradient: green top, brown middle, gray bottom
-    const grad = ctx.createLinearGradient(0, 0, 0, thumbH);
-    grad.addColorStop(0, '#22c55e');
-    grad.addColorStop(0.35, '#15803d');
-    grad.addColorStop(0.5, '#78350f');
-    grad.addColorStop(0.75, '#64748b');
-    grad.addColorStop(1, '#334155');
-    ctx.fillStyle = grad;
-    ctx.fill();
+		// Terrain gradient: green top, brown middle, gray bottom
+		const grad = ctx.createLinearGradient(0, 0, 0, thumbH);
+		grad.addColorStop(0, "#22c55e");
+		grad.addColorStop(0.35, "#15803d");
+		grad.addColorStop(0.5, "#78350f");
+		grad.addColorStop(0.75, "#64748b");
+		grad.addColorStop(1, "#334155");
+		ctx.fillStyle = grad;
+		ctx.fill();
 
-    // Terrain top edge line
-    ctx.beginPath();
-    for (let i = 0; i < heights.length; i++) {
-      const x = i * scaleX;
-      const y = heights[i] * scaleY;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = 'rgba(34, 197, 94, 0.7)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+		// Terrain top edge line
+		ctx.beginPath();
+		for (let i = 0; i < heights.length; i++) {
+			const x = i * scaleX;
+			const y = heights[i] * scaleY;
+			if (i === 0) ctx.moveTo(x, y);
+			else ctx.lineTo(x, y);
+		}
+		ctx.strokeStyle = "rgba(34, 197, 94, 0.7)";
+		ctx.lineWidth = 1.5;
+		ctx.stroke();
 
-    // Spawn point dots
-    if (map.spawnPoints) {
-      map.spawnPoints.forEach((sp) => {
-        ctx.beginPath();
-        ctx.arc(sp.x * scaleX, sp.y * scaleY, 3, 0, Math.PI * 2);
-        ctx.fillStyle = sp.team === 'player' ? '#ef4444' : '#3b82f6';
-        ctx.fill();
-      });
-    }
+		// Spawn point dots
+		if (map.spawnPoints) {
+			map.spawnPoints.forEach((sp) => {
+				ctx.beginPath();
+				ctx.arc(sp.x * scaleX, sp.y * scaleY, 3, 0, Math.PI * 2);
+				ctx.fillStyle = sp.team === "player" ? "#ef4444" : "#3b82f6";
+				ctx.fill();
+			});
+		}
 
-    return canvas.toDataURL();
-  }
+		return canvas.toDataURL();
+	}
 
-  private setupDOM(): void {
-    this.overlayEl.innerHTML = `
+	private setupDOM(): void {
+		this.overlayEl.innerHTML = `
       <style>
         .wormix-map-manager-backdrop {
           position: fixed;
@@ -336,114 +336,146 @@ export class MapManager {
       </div>
     `;
 
-    document.body.appendChild(this.overlayEl);
+		document.body.appendChild(this.overlayEl);
 
-    // Close button
-    this.overlayEl.querySelector('#mm-close')?.addEventListener('click', () => {
-      this.hide();
-      this.onCloseCallback();
-    });
+		// Close button
+		this.overlayEl.querySelector("#mm-close")?.addEventListener("click", () => {
+			this.hide();
+			this.onCloseCallback();
+		});
 
-    // Click backdrop to close
-    this.overlayEl.addEventListener('click', (e) => {
-      if (e.target === this.overlayEl) {
-        this.hide();
-        this.onCloseCallback();
-      }
-    });
+		// Click backdrop to close
+		this.overlayEl.addEventListener("click", (e) => {
+			if (e.target === this.overlayEl) {
+				this.hide();
+				this.onCloseCallback();
+			}
+		});
 
-    // Import button
-    const fileInput = this.overlayEl.querySelector('#mm-file-input') as HTMLInputElement;
-    this.overlayEl.querySelector('#mm-import-btn')?.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => this.handleImport(e));
+		// Import button
+		const fileInput = this.overlayEl.querySelector(
+			"#mm-file-input",
+		) as HTMLInputElement;
+		this.overlayEl
+			.querySelector("#mm-import-btn")
+			?.addEventListener("click", () => fileInput.click());
+		fileInput.addEventListener("change", (e) => this.handleImport(e));
 
-    this.populateCards();
-  }
+		this.populateCards();
+	}
 
-  private populateCards(): void {
-    const customGrid = this.overlayEl.querySelector('#mm-custom-grid') as HTMLElement;
-    const presetGrid = this.overlayEl.querySelector('#mm-preset-grid') as HTMLElement;
-    if (!customGrid || !presetGrid) return;
+	private populateCards(): void {
+		const customGrid = this.overlayEl.querySelector(
+			"#mm-custom-grid",
+		) as HTMLElement;
+		const presetGrid = this.overlayEl.querySelector(
+			"#mm-preset-grid",
+		) as HTMLElement;
+		if (!customGrid || !presetGrid) return;
 
-    customGrid.innerHTML = '';
-    presetGrid.innerHTML = '';
+		customGrid.innerHTML = "";
+		presetGrid.innerHTML = "";
 
-    // "Create New" card
-    const createCard = document.createElement('div');
-    createCard.className = 'mm-map-card create-new';
-    createCard.innerHTML = `
+		// "Create New" card
+		const createCard = document.createElement("div");
+		createCard.className = "mm-map-card create-new";
+		createCard.innerHTML = `
       <div class="mm-create-icon">➕</div>
       <div class="mm-create-text">Create New Map</div>
     `;
-    createCard.addEventListener('click', () => {
-      this.hide();
-      this.onEditMapCallback({
-        id: `custom_${Date.now()}`,
-        name: 'New Custom Map',
-        createdAt: Date.now(),
-        width: window.innerWidth,
-        height: window.innerHeight,
-        waterY: window.innerHeight - 40,
-        terrainHeights: new Array(window.innerWidth).fill(window.innerHeight * 0.65),
-        spawnPoints: [
-          { x: window.innerWidth * 0.2, y: window.innerHeight * 0.65 - 14, team: 'player' },
-          { x: window.innerWidth * 0.35, y: window.innerHeight * 0.65 - 14, team: 'player' },
-          { x: window.innerWidth * 0.65, y: window.innerHeight * 0.65 - 14, team: 'ai' },
-          { x: window.innerWidth * 0.8, y: window.innerHeight * 0.65 - 14, team: 'ai' }
-        ],
-        mapObjects: [],
-        waterBodies: []
-      });
-    });
-    customGrid.appendChild(createCard);
+		createCard.addEventListener("click", () => {
+			this.hide();
+			this.onEditMapCallback({
+				id: `custom_${Date.now()}`,
+				name: "New Custom Map",
+				createdAt: Date.now(),
+				width: window.innerWidth,
+				height: window.innerHeight,
+				waterY: window.innerHeight - 40,
+				terrainHeights: new Array(window.innerWidth).fill(
+					window.innerHeight * 0.65,
+				),
+				spawnPoints: [
+					{
+						x: window.innerWidth * 0.2,
+						y: window.innerHeight * 0.65 - 14,
+						team: "player",
+					},
+					{
+						x: window.innerWidth * 0.35,
+						y: window.innerHeight * 0.65 - 14,
+						team: "player",
+					},
+					{
+						x: window.innerWidth * 0.65,
+						y: window.innerHeight * 0.65 - 14,
+						team: "ai",
+					},
+					{
+						x: window.innerWidth * 0.8,
+						y: window.innerHeight * 0.65 - 14,
+						team: "ai",
+					},
+				],
+				mapObjects: [],
+				waterBodies: [],
+			});
+		});
+		customGrid.appendChild(createCard);
 
-    // Custom saved maps
-    const savedMaps = MapStorage.getSavedMaps();
-    if (savedMaps.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'mm-empty-msg';
-      empty.textContent = 'No saved maps yet. Create one or import a .wormix.json file.';
-      empty.style.gridColumn = '1 / -1';
-      customGrid.appendChild(empty);
-    } else {
-      savedMaps.forEach((map) => {
-        customGrid.appendChild(this.createMapCard(map, false));
-      });
-    }
+		// Custom saved maps
+		const savedMaps = MapStorage.getSavedMaps();
+		if (savedMaps.length === 0) {
+			const empty = document.createElement("div");
+			empty.className = "mm-empty-msg";
+			empty.textContent =
+				"No saved maps yet. Create one or import a .wormix.json file.";
+			empty.style.gridColumn = "1 / -1";
+			customGrid.appendChild(empty);
+		} else {
+			savedMaps.forEach((map) => {
+				customGrid.appendChild(this.createMapCard(map, false));
+			});
+		}
 
-    // Preset maps
-    const presets = MapStorage.getPresetMaps(window.innerWidth, window.innerHeight);
-    presets.forEach((map) => {
-      presetGrid.appendChild(this.createMapCard(map, true));
-    });
-  }
+		// Preset maps
+		const presets = MapStorage.getPresetMaps(
+			window.innerWidth,
+			window.innerHeight,
+		);
+		presets.forEach((map) => {
+			presetGrid.appendChild(this.createMapCard(map, true));
+		});
+	}
 
-  private createMapCard(map: CustomMapData, isPreset: boolean): HTMLElement {
-    const card = document.createElement('div');
-    card.className = 'mm-map-card';
+	private createMapCard(map: CustomMapData, isPreset: boolean): HTMLElement {
+		const card = document.createElement("div");
+		card.className = "mm-map-card";
 
-    const thumbDataUrl = this.renderThumbnail(map);
-    const dateStr = this.formatDate(map.createdAt);
-    const updateStr = map.updatedAt ? ` · Edited ${this.formatDate(map.updatedAt)}` : '';
+		const thumbDataUrl = this.renderThumbnail(map);
+		const dateStr = this.formatDate(map.createdAt);
+		const updateStr = map.updatedAt
+			? ` · Edited ${this.formatDate(map.updatedAt)}`
+			: "";
 
-    let actionsHtml = '';
-    if (isPreset) {
-      actionsHtml = `
+		let actionsHtml = "";
+		if (isPreset) {
+			actionsHtml = `
         <button class="mm-action-btn edit" data-action="view">👁️ View</button>
         <button class="mm-action-btn clone" data-action="clone">📋 Clone as Custom</button>
       `;
-    } else {
-      actionsHtml = `
+		} else {
+			actionsHtml = `
         <button class="mm-action-btn edit" data-action="edit">✏️ Edit</button>
         <button class="mm-action-btn clone" data-action="clone">📋 Clone</button>
         <button class="mm-action-btn rename" data-action="rename">✏️ Rename</button>
         <button class="mm-action-btn export" data-action="export">💾 Export</button>
         <button class="mm-action-btn delete" data-action="delete">🗑️ Delete</button>
       `;
-    }
+		}
 
-    card.innerHTML = `
-      ${isPreset ? '<div class="mm-preset-badge">PRESET</div>' : ''}
+		card.innerHTML = `
+      ${isPreset ? '<div class="mm-preset-badge">PRESET</div>' : ""}
       <img class="mm-thumb" src="${thumbDataUrl}" alt="${map.name}" />
       <div class="mm-card-body">
         <div class="mm-card-name" title="${map.name}">${map.name}</div>
@@ -452,125 +484,132 @@ export class MapManager {
       </div>
     `;
 
-    // Bind action buttons
-    card.querySelectorAll('.mm-action-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const action = (btn as HTMLElement).dataset.action;
-        this.handleCardAction(action!, map, isPreset, card);
-      });
-    });
+		// Bind action buttons
+		card.querySelectorAll(".mm-action-btn").forEach((btn) => {
+			btn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				const action = (btn as HTMLElement).dataset.action;
+				this.handleCardAction(action!, map, isPreset, card);
+			});
+		});
 
-    return card;
-  }
+		return card;
+	}
 
-  private handleCardAction(action: string, map: CustomMapData, isPreset: boolean, card: HTMLElement): void {
-    switch (action) {
-      case 'edit':
-      case 'view': {
-        // If preset, clone first then edit the clone
-        if (isPreset) {
-          const cloned = this.cloneFromPreset(map);
-          if (cloned) {
-            this.hide();
-            this.onEditMapCallback(cloned);
-          }
-        } else {
-          this.hide();
-          this.onEditMapCallback(map);
-        }
-        break;
-      }
-      case 'clone': {
-        if (isPreset) {
-          // Clone preset into custom storage
-          const cloned = this.cloneFromPreset(map);
-          if (cloned) {
-            MapStorage.saveMap(cloned);
-            this.populateCards();
-          }
-        } else {
-          const cloned = MapStorage.cloneMap(map.id);
-          if (cloned) this.populateCards();
-        }
-        break;
-      }
-      case 'rename': {
-        const nameEl = card.querySelector('.mm-card-name');
-        if (!nameEl) return;
+	private handleCardAction(
+		action: string,
+		map: CustomMapData,
+		isPreset: boolean,
+		card: HTMLElement,
+	): void {
+		switch (action) {
+			case "edit":
+			case "view": {
+				// If preset, clone first then edit the clone
+				if (isPreset) {
+					const cloned = this.cloneFromPreset(map);
+					if (cloned) {
+						this.hide();
+						this.onEditMapCallback(cloned);
+					}
+				} else {
+					this.hide();
+					this.onEditMapCallback(map);
+				}
+				break;
+			}
+			case "clone": {
+				if (isPreset) {
+					// Clone preset into custom storage
+					const cloned = this.cloneFromPreset(map);
+					if (cloned) {
+						MapStorage.saveMap(cloned);
+						this.populateCards();
+					}
+				} else {
+					const cloned = MapStorage.cloneMap(map.id);
+					if (cloned) this.populateCards();
+				}
+				break;
+			}
+			case "rename": {
+				const nameEl = card.querySelector(".mm-card-name");
+				if (!nameEl) return;
 
-        const currentName = map.name;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'mm-card-name-input';
-        input.value = currentName;
-        nameEl.replaceWith(input);
-        input.focus();
-        input.select();
+				const currentName = map.name;
+				const input = document.createElement("input");
+				input.type = "text";
+				input.className = "mm-card-name-input";
+				input.value = currentName;
+				nameEl.replaceWith(input);
+				input.focus();
+				input.select();
 
-        const finalize = () => {
-          const newName = input.value.trim() || currentName;
-          if (newName !== currentName) {
-            MapStorage.renameMap(map.id, newName);
-          }
-          this.populateCards();
-        };
+				const finalize = () => {
+					const newName = input.value.trim() || currentName;
+					if (newName !== currentName) {
+						MapStorage.renameMap(map.id, newName);
+					}
+					this.populateCards();
+				};
 
-        input.addEventListener('blur', finalize);
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') input.blur();
-          if (e.key === 'Escape') {
-            input.value = currentName;
-            input.blur();
-          }
-        });
-        break;
-      }
-      case 'delete': {
-        if (confirm(`Delete "${map.name}"? This cannot be undone.`)) {
-          MapStorage.deleteMap(map.id);
-          this.populateCards();
-        }
-        break;
-      }
-      case 'export': {
-        MapStorage.exportJSON(map);
-        break;
-      }
-    }
-  }
+				input.addEventListener("blur", finalize);
+				input.addEventListener("keydown", (e) => {
+					if (e.key === "Enter") input.blur();
+					if (e.key === "Escape") {
+						input.value = currentName;
+						input.blur();
+					}
+				});
+				break;
+			}
+			case "delete": {
+				if (confirm(`Delete "${map.name}"? This cannot be undone.`)) {
+					MapStorage.deleteMap(map.id);
+					this.populateCards();
+				}
+				break;
+			}
+			case "export": {
+				MapStorage.exportJSON(map);
+				break;
+			}
+		}
+	}
 
-  private cloneFromPreset(preset: CustomMapData): CustomMapData {
-    const cloned: CustomMapData = {
-      ...preset,
-      id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `${preset.name} (Copy)`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      terrainHeights: [...preset.terrainHeights],
-      spawnPoints: preset.spawnPoints.map((sp) => ({ ...sp })),
-      mapObjects: preset.mapObjects.map((obj) => ({ ...obj })),
-      waterBodies: preset.waterBodies.map((wb) => ({ ...wb })),
-      gridData: preset.gridData ? [...preset.gridData] : undefined,
-      terrainMaterials: preset.terrainMaterials ? [...preset.terrainMaterials] : undefined
-    };
-    return cloned;
-  }
+	private cloneFromPreset(preset: CustomMapData): CustomMapData {
+		const cloned: CustomMapData = {
+			...preset,
+			id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+			name: `${preset.name} (Copy)`,
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+			terrainHeights: [...preset.terrainHeights],
+			spawnPoints: preset.spawnPoints.map((sp) => ({ ...sp })),
+			mapObjects: preset.mapObjects.map((obj) => ({ ...obj })),
+			waterBodies: preset.waterBodies.map((wb) => ({ ...wb })),
+			gridData: preset.gridData ? [...preset.gridData] : undefined,
+			terrainMaterials: preset.terrainMaterials
+				? [...preset.terrainMaterials]
+				: undefined,
+		};
+		return cloned;
+	}
 
-  private handleImport(e: Event): void {
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
+	private handleImport(e: Event): void {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
 
-    MapStorage.importJSON(file)
-      .then(() => {
-        this.populateCards();
-      })
-      .catch((err) => {
-        alert(`Import failed: ${err.message}`);
-      });
+		MapStorage.importJSON(file)
+			.then(() => {
+				this.populateCards();
+			})
+			.catch((err) => {
+				alert(`Import failed: ${err.message}`);
+			});
 
-    // Reset file input so the same file can be re-imported
-    input.value = '';
-  }
+		// Reset file input so the same file can be re-imported
+		input.value = "";
+	}
 }

@@ -1,148 +1,151 @@
 export interface MenuNavOptions {
-  container: HTMLElement;
-  buttonSelector?: string;
-  onSelect?: (btn: HTMLElement) => void;
+	container: HTMLElement;
+	buttonSelector?: string;
+	onSelect?: (btn: HTMLElement) => void;
 }
 
 export class MenuNav {
-  private container: HTMLElement;
-  private buttonSelector: string;
-  private buttons: HTMLElement[] = [];
-  private activeIndex: number = 0;
-  private boundKeyDown: (e: KeyboardEvent) => void;
-  private isActive: boolean = false;
+	private container: HTMLElement;
+	private buttonSelector: string;
+	private buttons: HTMLElement[] = [];
+	private activeIndex: number = 0;
+	private boundKeyDown: (e: KeyboardEvent) => void;
+	private isActive: boolean = false;
 
-  constructor(options: MenuNavOptions) {
-    this.container = options.container;
-    this.buttonSelector = options.buttonSelector || 'button, a.btn, a.icon-btn, a.nav-btn';
-    this.boundKeyDown = this.handleKeyDown.bind(this);
-  }
+	constructor(options: MenuNavOptions) {
+		this.container = options.container;
+		this.buttonSelector =
+			options.buttonSelector || "button, a.btn, a.icon-btn, a.nav-btn";
+		this.boundKeyDown = this.handleKeyDown.bind(this);
+	}
 
-  public activate() {
-    this.refreshButtons();
-    if (this.buttons.length === 0) return;
-    
-    this.activeIndex = 0;
-    this.isActive = true;
-    this.updateHighlight();
-    window.addEventListener('keydown', this.boundKeyDown, true);
-  }
+	public activate() {
+		this.refreshButtons();
+		if (this.buttons.length === 0) return;
 
-  public deactivate() {
-    this.isActive = false;
-    window.removeEventListener('keydown', this.boundKeyDown, true);
-    this.buttons.forEach((btn) => {
-      btn.classList.remove('kbd-active');
-      btn.style.outline = '';
-      btn.style.boxShadow = '';
-    });
-  }
+		this.activeIndex = 0;
+		this.isActive = true;
+		this.updateHighlight();
+		window.addEventListener("keydown", this.boundKeyDown, true);
+	}
 
-  private refreshButtons() {
-    const rawList = Array.from(this.container.querySelectorAll<HTMLElement>(this.buttonSelector));
-    this.buttons = rawList.filter((btn) => {
-      const style = window.getComputedStyle(btn);
-      return style.display !== 'none' && style.visibility !== 'hidden';
-    });
-  }
+	public deactivate() {
+		this.isActive = false;
+		window.removeEventListener("keydown", this.boundKeyDown, true);
+		this.buttons.forEach((btn) => {
+			btn.classList.remove("kbd-active");
+			btn.style.outline = "";
+			btn.style.boxShadow = "";
+		});
+	}
 
-  private updateHighlight() {
-    this.buttons.forEach((btn, idx) => {
-      if (idx === this.activeIndex) {
-        btn.classList.add('kbd-active');
-        btn.style.outline = '2px solid #38bdf8';
-        btn.style.boxShadow = '0 0 15px rgba(56, 189, 248, 0.6)';
-        btn.focus();
-      } else {
-        btn.classList.remove('kbd-active');
-        btn.style.outline = '';
-        btn.style.boxShadow = '';
-      }
-    });
-  }
+	private refreshButtons() {
+		const rawList = Array.from(
+			this.container.querySelectorAll<HTMLElement>(this.buttonSelector),
+		);
+		this.buttons = rawList.filter((btn) => {
+			const style = window.getComputedStyle(btn);
+			return style.display !== "none" && style.visibility !== "hidden";
+		});
+	}
 
-  private navigate2D(direction: 'up' | 'down' | 'left' | 'right') {
-    this.refreshButtons();
-    if (this.buttons.length === 0) return;
+	private updateHighlight() {
+		this.buttons.forEach((btn, idx) => {
+			if (idx === this.activeIndex) {
+				btn.classList.add("kbd-active");
+				btn.style.outline = "2px solid #38bdf8";
+				btn.style.boxShadow = "0 0 15px rgba(56, 189, 248, 0.6)";
+				btn.focus();
+			} else {
+				btn.classList.remove("kbd-active");
+				btn.style.outline = "";
+				btn.style.boxShadow = "";
+			}
+		});
+	}
 
-    const currentBtn = this.buttons[this.activeIndex];
-    if (!currentBtn) {
-      this.activeIndex = 0;
-      this.updateHighlight();
-      return;
-    }
+	private navigate2D(direction: "up" | "down" | "left" | "right") {
+		this.refreshButtons();
+		if (this.buttons.length === 0) return;
 
-    const currRect = currentBtn.getBoundingClientRect();
-    const currCx = currRect.left + currRect.width / 2;
-    const currCy = currRect.top + currRect.height / 2;
+		const currentBtn = this.buttons[this.activeIndex];
+		if (!currentBtn) {
+			this.activeIndex = 0;
+			this.updateHighlight();
+			return;
+		}
 
-    let bestIndex = -1;
-    let minDistance = Infinity;
+		const currRect = currentBtn.getBoundingClientRect();
+		const currCx = currRect.left + currRect.width / 2;
+		const currCy = currRect.top + currRect.height / 2;
 
-    this.buttons.forEach((btn, idx) => {
-      if (idx === this.activeIndex) return;
-      const rect = btn.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
+		let bestIndex = -1;
+		let minDistance = Infinity;
 
-      let dx = cx - currCx;
-      let dy = cy - currCy;
+		this.buttons.forEach((btn, idx) => {
+			if (idx === this.activeIndex) return;
+			const rect = btn.getBoundingClientRect();
+			const cx = rect.left + rect.width / 2;
+			const cy = rect.top + rect.height / 2;
 
-      let isCandidate = false;
-      let dist = Infinity;
+			const dx = cx - currCx;
+			const dy = cy - currCy;
 
-      if (direction === 'down' && dy > 4) {
-        isCandidate = true;
-        dist = dy * dy + 2.5 * (dx * dx);
-      } else if (direction === 'up' && dy < -4) {
-        isCandidate = true;
-        dist = dy * dy + 2.5 * (dx * dx);
-      } else if (direction === 'right' && dx > 4) {
-        isCandidate = true;
-        dist = dx * dx + 2.5 * (dy * dy);
-      } else if (direction === 'left' && dx < -4) {
-        isCandidate = true;
-        dist = dx * dx + 2.5 * (dy * dy);
-      }
+			let isCandidate = false;
+			let dist = Infinity;
 
-      if (isCandidate && dist < minDistance) {
-        minDistance = dist;
-        bestIndex = idx;
-      }
-    });
+			if (direction === "down" && dy > 4) {
+				isCandidate = true;
+				dist = dy * dy + 2.5 * (dx * dx);
+			} else if (direction === "up" && dy < -4) {
+				isCandidate = true;
+				dist = dy * dy + 2.5 * (dx * dx);
+			} else if (direction === "right" && dx > 4) {
+				isCandidate = true;
+				dist = dx * dx + 2.5 * (dy * dy);
+			} else if (direction === "left" && dx < -4) {
+				isCandidate = true;
+				dist = dx * dx + 2.5 * (dy * dy);
+			}
 
-    if (bestIndex !== -1) {
-      this.activeIndex = bestIndex;
-      this.updateHighlight();
-    }
-  }
+			if (isCandidate && dist < minDistance) {
+				minDistance = dist;
+				bestIndex = idx;
+			}
+		});
 
-  private handleKeyDown(e: KeyboardEvent) {
-    if (!this.isActive || this.buttons.length === 0) return;
+		if (bestIndex !== -1) {
+			this.activeIndex = bestIndex;
+			this.updateHighlight();
+		}
+	}
 
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      e.stopPropagation();
-      this.navigate2D('down');
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      e.stopPropagation();
-      this.navigate2D('up');
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      e.stopPropagation();
-      this.navigate2D('right');
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      e.stopPropagation();
-      this.navigate2D('left');
-    } else if (e.key === ' ' || e.key === 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
-      const currentBtn = this.buttons[this.activeIndex];
-      if (currentBtn) {
-        currentBtn.click();
-      }
-    }
-  }
+	private handleKeyDown(e: KeyboardEvent) {
+		if (!this.isActive || this.buttons.length === 0) return;
+
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			e.stopPropagation();
+			this.navigate2D("down");
+		} else if (e.key === "ArrowUp") {
+			e.preventDefault();
+			e.stopPropagation();
+			this.navigate2D("up");
+		} else if (e.key === "ArrowRight") {
+			e.preventDefault();
+			e.stopPropagation();
+			this.navigate2D("right");
+		} else if (e.key === "ArrowLeft") {
+			e.preventDefault();
+			e.stopPropagation();
+			this.navigate2D("left");
+		} else if (e.key === " " || e.key === "Enter") {
+			e.preventDefault();
+			e.stopPropagation();
+			const currentBtn = this.buttons[this.activeIndex];
+			if (currentBtn) {
+				currentBtn.click();
+			}
+		}
+	}
 }

@@ -8,6 +8,8 @@
 | Build (typecheck + bundle)  | `npm run build`    |
 | Preview production build    | `npm run preview`  |
 | Type-check only             | `npx tsc --noEmit` |
+| Lint check (Biome)          | `npm run lint`     |
+| Format codebase (Biome)     | `npm run format`   |
 
 ## Rules
 Do not run `npm run build` or `npm run dev` if i don't ask for it.

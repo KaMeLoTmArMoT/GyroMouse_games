@@ -1,40 +1,48 @@
-import { LobbyConfig, CustomMapData, AIDifficulty, GameMode } from '../types';
-import { MapStorage } from '../editor/mapStorage';
+import { MapStorage } from "../editor/mapStorage";
+import type {
+	AIDifficulty,
+	CustomMapData,
+	GameMode,
+	LobbyConfig,
+} from "../types";
 
 export class MenuModal {
-  private overlayEl: HTMLElement;
+	private overlayEl: HTMLElement;
 
-  public config: LobbyConfig = {
-    teamSize: 2,
-    wormHealth: 100,
-    gameMode: 'deathmatch',
-    mapId: 'random',
-    aiDifficulty: 'normal',
-    matchType: 'ai'
-  };
+	public config: LobbyConfig = {
+		teamSize: 2,
+		wormHealth: 100,
+		gameMode: "deathmatch",
+		mapId: "random",
+		aiDifficulty: "normal",
+		matchType: "ai",
+	};
 
-  private onStartMatchCallback: (config: LobbyConfig, mapData?: CustomMapData) => void;
-  private onOpenEditorCallback: () => void;
-  private onOpenMapManagerCallback: () => void;
+	private onStartMatchCallback: (
+		config: LobbyConfig,
+		mapData?: CustomMapData,
+	) => void;
+	private onOpenEditorCallback: () => void;
+	private onOpenMapManagerCallback: () => void;
 
-  constructor(
-    onStartMatch: (config: LobbyConfig, mapData?: CustomMapData) => void,
-    onOpenEditor: () => void,
-    onOpenMapManager: () => void
-  ) {
-    this.onStartMatchCallback = onStartMatch;
-    this.onOpenEditorCallback = onOpenEditor;
-    this.onOpenMapManagerCallback = onOpenMapManager;
+	constructor(
+		onStartMatch: (config: LobbyConfig, mapData?: CustomMapData) => void,
+		onOpenEditor: () => void,
+		onOpenMapManager: () => void,
+	) {
+		this.onStartMatchCallback = onStartMatch;
+		this.onOpenEditorCallback = onOpenEditor;
+		this.onOpenMapManagerCallback = onOpenMapManager;
 
-    this.overlayEl = document.createElement('div');
-    this.overlayEl.id = 'wormixMenuModal';
-    this.overlayEl.className = 'wormix-menu-backdrop';
+		this.overlayEl = document.createElement("div");
+		this.overlayEl.id = "wormixMenuModal";
+		this.overlayEl.className = "wormix-menu-backdrop";
 
-    this.setupDOM();
-  }
+		this.setupDOM();
+	}
 
-  private setupDOM(): void {
-    this.overlayEl.innerHTML = `
+	private setupDOM(): void {
+		this.overlayEl.innerHTML = `
       <style>
         .wormix-menu-backdrop {
           position: fixed;
@@ -306,138 +314,162 @@ export class MenuModal {
       </div>
     `;
 
-    document.body.appendChild(this.overlayEl);
-    this.populateMapSelect();
-    this.bindEvents();
-  }
+		document.body.appendChild(this.overlayEl);
+		this.populateMapSelect();
+		this.bindEvents();
+	}
 
-  private populateMapSelect(): void {
-    const select = this.overlayEl.querySelector('#selectMap') as HTMLSelectElement;
-    if (!select) return;
+	private populateMapSelect(): void {
+		const select = this.overlayEl.querySelector(
+			"#selectMap",
+		) as HTMLSelectElement;
+		if (!select) return;
 
-    select.innerHTML = `<option value="random">🎲 Random Procedural</option>`;
+		select.innerHTML = `<option value="random">🎲 Random Procedural</option>`;
 
-    const presets = MapStorage.getPresetMaps(window.innerWidth, window.innerHeight);
-    presets.forEach((p) => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name;
-      select.appendChild(opt);
-    });
+		const presets = MapStorage.getPresetMaps(
+			window.innerWidth,
+			window.innerHeight,
+		);
+		presets.forEach((p) => {
+			const opt = document.createElement("option");
+			opt.value = p.id;
+			opt.textContent = p.name;
+			select.appendChild(opt);
+		});
 
-    const saved = MapStorage.getSavedMaps();
-    saved.forEach((s) => {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = `⭐ ${s.name}`;
-      select.appendChild(opt);
-    });
-  }
+		const saved = MapStorage.getSavedMaps();
+		saved.forEach((s) => {
+			const opt = document.createElement("option");
+			opt.value = s.id;
+			opt.textContent = `⭐ ${s.name}`;
+			select.appendChild(opt);
+		});
+	}
 
-  private bindEvents(): void {
-    const el = this.overlayEl;
+	private bindEvents(): void {
+		const el = this.overlayEl;
 
-    // ── Pill group selection ──
-    el.querySelectorAll('.pill-group').forEach((group) => {
-      group.addEventListener('click', (e) => {
-        const target = (e.target as HTMLElement).closest('.pill') as HTMLElement | null;
-        if (!target) return;
+		// ── Pill group selection ──
+		el.querySelectorAll(".pill-group").forEach((group) => {
+			group.addEventListener("click", (e) => {
+				const target = (e.target as HTMLElement).closest(
+					".pill",
+				) as HTMLElement | null;
+				if (!target) return;
 
-        group.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
-        target.classList.add('active');
+				group
+					.querySelectorAll(".pill")
+					.forEach((p) => p.classList.remove("active"));
+				target.classList.add("active");
 
-        const setting = (group as HTMLElement).dataset.setting;
-        if (setting === 'matchType') {
-          this.config.matchType = target.dataset.value as 'ai' | 'pvp';
-          const diffRow = el.querySelector('#rowDifficulty') as HTMLElement;
-          if (diffRow) diffRow.style.display = this.config.matchType === 'pvp' ? 'none' : 'flex';
-        } else if (setting === 'difficulty') {
-          this.config.aiDifficulty = target.dataset.value as AIDifficulty;
-        } else if (setting === 'teamSize') {
-          this.config.teamSize = parseInt(target.dataset.value!, 10);
-        } else if (setting === 'health') {
-          this.config.wormHealth = parseInt(target.dataset.value!, 10);
-        }
-      });
-    });
+				const setting = (group as HTMLElement).dataset.setting;
+				if (setting === "matchType") {
+					this.config.matchType = target.dataset.value as "ai" | "pvp";
+					const diffRow = el.querySelector("#rowDifficulty") as HTMLElement;
+					if (diffRow)
+						diffRow.style.display =
+							this.config.matchType === "pvp" ? "none" : "flex";
+				} else if (setting === "difficulty") {
+					this.config.aiDifficulty = target.dataset.value as AIDifficulty;
+				} else if (setting === "teamSize") {
+					this.config.teamSize = parseInt(target.dataset.value!, 10);
+				} else if (setting === "health") {
+					this.config.wormHealth = parseInt(target.dataset.value!, 10);
+				}
+			});
+		});
 
-    // ── Quick Play ──
-    el.querySelector('#btnQuickPlay')?.addEventListener('click', () => {
-      this.hide();
-      this.onStartMatchCallback(this.config);
-    });
+		// ── Quick Play ──
+		el.querySelector("#btnQuickPlay")?.addEventListener("click", () => {
+			this.hide();
+			this.onStartMatchCallback(this.config);
+		});
 
-    // ── Custom Match toggle ──
-    const customSettings = el.querySelector('#customSettings') as HTMLElement;
-    const startMatchRow = el.querySelector('#startMatchRow') as HTMLElement;
-    const btnCustom = el.querySelector('#btnCustomMatch') as HTMLElement;
+		// ── Custom Match toggle ──
+		const customSettings = el.querySelector("#customSettings") as HTMLElement;
+		const startMatchRow = el.querySelector("#startMatchRow") as HTMLElement;
+		const btnCustom = el.querySelector("#btnCustomMatch") as HTMLElement;
 
-    el.querySelector('#btnCustomMatch')?.addEventListener('click', () => {
-      const isOpen = customSettings.style.display !== 'none';
-      customSettings.style.display = isOpen ? 'none' : 'block';
-      startMatchRow.style.display = isOpen ? 'none' : 'flex';
-      btnCustom.classList.toggle('expanded', !isOpen);
-    });
+		el.querySelector("#btnCustomMatch")?.addEventListener("click", () => {
+			const isOpen = customSettings.style.display !== "none";
+			customSettings.style.display = isOpen ? "none" : "block";
+			startMatchRow.style.display = isOpen ? "none" : "flex";
+			btnCustom.classList.toggle("expanded", !isOpen);
+		});
 
-    // ── Start Custom Match ──
-    el.querySelector('#btnStartLobbyMatch')?.addEventListener('click', () => {
-      this.startCustomMatch();
-    });
+		// ── Start Custom Match ──
+		el.querySelector("#btnStartLobbyMatch")?.addEventListener("click", () => {
+			this.startCustomMatch();
+		});
 
-    // ── Map Editor ──
-    el.querySelector('#btnOpenEditorModal')?.addEventListener('click', () => {
-      this.hide();
-      this.onOpenEditorCallback();
-    });
+		// ── Map Editor ──
+		el.querySelector("#btnOpenEditorModal")?.addEventListener("click", () => {
+			this.hide();
+			this.onOpenEditorCallback();
+		});
 
-    // ── Map Manager ──
-    el.querySelector('#btnOpenMapManager')?.addEventListener('click', () => {
-      this.hide();
-      this.onOpenMapManagerCallback();
-    });
-  }
+		// ── Map Manager ──
+		el.querySelector("#btnOpenMapManager")?.addEventListener("click", () => {
+			this.hide();
+			this.onOpenMapManagerCallback();
+		});
+	}
 
-  private startCustomMatch(): void {
-    const el = this.overlayEl;
+	private startCustomMatch(): void {
+		const el = this.overlayEl;
 
-    const gameMode = (el.querySelector('#selectGameMode') as HTMLSelectElement).value as GameMode;
-    const mapId = (el.querySelector('#selectMap') as HTMLSelectElement).value;
+		const gameMode = (el.querySelector("#selectGameMode") as HTMLSelectElement)
+			.value as GameMode;
+		const mapId = (el.querySelector("#selectMap") as HTMLSelectElement).value;
 
-    this.config.gameMode = gameMode;
-    this.config.mapId = mapId;
+		this.config.gameMode = gameMode;
+		this.config.mapId = mapId;
 
-    let mapData: CustomMapData | undefined;
-    if (mapId !== 'random') {
-      const presets = MapStorage.getPresetMaps(window.innerWidth, window.innerHeight);
-      const saved = MapStorage.getSavedMaps();
-      mapData = [...presets, ...saved].find((m) => m.id === mapId);
-    }
+		let mapData: CustomMapData | undefined;
+		if (mapId !== "random") {
+			const presets = MapStorage.getPresetMaps(
+				window.innerWidth,
+				window.innerHeight,
+			);
+			const saved = MapStorage.getSavedMaps();
+			mapData = [...presets, ...saved].find((m) => m.id === mapId);
+		}
 
-    this.hide();
-    this.onStartMatchCallback(this.config, mapData);
-  }
+		this.hide();
+		this.onStartMatchCallback(this.config, mapData);
+	}
 
-  public toggle(): void {
-    if (this.overlayEl.style.display === 'none' || !this.overlayEl.style.display) {
-      this.show();
-    } else {
-      this.hide();
-    }
-  }
+	public toggle(): void {
+		if (
+			this.overlayEl.style.display === "none" ||
+			!this.overlayEl.style.display
+		) {
+			this.show();
+		} else {
+			this.hide();
+		}
+	}
 
-  public show(): void {
-    this.populateMapSelect();
-    this.overlayEl.style.display = 'flex';
-    // Reset custom settings to collapsed
-    const customSettings = this.overlayEl.querySelector('#customSettings') as HTMLElement;
-    const startMatchRow = this.overlayEl.querySelector('#startMatchRow') as HTMLElement;
-    const btnCustom = this.overlayEl.querySelector('#btnCustomMatch') as HTMLElement;
-    if (customSettings) customSettings.style.display = 'none';
-    if (startMatchRow) startMatchRow.style.display = 'none';
-    if (btnCustom) btnCustom.classList.remove('expanded');
-  }
+	public show(): void {
+		this.populateMapSelect();
+		this.overlayEl.style.display = "flex";
+		// Reset custom settings to collapsed
+		const customSettings = this.overlayEl.querySelector(
+			"#customSettings",
+		) as HTMLElement;
+		const startMatchRow = this.overlayEl.querySelector(
+			"#startMatchRow",
+		) as HTMLElement;
+		const btnCustom = this.overlayEl.querySelector(
+			"#btnCustomMatch",
+		) as HTMLElement;
+		if (customSettings) customSettings.style.display = "none";
+		if (startMatchRow) startMatchRow.style.display = "none";
+		if (btnCustom) btnCustom.classList.remove("expanded");
+	}
 
-  public hide(): void {
-    this.overlayEl.style.display = 'none';
-  }
+	public hide(): void {
+		this.overlayEl.style.display = "none";
+	}
 }
