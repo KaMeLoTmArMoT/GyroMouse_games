@@ -3,6 +3,7 @@ import { SharedInputManager } from "../../../shared/inputManager";
 import { SettingsOverlay } from "../../../shared/settingsOverlay";
 import { type AITurnPlan, WormAI } from "./ai/wormAI";
 import { MapEditor } from "./editor/mapEditor";
+import { EffectSystem } from "./effects/effects";
 import { MapObject } from "./entities/mapObject";
 import { Worm } from "./entities/worm";
 import { Projectile } from "./physics/projectile";
@@ -14,6 +15,7 @@ import type {
 	LobbyConfig,
 	TeamAmmo,
 	TurnPhase,
+	WeaponId,
 } from "./types";
 import { HUD, WEAPON_LIST } from "./ui/hud";
 import { MapManager } from "./ui/mapManager";
@@ -30,6 +32,7 @@ export class WormixGame {
 	private menuModal: MenuModal;
 	private mapEditor: MapEditor | null = null;
 	private mapManager: MapManager | null = null;
+	private effects: EffectSystem;
 
 	public terrain: TerrainManager;
 	public worms: Worm[] = [];
@@ -85,6 +88,7 @@ export class WormixGame {
 		this.inputManager = new SharedInputManager();
 		this.audioManager = new SharedAudioManager();
 		this.hud = new HUD();
+		this.effects = new EffectSystem();
 		this.terrain = new TerrainManager(window.innerWidth, window.innerHeight);
 
 		// Initialize Settings Overlay with custom Game Modes & Map Editor actions
@@ -304,6 +308,99 @@ export class WormixGame {
 		this.windX = (Math.random() - 0.5) * 5.0; // -2.5 to +2.5
 	}
 
+	private spawnProjectileTrail(proj: Projectile): void {
+		switch (proj.weaponId) {
+			case "bazooka":
+				this.effects.spawnSmoke(
+					proj.x,
+					proj.y,
+					-proj.vx * 0.1,
+					-proj.vy * 0.1,
+					3 + Math.random() * 2,
+				);
+				break;
+			case "mortar":
+				this.effects.spawnSmoke(
+					proj.x,
+					proj.y,
+					-proj.vx * 0.1,
+					-proj.vy * 0.1,
+					2.5 + Math.random() * 1.5,
+				);
+				break;
+			case "drill":
+				if (proj.age % 2 === 0) {
+					this.effects.spawnSparks(proj.x, proj.y, 1, 0.5, 3, "#a5b4fc");
+				}
+				break;
+			case "acid_bomb":
+				if (proj.age % 3 === 0) {
+					this.effects.spawnAcidDrip(proj.x, proj.y);
+				}
+				break;
+			default:
+				break;
+		}
+	}
+
+	private spawnExplosionFx(
+		x: number,
+		y: number,
+		weaponId: WeaponId | null,
+		radiusOverride?: number,
+	): void {
+		const radius =
+			radiusOverride ??
+			(weaponId === "bazooka"
+				? 42
+				: weaponId === "cluster"
+					? 30
+					: weaponId === "drill"
+						? 35
+						: weaponId === "dynamite"
+							? 65
+							: weaponId === "acid_bomb"
+								? 20
+								: weaponId === "mortar"
+									? 15
+									: 38);
+
+		if (weaponId === "rifle") {
+			this.effects.spawnFlash(x, y, 10);
+			this.effects.spawnSparks(x, y, 10, 1, 4, "#67e8f9");
+			return;
+		}
+		if (weaponId === "acid_bomb") {
+			this.effects.spawnFlash(x, y, radius);
+			this.effects.spawnShockwave(x, y, radius);
+			for (let i = 0; i < 12; i++) {
+				this.effects.spawnAcidDrip(x, y);
+			}
+			return;
+		}
+		if (weaponId === "sand_bomb") {
+			this.effects.spawnFlash(x, y, radius);
+			for (let i = 0; i < 14; i++) {
+				this.effects.spawnSandPuff(x, y);
+			}
+			return;
+		}
+
+		this.effects.spawnFlash(x, y, radius);
+		this.effects.spawnFireball(x, y, radius);
+		this.effects.spawnShockwave(x, y, radius);
+		for (let i = 0; i < 6; i++) {
+			const a = Math.random() * Math.PI * 2;
+			this.effects.spawnSmoke(
+				x + Math.cos(a) * radius * 0.3,
+				y + Math.sin(a) * radius * 0.3,
+				Math.cos(a) * 1.5,
+				-Math.random() * 1.5,
+				radius * 0.12 + 3,
+			);
+		}
+	}
+
 	private setupInputs(): void {
 		window.addEventListener("keydown", (e) => {
 			if (e.code === "KeyC") {
@@ -448,12 +545,15 @@ export class WormixGame {
 		const rad = (activeWorm.aimAngle * Math.PI) / 180;
 		const launchSpeed = Math.max(0.15, this.chargePower) * 22.0;
 
+		this.effects.spawnMuzzleFlash(tip.x, tip.y, rad);
+
 		const vx = Math.cos(rad) * launchSpeed;
 		const vy = Math.sin(rad) * launchSpeed;
 
 		if (weapon.id === "shotgun") {
 			// Shotgun: raycast along aim direction, double-tap
 			this.audioManager.playHit(1.5);
+			this.effects.spawnTracer(tip.x, tip.y, rad, 250, "#fbbf24");
 			const rayLen = 250;
 			const rayStep = 4;
 			const shotDamage = 40;
@@ -466,6 +566,8 @@ export class WormixGame {
 					// Stop at first terrain hit
 					if (this.terrain.isSolidAt(rx, ry)) {
 						this.terrain.explode(rx, ry, 18);
+						this.effects.spawnFlash(rx, ry, 12);
+						this.effects.spawnSparks(rx, ry, 10, 1, 4, "#fbbf24");
 						break;
 					}
 
@@ -500,6 +602,15 @@ export class WormixGame {
 		} else {
 			// Spawn Projectile
 			this.audioManager.playTone(220, 0.15, "sawtooth");
+			if (weapon.id === "rifle") {
+				this.effects.spawnTracer(
+					tip.x,
+					tip.y,
+					rad,
+					300,
+					"rgba(103, 232, 249, 0.8)",
+				);
+			}
 			const fuseTime =
 				weapon.id === "dynamite" ? 4 : weapon.id === "mortar" ? 2.5 : 3;
 			this.projectiles.push(
@@ -568,6 +679,7 @@ export class WormixGame {
 				(x, y, radius, damage) => {
 					this.audioManager.playHit(2.5);
 					this.terrain.explode(x, y, radius);
+					this.spawnExplosionFx(x, y, null, radius);
 
 					// Explosion damage to nearby worms
 					for (const w of this.worms) {
@@ -781,6 +893,7 @@ export class WormixGame {
 				(p, x, y) => {
 					this.audioManager.playHit(2.0);
 					this.lastExplosionX = x;
+					this.spawnExplosionFx(x, y, p.weaponId);
 
 					// Damage map objects hit by projectile explosion (barrel chain explosions!)
 					for (const obj of this.mapObjects) {
@@ -810,11 +923,15 @@ export class WormixGame {
 					}
 				},
 			);
+			this.spawnProjectileTrail(proj);
 
 			if (proj.isExpired) {
 				this.projectiles.splice(i, 1);
 			}
 		}
+
+		// Update visual effect particles (smoke trails, sparks, flashes)
+		this.effects.update();
 
 		// 7. Turn Resolution Check — enter REPOSITION phase after projectiles expire
 		if (this.phase === "PROJECTILE_FLIGHT" && this.projectiles.length === 0) {
@@ -867,6 +984,9 @@ export class WormixGame {
 
 		// Render Projectiles
 		this.projectiles.forEach((p) => p.draw(this.ctx));
+
+		// Render Visual Effect Particles (trails, flashes, smoke)
+		this.effects.draw(this.ctx);
 
 		// Calculate Team Total HPs
 		const playerHp = this.worms

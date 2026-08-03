@@ -15,6 +15,7 @@ export class Projectile {
 	public isExpired: boolean = false;
 	public bounciness: number = 0.6;
 	public teamId: string;
+	public age: number = 0;
 
 	// Drill-specific state
 	public drillPenetrated: boolean = false;
@@ -66,6 +67,7 @@ export class Projectile {
 		onExplode: (proj: Projectile, x: number, y: number) => void,
 	): void {
 		if (this.isExpired) return;
+		this.age++;
 
 		// Apply Wind Force (bazooka, cluster, drill, mortar only)
 		if (
@@ -341,45 +343,348 @@ export class Projectile {
 
 		ctx.save();
 		ctx.translate(this.x, this.y);
+		ctx.rotate(Math.atan2(this.vy, this.vx));
 
-		const colors: Record<WeaponId, string> = {
-			bazooka: "#ef4444",
-			grenade: "#22c55e",
-			cluster: "#eab308",
-			acid_bomb: "#84cc16",
-			sand_bomb: "#f59e0b",
-			drill: "#6366f1",
-			mortar: "#a855f7",
-			dynamite: "#ef4444",
-			rifle: "#06b6d4",
-			shotgun: "#94a3b8",
-		};
-
-		ctx.fillStyle = colors[this.weaponId] || "#ffffff";
-		ctx.beginPath();
-		ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-		ctx.fill();
-		ctx.strokeStyle = "#ffffff";
-		ctx.lineWidth = 1.5;
-		ctx.stroke();
-
-		// Drill visual: draw rotation lines
-		if (this.weaponId === "drill") {
-			ctx.strokeStyle = "rgba(255,255,255,0.5)";
-			ctx.lineWidth = 1;
-			const angle = Math.atan2(this.vy, this.vx);
-			for (let i = 0; i < 3; i++) {
-				const a = angle + (i * Math.PI * 2) / 3;
-				ctx.beginPath();
-				ctx.moveTo(0, 0);
-				ctx.lineTo(
-					Math.cos(a) * (this.radius + 3),
-					Math.sin(a) * (this.radius + 3),
-				);
-				ctx.stroke();
-			}
+		switch (this.weaponId) {
+			case "bazooka":
+				this.drawBazooka(ctx);
+				break;
+			case "grenade":
+				this.drawGrenade(ctx);
+				break;
+			case "cluster":
+				this.drawCluster(ctx);
+				break;
+			case "acid_bomb":
+				this.drawAcidBomb(ctx);
+				break;
+			case "sand_bomb":
+				this.drawSandBomb(ctx);
+				break;
+			case "drill":
+				this.drawDrill(ctx);
+				break;
+			case "mortar":
+				this.drawMortar(ctx);
+				break;
+			case "dynamite":
+				this.drawDynamite(ctx);
+				break;
+			case "rifle":
+				this.drawRifle(ctx);
+				break;
+			default:
+				this.drawFallback(ctx);
 		}
 
 		ctx.restore();
+	}
+
+	private drawGlow(ctx: CanvasRenderingContext2D, rgb: string): void {
+		const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 2.2);
+		grad.addColorStop(0, `rgba(${rgb}, 0.35)`);
+		grad.addColorStop(1, `rgba(${rgb}, 0)`);
+		ctx.fillStyle = grad;
+		ctx.beginPath();
+		ctx.arc(0, 0, this.radius * 2.2, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	private drawBazooka(ctx: CanvasRenderingContext2D): void {
+		this.drawGlow(ctx, "239, 68, 68");
+
+		ctx.fillStyle = "#ef4444";
+		ctx.strokeStyle = "#b91c1c";
+		ctx.lineWidth = 1.5;
+		ctx.beginPath();
+		ctx.roundRect(-8, -3.5, 16, 7, 3);
+		ctx.fill();
+		ctx.stroke();
+
+		ctx.fillStyle = "#fca5a5";
+		ctx.beginPath();
+		ctx.moveTo(10, 0);
+		ctx.lineTo(6, -3.5);
+		ctx.lineTo(6, 3.5);
+		ctx.closePath();
+		ctx.fill();
+
+		ctx.fillStyle = "#ffffff";
+		ctx.fillRect(-2, -3.5, 3, 7);
+
+		ctx.fillStyle = "#7f1d1d";
+		ctx.beginPath();
+		ctx.moveTo(-8, -3);
+		ctx.lineTo(-12, -6);
+		ctx.lineTo(-8, -1);
+		ctx.closePath();
+		ctx.fill();
+		ctx.beginPath();
+		ctx.moveTo(-8, 3);
+		ctx.lineTo(-12, 6);
+		ctx.lineTo(-8, 1);
+		ctx.closePath();
+		ctx.fill();
+
+		ctx.globalAlpha = 0.7;
+		ctx.fillStyle = "#fbbf24";
+		ctx.beginPath();
+		ctx.arc(-12, 0, 2.5, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.globalAlpha = 1;
+	}
+
+	private drawGrenade(ctx: CanvasRenderingContext2D): void {
+		this.drawGlow(ctx, "34, 197, 94");
+		const r = this.radius;
+
+		ctx.fillStyle = "#16a34a";
+		ctx.beginPath();
+		ctx.arc(0, 0, r, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.strokeStyle = "#065f46";
+		ctx.lineWidth = 2;
+		ctx.stroke();
+
+		ctx.strokeStyle = "rgba(255,255,255,0.35)";
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.moveTo(-r, 0);
+		ctx.lineTo(0, -r);
+		ctx.lineTo(r, 0);
+		ctx.lineTo(0, r);
+		ctx.closePath();
+		ctx.stroke();
+
+		ctx.fillStyle = "#4b5563";
+		ctx.fillRect(-2, -r - 4, 4, 5);
+		ctx.fillStyle = "#fbbf24";
+		ctx.beginPath();
+		ctx.arc(0, -r - 5, 2.5, 0, Math.PI * 2);
+		ctx.fill();
+		if (this.age % 10 < 5) {
+			ctx.fillStyle = "#fef08a";
+			ctx.beginPath();
+			ctx.arc(0, -r - 8, 2, 0, Math.PI * 2);
+			ctx.fill();
+		}
+	}
+
+	private drawCluster(ctx: CanvasRenderingContext2D): void {
+		this.drawGlow(ctx, "234, 179, 8");
+		const r = this.radius;
+
+		ctx.fillStyle = "#ca8a04";
+		ctx.beginPath();
+		ctx.arc(0, 0, r, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.strokeStyle = "#854d0e";
+		ctx.lineWidth = 2;
+		ctx.stroke();
+
+		ctx.save();
+		ctx.rotate(this.age * 0.3);
+		ctx.strokeStyle = "#fef08a";
+		ctx.lineWidth = 2;
+		for (let i = 0; i < 3; i++) {
+			const a = (i * Math.PI * 2) / 3;
+			ctx.beginPath();
+			ctx.moveTo(Math.cos(a) * r * 0.4, Math.sin(a) * r * 0.4);
+			ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+			ctx.stroke();
+		}
+		ctx.restore();
+
+		ctx.fillStyle = "rgba(255,255,255,0.4)";
+		ctx.beginPath();
+		ctx.arc(-r * 0.3, -r * 0.3, r * 0.35, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	private drawAcidBomb(ctx: CanvasRenderingContext2D): void {
+		this.drawGlow(ctx, "132, 204, 22");
+		const r = this.radius;
+		const wob = Math.sin(this.age * 0.3) * 0.3;
+
+		ctx.fillStyle = "#4d7c0f";
+		ctx.beginPath();
+		ctx.arc(0, 0, r + wob, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.strokeStyle = "#365314";
+		ctx.lineWidth = 1.5;
+		ctx.stroke();
+
+		const grad = ctx.createRadialGradient(-2, -2, 1, 0, 0, r);
+		grad.addColorStop(0, "#d9f99d");
+		grad.addColorStop(0.5, "#a3e635");
+		grad.addColorStop(1, "#4d7c0f");
+		ctx.fillStyle = grad;
+		ctx.beginPath();
+		ctx.arc(0, 0, r - 2, 0, Math.PI * 2);
+		ctx.fill();
+
+		ctx.fillStyle = "rgba(255,255,255,0.5)";
+		ctx.beginPath();
+		ctx.arc(-r * 0.3, -r * 0.3, 2.5, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	private drawSandBomb(ctx: CanvasRenderingContext2D): void {
+		this.drawGlow(ctx, "245, 158, 11");
+		const r = this.radius;
+
+		ctx.fillStyle = "#d97706";
+		ctx.beginPath();
+		ctx.arc(0, 0, r, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.strokeStyle = "#92400e";
+		ctx.lineWidth = 2;
+		ctx.stroke();
+
+		ctx.fillStyle = "#fbbf24";
+		ctx.fillRect(-r, -1.5, r * 2, 3);
+		ctx.fillStyle = "#fde68a";
+		ctx.fillRect(-r, -1.5, r * 2, 1);
+	}
+
+	private drawDrill(ctx: CanvasRenderingContext2D): void {
+		this.drawGlow(ctx, "99, 102, 241");
+		const r = this.radius;
+
+		ctx.fillStyle = "#6366f1";
+		ctx.beginPath();
+		ctx.roundRect(-r - 2, -r * 0.7, r * 2 + 4, r * 1.4, r * 0.7);
+		ctx.fill();
+		ctx.strokeStyle = "#3730a3";
+		ctx.lineWidth = 1.5;
+		ctx.stroke();
+
+		ctx.fillStyle = "#c7d2fe";
+		ctx.beginPath();
+		ctx.moveTo(r + 6, 0);
+		ctx.lineTo(r - 1, -r * 0.7);
+		ctx.lineTo(r - 1, r * 0.7);
+		ctx.closePath();
+		ctx.fill();
+
+		ctx.save();
+		ctx.rotate(this.age * 0.5);
+		ctx.strokeStyle = "#a5b4fc";
+		ctx.lineWidth = 2;
+		for (let i = 0; i < 3; i++) {
+			const a = (i * Math.PI * 2) / 3;
+			ctx.beginPath();
+			ctx.moveTo(0, 0);
+			ctx.lineTo(Math.cos(a) * (r - 1), Math.sin(a) * (r - 1));
+			ctx.stroke();
+		}
+		ctx.restore();
+	}
+
+	private drawMortar(ctx: CanvasRenderingContext2D): void {
+		this.drawGlow(ctx, "168, 85, 247");
+		const r = this.radius;
+
+		ctx.fillStyle = "#9333ea";
+		ctx.beginPath();
+		ctx.roundRect(-r - 2, -r * 0.6, r * 2 + 4, r * 1.2, r * 0.5);
+		ctx.fill();
+		ctx.strokeStyle = "#6b21a8";
+		ctx.lineWidth = 1.5;
+		ctx.stroke();
+
+		ctx.fillStyle = "#c4b5fd";
+		ctx.beginPath();
+		ctx.arc(r + 1, 0, r * 0.5, 0, Math.PI * 2);
+		ctx.fill();
+
+		ctx.fillStyle = "#581c87";
+		ctx.beginPath();
+		ctx.moveTo(-r - 2, -r * 0.4);
+		ctx.lineTo(-r - 6, -r);
+		ctx.lineTo(-r - 2, -r * 0.1);
+		ctx.closePath();
+		ctx.fill();
+		ctx.beginPath();
+		ctx.moveTo(-r - 2, r * 0.4);
+		ctx.lineTo(-r - 6, r);
+		ctx.lineTo(-r - 2, r * 0.1);
+		ctx.closePath();
+		ctx.fill();
+
+		if (this.fuseTimer < 30 && this.age % 6 < 3) {
+			ctx.fillStyle = "#f87171";
+			ctx.beginPath();
+			ctx.arc(0, 0, r + 3, 0, Math.PI * 2);
+			ctx.fill();
+		}
+	}
+
+	private drawDynamite(ctx: CanvasRenderingContext2D): void {
+		this.drawGlow(ctx, "239, 68, 68");
+		const r = this.radius;
+
+		for (let i = 0; i < 3; i++) {
+			ctx.save();
+			ctx.rotate(i === 0 ? -0.15 : i === 2 ? 0.15 : 0);
+			ctx.fillStyle = "#ef4444";
+			ctx.strokeStyle = "#7f1d1d";
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			ctx.roundRect(-4, -r - 2, 8, r * 2 + 4, 2);
+			ctx.fill();
+			ctx.stroke();
+			ctx.fillStyle = "#fde68a";
+			ctx.beginPath();
+			ctx.roundRect(-4, r + 1, 8, 3, 1);
+			ctx.fill();
+			ctx.restore();
+		}
+
+		ctx.fillStyle = "#78350f";
+		ctx.beginPath();
+		ctx.roundRect(-8, -3, 16, 6, 2);
+		ctx.fill();
+		ctx.strokeStyle = "#451a03";
+		ctx.lineWidth = 1;
+		ctx.stroke();
+
+		ctx.strokeStyle = "#78350f";
+		ctx.lineWidth = 1.5;
+		ctx.beginPath();
+		ctx.moveTo(-2, -r - 2);
+		ctx.quadraticCurveTo(-6, -r - 8, -2, -r - 11);
+		ctx.stroke();
+
+		ctx.fillStyle = this.age % 6 < 3 ? "#fef08a" : "#fbbf24";
+		ctx.beginPath();
+		ctx.arc(-2, -r - 12, 2.5, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	private drawRifle(ctx: CanvasRenderingContext2D): void {
+		const len = 18;
+		const grad = ctx.createLinearGradient(0, 0, len, 0);
+		grad.addColorStop(0, "rgba(6, 182, 212, 0.1)");
+		grad.addColorStop(0.6, "rgba(6, 182, 212, 0.9)");
+		grad.addColorStop(1, "rgba(165, 243, 252, 1)");
+		ctx.strokeStyle = grad;
+		ctx.lineWidth = 3;
+		ctx.beginPath();
+		ctx.moveTo(0, 0);
+		ctx.lineTo(len, 0);
+		ctx.stroke();
+
+		ctx.fillStyle = "#cffafe";
+		ctx.beginPath();
+		ctx.arc(len, 0, 3, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	private drawFallback(ctx: CanvasRenderingContext2D): void {
+		ctx.fillStyle = "#94a3b8";
+		ctx.beginPath();
+		ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+		ctx.fill();
 	}
 }
