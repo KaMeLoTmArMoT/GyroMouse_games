@@ -401,4 +401,5 @@ export interface LobbyConfig {
 	mapId: string;
 	aiDifficulty: AIDifficulty;
 	matchType: "ai" | "pvp";
+	enableWind?: boolean;
 }

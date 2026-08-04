@@ -303,19 +303,25 @@ export function simulateShot(
 			if (obj.isDestroyed) continue;
 			const dist = Math.hypot(x - obj.x, y - obj.y);
 			if (dist < 6 + obj.radius) {
+				checkLaunchBlock(x, y);
+				if (obj.type === "landmine" || obj.type === "barrel") {
+					// Detonate the mine / barrel explosion
+					blast(obj.x, obj.y, 45, 40);
+					if (weaponId !== "drill" && !stats.bouncy) {
+						finalize();
+						return shot;
+					}
+				}
 				if (stats.bouncy) {
 					vy = -Math.abs(vy) * 0.6;
 					vx *= 0.7;
 				} else if (weaponId === "drill") {
-					// Drill destroys the barrel but keeps boring — chain credit
-					shot.chainBonus += 20;
+					// Drill keeps boring
 				} else if (weaponId === "rifle") {
-					checkLaunchBlock(x, y);
 					impactDamage(x, y, 30);
 					finalize();
 					return shot;
 				} else {
-					checkLaunchBlock(x, y);
 					explodeAt(x, y);
 					finalize();
 					return shot;

@@ -16,6 +16,7 @@ export class MenuModal {
 		mapId: "random",
 		aiDifficulty: "normal",
 		matchType: "ai",
+		enableWind: false,
 	};
 
 	private onStartMatchCallback: (
@@ -286,6 +287,14 @@ export class MenuModal {
             </div>
 
             <div class="menu-row">
+              <span class="menu-label">💨 Wind</span>
+              <div class="pill-group" data-setting="enableWind">
+                <button class="pill active" data-value="false">🚫 Off</button>
+                <button class="pill" data-value="true">💨 On</button>
+              </div>
+            </div>
+
+            <div class="menu-row">
               <span class="menu-label">🏆 Game Mode</span>
               <select class="menu-select" id="selectGameMode">
                 <option value="deathmatch" selected>Classic Deathmatch</option>
@@ -376,6 +385,8 @@ export class MenuModal {
 					this.config.teamSize = parseInt(target.dataset.value!, 10);
 				} else if (setting === "health") {
 					this.config.wormHealth = parseInt(target.dataset.value!, 10);
+				} else if (setting === "enableWind") {
+					this.config.enableWind = target.dataset.value === "true";
 				}
 			});
 		});

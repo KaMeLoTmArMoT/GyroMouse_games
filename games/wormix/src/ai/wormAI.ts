@@ -12,12 +12,26 @@ import {
 	type WeaponId,
 } from "../types";
 
+export interface PositionCandidateEval {
+	x: number;
+	y: number;
+	totalScore: number;
+	coverScore: number;
+}
+
 export interface AITurnPlan {
 	targetAngle: number;
 	targetPower: number;
 	weaponId: WeaponId;
 	walkDir: number; // -1, 0, 1
 	targetX: number; // x position to walk toward
+	evals?: PositionCandidateEval[];
+	personality?: AIPersonality;
+	sims?: number;
+	enemyDamageEst?: number;
+	selfDamageEst?: number;
+	killsEst?: number;
+	waterKnockoutsEst?: number;
 }
 
 /**
@@ -107,6 +121,13 @@ function shotScore(
 ): number {
 	// Heavily penalize shots blocked right at origin (hitting obstacle/crate/ally directly)
 	if (shot.blockedAtLaunch) return -500;
+
+	// Point-blank bouncy weapon self-harm protection (bouncy grenades/clusters/dynamite at feet)
+	const isBouncy = WEAPON_STATS[shot.weaponId].bouncy;
+	const distToImpact = Math.hypot(shot.endX - shooterX, shot.endY - shooterY);
+	if (isBouncy && distToImpact < 55 && shot.selfDamage > 0) {
+		return -1000;
+	}
 
 	let score =
 		w.attack * shot.enemyDamage -
@@ -250,6 +271,13 @@ class AIPlannerImpl implements AIPlanner {
 	}
 
 	public getPlan(): AITurnPlan {
+		const evalSummary = this.evals.map((e) => ({
+			x: e.x,
+			y: e.y,
+			totalScore: e.totalScore,
+			coverScore: e.coverScore,
+		}));
+
 		if (this.best) {
 			const dx = this.best.x - this.params.aiWorm.x;
 			let walkDir = 0;
@@ -261,9 +289,20 @@ class AIPlannerImpl implements AIPlanner {
 				weaponId: this.best.shot.weaponId,
 				walkDir,
 				targetX: this.best.x,
+				evals: evalSummary,
+				personality: this.params.personality,
+				sims: this.sims,
+				enemyDamageEst: this.best.shot.enemyDamage,
+				selfDamageEst: this.best.shot.selfDamage,
+				killsEst: this.best.shot.kills,
+				waterKnockoutsEst: this.best.shot.waterKnockouts,
 			};
 		}
-		return this.fallbackPlan();
+		const fallback = this.fallbackPlan();
+		fallback.evals = evalSummary;
+		fallback.personality = this.params.personality;
+		fallback.sims = this.sims;
+		return fallback;
 	}
 
 	// ---------------------------------------------------------------------
@@ -731,7 +770,8 @@ export class WormAI {
 				if (feetY >= terrain.waterY - 15) continue;
 				if (
 					!terrain.isSolidAt(nx, feetY - 8) &&
-					!terrain.isSolidAt(nx, feetY - 20)
+					!terrain.isSolidAt(nx, feetY - 20) &&
+					WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, nx)
 				) {
 					candidates.push({ x: nx, y: feetY });
 				}
@@ -744,7 +784,10 @@ export class WormAI {
 				(o) => o.type === "health_crate" && !o.isDestroyed,
 			);
 			for (const c of crates) {
-				if (Math.abs(c.x - aiWorm.x) < 300) {
+				if (
+					Math.abs(c.x - aiWorm.x) < 300 &&
+					WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, c.x)
+				) {
 					candidates.push({ x: c.x, y: c.y });
 				}
 			}

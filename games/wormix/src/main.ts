@@ -22,7 +22,12 @@ import type {
 	TurnPhase,
 	WeaponId,
 } from "./types";
-import { PROJECTILE_MAX_SPEED, WORLD_HEIGHT, WORLD_WIDTH } from "./types";
+import {
+	PROJECTILE_MAX_SPEED,
+	WEAPON_STATS,
+	WORLD_HEIGHT,
+	WORLD_WIDTH,
+} from "./types";
 import { HUD, WEAPON_LIST } from "./ui/hud";
 import { MapManager } from "./ui/mapManager";
 import { MenuModal } from "./ui/menuModal";
@@ -84,6 +89,10 @@ export class WormixGame {
 	private aiTargetX: number = 0;
 	private aiWalkTimeLeft: number = 0;
 	private aiReposTargetX: number | null = null;
+
+	// AI Debug Mode State
+	private isAiDebugMode: boolean = false;
+	private aiDebugFrozen: boolean = false;
 
 	// Reposition State (post-fire movement window)
 	private repositionTimer: number = 0;
@@ -353,7 +362,11 @@ export class WormixGame {
 	}
 
 	private updateWind(): void {
-		this.windX = (Math.random() - 0.5) * 5.0; // -2.5 to +2.5
+		if (this.lobbyConfig.enableWind) {
+			this.windX = (Math.random() - 0.5) * 5.0; // -2.5 to +2.5
+		} else {
+			this.windX = 0;
+		}
 	}
 
 	private spawnProjectileTrail(proj: Projectile): void {
@@ -486,6 +499,23 @@ export class WormixGame {
 					this.camX = focusWorm.x;
 					this.camY = focusWorm.y - 30;
 				}
+				return;
+			}
+
+			// Toggle AI Debug Mode (F3 key)
+			if (e.code === "F3") {
+				e.preventDefault();
+				this.isAiDebugMode = !this.isAiDebugMode;
+				this.aiDebugFrozen = false;
+				this.audioManager.playTone(800, 0.08, "sine");
+				return;
+			}
+
+			// Enter key to step/unfreeze AI in Debug Mode
+			if (e.code === "Enter" && this.aiDebugFrozen) {
+				e.preventDefault();
+				this.aiDebugFrozen = false;
+				this.audioManager.playTone(700, 0.08, "sine");
 				return;
 			}
 
@@ -730,7 +760,15 @@ export class WormixGame {
 				),
 			);
 			this.lastExplosionX = tip.x;
-			this.phase = "PROJECTILE_FLIGHT";
+
+			if (weapon.id === "dynamite") {
+				// Instant live-fuse escape window: worm runs to safety while Dynamite fuse ticks down!
+				this.phase = "REPOSITION";
+				this.repositionTimer = 3.5;
+				this.aiReposTargetX = null;
+			} else {
+				this.phase = "PROJECTILE_FLIGHT";
+			}
 		}
 
 		// Decrement ammo (skip if undefined = infinite bazooka)
@@ -868,9 +906,21 @@ export class WormixGame {
 				}
 			}
 		}
-		const dir = w.x >= nearestEnemyX ? 1 : -1;
-		const target = w.x + dir * 220;
-		return Math.max(30, Math.min(this.terrain.width - 30, target));
+		const preferredDir = w.x >= nearestEnemyX ? 1 : -1;
+		const offsets = [
+			preferredDir * 200,
+			preferredDir * 140,
+			preferredDir * 80,
+			-preferredDir * 120,
+			-preferredDir * 60,
+		];
+		for (const off of offsets) {
+			const candX = Math.max(30, Math.min(this.terrain.width - 30, w.x + off));
+			if (WormAI.canWalkTo(this.terrain, w.x, w.y, candX)) {
+				return candX;
+			}
+		}
+		return w.x;
 	}
 
 	private gameLoop(timestamp: number): void {
@@ -1067,11 +1117,12 @@ export class WormixGame {
 		this.showDecisionOverlay(isAiTurn && this.aiThinking);
 
 		if (isAiTurn && activeWorm) {
-			// AI turn clock: thinking + walking consume the 45s turn timer
+			// AI turn clock: thinking + walking consume the 45s turn timer (paused when debug frozen)
 			if (
-				this.phase === "MOVE" ||
-				this.phase === "WEAPON_SELECT" ||
-				this.phase === "AIM_FIRE"
+				!this.aiDebugFrozen &&
+				(this.phase === "MOVE" ||
+					this.phase === "WEAPON_SELECT" ||
+					this.phase === "AIM_FIRE")
 			) {
 				this.turnTimer -= 1 / 30;
 				if (this.turnTimer <= 0) {
@@ -1102,17 +1153,26 @@ export class WormixGame {
 					this.aiPlanner = null;
 					this.aiThinking = false;
 					this.aiTargetX = this.aiPlan.targetX;
-					this.aiWalkTimeLeft = 150; // 5 seconds max at 30fps
+					this.aiWalkTimeLeft = 240; // 8 seconds max at 30fps
 					activeWorm.aimAngle = this.aiPlan.targetAngle;
 					activeWorm.facingRight =
 						Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
+
+					if (this.isAiDebugMode) {
+						this.aiDebugFrozen = true;
+					}
 				}
 			}
 
-			// 6b. Walk toward planned position (with jump obstacle handling)
-			if (this.phase === "MOVE" && this.aiPlan && !this.aiThinking) {
+			// 6b. Walk toward planned position (with jump obstacle handling, paused if debug frozen)
+			if (
+				this.phase === "MOVE" &&
+				this.aiPlan &&
+				!this.aiThinking &&
+				!this.aiDebugFrozen
+			) {
 				const distToTarget = Math.abs(this.aiTargetX - activeWorm.x);
-				if (distToTarget > 15 && this.aiWalkTimeLeft > 0) {
+				if (distToTarget > 5 && this.aiWalkTimeLeft > 0) {
 					const dir = this.aiTargetX > activeWorm.x ? 1 : -1;
 					activeWorm.walk(dir);
 					if (activeWorm.isGrounded) {
@@ -1144,10 +1204,19 @@ export class WormixGame {
 			) {
 				this.aiFiringPending = true;
 
-				// Set final aim from plan
-				activeWorm.aimAngle = this.aiPlan.targetAngle;
+				// Recalculate precise aim angle and facing direction from CURRENT position
+				const enemies = this.worms.filter(
+					(e) => e.isAlive && e.team !== activeWorm.team,
+				);
+				const est = WormAI.estimateAnglePower(
+					this.aiPlan.weaponId,
+					activeWorm.x,
+					activeWorm.y,
+					enemies,
+				);
+				activeWorm.aimAngle = this.aiPlan.targetAngle || est.angle;
 				activeWorm.facingRight =
-					Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
+					Math.cos((activeWorm.aimAngle * Math.PI) / 180) >= 0;
 
 				// Set weapon
 				const weaponIdx = WEAPON_LIST.findIndex(
@@ -1320,8 +1389,16 @@ export class WormixGame {
 			);
 		}
 
+		// AI Debug Visualizations (World space: Candidates Heatmap, Target Path, Planned Arc)
+		if (this.isAiDebugMode && this.aiPlan) {
+			this.renderAiDebugWorld(this.ctx, activeWorm);
+		}
+
 		// Back to screen space for UI overlay
 		this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+		// Update AI Debug DOM Panel
+		this.updateAiDebugOverlay();
 
 		// Calculate Team Total HPs
 		const playerHp = this.worms
@@ -1477,6 +1554,131 @@ export class WormixGame {
 		if (this.lobbyBtn) {
 			this.lobbyBtn.style.display = "none";
 		}
+	}
+
+	private renderAiDebugWorld(
+		ctx: CanvasRenderingContext2D,
+		activeWorm: Worm | null,
+	): void {
+		if (!this.aiPlan) return;
+
+		// 1. Position Candidates Heatmap
+		if (this.aiPlan.evals && this.aiPlan.evals.length > 0) {
+			const maxScore = Math.max(...this.aiPlan.evals.map((e) => e.totalScore));
+			const minScore = Math.min(...this.aiPlan.evals.map((e) => e.totalScore));
+			const scoreRange = maxScore - minScore || 1;
+
+			for (const ev of this.aiPlan.evals) {
+				const norm = (ev.totalScore - minScore) / scoreRange;
+				const isChosen = Math.abs(ev.x - this.aiPlan.targetX) < 5;
+
+				ctx.fillStyle = isChosen
+					? "rgba(34, 197, 94, 0.85)"
+					: norm > 0.65
+						? "rgba(56, 189, 248, 0.55)"
+						: norm > 0.35
+							? "rgba(234, 179, 8, 0.55)"
+							: "rgba(239, 68, 68, 0.45)";
+
+				ctx.beginPath();
+				ctx.arc(ev.x, ev.y, isChosen ? 14 : 8, 0, Math.PI * 2);
+				ctx.fill();
+				ctx.strokeStyle = isChosen ? "#ffffff" : "rgba(255, 255, 255, 0.3)";
+				ctx.lineWidth = isChosen ? 2.5 : 1;
+				ctx.stroke();
+
+				ctx.font = isChosen
+					? "bold 11px Outfit, sans-serif"
+					: "9px Outfit, sans-serif";
+				ctx.fillStyle = isChosen ? "#ffffff" : "#cbd5e1";
+				ctx.textAlign = "center";
+				ctx.fillText(`${Math.round(ev.totalScore)}`, ev.x, ev.y - 12);
+			}
+		}
+
+		// 2. Target Walk Path & Flag Marker
+		if (activeWorm) {
+			ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
+			ctx.lineWidth = 2;
+			ctx.setLineDash([5, 5]);
+			ctx.beginPath();
+			ctx.moveTo(activeWorm.x, activeWorm.y);
+			ctx.lineTo(this.aiPlan.targetX, activeWorm.y);
+			ctx.stroke();
+			ctx.setLineDash([]);
+
+			ctx.font = "16px sans-serif";
+			ctx.textAlign = "center";
+			ctx.fillText("🚩", this.aiPlan.targetX, activeWorm.y - 18);
+		}
+
+		// 3. Planned Trajectory Arc & Target Impact
+		if (activeWorm) {
+			const planX = this.aiPlan.targetX;
+			const planSurfaceY = this.terrain.getSurfaceY(planX);
+			const planY = planSurfaceY - 12;
+			const rad = (this.aiPlan.targetAngle * Math.PI) / 180;
+			const speed =
+				this.aiPlan.targetPower * PROJECTILE_MAX_SPEED[this.aiPlan.weaponId];
+			let vx = Math.cos(rad) * speed;
+			let vy = Math.sin(rad) * speed;
+			let px = planX + Math.cos(rad) * 20;
+			let py = planY + Math.sin(rad) * 20;
+			const hasWind = WEAPON_STATS[this.aiPlan.weaponId].wind;
+			const gravity = WEAPON_STATS[this.aiPlan.weaponId].gravity;
+
+			ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
+			ctx.lineWidth = 2.5;
+			ctx.beginPath();
+			ctx.moveTo(px, py);
+
+			for (let step = 0; step < 40; step++) {
+				if (hasWind) vx += this.windX * 0.05;
+				if (this.aiPlan.weaponId !== "rifle") vy += gravity;
+				px += vx;
+				py += vy;
+				ctx.lineTo(px, py);
+				if (this.terrain.isSolidAt(px, py) || py >= this.terrain.waterY) break;
+			}
+			ctx.stroke();
+
+			ctx.font = "18px sans-serif";
+			ctx.textAlign = "center";
+			ctx.fillText("🎯", px, py);
+		}
+	}
+
+	private updateAiDebugOverlay(): void {
+		const panelEl = document.getElementById("aiDebugPanel");
+		const contentEl = document.getElementById("aiDebugContent");
+		const freezeEl = document.getElementById("aiDebugFreezeBadge");
+		if (!panelEl || !contentEl || !freezeEl) return;
+
+		panelEl.hidden = !this.isAiDebugMode;
+		if (!this.isAiDebugMode) return;
+
+		const activeWorm = this.getActiveWorm();
+		freezeEl.hidden = !this.aiDebugFrozen;
+
+		if (activeWorm?.team !== "ai") {
+			contentEl.innerHTML = `<div>Waiting for AI turn...</div>`;
+			return;
+		}
+
+		const p = this.aiPlan;
+		if (!p) {
+			contentEl.innerHTML = `<div>🤖 <b>${activeWorm.name}</b> is searching plan...</div>`;
+			return;
+		}
+
+		contentEl.innerHTML = `
+			<div>🤖 <b>${activeWorm.name}</b> [<code>${p.personality || "default"}</code>]</div>
+			<div>📍 Target X: <b>${Math.round(p.targetX)}</b> (Current: ${Math.round(activeWorm.x)})</div>
+			<div>🚀 Weapon: <b>${p.weaponId.toUpperCase()}</b> (Angle: ${Math.round(p.targetAngle)}°, Power: ${Math.round(p.targetPower * 100)}%)</div>
+			<div>💥 Est. Dmg: <b>${p.enemyDamageEst ?? 0}</b> enemy | <b>${p.selfDamageEst ?? 0}</b> self</div>
+			<div>☠️ Est. Kills: <b>${p.killsEst ?? 0}</b> | Water KO: <b>${p.waterKnockoutsEst ?? 0}</b></div>
+			<div>⏱️ Sims: <b>${p.sims ?? 0}</b> | Wind: <b>${this.windX.toFixed(1)}</b></div>
+		`;
 	}
 }
 
