@@ -47,41 +47,240 @@ export interface WeaponInfo {
 	affectedByWind: boolean;
 }
 
+export type WeaponKind = "projectile" | "raycast";
+
+export type WeaponSpecial =
+	| "none"
+	| "split"
+	| "bore"
+	| "acid"
+	| "sand"
+	| "airburst";
+
 /**
- * Launch speed multiplier (max charge power) per weapon.
- * Bazooka & Drill are tuned slower for controlled, flatter arcs.
+ * Single source of truth for how each weapon behaves. Used by the real
+ * `Projectile.update` AND the AI's pure simulation so the two can never drift.
  */
-export const PROJECTILE_MAX_SPEED: Record<WeaponId, number> = {
-	bazooka: 18,
-	grenade: 22,
-	cluster: 22,
-	acid_bomb: 22,
-	sand_bomb: 22,
-	drill: 18,
-	mortar: 22,
-	dynamite: 22,
-	rifle: 22,
-	shotgun: 22,
+export interface WeaponStats {
+	maxSpeed: number;
+	gravity: number;
+	wind: boolean;
+	bouncy: boolean;
+	/** Detonation fuse in frames (30fps). 0 = no fuse (impact detonation). */
+	fuseFrames: number;
+	blastRadius: number;
+	baseDamage: number;
+	kind: WeaponKind;
+	special: WeaponSpecial;
+	/** Cluster children */
+	childBlastRadius?: number;
+	childBaseDamage?: number;
+	childCount?: number;
+}
+
+export const WEAPON_STATS: Record<WeaponId, WeaponStats> = {
+	bazooka: {
+		maxSpeed: 18,
+		gravity: 0.3,
+		wind: true,
+		bouncy: false,
+		fuseFrames: 0,
+		blastRadius: 42,
+		baseDamage: 45,
+		kind: "projectile",
+		special: "none",
+	},
+	grenade: {
+		maxSpeed: 22,
+		gravity: 0.45,
+		wind: false,
+		bouncy: true,
+		fuseFrames: 90,
+		blastRadius: 38,
+		baseDamage: 35,
+		kind: "projectile",
+		special: "none",
+	},
+	cluster: {
+		maxSpeed: 22,
+		gravity: 0.45,
+		wind: true,
+		bouncy: true,
+		fuseFrames: 90,
+		blastRadius: 30,
+		baseDamage: 35,
+		kind: "projectile",
+		special: "split",
+		childBlastRadius: 30,
+		childBaseDamage: 35,
+		childCount: 5,
+	},
+	acid_bomb: {
+		maxSpeed: 22,
+		gravity: 0.45,
+		wind: false,
+		bouncy: false,
+		fuseFrames: 0,
+		blastRadius: 20,
+		baseDamage: 0,
+		kind: "projectile",
+		special: "acid",
+	},
+	sand_bomb: {
+		maxSpeed: 22,
+		gravity: 0.45,
+		wind: false,
+		bouncy: false,
+		fuseFrames: 0,
+		blastRadius: 0,
+		baseDamage: 0,
+		kind: "projectile",
+		special: "sand",
+	},
+	drill: {
+		maxSpeed: 18,
+		gravity: 0.3,
+		wind: true,
+		bouncy: false,
+		fuseFrames: 0,
+		blastRadius: 35,
+		baseDamage: 40,
+		kind: "projectile",
+		special: "bore",
+	},
+	mortar: {
+		maxSpeed: 22,
+		gravity: 0.45,
+		wind: true,
+		bouncy: false,
+		fuseFrames: 75,
+		blastRadius: 15,
+		baseDamage: 25,
+		kind: "projectile",
+		special: "airburst",
+	},
+	dynamite: {
+		maxSpeed: 22,
+		gravity: 0.45,
+		wind: false,
+		bouncy: true,
+		fuseFrames: 120,
+		blastRadius: 65,
+		baseDamage: 55,
+		kind: "projectile",
+		special: "none",
+	},
+	rifle: {
+		maxSpeed: 22,
+		gravity: 0,
+		wind: false,
+		bouncy: false,
+		fuseFrames: 0,
+		blastRadius: 18,
+		baseDamage: 30,
+		kind: "projectile",
+		special: "none",
+	},
+	shotgun: {
+		maxSpeed: 22,
+		gravity: 0,
+		wind: false,
+		bouncy: false,
+		fuseFrames: 0,
+		blastRadius: 0,
+		baseDamage: 40,
+		kind: "raycast",
+		special: "none",
+	},
 };
 
 /**
- * Gravity (drop) per weapon. Bazooka & Drill drop less for a flatter arc.
- * Rifle skips gravity entirely.
+ * Launch speed multiplier (max charge power) per weapon — derived from
+ * WEAPON_STATS so projectile physics, the trajectory arc and the AI sim
+ * always agree.
  */
-export const PROJECTILE_GRAVITY: Record<WeaponId, number> = {
-	bazooka: 0.3,
-	grenade: 0.45,
-	cluster: 0.45,
-	acid_bomb: 0.45,
-	sand_bomb: 0.45,
-	drill: 0.3,
-	mortar: 0.45,
-	dynamite: 0.45,
-	rifle: 0.45,
-	shotgun: 0.45,
-};
+export const PROJECTILE_MAX_SPEED: Record<WeaponId, number> =
+	Object.fromEntries(
+		Object.entries(WEAPON_STATS).map(([id, s]) => [id, s.maxSpeed]),
+	) as Record<WeaponId, number>;
+
+/**
+ * Gravity (drop) per weapon — derived from WEAPON_STATS. Rifle skips gravity.
+ */
+export const PROJECTILE_GRAVITY: Record<WeaponId, number> = Object.fromEntries(
+	Object.entries(WEAPON_STATS).map(([id, s]) => [id, s.gravity]),
+) as Record<WeaponId, number>;
 
 export type AIDifficulty = "easy" | "normal" | "hard";
+
+/**
+ * AI search budget — how much brute force the bot is allowed per turn.
+ * `thinkingMs` is the hard wall-clock ceiling (deadline), `maxSimulations`
+ * the safety cap on individual shot simulations. Easy = fast & imperfect,
+ * Hard = near-exhaustive (up to ~5s of thinking allowed).
+ */
+export interface AISearchBudget {
+	thinkingMs: number;
+	maxSimulations: number;
+	finalists: number; // top positions that get the fine/exhaustive pass
+	coarseAngles: number;
+	coarsePowers: number;
+	refinementIterations: number;
+	fineAngles: number;
+	finePowers: number;
+	/** Aim error (px) added to blast distances — grows with shot distance. */
+	aimErrorPx: number;
+	aimErrorGrowth: number;
+	/** Score noise so low difficulties don't always pick the strict best. */
+	scoreNoise: number;
+	/** Aim-angle execution noise at fire time (degrees). */
+	angleNoise: number;
+}
+
+export const AI_BUDGET: Record<AIDifficulty, AISearchBudget> = {
+	easy: {
+		thinkingMs: 1000,
+		maxSimulations: 100_000,
+		finalists: 3,
+		coarseAngles: 7,
+		coarsePowers: 5,
+		refinementIterations: 2,
+		fineAngles: 9,
+		finePowers: 7,
+		aimErrorPx: 8,
+		aimErrorGrowth: 0.04,
+		scoreNoise: 15,
+		angleNoise: 10,
+	},
+	normal: {
+		thinkingMs: 3000,
+		maxSimulations: 300_000,
+		finalists: 5,
+		coarseAngles: 11,
+		coarsePowers: 7,
+		refinementIterations: 3,
+		fineAngles: 13,
+		finePowers: 9,
+		aimErrorPx: 3,
+		aimErrorGrowth: 0.012,
+		scoreNoise: 5,
+		angleNoise: 3,
+	},
+	hard: {
+		thinkingMs: 5000,
+		maxSimulations: 1_000_000,
+		finalists: 7,
+		coarseAngles: 15,
+		coarsePowers: 9,
+		refinementIterations: 4,
+		fineAngles: 17,
+		finePowers: 11,
+		aimErrorPx: 0,
+		aimErrorGrowth: 0,
+		scoreNoise: 1,
+		angleNoise: 0,
+	},
+};
 
 export interface Vector2D {
 	x: number;

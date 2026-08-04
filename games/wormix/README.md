@@ -83,9 +83,9 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
       * 🤖 **Player vs AI**: Red Team (human) vs Blue Team (bot). Select bot difficulty below.
       * 👥 **Local PvP (Pass & Play)**: Both Red and Blue teams are human-controlled. Players take turns passing the keyboard. HUD turn banners display `🔴 RED PLAYER TURN` / `🔵 BLUE PLAYER TURN` to indicate whose turn it is. AI logic is completely disabled.
     * **🤖 Bot Difficulty** (Player vs AI only):
-      * 🐣 **Easy**: Random target selection, large aim scatter (±20°), no wind compensation, Bazooka & Shotgun only.
-      * 🎯 **Normal**: Closest target focus, moderate scatter (±6°), partial wind compensation (×1.2), Bazooka / Grenade / Cluster.
-      * 🔥 **Hard**: Precise parabolic trajectory solver (±1.25°), full wind vector compensation (×2.8), tactical weapon selection (Cluster for grouped enemies, Acid Bomb for cover terrain, Grenade, Bazooka). **Utility-based AI** with 5 personality presets (aggressive, sniper, looter, chaotic, default), trajectory simulation, position scoring, and ammo-aware weapon selection.
+      * 🐣 **Easy**: Small search budget (~1s, capped), Bazooka/Shotgun/Rifle only, distance-based aim blur + angle scatter (±10°), picks near-straightforward shots.
+      * 🎯 **Normal**: Medium search budget (~3s), all weapons, iterative aim refinement, small angle scatter (±3°).
+      * 🔥 **Hard**: Large search budget (up to ~5s of frame-sliced brute-force), all weapons, multi-pass iterative refinement (near-exact wind-compensated aim), no scatter. **Utility-based AI** — 5 personality presets rolled per bot, shared exact physics simulation (fuses, bouncing, drill boring, mortar airburst, acid pools, raycasts), friendly-fire/self-damage avoidance, kill-finish priority, reachability-aware movement, crate/cover/mine scoring, and post-fire repositioning.
     * **Team Configurations**: 1v1, 2v2, 3v3 team sizes.
     * **Custom Health**: 50 HP, 100 HP, 150 HP, 200 HP per worm.
     * **Game Modes**:
@@ -133,7 +133,8 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
 | [`src/ui/menuModal.ts`](src/ui/menuModal.ts) | Glassmorphism match lobby — Match Type (PvP / AI), Bot Difficulty (Easy / Normal / Hard), Team Size, Health, Game Modes, Map Selector, Map Manager shortcut. |
 | [`src/ui/mapManager.ts`](src/ui/mapManager.ts) | Visual gallery modal for map management — on-the-fly terrain thumbnails, card grid, Edit/Clone/Rename/Delete/Export actions, preset cloning, JSON import. |
 | [`src/physics/projectile.ts`](src/physics/projectile.ts) | Projectile simulation, wind force, gravity, drill penetration, mortar airburst, explosion damage & knockback, map object collision. |
-| [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI with utility-based scoring, trajectory simulation, 5 personality presets, position candidate evaluation, cover/crate scoring, ammo-aware weapon selection, and target-based movement (walks to optimal position, no random jumping). |
+| [`src/ai/wormAI.ts`](src/ai/wormAI.ts) | Tactical AI — frame-sliced budgeted planner (easy ~1s / normal ~3s / hard ~5s, configurable `AI_BUDGET`), shared physics simulation, 5 personality presets rolled per bot, position candidate + cover/crate/mine scoring, reachability-aware walking, kill-finish priority, fire-from-actual-position fallback, and post-fire repositioning. |
+| [`src/physics/ballistics.ts`](src/physics/ballistics.ts) | Pure non-mutating shot simulation shared by the AI (mirrors `projectile.ts`: fuses, bouncing, drill boring, mortar airburst, acid pools, sand utility, rifle/shotgun raycasts, cluster children). |
 | [`src/ui/hud.ts`](src/ui/hud.ts) | Glassmorphism HUD, PvP team turn banners, trajectory arc preview, power meter, weapon selector toolbar with ammo count badges (`×N`), depleted weapon dimming. |
 | [`src/types.ts`](src/types.ts) | Type interfaces for turn phases (incl. `REPOSITION`), materials, weapons, map objects, water bodies, lobby config (incl. `matchType`), `TeamAmmo`, `CustomMapData` (incl. `updatedAt`). |
 

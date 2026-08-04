@@ -1,7 +1,12 @@
 import { SharedAudioManager } from "../../../shared/audioManager";
 import { SharedInputManager } from "../../../shared/inputManager";
 import { SettingsOverlay } from "../../../shared/settingsOverlay";
-import { type AITurnPlan, WormAI } from "./ai/wormAI";
+import {
+	type AIPlanner,
+	type AITurnPlan,
+	createPlanner,
+	WormAI,
+} from "./ai/wormAI";
 import { MapEditor } from "./editor/mapEditor";
 import { EffectSystem } from "./effects/effects";
 import { MapObject } from "./entities/mapObject";
@@ -72,10 +77,13 @@ export class WormixGame {
 
 	// AI Turn State
 	private aiPlan: AITurnPlan | null = null;
-	private aiPersonality: AIPersonality = "default";
+	private aiPersonalities: Record<string, AIPersonality> = {};
+	private aiPlanner: AIPlanner | null = null;
+	private aiThinking: boolean = false;
 	private aiFiringPending: boolean = false;
 	private aiTargetX: number = 0;
 	private aiWalkTimeLeft: number = 0;
+	private aiReposTargetX: number | null = null;
 
 	// Reposition State (post-fire movement window)
 	private repositionTimer: number = 0;
@@ -198,7 +206,6 @@ export class WormixGame {
 		this.menuModal.hide();
 		this.lobbyConfig = config;
 		this.aiDifficulty = config.aiDifficulty;
-		this.aiPersonality = WormAI.rollPersonality(config.aiDifficulty);
 
 		if (this.mapEditor) {
 			this.mapEditor.exit();
@@ -278,6 +285,16 @@ export class WormixGame {
 			this.worms.push(blueWorm);
 		}
 
+		// Roll a personality per AI worm (each bot gets its own tactics)
+		this.aiPersonalities = {};
+		for (const w of this.worms) {
+			if (w.team === "ai") {
+				this.aiPersonalities[w.id] = WormAI.rollPersonality(
+					config.aiDifficulty,
+				);
+			}
+		}
+
 		// 3. Initialize Interactive Map Objects (Barrels, Mines, Health Crates)
 		this.mapObjects = [];
 		if (mapData?.mapObjects && mapData.mapObjects.length > 0) {
@@ -309,8 +326,12 @@ export class WormixGame {
 		this.phase = "MOVE";
 		this.turnTimer = 45.0;
 		this.aiPlan = null;
+		this.aiPlanner = null;
+		this.aiThinking = false;
 		this.aiFiringPending = false;
 		this.repositionTimer = 0;
+		this.aiReposTargetX = null;
+		this.showDecisionOverlay(false);
 
 		// Initialize team ammo (bazooka is always infinite — absent from map)
 		const defaultAmmo: TeamAmmo = {
@@ -749,6 +770,109 @@ export class WormixGame {
 		this.camY += (targetY - this.camY) * k;
 	}
 
+	/** Show/hide the DOM "making decision…" spinner overlay during AI thinking. */
+	private showDecisionOverlay(show: boolean): void {
+		const el = document.getElementById("aiDecisionOverlay");
+		if (el) el.hidden = !show;
+	}
+
+	/**
+	 * Emergency turn end: if the 45s timer expires while the AI is still
+	 * thinking/walking, stop searching, apply the best-known plan and fire.
+	 */
+	private forceFinishAiTurn(activeWorm: Worm): void {
+		if (this.aiPlanner && !this.aiPlan) {
+			this.aiPlanner.step(500);
+			this.aiPlan = this.aiPlanner.getPlan();
+			this.aiPlanner = null;
+			this.aiThinking = false;
+			this.showDecisionOverlay(false);
+		}
+		if (this.aiPlan && !this.aiFiringPending) {
+			this.aiFiringPending = true;
+			activeWorm.aimAngle = this.aiPlan.targetAngle;
+			activeWorm.facingRight =
+				Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
+			const weaponIdx = WEAPON_LIST.findIndex(
+				(w) => w.id === this.aiPlan!.weaponId,
+			);
+			if (weaponIdx !== -1) this.activeWeaponIndex = weaponIdx;
+			this.chargePower = this.aiPlan.targetPower;
+			this.aiPlan = null;
+			this.phase = "AIM_FIRE";
+			this.fireActiveWeapon();
+		} else if (!this.aiPlan && !this.aiFiringPending) {
+			this.phase = "PROJECTILE_FLIGHT"; // skip the turn
+		}
+	}
+
+	/**
+	 * Fire-from-actual-position: if walking toward the planned spot was blocked
+	 * (cliff/water), rescan the best shot cheaply from where the worm actually
+	 * stopped so it doesn't fire a stale plan.
+	 */
+	private maybeReplanFromHere(activeWorm: Worm): void {
+		if (!this.aiPlan) return;
+		if (Math.abs(activeWorm.x - this.aiTargetX) <= 20) return;
+		const planner = createPlanner({
+			aiWorm: activeWorm,
+			allWorms: this.worms,
+			terrain: this.terrain,
+			mapObjects: this.mapObjects,
+			windX: this.windX,
+			difficulty: this.aiDifficulty,
+			personality: this.aiPersonalities[activeWorm.id] ?? "default",
+			availableAmmo: this.teamAmmo.ai,
+			gameMode: this.lobbyConfig.gameMode,
+			deadlineMs: 80,
+			fixedPositionX: activeWorm.x,
+		});
+		planner.step(80);
+		if (planner.isDone) {
+			const p = planner.getPlan();
+			if (p) {
+				this.aiPlan = p;
+				this.aiTargetX = activeWorm.x;
+			}
+		}
+	}
+
+	/** Pick a reposition spot after firing (crate if low HP, else away from enemies). */
+	private pickAiRepositionTarget(w: Worm): number {
+		if (w.health < w.maxHealth * 0.6) {
+			let bestX: number | null = null;
+			let bestD = Infinity;
+			for (const obj of this.mapObjects) {
+				if (obj.type === "health_crate" && !obj.isDestroyed) {
+					const d = Math.abs(obj.x - w.x);
+					if (
+						d < bestD &&
+						d < 400 &&
+						WormAI.canWalkTo(this.terrain, w.x, w.y, obj.x)
+					) {
+						bestD = d;
+						bestX = obj.x;
+					}
+				}
+			}
+			if (bestX !== null) return bestX;
+		}
+		let nearestDist = Infinity;
+		let nearestEnemyX = this.lastExplosionX;
+		for (const e of this.worms) {
+			if (e.team !== w.team && e.isAlive) {
+				const d = Math.hypot(e.x - w.x, e.y - w.y);
+				if (d < nearestDist) {
+					nearestDist = d;
+					nearestEnemyX = e.x;
+				}
+			}
+		}
+		const dir = w.x >= nearestEnemyX ? 1 : -1;
+		const target = w.x + dir * 220;
+		return Math.max(30, Math.min(this.terrain.width - 30, target));
+	}
+
 	private gameLoop(timestamp: number): void {
 		if (!this.lastTickTime) this.lastTickTime = timestamp;
 		const elapsed = timestamp - this.lastTickTime;
@@ -902,65 +1026,114 @@ export class WormixGame {
 					activeWorm.jump();
 				}
 			} else if (activeWorm.team === "ai") {
-				// AI: walk away from last explosion toward cover
-				const awayDir = activeWorm.x > this.lastExplosionX ? 1 : -1;
-				// Check if there's ground ahead before walking
-				const nextX = activeWorm.x + awayDir * 30;
-				if (
-					this.terrain.getLocalGroundY(
-						nextX,
-						activeWorm.y + activeWorm.radius + 5,
-						15,
-						12,
-					) !== null
-				) {
-					activeWorm.walk(awayDir);
-					// Jump if hitting a wall (stuck with zero horizontal velocity)
-					if (activeWorm.isGrounded && activeWorm.vx === 0) {
-						activeWorm.jump();
+				// AI: reposition toward a chosen safe spot (crate if low HP,
+				// otherwise away from the nearest enemy / last explosion)
+				if (this.aiReposTargetX === null) {
+					this.aiReposTargetX = this.pickAiRepositionTarget(activeWorm);
+				}
+				if (Math.abs(this.aiReposTargetX - activeWorm.x) > 20) {
+					const dir = this.aiReposTargetX > activeWorm.x ? 1 : -1;
+					// Check if there's ground ahead before walking
+					const nextX = activeWorm.x + dir * 30;
+					if (
+						this.terrain.getLocalGroundY(
+							nextX,
+							activeWorm.y + activeWorm.radius + 5,
+							15,
+							12,
+						) !== null
+					) {
+						activeWorm.walk(dir);
+						// Jump if hitting a wall (stuck with zero horizontal velocity)
+						if (activeWorm.isGrounded && activeWorm.vx === 0) {
+							activeWorm.jump();
+						}
+					} else {
+						activeWorm.walk(0); // stop if no ground ahead
 					}
 				} else {
-					activeWorm.walk(0); // stop if no ground ahead
+					activeWorm.walk(0);
 				}
 			}
 		}
 
 		// 6. AI Turn Logic (only in AI match mode and only for Blue team worms)
-		if (
+		const isAiTurn =
 			!isPvP &&
-			activeWorm &&
+			activeWorm !== null &&
 			activeWorm.isAlive &&
-			activeWorm.team === "ai"
-		) {
-			if (this.phase === "MOVE") {
-				// Evaluate once at start of turn
-				if (!this.aiPlan) {
-					this.aiPlan = WormAI.evaluateTurn(
-						activeWorm,
-						this.worms,
-						this.terrain,
-						this.mapObjects,
-						this.windX,
-						this.aiDifficulty,
-						this.aiPersonality,
-						this.teamAmmo.ai,
-					);
+			activeWorm.team === "ai";
+
+		this.showDecisionOverlay(isAiTurn && this.aiThinking);
+
+		if (isAiTurn && activeWorm) {
+			// AI turn clock: thinking + walking consume the 45s turn timer
+			if (
+				this.phase === "MOVE" ||
+				this.phase === "WEAPON_SELECT" ||
+				this.phase === "AIM_FIRE"
+			) {
+				this.turnTimer -= 1 / 30;
+				if (this.turnTimer <= 0) {
+					this.turnTimer = 0;
+					this.forceFinishAiTurn(activeWorm);
+				}
+			}
+
+			// 6a. Decision phase — frame-sliced search (spinner + timer tick)
+			if (this.phase === "MOVE" && !this.aiPlan) {
+				if (!this.aiPlanner) {
+					this.aiPlanner = createPlanner({
+						aiWorm: activeWorm,
+						allWorms: this.worms,
+						terrain: this.terrain,
+						mapObjects: this.mapObjects,
+						windX: this.windX,
+						difficulty: this.aiDifficulty,
+						personality: this.aiPersonalities[activeWorm.id] ?? "default",
+						availableAmmo: this.teamAmmo.ai,
+						gameMode: this.lobbyConfig.gameMode,
+					});
+					this.aiThinking = true;
+				}
+				this.aiPlanner.step(16);
+				if (this.aiPlanner.isDone) {
+					this.aiPlan = this.aiPlanner.getPlan();
+					this.aiPlanner = null;
+					this.aiThinking = false;
 					this.aiTargetX = this.aiPlan.targetX;
 					this.aiWalkTimeLeft = 150; // 5 seconds max at 30fps
 					activeWorm.aimAngle = this.aiPlan.targetAngle;
 					activeWorm.facingRight =
 						Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
 				}
+			}
 
-				// Walk toward target position
+			// 6b. Walk toward planned position (with jump obstacle handling)
+			if (this.phase === "MOVE" && this.aiPlan && !this.aiThinking) {
 				const distToTarget = Math.abs(this.aiTargetX - activeWorm.x);
 				if (distToTarget > 15 && this.aiWalkTimeLeft > 0) {
 					const dir = this.aiTargetX > activeWorm.x ? 1 : -1;
 					activeWorm.walk(dir);
+					if (activeWorm.isGrounded) {
+						const nextX = activeWorm.x + dir * 18;
+						const isWall = this.terrain.isSolidAt(nextX, activeWorm.y - 6);
+						const localGround = this.terrain.getLocalGroundY(
+							nextX,
+							activeWorm.y + activeWorm.radius + 5,
+							15,
+							15,
+						);
+						if (isWall || localGround === null || activeWorm.vx === 0) {
+							activeWorm.jump();
+						}
+					}
 					this.aiWalkTimeLeft--;
 				} else {
 					activeWorm.walk(0); // stop
 					this.phase = "WEAPON_SELECT";
+					// If walking was cliff-blocked, rescan the shot from here
+					this.maybeReplanFromHere(activeWorm);
 				}
 			} else if (this.phase === "WEAPON_SELECT" && this.aiPlan) {
 				this.phase = "AIM_FIRE";
@@ -1044,10 +1217,15 @@ export class WormixGame {
 		// Update visual effect particles (smoke trails, sparks, flashes)
 		this.effects.update();
 
-		// 7. Turn Resolution Check — enter REPOSITION phase after projectiles expire
+		// 7. Turn Resolution Check — enter REPOSITION phase only if active worm took NO damage
 		if (this.phase === "PROJECTILE_FLIGHT" && this.projectiles.length === 0) {
-			this.phase = "REPOSITION";
-			this.repositionTimer = 3.0; // 3 seconds to reposition
+			const currentWorm = this.getActiveWorm();
+			if (currentWorm?.tookDamageThisTurn) {
+				this.checkTurnEnd();
+			} else {
+				this.phase = "REPOSITION";
+				this.repositionTimer = 3.0; // 3 seconds to reposition
+			}
 		}
 	}
 
@@ -1062,6 +1240,8 @@ export class WormixGame {
 		if (redAlive === 0 || blueAlive === 0) {
 			this.phase = "GAME_OVER";
 			this.audioManager.playWin();
+			this.aiThinking = false;
+			this.showDecisionOverlay(false);
 			return;
 		}
 
@@ -1072,11 +1252,16 @@ export class WormixGame {
 		}
 
 		this.activeWormIndex = nextIdx;
+		this.worms[nextIdx].resetTurnFlags();
 		this.phase = "MOVE";
 		this.turnTimer = 45.0;
 		this.aiPlan = null;
+		this.aiPlanner = null;
+		this.aiThinking = false;
 		this.aiFiringPending = false;
 		this.repositionTimer = 0;
+		this.aiReposTargetX = null;
+		this.showDecisionOverlay(false);
 		this.updateWind();
 	}
 
@@ -1118,6 +1303,7 @@ export class WormixGame {
 		// Trajectory sighting arc (world space — matches real flight path)
 		if (
 			activeWorm?.isAlive &&
+			!this.aiThinking &&
 			(this.phase === "AIM_FIRE" || this.phase === "MOVE")
 		) {
 			const wid = WEAPON_LIST[this.activeWeaponIndex].id;

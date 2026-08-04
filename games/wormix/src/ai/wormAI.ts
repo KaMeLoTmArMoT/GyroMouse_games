@@ -1,14 +1,15 @@
 import type { MapObject } from "../entities/mapObject";
 import type { Worm } from "../entities/worm";
+import { type ShotResult, simulateShot } from "../physics/ballistics";
 import type { TerrainManager } from "../terrain/terrainManager";
 import {
+	AI_BUDGET,
 	type AIDifficulty,
 	type AIPersonality,
-	PROJECTILE_GRAVITY,
-	PROJECTILE_MAX_SPEED,
+	type GameMode,
 	type TeamAmmo,
+	WEAPON_STATS,
 	type WeaponId,
-	type WeightVector,
 } from "../types";
 
 export interface AITurnPlan {
@@ -19,26 +20,42 @@ export interface AITurnPlan {
 	targetX: number; // x position to walk toward
 }
 
-interface ShotResult {
-	angle: number;
-	power: number;
-	weaponId: WeaponId;
-	enemyDamage: number;
-	selfDamage: number;
-	chainBonus: number;
-	terrainDestruction: number;
+/**
+ * Frame-sliced AI planner. `step(sliceMs)` runs a bounded chunk of search work
+ * so the game keeps rendering while the bot thinks; `isDone` becomes true when
+ * the search finishes OR the thinking deadline / simulation cap is reached.
+ */
+export interface AIPlanner {
+	step(sliceMs: number): void;
+	isDone: boolean;
+	getPlan(): AITurnPlan;
 }
 
-interface PositionEval {
-	x: number;
-	y: number;
-	coverScore: number;
-	bestShot: ShotResult | null;
-	totalScore: number;
+export interface PlannerParams {
+	aiWorm: Worm;
+	allWorms: Worm[];
+	terrain: TerrainManager;
+	mapObjects: MapObject[];
+	windX: number;
+	difficulty: AIDifficulty;
+	personality: AIPersonality;
+	availableAmmo: TeamAmmo;
+	gameMode: GameMode;
+	deadlineMs: number;
+	/** If set, only evaluate shots from this x position (fire-from-here fallback). */
+	fixedPositionX?: number;
+}
+
+export interface WeightedScore {
+	attack: number;
+	selfRisk: number;
+	cover: number;
+	crates: number;
+	chain: number;
 }
 
 // Personality weight presets
-const WEIGHTS: Record<AIPersonality, WeightVector> = {
+const WEIGHTS: Record<AIPersonality, WeightedScore> = {
 	aggressive: {
 		attack: 2.0,
 		selfRisk: 0.1,
@@ -51,6 +68,513 @@ const WEIGHTS: Record<AIPersonality, WeightVector> = {
 	chaotic: { attack: 1.0, selfRisk: 0.2, cover: 0.2, crates: 1.0, chain: 2.0 },
 	default: { attack: 1.0, selfRisk: 0.6, cover: 0.5, crates: 0.8, chain: 1.0 },
 };
+
+const COARSE_WEAPONS: WeaponId[] = [
+	"bazooka",
+	"grenade",
+	"cluster",
+	"acid_bomb",
+	"dynamite",
+	"mortar",
+	"drill",
+	"shotgun",
+	"rifle",
+];
+const ALL_WEAPONS: WeaponId[] = [
+	"bazooka",
+	"grenade",
+	"cluster",
+	"acid_bomb",
+	"sand_bomb",
+	"drill",
+	"mortar",
+	"dynamite",
+	"rifle",
+	"shotgun",
+];
+
+const clampAngle = (a: number): number => Math.max(-175, Math.min(-5, a));
+const clampPower = (p: number): number => Math.min(1.0, Math.max(0.15, p));
+
+/** Pure shot scoring — enemy damage, drowning KO, self/ally harm avoidance, tactics. */
+function shotScore(
+	shot: ShotResult,
+	w: WeightedScore,
+	windX: number = 0,
+	shooterX: number = 0,
+	shooterY: number = 0,
+	coverScore: number = 0,
+): number {
+	// Heavily penalize shots blocked right at origin (hitting obstacle/crate/ally directly)
+	if (shot.blockedAtLaunch) return -500;
+
+	let score =
+		w.attack * shot.enemyDamage -
+		w.selfRisk * (shot.selfDamage * 2.5 + shot.allyDamage * 3.0) +
+		w.chain * shot.chainBonus +
+		w.attack * shot.kills * 70 +
+		shot.terrainDestruction * 0.4;
+
+	// 1. Drowning K.O. bonus (knocking enemies into water/void)
+	if (shot.waterKnockouts > 0) {
+		score += shot.waterKnockouts * 80;
+	}
+
+	// 2. Wind adaptation
+	const stats = WEAPON_STATS[shot.weaponId];
+	if (Math.abs(windX) > 2.0) {
+		if (stats.wind) score -= 25;
+		else score += 15;
+	}
+
+	// 3. Focus-Fire & Low HP finisher
+	if (shot.enemyDamage > 0) {
+		score += 15;
+	}
+
+	// 4. Guerrilla Dynamite tactic
+	if (shot.weaponId === "dynamite") {
+		const distToEnd = Math.hypot(shot.endX - shooterX, shot.endY - shooterY);
+		if (distToEnd < 60 && shot.enemyDamage > 30 && shot.selfDamage < 20) {
+			score += 45;
+		}
+	}
+
+	// 5. Tactical Acid / Sand
+	if (shot.weaponId === "acid_bomb" && shot.terrainDestruction > 20) {
+		score += 25;
+	}
+	if (shot.weaponId === "sand_bomb" && coverScore < 0.3) {
+		score += 30; // build cover mound when on open ground
+	}
+
+	return score;
+}
+
+interface PositionEval {
+	x: number;
+	y: number;
+	coverScore: number;
+	crateScore: number;
+	mineRisk: number;
+	elevationScore: number;
+	noise: number;
+	bestShot: ShotResult | null;
+	totalScore: number;
+}
+
+interface RefineItem {
+	x: number;
+	y: number;
+	wid: WeaponId;
+	seed: ShotResult;
+}
+
+interface BestCandidate {
+	x: number;
+	y: number;
+	shot: ShotResult;
+	score: number;
+}
+
+class AIPlannerImpl implements AIPlanner {
+	private readonly params: PlannerParams;
+	private readonly budget;
+	private readonly w: WeightedScore;
+	private readonly enemies: Worm[];
+	private readonly allies: Worm[];
+	private readonly aimError: number;
+	private readonly deadline: number;
+	private readonly posEvalMap = new Map<string, PositionEval>();
+	private readonly coarseByWeapon = new Map<string, ShotResult>();
+
+	private positions: { x: number; y: number }[] = [];
+	private evals: PositionEval[] = [];
+	private finalistsSelected: boolean = false;
+	private refineQueue: RefineItem[] = [];
+	private refineIndex: number = 0;
+	private best: BestCandidate | null = null;
+	private done: boolean = false;
+	private sims: number = 0;
+
+	constructor(params: PlannerParams) {
+		this.params = params;
+		this.budget = AI_BUDGET[params.difficulty];
+		this.w = WEIGHTS[params.personality];
+		this.enemies = params.allWorms.filter(
+			(e) => e.isAlive && e.team !== params.aiWorm.team,
+		);
+		this.allies = params.allWorms.filter(
+			(w) => w.isAlive && w.team === params.aiWorm.team && w !== params.aiWorm,
+		);
+		let nearestEnemyDist = 0;
+		if (this.enemies.length > 0) {
+			let minD = Infinity;
+			for (const e of this.enemies) {
+				const d = Math.hypot(e.x - params.aiWorm.x, e.y - params.aiWorm.y);
+				if (d < minD) minD = d;
+			}
+			nearestEnemyDist = minD;
+		}
+		this.aimError =
+			this.budget.aimErrorPx + nearestEnemyDist * this.budget.aimErrorGrowth;
+		this.deadline = performance.now() + params.deadlineMs;
+	}
+
+	public get isDone(): boolean {
+		return (
+			this.done ||
+			this.sims >= this.budget.maxSimulations ||
+			performance.now() >= this.deadline
+		);
+	}
+
+	public step(sliceMs: number): void {
+		if (this.isDone) return;
+		if (this.positions.length === 0) this.buildPositions();
+		const sliceEnd = Math.min(performance.now() + sliceMs, this.deadline);
+
+		while (performance.now() < sliceEnd) {
+			if (this.evals.length < this.positions.length) {
+				this.coarsePosition(this.positions[this.evals.length]);
+			} else if (!this.finalistsSelected) {
+				this.selectFinalists();
+			} else if (this.refineIndex < this.refineQueue.length) {
+				this.refineWeapon(this.refineQueue[this.refineIndex]);
+				this.refineIndex++;
+			} else {
+				this.done = true;
+				break;
+			}
+		}
+	}
+
+	public getPlan(): AITurnPlan {
+		if (this.best) {
+			const dx = this.best.x - this.params.aiWorm.x;
+			let walkDir = 0;
+			if (Math.abs(dx) > 15) walkDir = dx > 0 ? 1 : -1;
+			const angleNoise = (Math.random() - 0.5) * 2 * this.budget.angleNoise;
+			return {
+				targetAngle: clampAngle(this.best.shot.angle + angleNoise),
+				targetPower: clampPower(this.best.shot.power),
+				weaponId: this.best.shot.weaponId,
+				walkDir,
+				targetX: this.best.x,
+			};
+		}
+		return this.fallbackPlan();
+	}
+
+	// ---------------------------------------------------------------------
+	//  Search phases
+	// ---------------------------------------------------------------------
+
+	private buildPositions(): void {
+		const { aiWorm, terrain, mapObjects, fixedPositionX } = this.params;
+		if (fixedPositionX !== undefined) {
+			this.positions = [{ x: fixedPositionX, y: aiWorm.y }];
+			return;
+		}
+		const candidates = WormAI.getCandidatePositions(
+			aiWorm,
+			terrain,
+			mapObjects,
+			this.enemies,
+		);
+		this.positions = [];
+		for (const c of candidates) {
+			if (
+				Math.abs(c.x - aiWorm.x) < 15 ||
+				WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, c.x)
+			) {
+				this.positions.push(c);
+			}
+		}
+		if (this.positions.length === 0) {
+			this.positions.push({ x: aiWorm.x, y: aiWorm.y });
+		}
+	}
+
+	private allowed(wid: WeaponId): boolean {
+		if (this.params.difficulty === "easy") {
+			return wid === "bazooka" || wid === "shotgun" || wid === "rifle";
+		}
+		return true;
+	}
+
+	private hasAmmo(wid: WeaponId): boolean {
+		if (wid === "bazooka") return true;
+		return (this.params.availableAmmo[wid] ?? 0) > 0;
+	}
+
+	private coarsePosition(pos: { x: number; y: number }): void {
+		const { terrain, mapObjects, gameMode } = this.params;
+		const coverScore = WormAI.evaluateCover(
+			pos.x,
+			pos.y,
+			terrain,
+			this.enemies,
+		);
+		const crateScore = WormAI.evaluateCrates(pos.x, pos.y, mapObjects);
+		const mineRisk = WormAI.evaluateMineRisk(pos.x, pos.y, mapObjects);
+		const elevationScore =
+			gameMode === "rising_water" ? (terrain.height - pos.y) * 0.02 : 0;
+		const noise = (Math.random() - 0.5) * 2 * this.budget.scoreNoise;
+
+		let bestShot: ShotResult | null = null;
+		let bestShotScore = -Infinity;
+		for (const wid of COARSE_WEAPONS) {
+			if (!this.allowed(wid) || !this.hasAmmo(wid)) continue;
+			const est = WormAI.estimateAnglePower(wid, pos.x, pos.y, this.enemies);
+			const sweep = this.sweepWeapon(
+				wid,
+				pos.x,
+				pos.y,
+				est,
+				this.budget.coarseAngles,
+				this.budget.coarsePowers,
+			);
+			const key = `${pos.x}|${pos.y}|${wid}`;
+			for (const shot of sweep) {
+				this.sims++;
+				const s = shotScore(
+					shot,
+					this.w,
+					this.params.windX,
+					pos.x,
+					pos.y,
+					coverScore,
+				);
+				if (s > bestShotScore) {
+					bestShotScore = s;
+					bestShot = shot;
+				}
+				const prev = this.coarseByWeapon.get(key);
+				if (
+					!prev ||
+					s >
+						shotScore(prev, this.w, this.params.windX, pos.x, pos.y, coverScore)
+				) {
+					this.coarseByWeapon.set(key, shot);
+				}
+			}
+		}
+
+		const allyPenalty = WormAI.evaluateAllyClustering(
+			pos.x,
+			pos.y,
+			this.allies,
+			coverScore,
+		);
+		const positionTerm =
+			this.w.cover * coverScore +
+			this.w.crates * crateScore -
+			mineRisk -
+			allyPenalty +
+			elevationScore +
+			noise;
+		const evalRecord: PositionEval = {
+			x: pos.x,
+			y: pos.y,
+			coverScore,
+			crateScore,
+			mineRisk,
+			elevationScore,
+			noise,
+			bestShot,
+			totalScore: bestShot ? bestShotScore + positionTerm : positionTerm,
+		};
+		this.evals.push(evalRecord);
+		this.posEvalMap.set(`${pos.x}|${pos.y}`, evalRecord);
+	}
+
+	private selectFinalists(): void {
+		this.finalistsSelected = true;
+		this.evals.sort((a, b) => b.totalScore - a.totalScore);
+		const top = this.evals.slice(
+			0,
+			Math.min(this.budget.finalists, this.evals.length),
+		);
+		// Seed the global best with the top coarse shot so a good plan exists
+		// immediately (refinement then improves it frame-by-frame).
+		const leader = top[0];
+		if (
+			leader?.bestShot &&
+			(!this.best || leader.totalScore > this.best.score)
+		) {
+			this.best = {
+				x: leader.x,
+				y: leader.y,
+				shot: leader.bestShot,
+				score: leader.totalScore,
+			};
+		}
+		this.refineQueue = [];
+		for (const ev of top) {
+			for (const wid of ALL_WEAPONS) {
+				if (!this.allowed(wid) || !this.hasAmmo(wid)) continue;
+				const key = `${ev.x}|${ev.y}|${wid}`;
+				const seed =
+					this.coarseByWeapon.get(key) ??
+					WormAI.shotFromEstimate(
+						wid,
+						ev.x,
+						ev.y,
+						WormAI.estimateAnglePower(wid, ev.x, ev.y, this.enemies),
+						this.params,
+						this.aimError,
+					);
+				this.refineQueue.push({ x: ev.x, y: ev.y, wid, seed });
+			}
+		}
+	}
+
+	private refineWeapon(item: RefineItem): void {
+		const { terrain, mapObjects, windX, aiWorm, allWorms } = this.params;
+		const ev = this.posEvalMap.get(`${item.x}|${item.y}`);
+		const cover = ev ? ev.coverScore : 0;
+		let best = item.seed;
+		let bestScore = shotScore(best, this.w, windX, item.x, item.y, cover);
+		let angle = best.angle;
+		let power = best.power;
+
+		for (let it = 0; it < this.budget.refinementIterations; it++) {
+			const spreadA = 30 / (it + 1);
+			const spreadP = 0.15 / (it + 1);
+			const angles: number[] = [];
+			for (let i = 0; i < this.budget.fineAngles; i++) {
+				const t =
+					this.budget.fineAngles > 1 ? i / (this.budget.fineAngles - 1) : 0.5;
+				angles.push(angle - spreadA + t * spreadA * 2);
+			}
+			const powers: number[] = [];
+			for (let j = 0; j < this.budget.finePowers; j++) {
+				const u =
+					this.budget.finePowers > 1 ? j / (this.budget.finePowers - 1) : 0.5;
+				powers.push(power - spreadP + u * spreadP * 2);
+			}
+			for (const a of angles) {
+				for (const p of powers) {
+					const shot = simulateShot(
+						item.wid,
+						item.x,
+						item.y,
+						clampAngle(a),
+						clampPower(p),
+						windX,
+						terrain,
+						allWorms,
+						aiWorm,
+						mapObjects,
+						this.aimError,
+					);
+					this.sims++;
+					const s = shotScore(shot, this.w, windX, item.x, item.y, cover);
+					if (s > bestScore) {
+						bestScore = s;
+						best = shot;
+						angle = a;
+						power = p;
+					}
+				}
+			}
+		}
+
+		const positionTerm = ev
+			? this.w.cover * ev.coverScore +
+				this.w.crates * ev.crateScore -
+				ev.mineRisk +
+				ev.elevationScore +
+				ev.noise
+			: 0;
+		const total = bestScore + positionTerm;
+		if (!this.best || total > this.best.score) {
+			this.best = { x: item.x, y: item.y, shot: best, score: total };
+		}
+	}
+
+	private sweepWeapon(
+		wid: WeaponId,
+		x: number,
+		y: number,
+		est: { angle: number; power: number },
+		numAngles: number,
+		numPowers: number,
+	): ShotResult[] {
+		const { terrain, mapObjects, windX, aiWorm, allWorms } = this.params;
+		const spread = wid === "shotgun" ? 15 : 45;
+		const results: ShotResult[] = [];
+		for (let i = 0; i < numAngles; i++) {
+			const t = numAngles > 1 ? i / (numAngles - 1) : 0.5;
+			const angle = clampAngle(est.angle - spread + t * spread * 2);
+			for (let j = 0; j < numPowers; j++) {
+				const u = numPowers > 1 ? j / (numPowers - 1) : 0.5;
+				const power = clampPower(est.power - 0.25 + u * 0.5);
+				results.push(
+					simulateShot(
+						wid,
+						x,
+						y,
+						angle,
+						power,
+						windX,
+						terrain,
+						allWorms,
+						aiWorm,
+						mapObjects,
+						this.aimError,
+					),
+				);
+			}
+		}
+		return results;
+	}
+
+	private fallbackPlan(): AITurnPlan {
+		const { aiWorm } = this.params;
+		if (this.enemies.length === 0) {
+			return {
+				targetAngle: -45,
+				targetPower: 0.5,
+				weaponId: "bazooka",
+				walkDir: 0,
+				targetX: aiWorm.x,
+			};
+		}
+		let target = this.enemies[0];
+		let minDist = Infinity;
+		for (const e of this.enemies) {
+			const d = Math.hypot(e.x - aiWorm.x, e.y - aiWorm.y);
+			if (d < minDist) {
+				minDist = d;
+				target = e;
+			}
+		}
+		const dx = target.x - aiWorm.x;
+		const dy = target.y - aiWorm.y;
+		const angle =
+			(dx >= 0 ? -1 : 1) *
+			((Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI);
+		const weapon: WeaponId =
+			minDist < 100 && this.hasAmmo("shotgun") ? "shotgun" : "bazooka";
+		return {
+			targetAngle: clampAngle(angle),
+			targetPower: 0.5,
+			weaponId: weapon,
+			walkDir: 0,
+			targetX: aiWorm.x,
+		};
+	}
+}
+
+export function createPlanner(
+	params: Omit<PlannerParams, "deadlineMs"> & { deadlineMs?: number },
+): AIPlanner {
+	const budget = AI_BUDGET[params.difficulty];
+	const deadlineMs = params.deadlineMs ?? budget.thinkingMs;
+	return new AIPlannerImpl({ ...params, deadlineMs });
+}
 
 export class WormAI {
 	/**
@@ -73,226 +597,122 @@ export class WormAI {
 	}
 
 	/**
-	 * Main AI turn evaluation: two-phase (coarse scan → fine eval).
-	 * Returns a unified (position + shot) plan.
+	 * Quick (angle, power) estimate for a weapon aimed at the closest enemy.
+	 * Uses the standard ballistic range equation (ignores wind — the sweep
+	 * and refinement pass cover wind drift).
 	 */
-	public static evaluateTurn(
-		aiWorm: Worm,
-		allWorms: Worm[],
-		terrain: TerrainManager,
-		mapObjects: MapObject[],
-		windX: number,
-		difficulty: AIDifficulty,
-		personality: AIPersonality = "default",
-		availableAmmo: TeamAmmo = {},
-	): AITurnPlan {
-		const w = WEIGHTS[personality];
-		const enemies = allWorms.filter((e) => e.isAlive && e.team !== aiWorm.team);
-		const allies = allWorms.filter(
-			(e) => e.isAlive && e.team === aiWorm.team && e !== aiWorm,
-		);
+	public static estimateAnglePower(
+		wid: WeaponId,
+		x: number,
+		y: number,
+		enemies: Worm[],
+	): { angle: number; power: number } {
+		if (enemies.length === 0) return { angle: -45, power: 0.5 };
+		let closest = enemies[0];
+		let minD = Infinity;
+		for (const e of enemies) {
+			const d = Math.hypot(e.x - x, e.y - y);
+			if (d < minD) {
+				minD = d;
+				closest = e;
+			}
+		}
+		const dx = closest.x - x;
+		const dy = closest.y - y;
 
-		if (enemies.length === 0) {
+		if (wid === "shotgun" || wid === "rifle") {
 			return {
-				targetAngle: -45,
-				targetPower: 0.5,
-				weaponId: "bazooka",
-				walkDir: 0,
-				targetX: aiWorm.x,
+				angle: clampAngle((Math.atan2(dy, dx) * 180) / Math.PI),
+				power: 0.5,
 			};
 		}
 
-		// --- Helper: check if weapon has ammo (bazooka is always available) ---
-		const hasAmmo = (wid: WeaponId): boolean => {
-			if (wid === "bazooka") return true;
-			return (availableAmmo[wid] ?? 0) > 0;
-		};
-
-		// --- Generate candidate positions ---
-		const positions = WormAI.getCandidatePositions(
-			aiWorm,
-			terrain,
-			mapObjects,
-			enemies,
-		);
-
-		// --- Coarse scan: quick evaluation per position ---
-		const numAngles =
-			difficulty === "easy" ? 3 : difficulty === "normal" ? 5 : 7;
-		const evals: PositionEval[] = [];
-
-		for (const pos of positions) {
-			const coverScore = WormAI.evaluateCover(pos.x, pos.y, terrain, enemies);
-			const bestShot = WormAI.coarseBestShot(
-				pos.x,
-				pos.y,
-				aiWorm,
-				enemies,
-				allies,
-				terrain,
-				mapObjects,
-				windX,
-				w,
-				numAngles,
-				hasAmmo,
+		const targetDist = Math.abs(dx);
+		const angle = dx >= 0 ? -45 : -135;
+		const rad = (angle * Math.PI) / 180;
+		const g = WEAPON_STATS[wid].gravity || 0.45;
+		const denom =
+			targetDist * Math.sin(2 * rad) - 2 * dy * Math.cos(rad) * Math.cos(rad);
+		let power = 0.5;
+		if (denom > 0) {
+			const requiredSpeed = Math.sqrt((g * targetDist * targetDist) / denom);
+			power = Math.min(
+				1.0,
+				Math.max(0.15, requiredSpeed / WEAPON_STATS[wid].maxSpeed),
 			);
-			const crateScore = WormAI.evaluateCrates(pos.x, pos.y, mapObjects);
-			const noise = WormAI.difficultyNoise(difficulty);
-
-			const totalScore =
-				w.attack * (bestShot?.enemyDamage ?? 0) -
-				w.selfRisk * (bestShot?.selfDamage ?? 0) +
-				w.chain * (bestShot?.chainBonus ?? 0) +
-				w.cover * coverScore +
-				w.crates * crateScore +
-				noise;
-
-			evals.push({ x: pos.x, y: pos.y, coverScore, bestShot, totalScore });
 		}
+		return { angle, power };
+	}
 
-		// --- Difficulty: limit top candidates for fine evaluation ---
-		const topCount =
-			difficulty === "easy" ? 1 : difficulty === "normal" ? 2 : 3;
-		evals.sort((a, b) => b.totalScore - a.totalScore);
-		const finalists = evals.slice(0, Math.min(topCount, evals.length));
-
-		// --- Fine evaluation ---
-		let bestPlan: {
-			pos: PositionEval;
-			shot: ShotResult;
-			score: number;
-		} | null = null;
-		const fineAngles =
-			difficulty === "easy" ? 4 : difficulty === "normal" ? 6 : 8;
-		const allWeaponIds: WeaponId[] = [
-			"bazooka",
-			"grenade",
-			"cluster",
-			"acid_bomb",
-			"sand_bomb",
-			"drill",
-			"mortar",
-			"dynamite",
-			"rifle",
-			"shotgun",
-		];
-
-		for (const fin of finalists) {
-			if (!fin.bestShot) continue;
-
-			for (const wid of allWeaponIds) {
-				if (!hasAmmo(wid)) continue;
-				if (
-					difficulty === "easy" &&
-					wid !== "bazooka" &&
-					wid !== "shotgun" &&
-					wid !== "rifle"
-				)
-					continue;
-
-				const shots = WormAI.simulateWeapon(
-					fin.x,
-					fin.y,
-					wid,
-					enemies,
-					allies,
-					terrain,
-					mapObjects,
-					windX,
-					fineAngles,
-				);
-				for (const shot of shots) {
-					const score =
-						w.attack * shot.enemyDamage -
-						w.selfRisk * shot.selfDamage +
-						w.chain * shot.chainBonus +
-						w.cover * fin.coverScore +
-						WormAI.difficultyNoise(difficulty);
-
-					if (!bestPlan || score > bestPlan.score) {
-						bestPlan = { pos: fin, shot, score };
-					}
-				}
-			}
-		}
-
-		// --- Fallback: closest enemy, simple parabolic ---
-		if (!bestPlan) {
-			let target = enemies[0];
-			let minDist = Infinity;
-			for (const e of enemies) {
-				const d = Math.hypot(e.x - aiWorm.x, e.y - aiWorm.y);
-				if (d < minDist) {
-					minDist = d;
-					target = e;
-				}
-			}
-			const dx = target.x - aiWorm.x;
-			const dy = target.y - aiWorm.y;
-			const angle =
-				(dx >= 0 ? -1 : 1) *
-				((Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI);
-			const fallbackWeapon: WeaponId =
-				minDist < 100 && hasAmmo("shotgun") ? "shotgun" : "bazooka";
-			return {
-				targetAngle: Math.max(-175, Math.min(-5, angle)),
-				targetPower: 0.5,
-				weaponId: fallbackWeapon,
-				walkDir: 0,
-				targetX: aiWorm.x,
-			};
-		}
-
-		// --- Choose weapon for close range ---
-		let chosenWeapon = bestPlan.shot.weaponId;
-		if (bestPlan.pos.x !== undefined) {
-			let closestEnemyDist = Infinity;
-			for (const e of enemies) {
-				const d = Math.hypot(e.x - bestPlan.pos.x, e.y - bestPlan.pos.y);
-				if (d < closestEnemyDist) closestEnemyDist = d;
-			}
-			if (
-				closestEnemyDist < 100 &&
-				chosenWeapon !== "shotgun" &&
-				hasAmmo("shotgun")
-			) {
-				chosenWeapon = "shotgun";
-			}
-		}
-
-		// --- Difficulty noise on angle ---
-		let angleNoise = 0;
-		if (difficulty === "easy") angleNoise = (Math.random() - 0.5) * 20;
-		if (difficulty === "normal") angleNoise = (Math.random() - 0.5) * 6;
-
-		const finalAngle = Math.max(
-			-175,
-			Math.min(-5, bestPlan.shot.angle + angleNoise),
+	public static shotFromEstimate(
+		wid: WeaponId,
+		x: number,
+		y: number,
+		est: { angle: number; power: number },
+		params: PlannerParams,
+		aimError: number,
+	): ShotResult {
+		return simulateShot(
+			wid,
+			x,
+			y,
+			clampAngle(est.angle),
+			clampPower(est.power),
+			params.windX,
+			params.terrain,
+			params.allWorms,
+			params.aiWorm,
+			params.mapObjects,
+			aimError,
 		);
+	}
 
-		// --- Compute walk direction ---
-		const dx = bestPlan.pos.x - aiWorm.x;
-		let walkDir = 0;
-		if (Math.abs(dx) > 15) walkDir = dx > 0 ? 1 : -1;
-
-		return {
-			targetAngle: finalAngle,
-			targetPower: Math.min(1.0, Math.max(0.15, bestPlan.shot.power)),
-			weaponId: chosenWeapon,
-			walkDir,
-			targetX: bestPlan.pos.x,
-		};
+	/**
+	 * Approximate walkability between two world x positions along the surface.
+	 * Rejects walls taller than the walk step-up (10px) and head-blocked spots —
+	 * the same limits the real worm.walk() enforces. Used to avoid walking
+	 * blindly into cliffs.
+	 */
+	public static canWalkTo(
+		terrain: TerrainManager,
+		fromX: number,
+		fromY: number,
+		toX: number,
+	): boolean {
+		if (Math.abs(toX - fromX) < 15) return true;
+		if (Math.abs(toX - fromX) > 600) return false;
+		const dir = toX > fromX ? 1 : -1;
+		const step = 3;
+		let feetY = fromY + 12;
+		let x = fromX;
+		const maxSteps = Math.ceil(Math.abs(toX - fromX) / step);
+		for (let i = 0; i < maxSteps; i++) {
+			x += dir * step;
+			if (terrain.isSolidAt(x, feetY - 18)) return false;
+			const groundY = terrain.getLocalGroundY(x, feetY, 30, 12);
+			if (groundY !== null) {
+				if (groundY < feetY - 10) return false;
+				feetY = groundY;
+			} else {
+				feetY += 3; // gap / falling — keep scanning
+			}
+		}
+		return true;
 	}
 
 	// =========================================================================
 	//  CANDIDATE POSITIONS
 	// =========================================================================
 
-	private static getCandidatePositions(
+	// =========================================================================
+	//  CANDIDATE POSITIONS
+	// =========================================================================
+
+	public static getCandidatePositions(
 		aiWorm: Worm,
 		terrain: TerrainManager,
 		mapObjects: MapObject[],
-		enemies: Worm[],
+		_enemies: Worm[],
 	): { x: number; y: number }[] {
 		const candidates: { x: number; y: number }[] = [];
 		const baseY = aiWorm.y;
@@ -300,13 +720,15 @@ export class WormAI {
 		// Stay in place
 		candidates.push({ x: aiWorm.x, y: baseY });
 
-		// Walk left / right
-		for (const dx of [80, 160, -80, -160]) {
-			const nx = aiWorm.x + dx;
-			if (nx < 20 || nx > terrain.width - 20) continue;
-			const groundY = terrain.getLocalGroundY(nx, baseY + 20, 14, 12);
+		// Dynamic adaptive surface sampling: -240px to +240px in 40px steps
+		for (let step = -240; step <= 240; step += 40) {
+			if (Math.abs(step) < 20) continue;
+			const nx = aiWorm.x + step;
+			if (nx < 25 || nx > terrain.width - 25) continue;
+			const groundY = terrain.getLocalGroundY(nx, baseY + 20, 20, 15);
 			if (groundY !== null) {
 				const feetY = groundY - 12;
+				if (feetY >= terrain.waterY - 15) continue;
 				if (
 					!terrain.isSolidAt(nx, feetY - 8) &&
 					!terrain.isSolidAt(nx, feetY - 20)
@@ -316,59 +738,15 @@ export class WormAI {
 			}
 		}
 
-		// Move toward health crate if not at full HP and there's a crate nearby
+		// Strategic spots: near crates if injured
 		if (aiWorm.health < aiWorm.maxHealth * 0.6) {
 			const crates = mapObjects.filter(
 				(o) => o.type === "health_crate" && !o.isDestroyed,
 			);
-			if (crates.length > 0) {
-				let closest = crates[0];
-				let minD = Infinity;
-				for (const c of crates) {
-					const d = Math.hypot(c.x - aiWorm.x, c.y - aiWorm.y);
-					if (d < minD) {
-						minD = d;
-						closest = c;
-					}
+			for (const c of crates) {
+				if (Math.abs(c.x - aiWorm.x) < 300) {
+					candidates.push({ x: c.x, y: c.y });
 				}
-				candidates.push({ x: closest.x, y: closest.y });
-			}
-		}
-
-		// Move toward the closest enemy (aggressive tendency)
-		if (enemies.length > 0) {
-			let closest = enemies[0];
-			let minD = Infinity;
-			for (const e of enemies) {
-				const d = Math.hypot(e.x - aiWorm.x, e.y - aiWorm.y);
-				if (d < minD) {
-					minD = d;
-					closest = e;
-				}
-			}
-			const midX = (aiWorm.x + closest.x) / 2;
-			const groundY = terrain.getLocalGroundY(midX, baseY + 20, 14, 12);
-			if (groundY !== null) {
-				candidates.push({ x: midX, y: groundY - 12 });
-			}
-		}
-
-		// Away from closest enemy (defensive tendency)
-		if (enemies.length > 0) {
-			let closest = enemies[0];
-			let minD = Infinity;
-			for (const e of enemies) {
-				const d = Math.hypot(e.x - aiWorm.x, e.y - aiWorm.y);
-				if (d < minD) {
-					minD = d;
-					closest = e;
-				}
-			}
-			const awayX = aiWorm.x + (aiWorm.x - closest.x);
-			const clampedX = Math.max(30, Math.min(terrain.width - 30, awayX));
-			const groundY = terrain.getLocalGroundY(clampedX, baseY + 20, 14, 12);
-			if (groundY !== null) {
-				candidates.push({ x: clampedX, y: groundY - 12 });
 			}
 		}
 
@@ -376,10 +754,30 @@ export class WormAI {
 	}
 
 	// =========================================================================
-	//  COVER & CRATE EVALUATION
+	//  COVER, CRATES, MINE & ALLY CLUSTERING EVALUATION
 	// =========================================================================
 
-	private static evaluateCover(
+	public static evaluateAllyClustering(
+		x: number,
+		y: number,
+		allies: Worm[],
+		coverScore: number,
+	): number {
+		if (allies.length === 0) return 0;
+		// If in deep cover (coverScore >= 0.5), grouping is fine (penalty = 0)
+		if (coverScore >= 0.5) return 0;
+		let penalty = 0;
+		for (const ally of allies) {
+			if (!ally.isAlive) continue;
+			const dist = Math.hypot(ally.x - x, ally.y - y);
+			if (dist < 130) {
+				penalty += ((130 - dist) / 130) * (1 - coverScore) * 35;
+			}
+		}
+		return penalty;
+	}
+
+	public static evaluateCover(
 		x: number,
 		y: number,
 		terrain: TerrainManager,
@@ -392,7 +790,6 @@ export class WormAI {
 			const angle = (i / numRays) * Math.PI * 2;
 			const dx = Math.cos(angle) * 80;
 			const dy = Math.sin(angle) * 80;
-			// Cast a ray and count solid hits → cover value
 			const steps = 8;
 			let blocked = false;
 			for (let s = 1; s <= steps; s++) {
@@ -408,7 +805,7 @@ export class WormAI {
 		return score / numRays;
 	}
 
-	private static evaluateCrates(
+	public static evaluateCrates(
 		x: number,
 		y: number,
 		mapObjects: MapObject[],
@@ -423,292 +820,18 @@ export class WormAI {
 		return score;
 	}
 
-	// =========================================================================
-	//  TRAJECTORY SIMULATION
-	// =========================================================================
-
-	private static simulateShot(
-		originX: number,
-		originY: number,
-		angleDeg: number,
-		power: number,
-		weaponId: WeaponId,
-		windX: number,
-		terrain: TerrainManager,
-		enemies: Worm[],
-		allies: Worm[],
+	public static evaluateMineRisk(
+		x: number,
+		y: number,
 		mapObjects: MapObject[],
-	): ShotResult {
-		const rad = (angleDeg * Math.PI) / 180;
-		const maxSpeed = PROJECTILE_MAX_SPEED[weaponId];
-		const speed = power * maxSpeed;
-		let vx = Math.cos(rad) * speed;
-		let vy = Math.sin(rad) * speed;
-		let x = originX + Math.cos(rad) * 20; // barrel tip offset
-		let y = originY + Math.sin(rad) * 20;
-		const gravity = PROJECTILE_GRAVITY[weaponId];
-		const isBouncy =
-			weaponId === "grenade" ||
-			weaponId === "cluster" ||
-			weaponId === "dynamite";
-		const hasGravity = weaponId !== "rifle";
-		const hasWind =
-			weaponId === "bazooka" ||
-			weaponId === "cluster" ||
-			weaponId === "drill" ||
-			weaponId === "mortar";
-		let bounces = 0;
-		const maxTicks = 180;
-
-		// For cluster: collect all child explosion positions
-		const explosionCenters: { x: number; y: number; radius: number }[] = [];
-
-		for (let tick = 0; tick < maxTicks; tick++) {
-			// Wind (bazooka, cluster, drill, mortar)
-			if (hasWind) vx += windX * 0.05;
-			if (hasGravity) vy += gravity;
-			x += vx;
-			y += vy;
-
-			// Terrain collision
-			if (terrain.isSolidAt(x, y)) {
-				if (isBouncy && bounces < 3) {
-					vy = -vy * 0.6;
-					vx *= 0.7;
-					bounces++;
-				} else {
-					break; // impact
-				}
-			}
-			// Water
-			if (y >= terrain.waterY) break;
-			// Out of bounds
-			if (x < -80 || x > terrain.width + 80) break;
-		}
-
-		// Detonation point is final (x, y)
-		// Cluster: generate child explosions
-		if (weaponId === "cluster") {
-			for (let c = 0; c < 5; c++) {
-				const childAngle = Math.PI / 4 + (c * Math.PI) / 8;
-				const childSpeed = 3 + Math.random() * 4;
-				let cx = x,
-					cy = y;
-				const cvx = Math.cos(childAngle) * childSpeed;
-				let cvy = -Math.sin(childAngle) * childSpeed;
-				for (let t = 0; t < 30; t++) {
-					cvy += gravity;
-					cx += cvx;
-					cy += cvy;
-					if (terrain.isSolidAt(cx, cy)) break;
-				}
-				explosionCenters.push({ x: cx, y: cy, radius: 28 });
-			}
-		} else {
-			const radiusMap: Record<string, number> = {
-				bazooka: 42,
-				grenade: 38,
-				acid_bomb: 30,
-				sand_bomb: 25,
-				drill: 35,
-				mortar: 15,
-				dynamite: 65,
-				rifle: 18,
-				shotgun: 18,
-			};
-			const radius = radiusMap[weaponId] || 30;
-			explosionCenters.push({ x, y, radius });
-		}
-
-		// Score damage from all explosions
-		let enemyDamage = 0,
-			selfDamage = 0,
-			chainBonus = 0;
-
-		for (const center of explosionCenters) {
-			// Enemy damage
-			for (const e of enemies) {
-				const dist = Math.hypot(e.x - center.x, e.y - center.y);
-				if (dist < center.radius + e.radius) {
-					const force = 1 - dist / (center.radius + e.radius);
-					enemyDamage += force * 100;
-				}
-			}
-			// Self damage
-			for (const a of allies) {
-				const dist = Math.hypot(a.x - center.x, a.y - center.y);
-				if (dist < center.radius + a.radius) {
-					const force = 1 - dist / (center.radius + a.radius);
-					selfDamage += force * 100;
-				}
-			}
-			// Barrel chain bonus
-			for (const obj of mapObjects) {
-				if (obj.type === "barrel" && !obj.isDestroyed) {
-					const dist = Math.hypot(obj.x - center.x, obj.y - center.y);
-					if (dist < center.radius + 40) chainBonus += 30;
-				}
+	): number {
+		let risk = 0;
+		for (const obj of mapObjects) {
+			if (obj.type === "landmine" && !obj.isDestroyed) {
+				const d = Math.hypot(obj.x - x, obj.y - y);
+				if (d < 60) risk += ((60 - d) / 60) * 2;
 			}
 		}
-
-		// Terrain destruction bonus (acids excel at this)
-		let terrainDestruction = 0;
-		if (weaponId === "acid_bomb") {
-			terrainDestruction = 20; // acid always useful for terrain melt
-		}
-
-		return {
-			angle: angleDeg,
-			power,
-			weaponId,
-			enemyDamage,
-			selfDamage,
-			chainBonus,
-			terrainDestruction,
-		};
-	}
-
-	// =========================================================================
-	//  WEAPON-SPECIFIC SWEEP
-	// =========================================================================
-
-	private static simulateWeapon(
-		originX: number,
-		originY: number,
-		weaponId: WeaponId,
-		enemies: Worm[],
-		allies: Worm[],
-		terrain: TerrainManager,
-		mapObjects: MapObject[],
-		windX: number,
-		numAngles: number,
-	): ShotResult[] {
-		const results: ShotResult[] = [];
-		let bestPower = 0.5;
-		let bestAngle = -45;
-
-		// Quick power estimation using parabolic formula
-		if (enemies.length > 0) {
-			let closestEnemy = enemies[0];
-			let minD = Infinity;
-			for (const e of enemies) {
-				const d = Math.hypot(e.x - originX, e.y - originY);
-				if (d < minD) {
-					minD = d;
-					closestEnemy = e;
-				}
-			}
-			const dx = closestEnemy.x - originX;
-			const dy = closestEnemy.y - originY;
-			const targetDist = Math.abs(dx);
-			bestAngle = dx >= 0 ? -45 : -135;
-			const rad = (bestAngle * Math.PI) / 180;
-			const denom =
-				targetDist * Math.sin(2 * rad) - 2 * dy * Math.cos(rad) * Math.cos(rad);
-			if (denom > 0) {
-				const requiredSpeed = Math.sqrt(
-					(PROJECTILE_GRAVITY[weaponId] * targetDist * targetDist) / denom,
-				);
-				bestPower = Math.min(
-					1.0,
-					Math.max(0.15, requiredSpeed / PROJECTILE_MAX_SPEED[weaponId]),
-				);
-			}
-		}
-
-		// Sweep angles around the estimated best angle
-		const spread = weaponId === "shotgun" ? 15 : 40;
-		for (let i = 0; i < numAngles; i++) {
-			const t = numAngles > 1 ? i / (numAngles - 1) : 0.5;
-			const angle = bestAngle - spread + t * spread * 2;
-			const clampedAngle = Math.max(-175, Math.min(-5, angle));
-
-			// Try a few power levels around the estimate
-			for (const pDelta of [-0.1, 0, 0.1]) {
-				const power = Math.min(1.0, Math.max(0.15, bestPower + pDelta));
-				const shot = WormAI.simulateShot(
-					originX,
-					originY,
-					clampedAngle,
-					power,
-					weaponId,
-					windX,
-					terrain,
-					enemies,
-					allies,
-					mapObjects,
-				);
-				results.push(shot);
-			}
-		}
-
-		return results;
-	}
-
-	// =========================================================================
-	//  COARSE BEST SHOT (for quick scan)
-	// =========================================================================
-
-	private static coarseBestShot(
-		originX: number,
-		originY: number,
-		_aiWorm: Worm,
-		enemies: Worm[],
-		allies: Worm[],
-		terrain: TerrainManager,
-		mapObjects: MapObject[],
-		windX: number,
-		w: WeightVector,
-		numAngles: number,
-		hasAmmo: (wid: WeaponId) => boolean,
-	): ShotResult | null {
-		const weaponsToTry: WeaponId[] = [
-			"bazooka",
-			"grenade",
-			"cluster",
-			"acid_bomb",
-			"dynamite",
-			"mortar",
-			"drill",
-		];
-		let best: ShotResult | null = null;
-		let bestScore = -Infinity;
-
-		for (const wid of weaponsToTry) {
-			if (!hasAmmo(wid)) continue;
-			const shots = WormAI.simulateWeapon(
-				originX,
-				originY,
-				wid,
-				enemies,
-				allies,
-				terrain,
-				mapObjects,
-				windX,
-				numAngles,
-			);
-			for (const shot of shots) {
-				const score =
-					w.attack * shot.enemyDamage -
-					w.selfRisk * shot.selfDamage +
-					w.chain * shot.chainBonus;
-				if (score > bestScore) {
-					bestScore = score;
-					best = shot;
-				}
-			}
-		}
-
-		return best;
-	}
-
-	// =========================================================================
-	//  NOISE HELPER
-	// =========================================================================
-
-	private static difficultyNoise(difficulty: AIDifficulty): number {
-		if (difficulty === "easy") return (Math.random() - 0.5) * 30;
-		if (difficulty === "normal") return (Math.random() - 0.5) * 10;
-		return (Math.random() - 0.5) * 2; // hard
+		return risk;
 	}
 }

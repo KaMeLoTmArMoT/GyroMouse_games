@@ -26,6 +26,7 @@ export class Worm {
 	public isAlive: boolean = true;
 	public isDrowned: boolean = false;
 	public fallStartY: number = 0;
+	public tookDamageThisTurn: boolean = false;
 
 	constructor(id: string, name: string, team: WormTeam, x: number, y: number) {
 		this.id = id;
@@ -175,10 +176,17 @@ export class Worm {
 
 	public takeDamage(amount: number): void {
 		if (!this.isAlive) return;
+		if (amount > 0) {
+			this.tookDamageThisTurn = true;
+		}
 		this.health = Math.max(0, this.health - amount);
 		if (this.health <= 0) {
 			this.isAlive = false;
 		}
+	}
+
+	public resetTurnFlags(): void {
+		this.tookDamageThisTurn = false;
 	}
 
 	public getCannonTip(): Vector2D {

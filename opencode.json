@@ -4,7 +4,14 @@
 		"typescript": {
 			"command": ["npx", "typescript-language-server", "--stdio"],
 			"extensions": [
-				".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"
+				".ts",
+				".tsx",
+				".js",
+				".jsx",
+				".mjs",
+				".cjs",
+				".mts",
+				".cts"
 			]
 		}
 	}

@@ -1,7 +1,7 @@
 import type { MapObject } from "../entities/mapObject";
 import type { Worm } from "../entities/worm";
 import type { TerrainManager } from "../terrain/terrainManager";
-import { CELL_ACID, PROJECTILE_GRAVITY, type WeaponId } from "../types";
+import { CELL_ACID, WEAPON_STATS, type WeaponId } from "../types";
 
 export class Projectile {
 	public weaponId: WeaponId;
@@ -46,21 +46,19 @@ export class Projectile {
 		this.teamId = teamId;
 		this.isClusterChild = isClusterChild;
 
-		if (
-			weaponId === "grenade" ||
-			weaponId === "cluster" ||
-			weaponId === "dynamite"
-		) {
+		const stats = WEAPON_STATS[weaponId];
+		if (stats.bouncy) {
 			this.bounciness = 0.6;
+		}
+		if (stats.fuseFrames > 0) {
+			this.fuseTimer = stats.fuseFrames;
+		} else {
+			this.fuseTimer = Math.round(fuseSeconds * 30);
 		}
 		if (weaponId === "dynamite") {
 			this.radius = 8;
-			this.fuseTimer = Math.round(4 * 30); // 4 seconds
 		} else if (weaponId === "mortar") {
 			this.radius = 7;
-			this.fuseTimer = Math.round(fuseSeconds * 30);
-		} else {
-			this.fuseTimer = Math.round(fuseSeconds * 30);
 		}
 	}
 
@@ -77,19 +75,14 @@ export class Projectile {
 		this.prevX = this.x;
 		this.prevY = this.y;
 
-		// Apply Wind Force (bazooka, cluster, drill, mortar only)
-		if (
-			this.weaponId === "bazooka" ||
-			this.weaponId === "cluster" ||
-			this.weaponId === "drill" ||
-			this.weaponId === "mortar"
-		) {
+		// Apply Wind Force (from WEAPON_STATS)
+		if (WEAPON_STATS[this.weaponId].wind) {
 			this.vx += windX * 0.05;
 		}
 
 		// Apply Gravity — NOT for rifle (straight line)
 		if (this.weaponId !== "rifle") {
-			this.vy += PROJECTILE_GRAVITY[this.weaponId];
+			this.vy += WEAPON_STATS[this.weaponId].gravity;
 		}
 
 		// Position Step
