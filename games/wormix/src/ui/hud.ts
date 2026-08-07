@@ -82,6 +82,8 @@ export const WEAPON_LIST: WeaponInfo[] = [
 ];
 
 export class HUD {
+	public showTrajectory: boolean = true;
+
 	public draw(
 		ctx: CanvasRenderingContext2D,
 		width: number,
@@ -104,7 +106,7 @@ export class HUD {
 	): void {
 		ctx.save();
 
-		// 1. Top Bar: Team Health & Wind Compass & Turn Timer
+		// 1. Top Bar: Team Health & Animated Wind Gauge & Turn Timer
 		this.drawTopBar(ctx, width, playerTeamHp, aiTeamHp, windX, turnTimer);
 
 		// 2. Center Turn Phase Banner
@@ -147,23 +149,23 @@ export class HUD {
 		windX: number,
 		timer: number,
 	): void {
-		// Red Team (Player) HP (Padded to clear top-left Main Hub button at x=16..125)
+		// Red Team (Player) HP
 		ctx.fillStyle = "rgba(239, 68, 68, 0.85)";
 		ctx.font = "bold 16px Outfit, sans-serif";
 		ctx.textAlign = "left";
 		ctx.fillText(`🔴 RED TEAM: ${playerHp} HP`, 145, 30);
 
-		// Blue Team (AI) HP (Padded to clear top-right Settings Gear icon at x=width-60..width-16)
+		// Blue Team (AI) HP
 		ctx.fillStyle = "rgba(59, 130, 246, 0.85)";
 		ctx.textAlign = "right";
 		ctx.fillText(`🔵 BLUE TEAM: ${aiHp} HP`, width - 75, 30);
 
-		// Center Timer & Wind Gauge
-		ctx.fillStyle = "rgba(15, 23, 42, 0.7)";
-		ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-		ctx.lineWidth = 1;
+		// Center Timer & Animated Wind Gauge
+		ctx.fillStyle = "rgba(15, 23, 42, 0.75)";
+		ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+		ctx.lineWidth = 1.5;
 		ctx.beginPath();
-		ctx.roundRect(width / 2 - 110, 10, 220, 45, 12);
+		ctx.roundRect(width / 2 - 130, 8, 260, 48, 12);
 		ctx.fill();
 		ctx.stroke();
 
@@ -171,14 +173,46 @@ export class HUD {
 		ctx.fillStyle = timer <= 10 ? "#ef4444" : "#facc15";
 		ctx.font = "bold 20px Outfit, sans-serif";
 		ctx.textAlign = "center";
-		ctx.fillText(`⏱️ ${Math.ceil(timer)}s`, width / 2 - 45, 38);
+		ctx.fillText(`⏱️ ${Math.ceil(timer)}s`, width / 2 - 60, 38);
 
-		// Wind Indicator Arrow
+		// Animated Wind Gauge
 		const windSpeed = Math.abs(Math.round(windX * 10));
-		const windArrow = windX > 0 ? "→" : windX < 0 ? "←" : "•";
-		ctx.fillStyle = "#38bdf8";
-		ctx.font = "bold 16px Outfit, sans-serif";
-		ctx.fillText(`WIND ${windArrow} ${windSpeed}`, width / 2 + 40, 38);
+		const windArrow = windX > 0 ? "➔" : windX < 0 ? "⬅" : "•";
+		let windClass = "CALM";
+		let windColor = "#38bdf8";
+		if (windSpeed > 15) {
+			windClass = "STORM";
+			windColor = "#ef4444";
+		} else if (windSpeed > 8) {
+			windClass = "GALE";
+			windColor = "#f97316";
+		} else if (windSpeed > 3) {
+			windClass = "BREEZE";
+			windColor = "#38bdf8";
+		}
+
+		ctx.fillStyle = windColor;
+		ctx.font = "bold 15px Outfit, sans-serif";
+		ctx.fillText(
+			`${windArrow} ${windSpeed} (${windClass})`,
+			width / 2 + 45,
+			34,
+		);
+
+		// Animated horizontal wind particles inside HUD bar
+		const time = Date.now() * 0.003 * (windX || 1);
+		ctx.strokeStyle = windColor;
+		ctx.lineWidth = 1;
+		ctx.globalAlpha = 0.5;
+		for (let i = 0; i < 3; i++) {
+			const px = width / 2 + 10 + ((time * 20 + i * 25) % 65);
+			const py = 40 + (i % 2) * 3;
+			ctx.beginPath();
+			ctx.moveTo(px, py);
+			ctx.lineTo(px + (windX > 0 ? 8 : -8), py);
+			ctx.stroke();
+		}
+		ctx.globalAlpha = 1.0;
 	}
 
 	private drawPhaseBanner(
@@ -218,33 +252,19 @@ export class HUD {
 					: "🔵 BLUE PLAYER TURN — MOVE"
 				: "STEP 1: MOVEMENT PHASE";
 			hintText = isPcMode
-				? "WASD to Move/Jump • Space or Click to Select Weapon"
-				: "A/D to Walk • W to Jump • Space to Select Weapon";
+				? "WASD / Arrow Keys to walk/jump • Tab/Q/E to switch worm • Press Enter when ready"
+				: "Move via Gyro / Steering • Switch worm on HUD • Tap Ready button";
 		} else if (phase === "WEAPON_SELECT") {
-			bannerText = isPvP
-				? activeTeam === "player"
-					? "🔴 RED — WEAPON SELECT"
-					: "🔵 BLUE — WEAPON SELECT"
-				: "STEP 2: WEAPON SELECT";
-			hintText = isPcMode
-				? "A/D / Arrows to Cycle • Space to Equip • S to Back"
-				: "A/D / Arrows to Cycle • Space to Equip • S to Back";
+			bannerText = "STEP 2: SELECT WEAPON";
+			hintText = "Click/Tap weapon in bottom bar or press Number keys 1-0";
 		} else if (phase === "AIM_FIRE") {
-			bannerText = isPvP
-				? activeTeam === "player"
-					? "🔴 RED — AIM & FIRE"
-					: "🔵 BLUE — AIM & FIRE"
-				: "STEP 3: AIM & FIRE";
+			bannerText = "STEP 3: AIM & FIRE";
 			hintText = isPcMode
-				? "W/S or Mouse to Aim • Hold SPACE to Charge & Release to FIRE!"
-				: "W/S or Gyro Pitch to Aim • Hold SPACE to Charge & Release to FIRE!";
+				? "Up/Down / Gyro tilt to AIM • Hold SPACE to charge power and release to FIRE"
+				: "Tilt Gyro to AIM • Hold & Release FIRE button on HUD";
 		} else if (phase === "REPOSITION") {
-			bannerText = isPvP
-				? activeTeam === "player"
-					? "🔴 RED — RUN FOR COVER!"
-					: "🔵 BLUE — RUN FOR COVER!"
-				: "🏃 RUN FOR COVER!";
-			hintText = `${Math.ceil(repositionTimer)}s — WASD to move, W to jump`;
+			bannerText = "RUN FOR COVER!";
+			hintText = `${Math.ceil(repositionTimer)}s remaining — Move to safe spot before turn ends`;
 		}
 
 		if (!bannerText) return;
@@ -267,14 +287,17 @@ export class HUD {
 		ctx.fillText(hintText, width / 2, 98);
 	}
 
-	/** Draw the trajectory sighting arc in world space (call under the camera transform). */
+	/** Draw collision-aware dynamic trajectory arc in world space. */
 	public drawTrajectoryArc(
 		ctx: CanvasRenderingContext2D,
 		worm: Worm,
 		power: number,
 		windX: number,
 		weaponId: WeaponId,
+		terrain?: any,
 	): void {
+		if (!this.showTrajectory) return;
+
 		ctx.save();
 		const tip = worm.getCannonTip();
 		const rad = (worm.aimAngle * Math.PI) / 180;
@@ -290,7 +313,7 @@ export class HUD {
 		const isRifle = weaponId === "rifle";
 		const gravity = PROJECTILE_GRAVITY[weaponId] ?? 0.5;
 
-		for (let step = 0; step < 30; step++) {
+		for (let step = 0; step < 40; step++) {
 			if (
 				weaponId === "bazooka" ||
 				weaponId === "cluster" ||
@@ -305,9 +328,13 @@ export class HUD {
 			px += vx;
 			py += vy;
 			points.push({ x: px, y: py });
+
+			if (terrain?.isSolidAt?.(px, py)) {
+				break; // Truncate line cleanly at terrain impact!
+			}
 		}
 
-		// 1. Black Outline Stroke (makes trajectory line POP on dark/light terrain)
+		// 1. Black Outline Stroke
 		ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
 		ctx.lineWidth = 5;
 		ctx.setLineDash([]);
@@ -318,7 +345,7 @@ export class HUD {
 		}
 		ctx.stroke();
 
-		// 2. High-Contrast Dashed Line (Yellow for normal, Cyan for rifle)
+		// 2. High-Contrast Dashed Line
 		ctx.strokeStyle = isRifle ? "#38bdf8" : "#facc15";
 		ctx.lineWidth = 2.5;
 		ctx.setLineDash([6, 4]);
@@ -330,7 +357,7 @@ export class HUD {
 		ctx.stroke();
 		ctx.setLineDash([]);
 
-		// 3. Glowing Trajectory Dots along path
+		// 3. Glowing Trajectory Dots
 		ctx.fillStyle = isRifle ? "#7dd3fc" : "#fef08a";
 		for (let i = 1; i < points.length; i += 3) {
 			ctx.beginPath();
@@ -338,16 +365,17 @@ export class HUD {
 			ctx.fill();
 		}
 
-		// 4. Target Crosshair / Reticle at end of trajectory arc
+		// 4. Target Crosshair / Reticle at predicted impact point
 		const endP = points[points.length - 1];
+		const pulseRadius = 7 + Math.sin(Date.now() * 0.01) * 2;
 		ctx.strokeStyle = "#ef4444";
 		ctx.lineWidth = 2;
 		ctx.beginPath();
-		ctx.arc(endP.x, endP.y, 7, 0, Math.PI * 2);
+		ctx.arc(endP.x, endP.y, pulseRadius, 0, Math.PI * 2);
 		ctx.stroke();
 		ctx.fillStyle = "#ef4444";
 		ctx.beginPath();
-		ctx.arc(endP.x, endP.y, 2.5, 0, Math.PI * 2);
+		ctx.arc(endP.x, endP.y, 3, 0, Math.PI * 2);
 		ctx.fill();
 
 		ctx.restore();

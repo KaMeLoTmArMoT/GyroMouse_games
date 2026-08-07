@@ -361,7 +361,11 @@ export function simulateShot(
 					finalize();
 					return shot;
 				} else if (weaponId === "drill") {
+					checkLaunchBlock(x, y);
 					addDamage(w, 40);
+					explodeAt(x, y);
+					finalize();
+					return shot;
 				} else {
 					checkLaunchBlock(x, y);
 					explodeAt(x, y);

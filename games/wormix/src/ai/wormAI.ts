@@ -86,13 +86,13 @@ const WEIGHTS: Record<AIPersonality, WeightedScore> = {
 const COARSE_WEAPONS: WeaponId[] = [
 	"bazooka",
 	"grenade",
+	"rifle",
+	"shotgun",
 	"cluster",
 	"acid_bomb",
 	"dynamite",
 	"mortar",
 	"drill",
-	"shotgun",
-	"rifle",
 ];
 const ALL_WEAPONS: WeaponId[] = [
 	"bazooka",
@@ -132,11 +132,21 @@ function shotScore(
 		return -99999; // Strictly forbid dropping dynamite / bouncy explosives at feet
 	}
 
+	// Cap per-target effective damage so multi-fragment weapons aren't 4x inflated
+	const effectiveEnemyDamage = Math.min(55, shot.enemyDamage);
+
 	let score =
-		w.attack * shot.enemyDamage +
+		w.attack * effectiveEnemyDamage +
 		w.chain * shot.chainBonus +
 		w.attack * shot.kills * 150 +
-		shot.terrainDestruction * 0.2;
+		shot.terrainDestruction * 0.1;
+
+	// Signature Infinite Weapon & Direct Fire preferences
+	if (shot.weaponId === "bazooka") score += 25;
+	else if (shot.weaponId === "grenade") score += 15;
+	else if (shot.weaponId === "rifle" || shot.weaponId === "shotgun")
+		score += 20;
+	else if (shot.weaponId === "drill") score += 5;
 
 	// Penalty for shooting/destroying health crates without hitting enemies
 	if (shot.crateDestroyed && shot.enemyDamage < 30) {
@@ -445,11 +455,13 @@ class AIPlannerImpl implements AIPlanner {
 			this.allies,
 			coverScore,
 		);
+		const walkCost = Math.abs(pos.x - aiWorm.x) * 0.4;
 		const positionTerm =
 			this.w.cover * coverScore +
 			this.w.crates * crateScore -
 			mineRisk -
-			allyPenalty +
+			allyPenalty -
+			walkCost +
 			elevationScore +
 			noise;
 		const evalRecord: PositionEval = {
@@ -616,7 +628,7 @@ class AIPlannerImpl implements AIPlanner {
 		const { aiWorm } = this.params;
 		if (this.enemies.length === 0) {
 			return {
-				targetAngle: -45,
+				targetAngle: aiWorm.facingRight ? -45 : -135,
 				targetPower: 0.5,
 				weaponId: "bazooka",
 				walkDir: 0,
@@ -634,14 +646,26 @@ class AIPlannerImpl implements AIPlanner {
 		}
 		const dx = target.x - aiWorm.x;
 		const dy = target.y - aiWorm.y;
-		const angle =
-			(dx >= 0 ? -1 : 1) *
-			((Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI);
+		const absAngle = (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI;
+
+		// Check if an ally is standing in front of worm (within 90px)
+		const allyInFront = this.allies.some(
+			(a) =>
+				Math.sign(a.x - aiWorm.x) === Math.sign(dx) &&
+				Math.abs(a.x - aiWorm.x) < 90,
+		);
+
+		// High arc lob if ally is in front so shot passes overhead
+		const basePitch = allyInFront
+			? Math.max(65, absAngle)
+			: Math.max(30, absAngle);
+		const targetAngle = dx >= 0 ? -basePitch : -180 + basePitch;
+
 		const weapon: WeaponId =
 			minDist < 100 && this.hasAmmo("shotgun") ? "shotgun" : "bazooka";
 		return {
-			targetAngle: clampAngle(angle),
-			targetPower: 0.5,
+			targetAngle: clampAngle(targetAngle),
+			targetPower: allyInFront ? 0.75 : 0.6,
 			weaponId: weapon,
 			walkDir: 0,
 			targetX: aiWorm.x,
@@ -649,12 +673,18 @@ class AIPlannerImpl implements AIPlanner {
 	}
 }
 
+import { MCTSPlanner } from "./mctsAI";
+
 export function createPlanner(
 	params: Omit<PlannerParams, "deadlineMs"> & { deadlineMs?: number },
 ): AIPlanner {
 	const budget = AI_BUDGET[params.difficulty];
 	const deadlineMs = params.deadlineMs ?? budget.thinkingMs;
-	return new AIPlannerImpl({ ...params, deadlineMs });
+	const fullParams = { ...params, deadlineMs };
+	if (params.difficulty === "hard") {
+		return new MCTSPlanner(fullParams);
+	}
+	return new AIPlannerImpl(fullParams);
 }
 
 export class WormAI {
@@ -803,7 +833,7 @@ export class WormAI {
 		aiWorm: Worm,
 		terrain: TerrainManager,
 		mapObjects: MapObject[],
-		_enemies: Worm[],
+		enemies: Worm[],
 	): { x: number; y: number }[] {
 		const candidates: { x: number; y: number }[] = [];
 		const baseY = aiWorm.y;
@@ -811,11 +841,30 @@ export class WormAI {
 		// Stay in place
 		candidates.push({ x: aiWorm.x, y: baseY });
 
-		// Dynamic adaptive surface sampling: -240px to +240px in 40px steps
-		for (let step = -240; step <= 240; step += 40) {
-			if (Math.abs(step) < 20) continue;
+		const aliveEnemies = enemies.filter((e) => e.isAlive);
+		let closestEnemyX: number | null = null;
+		let minEnemyDist = Infinity;
+		for (const e of aliveEnemies) {
+			const d = Math.hypot(e.x - aiWorm.x, e.y - aiWorm.y);
+			if (d < minEnemyDist) {
+				minEnemyDist = d;
+				closestEnemyX = e.x;
+			}
+		}
+
+		// Controlled walk step sampling: -120px to +120px in 30px steps
+		for (let step = -120; step <= 120; step += 30) {
+			if (Math.abs(step) < 15) continue;
 			const nx = aiWorm.x + step;
-			if (nx < 25 || nx > terrain.width - 25) continue;
+			if (nx < 30 || nx > terrain.width - 30) continue;
+
+			// Do not walk past the closest enemy into enemy territory!
+			if (closestEnemyX !== null) {
+				const isEnemyRight = closestEnemyX > aiWorm.x;
+				if (isEnemyRight && nx > closestEnemyX - 40) continue;
+				if (!isEnemyRight && nx < closestEnemyX + 40) continue;
+			}
+
 			const groundY = terrain.getLocalGroundY(nx, baseY + 20, 20, 15);
 			if (groundY !== null) {
 				const feetY = groundY - 12;
@@ -830,17 +879,22 @@ export class WormAI {
 			}
 		}
 
-		// Strategic spots: near crates if injured
+		// Strategic spots: near health crates if injured and within local range
 		if (aiWorm.health < aiWorm.maxHealth * 0.6) {
 			const crates = mapObjects.filter(
 				(o) => o.type === "health_crate" && !o.isDestroyed,
 			);
 			for (const c of crates) {
-				if (
-					Math.abs(c.x - aiWorm.x) < 300 &&
-					WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, c.x, mapObjects)
-				) {
-					candidates.push({ x: c.x, y: c.y });
+				const crateDist = Math.abs(c.x - aiWorm.x);
+				if (crateDist <= 100) {
+					if (closestEnemyX !== null) {
+						const isEnemyRight = closestEnemyX > aiWorm.x;
+						if (isEnemyRight && c.x > closestEnemyX - 40) continue;
+						if (!isEnemyRight && c.x < closestEnemyX + 40) continue;
+					}
+					if (WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, c.x, mapObjects)) {
+						candidates.push({ x: c.x, y: c.y });
+					}
 				}
 			}
 		}

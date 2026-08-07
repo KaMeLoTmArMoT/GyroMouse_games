@@ -902,6 +902,7 @@ export class WormixGame {
 					this.aiTurnCtrl.aiThinking = false;
 					this.aiTurnCtrl.aiTargetX = this.aiTurnCtrl.aiPlan.targetX;
 					this.aiTurnCtrl.aiWalkTimeLeft = 240;
+					this.aiTurnCtrl.aiWalkDuration = 0;
 					activeWorm.aimAngle = this.aiTurnCtrl.aiPlan.targetAngle;
 					activeWorm.facingRight =
 						Math.cos((this.aiTurnCtrl.aiPlan.targetAngle * Math.PI) / 180) >= 0;
@@ -926,8 +927,19 @@ export class WormixGame {
 				!this.aiTurnCtrl.aiThinking &&
 				!this.aiTurnCtrl.aiDebugFrozen
 			) {
+				this.aiTurnCtrl.aiWalkDuration += 1 / 30;
 				const distToTarget = Math.abs(this.aiTurnCtrl.aiTargetX - activeWorm.x);
-				if (distToTarget > 5 && this.aiTurnCtrl.aiWalkTimeLeft > 0) {
+
+				// Adaptive precision: start at 1.5px. If walk takes > 3s and within 25px, add +2px tolerance per sec.
+				let dynamicTolerance = 1.5;
+				if (this.aiTurnCtrl.aiWalkDuration > 3.0 && distToTarget <= 25) {
+					dynamicTolerance += (this.aiTurnCtrl.aiWalkDuration - 3.0) * 2.0;
+				}
+
+				if (
+					distToTarget > dynamicTolerance &&
+					this.aiTurnCtrl.aiWalkTimeLeft > 0
+				) {
 					const dir = this.aiTurnCtrl.aiTargetX > activeWorm.x ? 1 : -1;
 					activeWorm.walk(dir);
 					if (activeWorm.isGrounded) {

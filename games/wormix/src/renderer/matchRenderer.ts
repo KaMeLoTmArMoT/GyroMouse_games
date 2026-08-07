@@ -71,7 +71,14 @@ export class MatchRenderer {
 				const wid = WEAPON_LIST[safeIdx]?.id ?? "bazooka";
 				const powerToDraw = isCharging ? chargePower : 0.6;
 				const arcWind = WEAPON_LIST[safeIdx]?.affectedByWind ? windX : 0;
-				hud.drawTrajectoryArc(ctx, activeWorm, powerToDraw, arcWind, wid);
+				hud.drawTrajectoryArc(
+					ctx,
+					activeWorm,
+					powerToDraw,
+					arcWind,
+					wid,
+					terrain,
+				);
 			} catch (err) {
 				console.error("[Wormix] Trajectory Arc Render Error:", err);
 			}

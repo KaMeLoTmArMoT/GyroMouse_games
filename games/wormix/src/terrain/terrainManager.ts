@@ -11,6 +11,8 @@ import {
 	type Particle,
 	type Portal,
 } from "../types";
+import { QuadTree } from "./quadTree";
+import { TerrainChunk } from "./terrainChunk";
 
 export class TerrainManager {
 	public width: number = 1200;
@@ -23,6 +25,13 @@ export class TerrainManager {
 	public gridHeight: number;
 	public grid: Uint8Array;
 	public surfaceYCache: Float32Array;
+
+	// Spatial QuadTree & Chunking
+	public readonly chunkSize: number = 32;
+	public chunksX: number = 0;
+	public chunksY: number = 0;
+	public chunks: TerrainChunk[] = [];
+	public quadTree!: QuadTree<TerrainChunk>;
 
 	// Offscreen Canvas for Grid Rendering
 	private offscreenCanvas: HTMLCanvasElement;
@@ -53,7 +62,33 @@ export class TerrainManager {
 			this.gridHeight,
 		);
 
+		this.initChunks();
 		this.generateTerrain();
+	}
+
+	private initChunks(): void {
+		this.chunksX = Math.ceil(this.gridWidth / this.chunkSize);
+		this.chunksY = Math.ceil(this.gridHeight / this.chunkSize);
+		this.chunks = new Array(this.chunksX * this.chunksY);
+
+		this.quadTree = new QuadTree<TerrainChunk>({
+			x: 0,
+			y: 0,
+			width: this.width,
+			height: this.height,
+		});
+
+		for (let cy = 0; cy < this.chunksY; cy++) {
+			for (let cx = 0; cx < this.chunksX; cx++) {
+				const gx = cx * this.chunkSize;
+				const gy = cy * this.chunkSize;
+				const cw = Math.min(this.chunkSize, this.gridWidth - gx);
+				const ch = Math.min(this.chunkSize, this.gridHeight - gy);
+				const chunk = new TerrainChunk(cx, cy, gx, gy, cw, ch, this.cellScale);
+				this.chunks[cy * this.chunksX + cx] = chunk;
+				this.quadTree.insert(chunk);
+			}
+		}
 	}
 
 	public resize(w: number, h: number): void {
@@ -73,6 +108,7 @@ export class TerrainManager {
 			this.gridHeight,
 		);
 
+		this.initChunks();
 		this.generateTerrain();
 	}
 
@@ -87,7 +123,16 @@ export class TerrainManager {
 
 	public setCell(gx: number, gy: number, type: number): void {
 		if (gx >= 0 && gx < this.gridWidth && gy >= 0 && gy < this.gridHeight) {
-			this.grid[gy * this.gridWidth + gx] = type;
+			const idx = gy * this.gridWidth + gx;
+			if (this.grid[idx] !== type) {
+				this.grid[idx] = type;
+				const cx = Math.floor(gx / this.chunkSize);
+				const cy = Math.floor(gy / this.chunkSize);
+				const chunk = this.chunks[cy * this.chunksX + cx];
+				if (chunk) {
+					chunk.markDirty();
+				}
+			}
 		}
 	}
 
@@ -308,20 +353,38 @@ export class TerrainManager {
 		const centerGY = Math.floor(centerY / this.cellScale);
 		const radiusG = Math.ceil(radiusWorld / this.cellScale);
 
-		for (let dy = -radiusG; dy <= radiusG; dy++) {
-			for (let dx = -radiusG; dx <= radiusG; dx++) {
+		const minGX = Math.max(0, centerGX - radiusG);
+		const maxGX = Math.min(this.gridWidth - 1, centerGX + radiusG);
+		const minGY = Math.max(0, centerGY - radiusG);
+		const maxGY = Math.min(this.gridHeight - 1, centerGY + radiusG);
+
+		// QuadTree range query for affected chunks
+		const queryBounds = {
+			x: minGX * this.cellScale,
+			y: minGY * this.cellScale,
+			width: Math.max(1, (maxGX - minGX + 1) * this.cellScale),
+			height: Math.max(1, (maxGY - minGY + 1) * this.cellScale),
+		};
+		const affectedChunks = this.quadTree.queryRange(queryBounds);
+		for (const chunk of affectedChunks) {
+			chunk.markDirty();
+		}
+
+		for (let gy = minGY; gy <= maxGY; gy++) {
+			const dy = gy - centerGY;
+			for (let gx = minGX; gx <= maxGX; gx++) {
+				const dx = gx - centerGX;
 				if (dx * dx + dy * dy <= radiusG * radiusG) {
-					const gx = centerGX + dx;
-					const gy = centerGY + dy;
-					const currentCell = this.getCell(gx, gy);
+					const idx = gy * this.gridWidth + gx;
+					const currentCell = this.grid[idx];
 					if (currentCell !== CELL_BEDROCK && currentCell !== CELL_AIR) {
-						this.setCell(gx, gy, CELL_AIR);
+						this.grid[idx] = CELL_AIR;
 					}
 				}
 			}
 		}
 
-		this.rebuildSurfaceCache();
+		this.rebuildSurfaceCacheForColumns(minGX, maxGX);
 
 		// Spawn flying debris particles
 		for (let i = 0; i < 20; i++) {
@@ -337,6 +400,35 @@ export class TerrainManager {
 				color: Math.random() > 0.5 ? "#8b4513" : "#64748b",
 				size: Math.random() * 4 + 2,
 			});
+		}
+	}
+
+	public rebuildSurfaceCacheForColumns(minGX: number, maxGX: number): void {
+		const startGX = Math.max(0, minGX);
+		const endGX = Math.min(this.gridWidth - 1, maxGX);
+		const waterGY = Math.floor(this.waterY / this.cellScale);
+
+		for (let gx = startGX; gx <= endGX; gx++) {
+			let foundGY = waterGY;
+			for (let gy = 0; gy < this.gridHeight; gy++) {
+				const cell = this.grid[gy * this.gridWidth + gx];
+				if (
+					cell === CELL_GRASS ||
+					cell === CELL_DIRT ||
+					cell === CELL_STONE ||
+					cell === CELL_BEDROCK ||
+					cell === CELL_SAND ||
+					cell === CELL_IRON
+				) {
+					foundGY = gy;
+					break;
+				}
+			}
+			const minX = gx * this.cellScale;
+			const maxX = Math.min(this.width - 1, (gx + 1) * this.cellScale - 1);
+			for (let x = minX; x <= maxX; x++) {
+				this.surfaceYCache[x] = foundGY * this.cellScale;
+			}
 		}
 	}
 

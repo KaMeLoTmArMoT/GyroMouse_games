@@ -26,6 +26,7 @@ export class AITurnController {
 	public aiFiringPending: boolean = false;
 	public aiTargetX: number = 0;
 	public aiWalkTimeLeft: number = 0;
+	public aiWalkDuration: number = 0;
 	public aiReposTargetX: number | null = null;
 
 	public isAiDebugMode: boolean = false;
@@ -37,6 +38,7 @@ export class AITurnController {
 		this.aiThinking = false;
 		this.aiFiringPending = false;
 		this.aiReposTargetX = null;
+		this.aiWalkDuration = 0;
 	}
 
 	public rollPersonalities(
@@ -154,13 +156,29 @@ export class AITurnController {
 			if (bestCrateX !== null) return bestCrateX;
 		}
 
-		// 2. Evaluate candidate spots (-180px to +180px) for best line-of-sight cover & mine safety
+		// 2. Evaluate candidate spots (-120px to +120px) for best line-of-sight cover & mine safety
 		const enemies = worms.filter((e) => e.team !== w.team && e.isAlive);
+		let closestEnemyX = w.x;
+		let minEnemyDist = Infinity;
+		for (const e of enemies) {
+			const d = Math.hypot(e.x - w.x, e.y - w.y);
+			if (d < minEnemyDist) {
+				minEnemyDist = d;
+				closestEnemyX = e.x;
+			}
+		}
+
 		let bestX = w.x;
 		let bestScore = -Infinity;
 
-		for (let offset = -180; offset <= 180; offset += 30) {
+		for (let offset = -120; offset <= 120; offset += 30) {
 			const candX = Math.max(30, Math.min(terrain.width - 30, w.x + offset));
+
+			// Avoid advancing further into enemy territory during repositioning
+			const isEnemyRight = closestEnemyX > w.x;
+			if (isEnemyRight && candX > w.x + 30) continue;
+			if (!isEnemyRight && candX < w.x - 30) continue;
+
 			if (!WormAI.canWalkTo(terrain, w.x, w.y, candX, mapObjects)) continue;
 
 			const groundY = terrain.getLocalGroundY(candX, w.y + 20, 20, 15);

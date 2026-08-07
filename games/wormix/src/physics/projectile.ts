@@ -23,7 +23,6 @@ export class Projectile {
 	public prevX: number = 0;
 	public prevY: number = 0;
 	private drillEngaged: boolean = false;
-	private hitWorms: Set<string> = new Set();
 	private static readonly MAX_DRILL_FRAMES: number = 15; // ~0.5 seconds
 
 	// Mortar-specific state
@@ -159,15 +158,12 @@ export class Projectile {
 					this.triggerImpactDamage(terrain, worms, mapObjects, onExplode);
 					return;
 				} else if (this.weaponId === "drill") {
-					// Drill: direct hit deals 40 damage ONCE per worm as it bores past
-					if (!this.hitWorms.has(worm.id)) {
-						this.hitWorms.add(worm.id);
-						worm.takeDamage(40);
-						const angle = Math.atan2(this.vy || 1, this.vx || 1);
-						worm.vx += Math.cos(angle) * 3;
-						worm.vy += Math.sin(angle) * 3 - 2;
-					}
-					this.drillPenetrated = true;
+					worm.takeDamage(40);
+					const angle = Math.atan2(this.vy || 1, this.vx || 1);
+					worm.vx += Math.cos(angle) * 3;
+					worm.vy += Math.sin(angle) * 3 - 2;
+					this.triggerExplosion(terrain, worms, mapObjects, onExplode);
+					return;
 				} else {
 					this.triggerExplosion(terrain, worms, mapObjects, onExplode);
 					return;
