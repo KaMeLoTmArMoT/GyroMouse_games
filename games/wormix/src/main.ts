@@ -1574,33 +1574,38 @@ export class WormixGame {
 		// Render Visual Effect Particles (trails, flashes, smoke)
 		this.effects.draw(this.ctx);
 
-		// Trajectory sighting arc (shown during AIM_FIRE, WEAPON_SELECT, or F3 AI Debug Mode)
+		// Trajectory sighting arc (Shown strictly during AIM_FIRE phase or F3 AI Debug Mode)
 		if (
 			activeWorm?.isAlive &&
-			!this.aiThinking &&
-			(this.phase === "AIM_FIRE" ||
-				this.phase === "WEAPON_SELECT" ||
-				this.isAiDebugMode)
+			(this.phase === "AIM_FIRE" || this.isAiDebugMode)
 		) {
-			const safeIdx = Math.max(
-				0,
-				Math.min(WEAPON_LIST.length - 1, this.activeWeaponIndex),
-			);
-			const wid = WEAPON_LIST[safeIdx]?.id ?? "bazooka";
-			const powerToDraw = this.isCharging ? this.chargePower : 0.6;
-			const arcWind = WEAPON_LIST[safeIdx]?.affectedByWind ? this.windX : 0;
-			this.hud.drawTrajectoryArc(
-				this.ctx,
-				activeWorm,
-				powerToDraw,
-				arcWind,
-				wid,
-			);
+			try {
+				const safeIdx = Math.max(
+					0,
+					Math.min(WEAPON_LIST.length - 1, this.activeWeaponIndex),
+				);
+				const wid = WEAPON_LIST[safeIdx]?.id ?? "bazooka";
+				const powerToDraw = this.isCharging ? this.chargePower : 0.6;
+				const arcWind = WEAPON_LIST[safeIdx]?.affectedByWind ? this.windX : 0;
+				this.hud.drawTrajectoryArc(
+					this.ctx,
+					activeWorm,
+					powerToDraw,
+					arcWind,
+					wid,
+				);
+			} catch (err) {
+				console.error("[Wormix] Trajectory Arc Render Error:", err);
+			}
 		}
 
 		// AI Debug Visualizations (World space: Candidates Heatmap, Target Path, Planned Arc)
 		if (this.isAiDebugMode && (this.aiPlan || this.lastAiPlan)) {
-			this.renderAiDebugWorld(this.ctx, activeWorm);
+			try {
+				this.renderAiDebugWorld(this.ctx, activeWorm);
+			} catch (err) {
+				console.error("[Wormix] AI Debug Render Error:", err);
+			}
 		}
 
 		// Back to screen space for UI overlay
@@ -1618,26 +1623,30 @@ export class WormixGame {
 			.reduce((acc, w) => acc + w.health, 0);
 
 		// Render Glassmorphism HUD overlay
-		const activeTeam = activeWorm?.team ?? "player";
-		this.hud.draw(
-			this.ctx,
-			this.canvas.width,
-			this.canvas.height,
-			this.phase,
-			activeWorm,
-			this.activeWeaponIndex,
-			this.chargePower,
-			this.isCharging,
-			this.windX,
-			this.turnTimer,
-			playerHp,
-			aiHp,
-			this.inputManager.settings.mode === "pointer",
-			this.lobbyConfig.matchType === "pvp",
-			this.teamAmmo[activeTeam as "player" | "ai"],
-			this.repositionTimer,
-			this.isAiDebugMode,
-		);
+		try {
+			const activeTeam = activeWorm?.team ?? "player";
+			this.hud.draw(
+				this.ctx,
+				this.canvas.width,
+				this.canvas.height,
+				this.phase,
+				activeWorm,
+				this.activeWeaponIndex,
+				this.chargePower,
+				this.isCharging,
+				this.windX,
+				this.turnTimer,
+				playerHp,
+				aiHp,
+				this.inputManager.settings.mode === "pointer",
+				this.lobbyConfig.matchType === "pvp",
+				this.teamAmmo[activeTeam as "player" | "ai"] ?? {},
+				this.repositionTimer,
+				this.isAiDebugMode,
+			);
+		} catch (err) {
+			console.error("[Wormix] HUD Render Error:", err);
+		}
 
 		// Game Over Overlay
 		if (this.phase === "GAME_OVER") {

@@ -99,7 +99,7 @@ export class HUD {
 		isPvP: boolean,
 		teamAmmo: TeamAmmo = {},
 		repositionTimer: number = 0,
-		isAiDebugMode: boolean = false,
+		_isAiDebugMode: boolean = false,
 	): void {
 		ctx.save();
 
@@ -122,13 +122,8 @@ export class HUD {
 			this.drawPowerMeter(ctx, width, height, chargePower);
 		}
 
-		// 5. Weapon Selection Toolbar (Bottom) — show during active phases & debug mode
-		if (
-			phase === "WEAPON_SELECT" ||
-			phase === "AIM_FIRE" ||
-			phase === "MOVE" ||
-			isAiDebugMode
-		) {
+		// 5. Weapon Selection Toolbar (Bottom) — show during all active match phases
+		if (phase !== "GAME_OVER") {
 			this.drawWeaponToolbar(
 				ctx,
 				width,
@@ -265,27 +260,78 @@ export class HUD {
 		ctx.save();
 		const tip = worm.getCannonTip();
 		const rad = (worm.aimAngle * Math.PI) / 180;
-		const speed = power * PROJECTILE_MAX_SPEED[weaponId];
+		const maxSpeed = PROJECTILE_MAX_SPEED[weaponId] ?? 20;
+		const speed = Math.max(0.2, power) * maxSpeed;
 
 		let vx = Math.cos(rad) * speed;
 		let vy = Math.sin(rad) * speed;
 		let px = tip.x;
 		let py = tip.y;
 
-		ctx.strokeStyle = "rgba(250, 204, 21, 0.8)";
-		ctx.lineWidth = 2;
-		ctx.setLineDash([4, 4]);
-		ctx.beginPath();
-		ctx.moveTo(px, py);
+		const points: { x: number; y: number }[] = [{ x: px, y: py }];
+		const isRifle = weaponId === "rifle";
+		const gravity = PROJECTILE_GRAVITY[weaponId] ?? 0.5;
 
-		for (let step = 0; step < 25; step++) {
-			vx += windX * 0.05;
-			if (weaponId !== "rifle") vy += PROJECTILE_GRAVITY[weaponId];
+		for (let step = 0; step < 30; step++) {
+			if (
+				weaponId === "bazooka" ||
+				weaponId === "cluster" ||
+				weaponId === "drill" ||
+				weaponId === "mortar"
+			) {
+				vx += windX * 0.05;
+			}
+			if (!isRifle) {
+				vy += gravity;
+			}
 			px += vx;
 			py += vy;
-			ctx.lineTo(px, py);
+			points.push({ x: px, y: py });
+		}
+
+		// 1. Black Outline Stroke (makes trajectory line POP on dark/light terrain)
+		ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+		ctx.lineWidth = 5;
+		ctx.setLineDash([]);
+		ctx.beginPath();
+		ctx.moveTo(points[0].x, points[0].y);
+		for (let i = 1; i < points.length; i++) {
+			ctx.lineTo(points[i].x, points[i].y);
 		}
 		ctx.stroke();
+
+		// 2. High-Contrast Dashed Line (Yellow for normal, Cyan for rifle)
+		ctx.strokeStyle = isRifle ? "#38bdf8" : "#facc15";
+		ctx.lineWidth = 2.5;
+		ctx.setLineDash([6, 4]);
+		ctx.beginPath();
+		ctx.moveTo(points[0].x, points[0].y);
+		for (let i = 1; i < points.length; i++) {
+			ctx.lineTo(points[i].x, points[i].y);
+		}
+		ctx.stroke();
+		ctx.setLineDash([]);
+
+		// 3. Glowing Trajectory Dots along path
+		ctx.fillStyle = isRifle ? "#7dd3fc" : "#fef08a";
+		for (let i = 1; i < points.length; i += 3) {
+			ctx.beginPath();
+			ctx.arc(points[i].x, points[i].y, 3, 0, Math.PI * 2);
+			ctx.fill();
+		}
+
+		// 4. Target Crosshair / Reticle at end of trajectory arc
+		const endP = points[points.length - 1];
+		ctx.strokeStyle = "#ef4444";
+		ctx.lineWidth = 2;
+		ctx.beginPath();
+		ctx.arc(endP.x, endP.y, 7, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.fillStyle = "#ef4444";
+		ctx.beginPath();
+		ctx.arc(endP.x, endP.y, 2.5, 0, Math.PI * 2);
+		ctx.fill();
+
 		ctx.restore();
 	}
 
