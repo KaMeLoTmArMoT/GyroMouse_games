@@ -179,7 +179,51 @@
         <div class="key-badge">Space / ESC Pause</div>
       </div>
     </div>
+
+    <!-- Biome Discovery Toast -->
+    <div id="biome-toast" class="biome-toast hidden">
+      <div id="biome-toast-title" class="biome-toast-title">BIOME DISCOVERED</div>
+      <div id="biome-toast-name" class="biome-toast-name">SNOWY TUNNEL</div>
+    </div>
   </div>
+
+  <style>
+    .biome-toast {
+      position: absolute;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border: 2px solid #38bdf8;
+      border-radius: 20px;
+      padding: 16px 36px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(56, 189, 248, 0.4);
+      animation: toastSlideDown 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 50;
+      pointer-events: none;
+    }
+    .biome-toast-title {
+      font-size: 0.8rem;
+      font-weight: 800;
+      letter-spacing: 3px;
+      color: #94a3b8;
+      text-transform: uppercase;
+    }
+    .biome-toast-name {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #38bdf8;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 15px rgba(56, 189, 248, 0.6);
+    }
+    @keyframes toastSlideDown {
+      0% { opacity: 0; transform: translate(-50%, -30px) scale(0.9); }
+      100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    }
+  </style>
 
   <!-- Start Screen Prompt -->
   <div id="start-screen" class="overlay-screen" style="background: rgba(11, 15, 25, 0.4); backdrop-filter: blur(8px); cursor: pointer;">

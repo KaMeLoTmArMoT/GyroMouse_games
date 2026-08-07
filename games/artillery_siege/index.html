@@ -250,6 +250,126 @@
       transition: width 0.1s linear;
     }
 
+    /* Optical Sight Reticle Grid */
+    .optical-sight {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 220px;
+      height: 220px;
+      pointer-events: none;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .optical-ring {
+      width: 100%;
+      height: 100%;
+      border: 2px dashed rgba(56, 189, 248, 0.4);
+      border-radius: 50%;
+      position: absolute;
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+    }
+    .optical-cross-h, .optical-cross-v {
+      position: absolute;
+      background: rgba(56, 189, 248, 0.6);
+    }
+    .optical-cross-h { width: 100%; height: 1px; }
+    .optical-cross-v { height: 100%; width: 1px; }
+
+    /* Castle Integrity Meter */
+    .integrity-card {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 12px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 320px;
+      pointer-events: auto;
+    }
+    .integrity-bar-bg {
+      width: 100%;
+      height: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 5px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .integrity-bar-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+      border-radius: 5px;
+      transition: width 0.3s ease;
+    }
+    .breakdown-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: #9ca3af;
+      font-weight: 700;
+    }
+
+    /* Arsenal Shop Bar */
+    .arsenal-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      pointer-events: auto;
+    }
+    .shell-option {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #f3f4f6;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .shell-option:hover {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: #38bdf8;
+    }
+    .shell-option.active {
+      background: rgba(56, 189, 248, 0.3);
+      border-color: #38bdf8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+    }
+
+    /* Combo Banner */
+    .combo-banner {
+      position: absolute;
+      top: 120px;
+      left: 50%;
+      transform: translateX(-50%) scale(0.8);
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      color: #fff;
+      padding: 8px 24px;
+      border-radius: 20px;
+      font-weight: 900;
+      font-size: 1.2rem;
+      box-shadow: 0 10px 30px rgba(245, 158, 11, 0.6);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 20;
+    }
+    .combo-banner.active {
+      opacity: 1;
+      transform: translateX(-50%) scale(1.1);
+    }
+
     /* Modals */
     .modal-overlay {
       position: absolute;
@@ -316,29 +436,58 @@
   <a href="../../index.html" class="gm-hub-btn"><span>🏠</span> Hub</a>
   <canvas id="game-canvas"></canvas>
 
+  <!-- Optical Sight Center Reticle -->
+  <div class="optical-sight">
+    <div class="optical-ring"></div>
+    <div class="optical-cross-h"></div>
+    <div class="optical-cross-v"></div>
+  </div>
+
+  <!-- Combo Destruction Banner -->
+  <div class="combo-banner" id="combo-banner">CHAIN COLLAPSE x3! +180🪙</div>
+
   <div class="hud-layer">
     <div class="top-bar gm-hud-container">
-      <div></div>
+      <!-- Castle Integrity Breakdown -->
+      <div class="integrity-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="stat-label" style="color: #ef4444;">Fortress Integrity</div>
+          <div id="integrity-pct" style="font-weight: 900; color: #10b981; font-size: 0.95rem;">100%</div>
+        </div>
+        <div class="integrity-bar-bg">
+          <div class="integrity-bar-fill" id="integrity-bar-fill"></div>
+        </div>
+        <div class="breakdown-row">
+          <span>L.Tower: <b id="hp-tower-left" style="color: #fff;">100%</b></span>
+          <span>Gate: <b id="hp-gate" style="color: #fff;">100%</b></span>
+          <span>Keep: <b id="hp-keep" style="color: #fff;">100%</b></span>
+          <span>R.Tower: <b id="hp-tower-right" style="color: #fff;">100%</b></span>
+        </div>
+      </div>
 
       <div class="card stats-card">
         <div class="stat-box">
-          <div class="stat-label">Level</div>
+          <div class="stat-label">Mode / Level</div>
           <div class="stat-value" id="hud-level">1</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">Targets Hit</div>
-          <div class="stat-value" id="hud-targets" style="color: #38bdf8;">0 / 3</div>
+          <div class="stat-label">Coins</div>
+          <div class="stat-value" id="hud-coins" style="color: #f59e0b;">🪙 0</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">Shells Left</div>
-          <div class="stat-value" id="hud-shells" style="color: #f59e0b;">5</div>
+          <div class="stat-label">Ammo</div>
+          <div class="stat-value" id="hud-shells" style="color: #10b981;">∞ Basic</div>
         </div>
         <div style="width: 1px; height: 32px; background: rgba(255,255,255,0.15);"></div>
-        <div class="stat-box">
-          <button id="btn-sound" class="nav-btn" style="padding: 6px 12px; font-size: 0.85rem;">
-            🔊 Mute
-          </button>
-        </div>
+        <button id="btn-mode-toggle" class="nav-btn" style="padding: 6px 12px; font-size: 0.85rem;">
+          🏰 Sandbox
+        </button>
+        <button id="btn-sandbox-rebuild" class="nav-btn" style="padding: 6px 12px; font-size: 0.85rem; display: none; background: rgba(56,189,248,0.2); border-color: #38bdf8;">
+          🔄 Rebuild (R)
+        </button>
+        <button id="btn-sound" class="nav-btn" style="padding: 6px 12px; font-size: 0.85rem;">
+          🔊 Mute
+        </button>
       </div>
 
       <!-- Tactical Radar Mini-Map -->
@@ -349,10 +498,26 @@
     </div>
 
     <div class="bottom-panel" style="display: flex; flex-direction: column; align-items: center; width: 100%; pointer-events: none;">
+      <!-- Arsenal Store Selection Bar -->
+      <div class="arsenal-bar">
+        <div class="shell-option active" id="shell-opt-basic" data-type="BASIC">
+          <span>⚪ Standard</span> <small style="color: #10b981;">(Infinite)</small>
+        </div>
+        <div class="shell-option" id="shell-opt-cluster" data-type="CLUSTER">
+          <span>💥 Cluster</span> <small style="color: #f59e0b;">(50🪙)</small>
+        </div>
+        <div class="shell-option" id="shell-opt-ice" data-type="ICE">
+          <span>❄️ Ice Frost</span> <small style="color: #38bdf8;">(75🪙)</small>
+        </div>
+        <div class="shell-option" id="shell-opt-grapple" data-type="GRAPPLE">
+          <span>🪝 Grapple Hook</span> <small style="color: #a855f7;">(100🪙)</small>
+        </div>
+      </div>
+
       <!-- Spotter Feedback Window -->
       <div class="spotter-box" id="spotter-box">
         <div class="spotter-header">
-          <span>📡</span> Spotter Recon
+          <span>📡</span> Optical Reticle Recon
         </div>
         <div class="spotter-text" id="spotter-text">
           Target acquired! Adjust Elevation (P1) and Direction (P2) to fire first sighting shot.
@@ -414,3 +579,4 @@
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>
+

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { TargetStructure } from "../physics/artilleryPhysics";
+import type { Cannonball, TargetStructure } from "../physics/artilleryPhysics";
 
 export class ArtilleryGraphicsManager {
 	public scene!: THREE.Scene;
@@ -14,47 +14,60 @@ export class ArtilleryGraphicsManager {
 	// Visual Target Meshes
 	public targetMeshes: Map<string, THREE.Group> = new Map();
 
-	// Active Cannonball Mesh & Trail
-	public ballMesh: THREE.Mesh | null = null;
-	public ballTrailPoints: THREE.Vector3[] = [];
-	public ballTrailLine: THREE.Line | null = null;
+	// Active Cannonball Meshes & Trails
+	public ballMeshes: Map<string, THREE.Mesh> = new Map();
+	public ballTrailPoints: Map<string, THREE.Vector3[]> = new Map();
+	public ballTrailLines: Map<string, THREE.Line> = new Map();
 
-	// Ghost Trajectory Arc (Progressive Sighting Hints)
+	// Parabolic Trajectory Arc & Target Marker
 	public trajectoryArcLine: THREE.Line | null = null;
+	public targetCrosshairMesh: THREE.Group | null = null;
+
+	// Grapple Cable Line
+	public grappleCableLine: THREE.Line | null = null;
 
 	// Impact Craters on ground
 	public craterGroup!: THREE.Group;
 
-	// Explosion Particle System
-	public particles: Array<{
-		mesh: THREE.Mesh;
+	// GPU / Instanced Explosion Particle System Pool
+	private maxParticles = 300;
+	private particleInstancedMesh!: THREE.InstancedMesh;
+	private particleDummy = new THREE.Object3D();
+	private particleData: Array<{
+		active: boolean;
+		position: THREE.Vector3;
 		velocity: THREE.Vector3;
+		scale: number;
 		life: number;
+		maxLife: number;
+		colorType: "fire" | "smoke" | "spark" | "ice";
 	}> = [];
 
-	// Textures
+	// Textures & Materials
 	private groundTexture!: THREE.CanvasTexture;
 	private skyTexture!: THREE.CanvasTexture;
 	private woodTexture!: THREE.CanvasTexture;
 	private metalTexture!: THREE.CanvasTexture;
 
-	// Camera State & Orbit
+	private iceMaterial!: THREE.MeshStandardMaterial;
+
+	// Camera State & Slow-Mo
 	private defaultCamPos = new THREE.Vector3(0, 5, -9);
 	private defaultCamLookAt = new THREE.Vector3(0, 3, 20);
 	public currentCamPos = new THREE.Vector3().copy(this.defaultCamPos);
 	public currentCamLookAt = new THREE.Vector3().copy(this.defaultCamLookAt);
+	public slowMoFactor = 1.0;
 
 	// Recoil State
 	private recoilOffset: number = 0;
 
 	public init(canvas: HTMLCanvasElement) {
-		// Generate Procedural Textures
 		this.createProceduralTextures();
 
 		// Scene
 		this.scene = new THREE.Scene();
 		this.scene.background = new THREE.Color(0x0c102b);
-		this.scene.fog = new THREE.FogExp2(0x0c102b, 0.005);
+		this.scene.fog = new THREE.FogExp2(0x0c102b, 0.004);
 
 		// Camera
 		this.camera = new THREE.PerspectiveCamera(
@@ -74,10 +87,10 @@ export class ArtilleryGraphicsManager {
 		this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 		// Lighting
-		const ambientLight = new THREE.AmbientLight(0xffedd5, 0.7);
+		const ambientLight = new THREE.AmbientLight(0xffedd5, 0.75);
 		this.scene.add(ambientLight);
 
-		const dirLight = new THREE.DirectionalLight(0xfff1f2, 1.3);
+		const dirLight = new THREE.DirectionalLight(0xfff1f2, 1.35);
 		dirLight.position.set(40, 70, -30);
 		dirLight.castShadow = true;
 		dirLight.shadow.mapSize.width = 2048;
@@ -90,23 +103,24 @@ export class ArtilleryGraphicsManager {
 		dirLight.shadow.camera.bottom = -20;
 		this.scene.add(dirLight);
 
-		// Build Sky Dome & Field
+		// Build Scene Elements
 		this.buildSky();
 		this.buildTerrain();
-
-		// Build Cannon
 		this.buildCannon();
+		this.setupGPUInstancedParticles();
 
 		// Crater Container
 		this.craterGroup = new THREE.Group();
 		this.scene.add(this.craterGroup);
 
-		// Window Resize Listener
+		// Target Crosshair Ground Ring
+		this.buildTargetCrosshair();
+
 		window.addEventListener("resize", this.onWindowResize.bind(this));
 	}
 
 	private createProceduralTextures() {
-		// 1. Ground Canvas Texture (Grass + Dirt Noise)
+		// Ground Texture
 		const gCanvas = document.createElement("canvas");
 		gCanvas.width = 512;
 		gCanvas.height = 512;
@@ -114,7 +128,6 @@ export class ArtilleryGraphicsManager {
 		gCtx.fillStyle = "#1e293b";
 		gCtx.fillRect(0, 0, 512, 512);
 
-		// Add noise grain & grass patches
 		for (let i = 0; i < 4000; i++) {
 			const x = Math.random() * 512;
 			const y = Math.random() * 512;
@@ -122,7 +135,6 @@ export class ArtilleryGraphicsManager {
 			gCtx.fillStyle = Math.random() > 0.5 ? "#111827" : "#334155";
 			gCtx.fillRect(x, y, size, size);
 		}
-		// Grid lines on texture
 		gCtx.strokeStyle = "rgba(56, 189, 248, 0.15)";
 		gCtx.lineWidth = 2;
 		for (let c = 0; c <= 512; c += 64) {
@@ -138,7 +150,7 @@ export class ArtilleryGraphicsManager {
 		this.groundTexture.wrapT = THREE.RepeatWrapping;
 		this.groundTexture.repeat.set(12, 12);
 
-		// 2. Sky Sunset Gradient Texture
+		// Sky Gradient
 		const sCanvas = document.createElement("canvas");
 		sCanvas.width = 1024;
 		sCanvas.height = 512;
@@ -151,7 +163,6 @@ export class ArtilleryGraphicsManager {
 		sCtx.fillStyle = skyGrad;
 		sCtx.fillRect(0, 0, 1024, 512);
 
-		// Draw stars on upper sky
 		sCtx.fillStyle = "#ffffff";
 		for (let i = 0; i < 150; i++) {
 			const sx = Math.random() * 1024;
@@ -163,7 +174,7 @@ export class ArtilleryGraphicsManager {
 		}
 		this.skyTexture = new THREE.CanvasTexture(sCanvas);
 
-		// 3. Brushed Metal Canvas Texture
+		// Metal Texture
 		const mCanvas = document.createElement("canvas");
 		mCanvas.width = 256;
 		mCanvas.height = 256;
@@ -176,7 +187,7 @@ export class ArtilleryGraphicsManager {
 		}
 		this.metalTexture = new THREE.CanvasTexture(mCanvas);
 
-		// 4. Wood Plank Canvas Texture
+		// Wood Texture
 		const wCanvas = document.createElement("canvas");
 		wCanvas.width = 256;
 		wCanvas.height = 256;
@@ -188,6 +199,17 @@ export class ArtilleryGraphicsManager {
 			wCtx.fillRect(0, y, 256, 3);
 		}
 		this.woodTexture = new THREE.CanvasTexture(wCanvas);
+
+		// Ice Freeze Material
+		this.iceMaterial = new THREE.MeshStandardMaterial({
+			color: 0x38bdf8,
+			roughness: 0.1,
+			metalness: 0.8,
+			emissive: 0x0284c7,
+			emissiveIntensity: 0.5,
+			transparent: true,
+			opacity: 0.9,
+		});
 	}
 
 	private buildSky() {
@@ -201,7 +223,6 @@ export class ArtilleryGraphicsManager {
 	}
 
 	private buildTerrain() {
-		// Ground mesh with procedural grass/dirt map
 		const groundGeo = new THREE.PlaneGeometry(350, 350, 40, 40);
 		const groundMat = new THREE.MeshStandardMaterial({
 			map: this.groundTexture,
@@ -214,7 +235,7 @@ export class ArtilleryGraphicsManager {
 		ground.receiveShadow = true;
 		this.scene.add(ground);
 
-		// Distance Marker Bands (20m to 90m)
+		// Distance Marker Bands
 		for (let d = 20; d <= 90; d += 10) {
 			const lineGeo = new THREE.BufferGeometry().setFromPoints([
 				new THREE.Vector3(-45, 0.1, d),
@@ -237,7 +258,6 @@ export class ArtilleryGraphicsManager {
 		this.cannonBaseGroup = new THREE.Group();
 		this.cannonBaseGroup.position.set(0, 0, 0);
 
-		// Swivel Base Mount
 		const baseGeo = new THREE.CylinderGeometry(1.8, 2.2, 0.8, 16);
 		const baseMat = new THREE.MeshStandardMaterial({
 			map: this.metalTexture,
@@ -250,7 +270,6 @@ export class ArtilleryGraphicsManager {
 		baseMesh.castShadow = true;
 		this.cannonBaseGroup.add(baseMesh);
 
-		// Turret Support Brackets
 		const bracketGeo = new THREE.BoxGeometry(0.5, 1.4, 1.2);
 		const bracketMat = new THREE.MeshStandardMaterial({
 			map: this.metalTexture,
@@ -268,14 +287,12 @@ export class ArtilleryGraphicsManager {
 
 		this.cannonBaseGroup.add(leftBracket, rightBracket);
 
-		// Cannon Barrel Pivot Group (Pitches up/down around Y=1.5, Z=0)
 		this.cannonBarrelGroup = new THREE.Group();
 		this.cannonBarrelGroup.position.set(0, 1.5, 0);
 
-		// Heavy Metal Barrel Tube Mesh
 		const barrelGeo = new THREE.CylinderGeometry(0.5, 0.75, 4.2, 16);
 		barrelGeo.rotateX(Math.PI / 2);
-		barrelGeo.translate(0, 0, 2.1); // pivot at rear
+		barrelGeo.translate(0, 0, 2.1);
 
 		const barrelMat = new THREE.MeshStandardMaterial({
 			map: this.metalTexture,
@@ -285,9 +302,8 @@ export class ArtilleryGraphicsManager {
 		});
 		this.cannonMesh = new THREE.Mesh(barrelGeo, barrelMat);
 		this.cannonMesh.castShadow = true;
-		this.cannonMesh.position.set(0, 0, 0); // initial recoil offset is 0
+		this.cannonMesh.position.set(0, 0, 0);
 
-		// Barrel Gold Ring Detail (attached to cannonMesh so it recoils with barrel)
 		const ringGeo = new THREE.TorusGeometry(0.55, 0.08, 8, 16);
 		const ringMat = new THREE.MeshStandardMaterial({
 			color: 0xf59e0b,
@@ -303,14 +319,106 @@ export class ArtilleryGraphicsManager {
 		this.scene.add(this.cannonBaseGroup);
 	}
 
+	private setupGPUInstancedParticles() {
+		const particleGeo = new THREE.SphereGeometry(0.3, 8, 8);
+		const particleMat = new THREE.MeshBasicMaterial({
+			transparent: true,
+			opacity: 0.9,
+		});
+
+		this.particleInstancedMesh = new THREE.InstancedMesh(
+			particleGeo,
+			particleMat,
+			this.maxParticles,
+		);
+		this.particleInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		this.scene.add(this.particleInstancedMesh);
+
+		for (let i = 0; i < this.maxParticles; i++) {
+			this.particleData.push({
+				active: false,
+				position: new THREE.Vector3(),
+				velocity: new THREE.Vector3(),
+				scale: 1.0,
+				life: 0,
+				maxLife: 1.0,
+				colorType: "fire",
+			});
+			this.particleDummy.position.set(0, -999, 0);
+			this.particleDummy.scale.set(0.001, 0.001, 0.001);
+			this.particleDummy.updateMatrix();
+			this.particleInstancedMesh.setMatrixAt(i, this.particleDummy.matrix);
+		}
+		this.particleInstancedMesh.instanceMatrix.needsUpdate = true;
+	}
+
+	private buildTargetCrosshair() {
+		this.targetCrosshairMesh = new THREE.Group();
+
+		const ringGeo = new THREE.RingGeometry(1.2, 1.5, 24);
+		const ringMat = new THREE.MeshBasicMaterial({
+			color: 0x38bdf8,
+			side: THREE.DoubleSide,
+			transparent: true,
+			opacity: 0.85,
+		});
+		const ring = new THREE.Mesh(ringGeo, ringMat);
+		ring.rotation.x = -Math.PI / 2;
+
+		const line1Geo = new THREE.BufferGeometry().setFromPoints([
+			new THREE.Vector3(-2.2, 0.05, 0),
+			new THREE.Vector3(2.2, 0.05, 0),
+		]);
+		const line2Geo = new THREE.BufferGeometry().setFromPoints([
+			new THREE.Vector3(0, 0.05, -2.2),
+			new THREE.Vector3(0, 0.05, 2.2),
+		]);
+		const lineMat = new THREE.LineBasicMaterial({ color: 0x38bdf8 });
+
+		this.targetCrosshairMesh.add(
+			ring,
+			new THREE.Line(line1Geo, lineMat),
+			new THREE.Line(line2Geo, lineMat),
+		);
+		this.targetCrosshairMesh.position.set(0, 0.1, 40);
+		this.scene.add(this.targetCrosshairMesh);
+	}
+
+	public renderTrajectoryPreview(
+		points: Array<{ x: number; y: number; z: number }>,
+	) {
+		if (this.trajectoryArcLine) {
+			this.scene.remove(this.trajectoryArcLine);
+			this.trajectoryArcLine = null;
+		}
+
+		if (points.length < 2) return;
+
+		const vecPoints = points.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+		const lineGeo = new THREE.BufferGeometry().setFromPoints(vecPoints);
+		const lineMat = new THREE.LineDashedMaterial({
+			color: 0x38bdf8,
+			dashSize: 1.0,
+			gapSize: 0.5,
+			linewidth: 3,
+		});
+		this.trajectoryArcLine = new THREE.Line(lineGeo, lineMat);
+		this.trajectoryArcLine.computeLineDistances();
+		this.scene.add(this.trajectoryArcLine);
+
+		// Position target landing crosshair
+		const lastPt = points[points.length - 1];
+		if (this.targetCrosshairMesh && lastPt) {
+			this.targetCrosshairMesh.position.set(lastPt.x, 0.1, lastPt.z);
+			this.targetCrosshairMesh.visible = true;
+		}
+	}
+
 	public updateTurretOrientation(pitchDeg: number, yawDeg: number) {
 		const yawRad = (yawDeg * Math.PI) / 180;
 		this.cannonBaseGroup.rotation.y = -yawRad;
-
-		// Pitch rotates barrel group around X-axis
 		this.cannonBarrelGroup.rotation.x = -(pitchDeg * Math.PI) / 180;
 
-		// Swing camera directly behind cannon barrel direction
 		const camDist = 9.0;
 		const camHeight = 4.5;
 		const lookDist = 25.0;
@@ -332,7 +440,6 @@ export class ArtilleryGraphicsManager {
 			if (!group) {
 				group = new THREE.Group();
 
-				// Main Target Box Mesh with Wood Texture
 				const boxGeo = new THREE.BoxGeometry(
 					target.size.x,
 					target.size.y,
@@ -349,7 +456,6 @@ export class ArtilleryGraphicsManager {
 				boxMesh.receiveShadow = true;
 				group.add(boxMesh);
 
-				// Bullseye Target Ring Decal
 				const ringGeo = new THREE.RingGeometry(0.3, 0.9, 16);
 				const ringMat = new THREE.MeshBasicMaterial({
 					color: 0xffffff,
@@ -370,71 +476,82 @@ export class ArtilleryGraphicsManager {
 			);
 
 			const boxMesh = group.children[0] as THREE.Mesh;
-			const mat = boxMesh.material as THREE.MeshStandardMaterial;
 
 			if (target.isDestroyed) {
-				mat.color.setHex(0x334155);
-				mat.opacity = 0.4;
-				mat.transparent = true;
+				(boxMesh.material as THREE.MeshStandardMaterial).color.setHex(0x334155);
+				(boxMesh.material as THREE.MeshStandardMaterial).opacity = 0.35;
+				(boxMesh.material as THREE.MeshStandardMaterial).transparent = true;
+			} else if (target.isFrozen) {
+				boxMesh.material = this.iceMaterial; // Apply cyan ice material overlay!
 			} else {
 				const hpRatio = target.hp / target.maxHp;
+				const mat = boxMesh.material as THREE.MeshStandardMaterial;
 				mat.color.setHSL(0.0 + hpRatio * 0.15, 0.8, 0.45);
 			}
 		});
 	}
 
-	public createCannonballMesh(): THREE.Mesh {
-		if (this.ballMesh) this.scene.remove(this.ballMesh);
+	public syncBalls(balls: Cannonball[]) {
+		// Sync visual meshes for all active balls (including cluster sub-munitions)
+		balls.forEach((ball) => {
+			if (!ball.active) return;
 
-		const ballGeo = new THREE.SphereGeometry(0.4, 16, 16);
-		const ballMat = new THREE.MeshStandardMaterial({
-			map: this.metalTexture,
-			color: 0x0f172a,
-			metalness: 0.95,
-			roughness: 0.1,
-			emissive: 0xef4444,
-			emissiveIntensity: 0.4,
+			let mesh = this.ballMeshes.get(ball.id);
+			const pos = ball.body.translation();
+
+			if (!mesh) {
+				const radius = ball.isSubMunition
+					? 0.28
+					: ball.shellType === "CLUSTER"
+						? 0.45
+						: 0.4;
+				const ballGeo = new THREE.SphereGeometry(radius, 16, 16);
+				const colorHex =
+					ball.shellType === "ICE"
+						? 0x38bdf8
+						: ball.shellType === "CLUSTER"
+							? 0xf59e0b
+							: ball.shellType === "GRAPPLE"
+								? 0x10b981
+								: 0x0f172a;
+
+				const ballMat = new THREE.MeshStandardMaterial({
+					map: this.metalTexture,
+					color: colorHex,
+					metalness: 0.9,
+					roughness: 0.2,
+					emissive: colorHex,
+					emissiveIntensity: 0.4,
+				});
+				mesh = new THREE.Mesh(ballGeo, ballMat);
+				mesh.castShadow = true;
+				this.scene.add(mesh);
+				this.ballMeshes.set(ball.id, mesh);
+			}
+
+			mesh.position.set(pos.x, pos.y, pos.z);
 		});
-		this.ballMesh = new THREE.Mesh(ballGeo, ballMat);
-		this.ballMesh.castShadow = true;
-		this.scene.add(this.ballMesh);
 
-		if (this.ballTrailLine) this.scene.remove(this.ballTrailLine);
-		this.ballTrailPoints = [];
-
-		return this.ballMesh;
-	}
-
-	public updateCannonball(pos: { x: number; y: number; z: number }) {
-		if (!this.ballMesh) return;
-		this.ballMesh.position.set(pos.x, pos.y, pos.z);
-
-		this.ballTrailPoints.push(new THREE.Vector3(pos.x, pos.y, pos.z));
-		if (this.ballTrailPoints.length > 50) this.ballTrailPoints.shift();
-
-		if (this.ballTrailLine) this.scene.remove(this.ballTrailLine);
-
-		const lineGeo = new THREE.BufferGeometry().setFromPoints(
-			this.ballTrailPoints,
-		);
-		const lineMat = new THREE.LineBasicMaterial({
-			color: 0xf59e0b,
-			linewidth: 3,
+		// Cleanup inactive ball meshes
+		this.ballMeshes.forEach((mesh, id) => {
+			if (!balls.some((b) => b.id === id && b.active)) {
+				this.scene.remove(mesh);
+				this.ballMeshes.delete(id);
+			}
 		});
-		this.ballTrailLine = new THREE.Line(lineGeo, lineMat);
-		this.scene.add(this.ballTrailLine);
-
-		this.spawnSmokeParticle(pos);
 	}
 
 	public triggerRecoil() {
 		this.recoilOffset = 0.8;
 	}
 
-	public triggerExplosion(pos: { x: number; y: number; z: number }) {
+	public triggerExplosion(
+		pos: { x: number; y: number; z: number },
+		colorType: "fire" | "smoke" | "spark" | "ice" = "fire",
+	) {
 		const craterGeo = new THREE.CircleGeometry(2.2, 16);
 		const craterMat = new THREE.MeshBasicMaterial({
-			color: 0x090d16,
+			color: colorType === "ice" ? 0x0284c7 : 0x090d16,
 			side: THREE.DoubleSide,
 			transparent: true,
 			opacity: 0.85,
@@ -444,82 +561,57 @@ export class ArtilleryGraphicsManager {
 		crater.position.set(pos.x, 0.06, pos.z);
 		this.craterGroup.add(crater);
 
-		for (let i = 0; i < 35; i++) {
-			const geo = new THREE.SphereGeometry(0.2 + Math.random() * 0.35, 8, 8);
-			const mat = new THREE.MeshBasicMaterial({
-				color: Math.random() > 0.4 ? 0xef4444 : 0xf59e0b,
-				transparent: true,
-				opacity: 0.95,
-			});
-			const pMesh = new THREE.Mesh(geo, mat);
-			pMesh.position.set(pos.x, pos.y + 0.2, pos.z);
+		// Spawn particles into GPU Instanced particle pool
+		const count = 40;
+		for (let i = 0; i < count; i++) {
+			const freeIdx = this.particleData.findIndex((p) => !p.active);
+			if (freeIdx === -1) break;
 
-			const vx = (Math.random() - 0.5) * 14;
-			const vy = Math.random() * 12 + 5;
-			const vz = (Math.random() - 0.5) * 14;
-
-			this.scene.add(pMesh);
-			this.particles.push({
-				mesh: pMesh,
-				velocity: new THREE.Vector3(vx, vy, vz),
-				life: 1.2,
-			});
+			const p = this.particleData[freeIdx];
+			p.active = true;
+			p.position.set(pos.x, pos.y + 0.2, pos.z);
+			p.velocity.set(
+				(Math.random() - 0.5) * 16,
+				Math.random() * 14 + 4,
+				(Math.random() - 0.5) * 16,
+			);
+			p.scale = 0.4 + Math.random() * 0.8;
+			p.life = 0;
+			p.maxLife = 1.0 + Math.random() * 0.6;
+			p.colorType = colorType;
 		}
-	}
-
-	private spawnSmokeParticle(pos: { x: number; y: number; z: number }) {
-		if (Math.random() > 0.4) return;
-
-		const geo = new THREE.SphereGeometry(0.25, 6, 6);
-		const mat = new THREE.MeshBasicMaterial({
-			color: 0x94a3b8,
-			transparent: true,
-			opacity: 0.6,
-		});
-		const pMesh = new THREE.Mesh(geo, mat);
-		pMesh.position.set(pos.x, pos.y, pos.z);
-
-		this.scene.add(pMesh);
-		this.particles.push({
-			mesh: pMesh,
-			velocity: new THREE.Vector3(
-				(Math.random() - 0.5) * 0.5,
-				Math.random() * 0.5 + 0.2,
-				(Math.random() - 0.5) * 0.5,
-			),
-			life: 0.6,
-		});
-	}
-
-	public drawGhostTrajectory(
-		history: Array<{ x: number; y: number; z: number }[]>,
-	) {
-		if (this.trajectoryArcLine) {
-			this.scene.remove(this.trajectoryArcLine);
-			this.trajectoryArcLine = null;
-		}
-
-		if (history.length === 0) return;
-
-		const latestTrajectory = history[history.length - 1];
-		const points = latestTrajectory.map(
-			(p) => new THREE.Vector3(p.x, p.y, p.z),
-		);
-
-		const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-		const lineMat = new THREE.LineDashedMaterial({
-			color: 0x38bdf8,
-			dashSize: 0.8,
-			gapSize: 0.4,
-			linewidth: 2,
-		});
-		this.trajectoryArcLine = new THREE.Line(lineGeo, lineMat);
-		this.trajectoryArcLine.computeLineDistances();
-		this.scene.add(this.trajectoryArcLine);
 	}
 
 	public update(dt: number, activeBallPos: THREE.Vector3 | null) {
-		// Update recoil recovery smoothly (recoils along Z axis of cannonMesh)
+		// Update GPU instanced particles
+		for (let i = 0; i < this.maxParticles; i++) {
+			const p = this.particleData[i];
+			if (!p.active) continue;
+
+			p.life += dt;
+			if (p.life >= p.maxLife) {
+				p.active = false;
+				this.particleDummy.position.set(0, -999, 0);
+				this.particleDummy.scale.set(0.001, 0.001, 0.001);
+				this.particleDummy.updateMatrix();
+				this.particleInstancedMesh.setMatrixAt(i, this.particleDummy.matrix);
+				continue;
+			}
+
+			p.position.addScaledVector(p.velocity, dt);
+			p.velocity.y -= 9.81 * dt * 0.4; // Particle gravity
+
+			const progress = p.life / p.maxLife;
+			const currentScale = (1.0 - progress) * p.scale;
+
+			this.particleDummy.position.copy(p.position);
+			this.particleDummy.scale.set(currentScale, currentScale, currentScale);
+			this.particleDummy.updateMatrix();
+			this.particleInstancedMesh.setMatrixAt(i, this.particleDummy.matrix);
+		}
+		this.particleInstancedMesh.instanceMatrix.needsUpdate = true;
+
+		// Update Recoil
 		if (this.recoilOffset > 0) {
 			this.recoilOffset = Math.max(0, this.recoilOffset - dt * 3.5);
 			this.cannonMesh.position.z = -this.recoilOffset;
@@ -527,37 +619,25 @@ export class ArtilleryGraphicsManager {
 			this.cannonMesh.position.z = 0;
 		}
 
-		// Update particles
-		for (let i = this.particles.length - 1; i >= 0; i--) {
-			const p = this.particles[i];
-			p.life -= dt * 1.5;
+		// Camera follow mode & slow-mo handling
+		const scaledDt = dt * this.slowMoFactor;
 
-			p.mesh.position.addScaledVector(p.velocity, dt);
-			p.velocity.y -= 9.8 * dt * 0.3;
-
-			const mat = p.mesh.material as THREE.MeshBasicMaterial;
-			mat.opacity = Math.max(0, p.life);
-
-			if (p.life <= 0) {
-				this.scene.remove(p.mesh);
-				this.particles.splice(i, 1);
-			}
-		}
-
-		// Camera follow mode when cannonball is active
 		if (activeBallPos) {
 			const targetCamPos = new THREE.Vector3(
 				activeBallPos.x - 4,
 				Math.max(4, activeBallPos.y + 3),
 				activeBallPos.z - 8,
 			);
-			this.currentCamPos.lerp(targetCamPos, Math.min(1.0, dt * 4.0));
-			this.currentCamLookAt.lerp(activeBallPos, Math.min(1.0, dt * 6.0));
+			this.currentCamPos.lerp(targetCamPos, Math.min(1.0, scaledDt * 4.0));
+			this.currentCamLookAt.lerp(activeBallPos, Math.min(1.0, scaledDt * 6.0));
 		} else {
-			this.currentCamPos.lerp(this.defaultCamPos, Math.min(1.0, dt * 3.0));
+			this.currentCamPos.lerp(
+				this.defaultCamPos,
+				Math.min(1.0, scaledDt * 3.0),
+			);
 			this.currentCamLookAt.lerp(
 				this.defaultCamLookAt,
-				Math.min(1.0, dt * 3.0),
+				Math.min(1.0, scaledDt * 3.0),
 			);
 		}
 
@@ -574,14 +654,8 @@ export class ArtilleryGraphicsManager {
 	}
 
 	public clearBallVisuals() {
-		if (this.ballMesh) {
-			this.scene.remove(this.ballMesh);
-			this.ballMesh = null;
-		}
-		if (this.ballTrailLine) {
-			this.scene.remove(this.ballTrailLine);
-			this.ballTrailLine = null;
-		}
+		this.ballMeshes.forEach((mesh) => this.scene.remove(mesh));
+		this.ballMeshes.clear();
 	}
 
 	public resetLevelVisuals() {
@@ -589,6 +663,9 @@ export class ArtilleryGraphicsManager {
 		if (this.trajectoryArcLine) {
 			this.scene.remove(this.trajectoryArcLine);
 			this.trajectoryArcLine = null;
+		}
+		if (this.targetCrosshairMesh) {
+			this.targetCrosshairMesh.visible = false;
 		}
 		this.targetMeshes.forEach((mesh) => this.scene.remove(mesh));
 		this.targetMeshes.clear();

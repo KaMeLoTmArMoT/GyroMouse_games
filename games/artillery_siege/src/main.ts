@@ -3,7 +3,10 @@ import { SharedAudioManager } from "../../../shared/audioManager";
 import { BaseGame } from "../../../shared/baseGame";
 import { SettingsOverlay } from "../../../shared/settingsOverlay";
 import { ArtilleryGraphicsManager } from "./graphics/artilleryGraphics";
-import { ArtilleryPhysicsManager } from "./physics/artilleryPhysics";
+import {
+	ArtilleryPhysicsManager,
+	type ShellType,
+} from "./physics/artilleryPhysics";
 import { ArtilleryHUD } from "./ui/hud";
 
 class ArtilleryGame extends BaseGame {
@@ -13,28 +16,31 @@ class ArtilleryGame extends BaseGame {
 	private audio: SharedAudioManager;
 	public settingsOverlay: SettingsOverlay;
 
-	// Game Loop & State
+	// Game Mode & State
+	private gameMode: "SIEGE" | "SANDBOX" = "SIEGE";
 	private currentLevel: number = 1;
 	private currentStage: 1 | 2 = 1;
 
 	// Cannon Aim State (degrees)
-	public pitchDeg: number = 40.0; // P1 Pitch: 10 to 75 deg
-	public yawDeg: number = 0.0; // P2 Yaw: -50 (Left) to +50 (Right) deg
+	public pitchDeg: number = 40.0;
+	public yawDeg: number = 0.0;
+	public powerMps: number = 35.0;
 
-	// Stage 2 Power & Micro Adjust
-	public powerMps: number = 35.0; // Power speed: 15 to 65 m/s
+	// Special Shell Shop Prices
+	private shellPrices: Record<ShellType, number> = {
+		BASIC: 0,
+		CLUSTER: 50,
+		ICE: 75,
+		GRAPPLE: 100,
+	};
+	public selectedShellType: ShellType = "BASIC";
 
-	// Game Stats
-	public shellsLeft: number = 5;
+	// Game Stats & Economy
 	public totalLevelTargets: number = 3;
 	public hitTargetsCount: number = 0;
 	public isLevelComplete: boolean = false;
 
 	private spaceDebounce: boolean = false;
-
-	// Trajectory history for sighting hints
-	private trajectoryHistory: Array<Array<{ x: number; y: number; z: number }>> =
-		[];
 
 	constructor() {
 		super();
@@ -49,7 +55,10 @@ class ArtilleryGame extends BaseGame {
 				if (this.isLevelComplete || this.isGameOver) return;
 				this.isPaused = paused;
 			},
-			onRestart: () => this.startLevel(this.currentLevel),
+			onRestart: () =>
+				this.gameMode === "SANDBOX"
+					? this.startSandbox()
+					: this.startLevel(this.currentLevel),
 			onToggleMute: () => this.audio.toggleMute(),
 		});
 
@@ -65,7 +74,6 @@ class ArtilleryGame extends BaseGame {
 		this.setupUI();
 		this.startLevel(1);
 
-		// Main animation loop
 		let lastTime = performance.now();
 		const tick = (now: number) => {
 			const dt = Math.min((now - lastTime) / 1000, 0.1);
@@ -97,10 +105,14 @@ class ArtilleryGame extends BaseGame {
 		if (e.code === "Space" || e.key === " ") {
 			this.spaceDebounce = false;
 		}
+		if (e.code === "KeyR" || e.key === "r" || e.key === "R") {
+			if (this.gameMode === "SANDBOX") {
+				this.startSandbox();
+			}
+		}
 	}
 
 	private setupUI() {
-		// Sound toggle button
 		const btnSound = document.getElementById("btn-sound");
 		if (btnSound) {
 			btnSound.addEventListener("click", () => {
@@ -109,7 +121,6 @@ class ArtilleryGame extends BaseGame {
 			});
 		}
 
-		// UI Buttons for mouse / touch users
 		const btnStageTrigger = document.getElementById("btn-stage-trigger");
 		if (btnStageTrigger) {
 			btnStageTrigger.addEventListener("click", () => this.handleSpaceAction());
@@ -119,9 +130,45 @@ class ArtilleryGame extends BaseGame {
 		if (btnFireTrigger) {
 			btnFireTrigger.addEventListener("click", () => this.handleSpaceAction());
 		}
+
+		// Mode Toggle Button
+		this.hud.btnModeToggle.addEventListener("click", () => {
+			if (this.gameMode === "SIEGE") {
+				this.startSandbox();
+			} else {
+				this.startLevel(1);
+			}
+		});
+
+		// Sandbox Rebuild Button
+		this.hud.btnSandboxRebuild.addEventListener("click", () => {
+			if (this.gameMode === "SANDBOX") {
+				this.startSandbox();
+			}
+		});
+
+		// Arsenal Store Option Buttons
+		this.hud.shellOptions.forEach((btn, type) => {
+			btn.addEventListener("click", () => {
+				const cost = this.shellPrices[type];
+				if (type !== "BASIC" && this.physics.coinsEarned < cost) {
+					this.hud.setSpotterMessage(
+						`NOT ENOUGH COINS! ${type} shell requires ${cost}🪙 (You have ${this.physics.coinsEarned}🪙).`,
+					);
+					this.audio.playHit(0.5);
+					return;
+				}
+				this.selectedShellType = type;
+				this.hud.selectShellType(type);
+				this.hud.setSpotterMessage(
+					`ARSENAL LOADED: Selected ${type} Shell (${cost === 0 ? "Infinite" : `${cost}🪙`}).`,
+				);
+			});
+		});
 	}
 
 	private startLevel(level: number) {
+		this.gameMode = "SIEGE";
 		this.currentLevel = level;
 		this.currentStage = 1;
 		this.isLevelComplete = false;
@@ -130,77 +177,105 @@ class ArtilleryGame extends BaseGame {
 		this.pitchDeg = 40.0;
 		this.yawDeg = 0.0;
 		this.powerMps = 35.0;
-		this.shellsLeft = 4 + level;
 		this.hitTargetsCount = 0;
 
-		this.trajectoryHistory = [];
-
-		// Reset physics & graphics
 		this.graphics.resetLevelVisuals();
-		this.physics.setupLevel(level, 1.5 + level * 0.5);
+		this.physics.setupLevel(level, 1.0 + level * 0.5);
 
 		this.totalLevelTargets = this.physics.targets.size;
 		this.graphics.syncTargets(this.physics.targets);
 
+		this.hud.btnModeToggle.innerText = "🏰 Sandbox Mode";
+		this.hud.btnSandboxRebuild.style.display = "none";
+
 		this.hud.setStage(1);
 		this.hud.updateStats(
-			this.currentLevel,
-			0,
-			this.totalLevelTargets,
-			this.shellsLeft,
+			`Lvl ${level}`,
+			this.physics.coinsEarned,
+			"⚪ Standard (∞)",
 		);
 		this.hud.updateAimValues(this.pitchDeg, this.yawDeg);
 		this.hud.setSpotterMessage(
-			`Level ${level} Ready! P1: Up/Down pitch, P2: Left/Right direction (Right = Turn Right, Left = Turn Left).`,
+			`Level ${level} Siege Ready! Basic shells are INFINITE. Earn coins to buy special arsenal shells!`,
+		);
+	}
+
+	private startSandbox() {
+		this.gameMode = "SANDBOX";
+		this.currentStage = 1;
+		this.isLevelComplete = false;
+		this.isGameOver = false;
+
+		this.pitchDeg = 38.0;
+		this.yawDeg = 0.0;
+		this.powerMps = 38.0;
+
+		this.graphics.resetLevelVisuals();
+		this.physics.setupSandboxLevel();
+
+		this.totalLevelTargets = this.physics.targets.size;
+		this.graphics.syncTargets(this.physics.targets);
+
+		this.hud.btnModeToggle.innerText = "🎯 Classic Siege";
+		this.hud.btnSandboxRebuild.style.display = "inline-flex";
+
+		this.hud.setStage(1);
+		this.hud.updateStats(
+			"Sandbox 💣",
+			this.physics.coinsEarned,
+			"⚪ Standard (∞)",
+		);
+		this.hud.updateAimValues(this.pitchDeg, this.yawDeg);
+		this.hud.setSpotterMessage(
+			"CASTLE DESTRUCTION SANDBOX MODE: Unlimited destruction! Rebuild anytime with 'R'.",
 		);
 	}
 
 	private handleSpaceAction() {
 		if (this.isLevelComplete || this.isGameOver) return;
-		if (this.physics.activeBall?.active) return;
+		if (this.physics.activeBalls.some((b) => b.active)) return;
 
 		if (this.currentStage === 1) {
-			// Transition to Stage 2: Power Charge & Micro-Adjust
 			this.currentStage = 2;
 			this.powerMps = 30.0;
 			this.hud.setStage(2);
 			this.hud.setSpotterMessage(
-				"STAGE 2: P1: Press UP/DOWN to set Power | P2: Press LEFT/RIGHT to fine tune wind | Press SPACE to Fire!",
+				"STAGE 2: P1: Press UP/DOWN to set Power | P2: Press LEFT/RIGHT to fine tune angle | Press SPACE to Fire!",
 			);
 			this.audio.playCollect();
 		} else if (this.currentStage === 2) {
-			// Fire cannonball!
 			this.fireCannon();
 		}
 	}
 
 	private fireCannon() {
-		if (this.shellsLeft <= 0) return;
+		const cost = this.shellPrices[this.selectedShellType];
+		if (cost > 0) {
+			if (this.physics.coinsEarned < cost) {
+				this.hud.setSpotterMessage(
+					`NOT ENOUGH COINS! Reverting to Standard shell.`,
+				);
+				this.selectedShellType = "BASIC";
+				this.hud.selectShellType("BASIC");
+			} else {
+				this.physics.coinsEarned -= cost;
+			}
+		}
 
-		this.shellsLeft--;
-		this.hud.updateStats(
-			this.currentLevel,
-			this.hitTargetsCount,
-			this.totalLevelTargets,
-			this.shellsLeft,
-		);
-
-		// Launch shell in physics (passing pitchDeg & yawDeg)
 		const ball = this.physics.launchShell(
 			this.pitchDeg,
 			this.yawDeg,
 			this.powerMps,
+			this.selectedShellType,
 		);
 		if (ball) {
-			this.graphics.createCannonballMesh();
 			this.graphics.triggerRecoil();
 			this.audio.playFall();
 			this.hud.setSpotterMessage(
-				`SHELL FIRED AT ${this.powerMps.toFixed(1)} m/s! Tracking trajectory...`,
+				`FIRED ${this.selectedShellType} SHELL AT ${this.powerMps.toFixed(1)} m/s! Tracking trajectory...`,
 			);
 		}
 
-		// Reset to Stage 1 after firing
 		this.currentStage = 1;
 		this.hud.setStage(1);
 	}
@@ -208,9 +283,11 @@ class ArtilleryGame extends BaseGame {
 	private update(dt: number) {
 		if (this.isPaused) return;
 
-		// 1. Process Input depending on Stage
-		if (this.currentStage === 1 && !this.physics.activeBall?.active) {
-			// Player 1 Elevation Pitch (Up lowers pitch, Down raises pitch)
+		// 1. Aim Controls in Stage 1 or Stage 2
+		if (
+			this.currentStage === 1 &&
+			!this.physics.activeBalls.some((b) => b.active)
+		) {
 			if (
 				this.input.keysPressed.has("ArrowUp") ||
 				this.input.keysPressed.has("KeyW")
@@ -224,7 +301,6 @@ class ArtilleryGame extends BaseGame {
 				this.pitchDeg = Math.min(75.0, this.pitchDeg + dt * 17.0);
 			}
 
-			// Player 2 Azimuth Direction (Right = Turn Right, Left = Turn Left)
 			if (
 				this.input.keysPressed.has("ArrowRight") ||
 				this.input.keysPressed.has("KeyD")
@@ -240,7 +316,6 @@ class ArtilleryGame extends BaseGame {
 
 			this.hud.updateAimValues(this.pitchDeg, this.yawDeg);
 		} else if (this.currentStage === 2) {
-			// P1 100% Manual Power adjustment (Up increases, Down decreases)
 			if (
 				this.input.keysPressed.has("ArrowUp") ||
 				this.input.keysPressed.has("KeyW")
@@ -254,7 +329,6 @@ class ArtilleryGame extends BaseGame {
 				this.powerMps = Math.max(15.0, this.powerMps - dt * 23.0);
 			}
 
-			// P2 Micro Wind / Angle Adjust (Right = Turn Right, Left = Turn Left)
 			if (
 				this.input.keysPressed.has("ArrowRight") ||
 				this.input.keysPressed.has("KeyD")
@@ -273,76 +347,87 @@ class ArtilleryGame extends BaseGame {
 			this.hud.updateAimValues(this.pitchDeg, this.yawDeg);
 		}
 
-		// 2. Update Cannon 3D visual angles
+		// 2. Parabolic Trajectory Predictor Sight
+		const trajectoryPoints = this.physics.computeTrajectoryPoints(
+			this.pitchDeg,
+			this.yawDeg,
+			this.powerMps,
+		);
+		this.graphics.renderTrajectoryPreview(trajectoryPoints);
+
+		// 3. Update Turret 3D orientation
 		this.graphics.updateTurretOrientation(this.pitchDeg, this.yawDeg);
 
-		// 3. Step Physics
-		const { impact, destroyedTargets } = this.physics.update(dt);
+		// 4. Physics Step
+		const { impact, destroyedTargets, comboCount, slowMoTrigger } =
+			this.physics.update(dt);
 
-		// 4. Check for target destruction sound & score
+		// Slow-Motion trigger management
+		if (slowMoTrigger) {
+			this.graphics.slowMoFactor = 0.35;
+			setTimeout(() => {
+				this.graphics.slowMoFactor = 1.0;
+			}, 900);
+		}
+
+		// 5. Sound & Combo Feedback
 		if (destroyedTargets.length > 0) {
 			this.audio.playHit(2.0);
 			this.hitTargetsCount += destroyedTargets.length;
-			this.hud.updateStats(
-				this.currentLevel,
-				this.hitTargetsCount,
-				this.totalLevelTargets,
-				this.shellsLeft,
-			);
+
+			if (comboCount >= 2) {
+				const comboText = `CHAIN COLLAPSE x${comboCount}! +${comboCount * 75}🪙`;
+				this.hud.triggerComboBanner(comboText);
+			}
 		}
 
-		// 5. Update Cannonball graphics position
+		// 6. Active Cannonball Meshes
+		this.graphics.syncBalls(this.physics.activeBalls);
+
 		let activePosVector: THREE.Vector3 | null = null;
-		if (this.physics.activeBall?.active) {
-			const pos = this.physics.activeBall.body.translation();
-			this.graphics.updateCannonball(pos);
+		const mainBall = this.physics.activeBalls.find((b) => b.active);
+		if (mainBall) {
+			const pos = mainBall.body.translation();
 			activePosVector = new THREE.Vector3(pos.x, pos.y, pos.z);
 		}
 
-		// 6. Handle Impact Spotter Recon & Trajectory Sighting Hints
+		// 7. Impact explosion & spotter feedback
 		if (impact) {
 			this.audio.playHit(1.5);
-			this.graphics.triggerExplosion(impact.position);
-
-			if (this.physics.lastImpact && this.physics.impactHistory.length > 0) {
-				const points = this.physics.activeBall?.trajectoryPoints || [];
-				if (points.length > 0) {
-					this.trajectoryHistory.push([...points]);
-					this.graphics.drawGhostTrajectory(this.trajectoryHistory);
-				}
-			}
+			this.graphics.triggerExplosion(
+				impact.position,
+				impact.shellType === "ICE" ? "ice" : "fire",
+			);
 
 			const dist = impact.distanceToTarget;
-			let spotterFeedback = `IMPACT LANDED AT Z=${Math.round(impact.position.z)}m! `;
+			let feedback = `${impact.shellType} IMPACT LANDED! `;
 			if (impact.targetHitId && dist < 3.0) {
-				spotterFeedback += `DIRECT HIT! Damage delivered to structure.`;
+				feedback += `DIRECT HIT! Structure collapsed.`;
 			} else {
-				const offsetZ = Math.round(impact.position.z - 45);
-				if (offsetZ < 0) {
-					spotterFeedback += `Short by ${Math.abs(offsetZ)}m! P1: Increase pitch or charge power.`;
-				} else {
-					spotterFeedback += `Over-shot by ${offsetZ}m! P1: Lower pitch or power.`;
-				}
+				feedback += `Splash distance ${dist}m to nearest block.`;
 			}
+			this.hud.setSpotterMessage(feedback);
 
-			this.hud.setSpotterMessage(spotterFeedback);
-			this.graphics.clearBallVisuals();
-
-			setTimeout(() => this.checkGameCondition(), 1000);
+			if (this.gameMode === "SIEGE") {
+				setTimeout(() => this.checkGameCondition(), 1000);
+			}
 		}
 
-		// 7. Sync visual targets
+		// 8. Castle Integrity & Targets Sync
 		this.graphics.syncTargets(this.physics.targets);
+		this.hud.updateCastleIntegrity(this.physics.getCastleIntegrity());
 
-		// 8. Render Radar Map
-		this.hud.drawRadarMap(
-			this.physics.targets,
-			this.physics.impactHistory,
-			this.yawDeg,
-			this.physics.windVector,
+		// 9. Stats & Radar update
+		const modeText =
+			this.gameMode === "SIEGE" ? `Lvl ${this.currentLevel}` : "Sandbox 💣";
+		this.hud.updateStats(
+			modeText,
+			this.physics.coinsEarned,
+			`${this.selectedShellType}`,
 		);
+		this.hud.drawRadarMap(this.physics.targets);
 
-		// 9. Update Graphics & Camera
+		// 10. Render 3D Graphics
 		this.graphics.update(dt, activePosVector);
 	}
 
@@ -359,24 +444,14 @@ class ArtilleryGame extends BaseGame {
 			this.audio.playCollect();
 			this.hud.showModal(
 				"SECTOR CLEARED! 💥",
-				`All targets in Level ${this.currentLevel} destroyed!`,
+				`All targets in Level ${this.currentLevel} destroyed! Earned bonus coins.`,
 				"Next Level ▶",
 				() => this.startLevel(this.currentLevel + 1),
-			);
-		} else if (this.shellsLeft <= 0 && !this.physics.activeBall?.active) {
-			this.isGameOver = true;
-			this.audio.playFall();
-			this.hud.showModal(
-				"OUT OF AMMO! 💥",
-				`Targets remaining. Re-evaluate trajectory & try again.`,
-				"Retry Level 🔄",
-				() => this.startLevel(this.currentLevel),
 			);
 		}
 	}
 }
 
-// Start game when DOM is ready
 window.addEventListener("DOMContentLoaded", () => {
 	new ArtilleryGame();
 });

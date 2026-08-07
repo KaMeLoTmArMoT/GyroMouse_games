@@ -9,11 +9,19 @@ export class CollisionManager {
 	): boolean {
 		const rBox = runner.getBoundingBox();
 
-		for (const obs of trackManager.obstacles) {
+		// Query candidates from Spatial Grid
+		const candidates = trackManager.getCandidateObstacles(
+			runner.currentLane,
+			runner.posZ,
+		);
+
+		for (let i = 0; i < candidates.length; i++) {
+			const obs = candidates[i];
 			if (!obs.active) continue;
 
-			// Check Z distance proximity first
-			if (Math.abs(obs.z - runner.posZ) > 4.0) continue;
+			// Distance check
+			const distZ = Math.abs(obs.z - runner.posZ);
+			if (distZ > 4.5) continue;
 
 			const oBox = this.getObstacleBoundingBox(obs);
 			if (this.boxIntersect(rBox, oBox)) {

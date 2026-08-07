@@ -1,12 +1,12 @@
 import { MenuNav } from "../../../../shared/menuNav";
-import type { TargetStructure } from "../physics/artilleryPhysics";
+import type { ShellType, TargetStructure } from "../physics/artilleryPhysics";
 
 export class ArtilleryHUD {
 	private radarCanvas: HTMLCanvasElement;
 	private radarCtx: CanvasRenderingContext2D;
 
 	private hudLevel: HTMLElement;
-	private hudTargets: HTMLElement;
+	private hudCoins: HTMLElement;
 	private hudShells: HTMLElement;
 	private spotterText: HTMLElement;
 	private pitchVal: HTMLElement;
@@ -17,6 +17,25 @@ export class ArtilleryHUD {
 	private stage1Controls: HTMLElement;
 	private stage2Controls: HTMLElement;
 	private powerBarFill: HTMLElement;
+
+	// Castle Integrity Breakdown Elements
+	private integrityPct: HTMLElement;
+	private integrityBarFill: HTMLElement;
+	private hpTowerLeft: HTMLElement;
+	private hpGate: HTMLElement;
+	private hpKeep: HTMLElement;
+	private hpTowerRight: HTMLElement;
+
+	// Mode & Sandbox Controls
+	public btnModeToggle: HTMLElement;
+	public btnSandboxRebuild: HTMLElement;
+
+	// Combo Banner
+	private comboBanner: HTMLElement;
+
+	// Arsenal Selection Buttons
+	public shellOptions: Map<ShellType, HTMLElement> = new Map();
+	public selectedShellType: ShellType = "BASIC";
 
 	private modalOverlay: HTMLElement;
 	private modalTitle: HTMLElement;
@@ -31,7 +50,7 @@ export class ArtilleryHUD {
 		this.radarCtx = this.radarCanvas.getContext("2d")!;
 
 		this.hudLevel = document.getElementById("hud-level")!;
-		this.hudTargets = document.getElementById("hud-targets")!;
+		this.hudCoins = document.getElementById("hud-coins")!;
 		this.hudShells = document.getElementById("hud-shells")!;
 		this.spotterText = document.getElementById("spotter-text")!;
 		this.pitchVal = document.getElementById("pitch-val")!;
@@ -42,6 +61,28 @@ export class ArtilleryHUD {
 		this.stage1Controls = document.getElementById("stage-1-controls")!;
 		this.stage2Controls = document.getElementById("stage-2-controls")!;
 		this.powerBarFill = document.getElementById("power-bar-fill")!;
+
+		this.integrityPct = document.getElementById("integrity-pct")!;
+		this.integrityBarFill = document.getElementById("integrity-bar-fill")!;
+		this.hpTowerLeft = document.getElementById("hp-tower-left")!;
+		this.hpGate = document.getElementById("hp-gate")!;
+		this.hpKeep = document.getElementById("hp-keep")!;
+		this.hpTowerRight = document.getElementById("hp-tower-right")!;
+
+		this.btnModeToggle = document.getElementById("btn-mode-toggle")!;
+		this.btnSandboxRebuild = document.getElementById("btn-sandbox-rebuild")!;
+		this.comboBanner = document.getElementById("combo-banner")!;
+
+		// Bind Arsenal Shell Store Buttons
+		const basicOpt = document.getElementById("shell-opt-basic");
+		const clusterOpt = document.getElementById("shell-opt-cluster");
+		const iceOpt = document.getElementById("shell-opt-ice");
+		const grappleOpt = document.getElementById("shell-opt-grapple");
+
+		if (basicOpt) this.shellOptions.set("BASIC", basicOpt);
+		if (clusterOpt) this.shellOptions.set("CLUSTER", clusterOpt);
+		if (iceOpt) this.shellOptions.set("ICE", iceOpt);
+		if (grappleOpt) this.shellOptions.set("GRAPPLE", grappleOpt);
 
 		this.modalOverlay = document.getElementById("game-modal")!;
 		this.modalTitle = document.getElementById("modal-title")!;
@@ -75,14 +116,47 @@ export class ArtilleryHUD {
 	}
 
 	public updateStats(
-		level: number,
-		hitTargets: number,
-		totalTargets: number,
-		shellsLeft: number,
+		levelDisplay: string,
+		coins: number,
+		selectedShellName: string,
 	) {
-		this.hudLevel.innerText = `${level}`;
-		this.hudTargets.innerText = `${hitTargets} / ${totalTargets}`;
-		this.hudShells.innerText = `${shellsLeft}`;
+		this.hudLevel.innerText = levelDisplay;
+		this.hudCoins.innerText = `🪙 ${coins}`;
+		this.hudShells.innerText = selectedShellName;
+	}
+
+	public updateCastleIntegrity(integrity: {
+		totalHpRatio: number;
+		towerLeft: number;
+		towerRight: number;
+		gate: number;
+		keep: number;
+	}) {
+		this.integrityPct.innerText = `${integrity.totalHpRatio}%`;
+		this.integrityBarFill.style.width = `${Math.max(0, integrity.totalHpRatio)}%`;
+		this.hpTowerLeft.innerText = `${integrity.towerLeft}%`;
+		this.hpGate.innerText = `${integrity.gate}%`;
+		this.hpKeep.innerText = `${integrity.keep}%`;
+		this.hpTowerRight.innerText = `${integrity.towerRight}%`;
+	}
+
+	public selectShellType(type: ShellType) {
+		this.selectedShellType = type;
+		this.shellOptions.forEach((btn, t) => {
+			if (t === type) {
+				btn.classList.add("active");
+			} else {
+				btn.classList.remove("active");
+			}
+		});
+	}
+
+	public triggerComboBanner(text: string) {
+		this.comboBanner.innerText = text;
+		this.comboBanner.classList.add("active");
+		setTimeout(() => {
+			this.comboBanner.classList.remove("active");
+		}, 1800);
 	}
 
 	public setStage(stage: 1 | 2) {
@@ -107,16 +181,6 @@ export class ArtilleryHUD {
 		this.updateAimDisplay(pitchDeg, yawDeg);
 	}
 
-	public updatePowerDisplay(
-		powerMps: number,
-		minPower: number,
-		maxPower: number,
-	) {
-		this.powerVal.innerText = `${powerMps.toFixed(1)} m/s`;
-		const pct = ((powerMps - minPower) / (maxPower - minPower)) * 100;
-		this.powerBarFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-	}
-
 	public updatePowerBar(powerMps: number, powerRatio: number) {
 		this.powerVal.innerText = `${powerMps.toFixed(1)} m/s`;
 		this.powerBarFill.style.width = `${Math.max(0, Math.min(100, powerRatio * 100))}%`;
@@ -126,10 +190,7 @@ export class ArtilleryHUD {
 		this.spotterText.innerText = text;
 	}
 
-	public drawRadar(
-		targets: Map<string, TargetStructure> | TargetStructure[],
-		_cannonPos?: any,
-	) {
+	public drawRadar(targets: Map<string, TargetStructure> | TargetStructure[]) {
 		const ctx = this.radarCtx;
 		const w = this.radarCanvas.width;
 		const h = this.radarCanvas.height;
@@ -138,7 +199,6 @@ export class ArtilleryHUD {
 
 		ctx.clearRect(0, 0, w, h);
 
-		// Radar grid rings
 		ctx.strokeStyle = "rgba(239, 68, 68, 0.2)";
 		ctx.lineWidth = 1;
 		ctx.beginPath();
@@ -146,7 +206,6 @@ export class ArtilleryHUD {
 		ctx.arc(cx, cy, w * 0.4, 0, Math.PI * 2);
 		ctx.stroke();
 
-		// Radar sweep line
 		const angle = (Date.now() / 1000) % (Math.PI * 2);
 		ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
 		ctx.beginPath();
@@ -154,7 +213,6 @@ export class ArtilleryHUD {
 		ctx.lineTo(cx + Math.cos(angle) * (w / 2), cy + Math.sin(angle) * (h / 2));
 		ctx.stroke();
 
-		// Cannon icon at center
 		ctx.fillStyle = "#38bdf8";
 		ctx.beginPath();
 		ctx.arc(cx, cy, 4, 0, Math.PI * 2);
@@ -171,7 +229,11 @@ export class ArtilleryHUD {
 			const rx = cx + relX * radarScale;
 			const ry = cy - relZ * radarScale;
 
-			ctx.fillStyle = t.isDestroyed ? "#6b7280" : "#ef4444";
+			ctx.fillStyle = t.isDestroyed
+				? "#6b7280"
+				: t.isFrozen
+					? "#38bdf8"
+					: "#ef4444";
 			ctx.beginPath();
 			ctx.arc(rx, ry, t.isDestroyed ? 3 : 5, 0, Math.PI * 2);
 			ctx.fill();

@@ -5,7 +5,7 @@ import { RunnerSoundFX } from "./audio/soundFX";
 import { CollisionManager } from "./game/collisionManager";
 import { Runner } from "./game/runner";
 import { TrackManager } from "./game/trackManager";
-import { SceneManager } from "./graphics/sceneManager";
+import { BIOMES, SceneManager } from "./graphics/sceneManager";
 
 class SubwayRunnerGame extends BaseGame {
 	private sceneManager!: SceneManager;
@@ -22,6 +22,9 @@ class SubwayRunnerGame extends BaseGame {
 	private forwardSpeed: number = 14.0; // Increases over time
 	private coinsCount: number = 0;
 	private distance: number = 0;
+	private currentBiomeIndex: number = 0;
+	private lastToastBiome: string = "";
+	private biomeToastTimeout?: number;
 
 	// UI Elements
 	private scoreValEl = document.getElementById("score-val")!;
@@ -49,7 +52,7 @@ class SubwayRunnerGame extends BaseGame {
 		const container = document.getElementById("canvas-container")!;
 		this.sceneManager = new SceneManager(container);
 		this.runner = new Runner(this.sceneManager.scene);
-		this.trackManager = new TrackManager(this.sceneManager.scene);
+		this.trackManager = new TrackManager(this.sceneManager);
 		this.collisionManager = new CollisionManager();
 		this.soundFX = new RunnerSoundFX();
 
@@ -123,6 +126,19 @@ class SubwayRunnerGame extends BaseGame {
 			?.addEventListener("click", () => this.restartGame());
 	}
 
+	private showBiomeToast(biomeName: string) {
+		const toastEl = document.getElementById("biome-toast");
+		const toastNameEl = document.getElementById("biome-toast-name");
+		if (toastEl && toastNameEl) {
+			toastNameEl.textContent = biomeName;
+			toastEl.classList.remove("hidden");
+			if (this.biomeToastTimeout) window.clearTimeout(this.biomeToastTimeout);
+			this.biomeToastTimeout = window.setTimeout(() => {
+				toastEl.classList.add("hidden");
+			}, 3500);
+		}
+	}
+
 	private startGame() {
 		this.startScreenEl.classList.add("hidden");
 		this.gameoverScreenEl.classList.add("hidden");
@@ -140,6 +156,7 @@ class SubwayRunnerGame extends BaseGame {
 	private gameOver() {
 		this.isRunning = false;
 		this.soundFX.playCrash();
+		this.sceneManager.triggerScreenShake(0.6);
 		this.finalScoreEl.textContent = `${Math.floor(this.distance)} m`;
 		this.finalCoinsEl.textContent = `${this.coinsCount}`;
 		this.gameoverScreenEl.classList.remove("hidden");
@@ -150,11 +167,17 @@ class SubwayRunnerGame extends BaseGame {
 		this.forwardSpeed = 14.0;
 		this.coinsCount = 0;
 		this.distance = 0;
+		this.currentBiomeIndex = 0;
+		this.lastToastBiome = "";
 		this.input.keysPressed.clear();
 
 		this.scoreValEl.textContent = "0 m";
 		this.coinsValEl.textContent = "0";
 
+		const toastEl = document.getElementById("biome-toast");
+		if (toastEl) toastEl.classList.add("hidden");
+
+		this.trackManager.updateBiomeTheme(BIOMES[0]);
 		this.runner.reset();
 		this.trackManager.reset();
 	}
@@ -176,12 +199,34 @@ class SubwayRunnerGame extends BaseGame {
 			this.distance = this.runner.posZ;
 			this.scoreValEl.textContent = `${Math.floor(this.distance)} m`;
 
-			// Update Track & Particles
-			this.trackManager.update(this.runner.posZ);
-			this.sceneManager.updateCamera(this.runner.posZ, this.runner.posX, dt);
-			this.sceneManager.updateParticles(this.runner.posZ);
+			// Check & Smoothly Interpolate Biome Transitions over [-50m, +50m] window
+			const biomeStatus = this.sceneManager.updateBiomeThemeByDistance(
+				this.distance,
+			);
+			if (biomeStatus.biomeIndex !== this.currentBiomeIndex) {
+				this.currentBiomeIndex = biomeStatus.biomeIndex;
+				const currentTheme = BIOMES[this.currentBiomeIndex % BIOMES.length];
+				this.trackManager.updateBiomeTheme(currentTheme);
+			}
+			if (
+				biomeStatus.shouldShowToast &&
+				this.lastToastBiome !== biomeStatus.biomeName
+			) {
+				this.lastToastBiome = biomeStatus.biomeName;
+				this.showBiomeToast(biomeStatus.biomeName);
+			}
 
-			// Check Collisions
+			// Update Track & Camera Particles
+			this.trackManager.update(this.runner.posZ);
+			this.sceneManager.updateCamera(
+				this.runner.posZ,
+				this.runner.posX,
+				this.forwardSpeed,
+				dt,
+			);
+			this.sceneManager.updateParticles(this.runner.posZ, this.forwardSpeed);
+
+			// Check Collisions using Spatial Grid
 			const crashed = this.collisionManager.checkCollisions(
 				this.runner,
 				this.trackManager,
