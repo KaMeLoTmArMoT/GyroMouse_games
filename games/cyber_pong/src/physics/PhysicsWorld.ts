@@ -199,7 +199,18 @@ export class PhysicsWorld {
 		});
 	}
 
+	public p1Scale: number = 1.0;
+	public p2Scale: number = 1.0;
+	private prevPuckPos: { x: number; y: number; z: number } = {
+		x: 0,
+		y: 0.4,
+		z: 0,
+	};
+
 	public setPaddleScale(side: "p1" | "p2", scale: number) {
+		if (side === "p1") this.p1Scale = scale;
+		else this.p2Scale = scale;
+
 		const body = side === "p1" ? this.p1PaddleBody : this.p2PaddleBody;
 		const oldCol = side === "p1" ? this.p1Collider : this.p2Collider;
 		if (oldCol && body) {
@@ -234,6 +245,7 @@ export class PhysicsWorld {
 		this.bounceCount = 0;
 		this.rallyTime = 0;
 		this.isPuckInEnemyTerritory = false;
+		this.prevPuckPos = { x: 0, y: 0.4, z: 0 };
 
 		// Ensure all bricks are sensors while puck is neutral
 		for (const b of this.bricks.values()) {
@@ -280,15 +292,88 @@ export class PhysicsWorld {
 	}
 
 	public step(dt: number, isP1AllCleared: boolean, isP2AllCleared: boolean) {
+		const prevPos = { ...this.prevPuckPos };
 		this.world.step();
 		this.puckBody.wakeUp();
 		this.rallyTime += dt;
 
 		// Keep puck constrained to 2D playplane (y = 0.4)
 		const puckPos = this.puckBody.translation();
+		this.prevPuckPos = { x: puckPos.x, y: puckPos.y, z: puckPos.z };
+
 		if (Math.abs(puckPos.y - 0.4) > 0.05) {
 			this.puckBody.setTranslation(
 				{ x: puckPos.x, y: 0.4, z: puckPos.z },
+				true,
+			);
+		}
+
+		// Continuous Collision Detection (CCD): Anti-Tunneling Swept Segment Check
+		const p1Z = this.p1PaddleBody.translation().z;
+		const p2Z = this.p2PaddleBody.translation().z;
+		const p1HalfZ = 1.6 * this.p1Scale + 0.6; // paddle half-depth + puck radius
+		const p2HalfZ = 1.6 * this.p2Scale + 0.6;
+
+		// Check P1 paddle plane sweep (x = -14)
+		if (prevPos.x >= -14 && puckPos.x < -14) {
+			const dx = puckPos.x - prevPos.x;
+			if (Math.abs(dx) > 0.0001) {
+				const t = (-14 - prevPos.x) / dx;
+				const intersectZ = prevPos.z + t * (puckPos.z - prevPos.z);
+				if (Math.abs(intersectZ - p1Z) <= p1HalfZ) {
+					// Tunneling prevented! Restore position in front of paddle and reverse X vel
+					this.puckBody.setTranslation(
+						{ x: -13.4, y: 0.4, z: intersectZ },
+						true,
+					);
+					const vel = this.puckBody.linvel();
+					this.puckBody.setLinvel(
+						{ x: Math.abs(vel.x || 12), y: 0, z: vel.z },
+						true,
+					);
+					this.setPuckOwner("p1");
+				}
+			}
+		}
+
+		// Check P2 paddle plane sweep (x = 14)
+		if (prevPos.x <= 14 && puckPos.x > 14) {
+			const dx = puckPos.x - prevPos.x;
+			if (Math.abs(dx) > 0.0001) {
+				const t = (14 - prevPos.x) / dx;
+				const intersectZ = prevPos.z + t * (puckPos.z - prevPos.z);
+				if (Math.abs(intersectZ - p2Z) <= p2HalfZ) {
+					// Tunneling prevented! Restore position in front of paddle and reverse X vel
+					this.puckBody.setTranslation(
+						{ x: 13.4, y: 0.4, z: intersectZ },
+						true,
+					);
+					const vel = this.puckBody.linvel();
+					this.puckBody.setLinvel(
+						{ x: -Math.abs(vel.x || 12), y: 0, z: vel.z },
+						true,
+					);
+					this.setPuckOwner("p2");
+				}
+			}
+		}
+
+		// Check Top Wall tunneling (z = -9.7)
+		if (puckPos.z < -9.7) {
+			this.puckBody.setTranslation({ x: puckPos.x, y: 0.4, z: -9.6 }, true);
+			const vel = this.puckBody.linvel();
+			this.puckBody.setLinvel(
+				{ x: vel.x, y: 0, z: Math.abs(vel.z || 5) },
+				true,
+			);
+		}
+
+		// Check Bottom Wall tunneling (z = 9.7)
+		if (puckPos.z > 9.7) {
+			this.puckBody.setTranslation({ x: puckPos.x, y: 0.4, z: 9.6 }, true);
+			const vel = this.puckBody.linvel();
+			this.puckBody.setLinvel(
+				{ x: vel.x, y: 0, z: -Math.abs(vel.z || 5) },
 				true,
 			);
 		}

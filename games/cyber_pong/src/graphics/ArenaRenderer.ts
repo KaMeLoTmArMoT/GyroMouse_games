@@ -1,4 +1,7 @@
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 export interface BrickMeshInfo {
 	id: string;
@@ -10,6 +13,8 @@ export class ArenaRenderer {
 	public scene: THREE.Scene;
 	public camera: THREE.PerspectiveCamera;
 	public renderer: THREE.WebGLRenderer;
+	public composer: EffectComposer;
+	public bloomPass: UnrealBloomPass;
 
 	public p1PaddleMesh: THREE.Mesh;
 	public p2PaddleMesh: THREE.Mesh;
@@ -45,6 +50,19 @@ export class ArenaRenderer {
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+		// Post-processing setup with EffectComposer & UnrealBloomPass
+		this.composer = new EffectComposer(this.renderer);
+		const renderPass = new RenderPass(this.scene, this.camera);
+		this.composer.addPass(renderPass);
+
+		this.bloomPass = new UnrealBloomPass(
+			new THREE.Vector2(window.innerWidth, window.innerHeight),
+			0.7, // Bloom strength
+			0.4, // Bloom radius
+			0.2, // Bloom threshold
+		);
+		this.composer.addPass(this.bloomPass);
+
 		this.setupLighting();
 		this.setupArenaVisuals();
 
@@ -57,14 +75,15 @@ export class ArenaRenderer {
 		this.scene.add(this.p2PaddleMesh);
 		this.scene.add(this.puckMesh);
 
-		// Puck Trail Particles
+		// Puck Trail Particles with Additive Neon Blending
 		this.puckTrailGeometry = new THREE.BufferGeometry();
 		const trailMat = new THREE.PointsMaterial({
 			color: 0x38bdf8,
-			size: 0.4,
+			size: 0.55,
 			transparent: true,
-			opacity: 0.7,
+			opacity: 0.8,
 			blending: THREE.AdditiveBlending,
+			depthWrite: false,
 		});
 		this.puckTrail = new THREE.Points(this.puckTrailGeometry, trailMat);
 		this.scene.add(this.puckTrail);
@@ -264,7 +283,7 @@ export class ArenaRenderer {
 
 	public updatePuckTrail(puckPos: THREE.Vector3) {
 		this.puckTrailPositions.unshift(puckPos.clone());
-		if (this.puckTrailPositions.length > 12) {
+		if (this.puckTrailPositions.length > 20) {
 			this.puckTrailPositions.pop();
 		}
 		const coords: number[] = [];
@@ -278,12 +297,15 @@ export class ArenaRenderer {
 	}
 
 	public render() {
-		this.renderer.render(this.scene, this.camera);
+		this.composer.render();
 	}
 
 	private onWindowResize() {
-		this.camera.aspect = window.innerWidth / window.innerHeight;
+		const width = window.innerWidth;
+		const height = window.innerHeight;
+		this.camera.aspect = width / height;
 		this.camera.updateProjectionMatrix();
-		this.renderer.setSize(window.innerWidth, window.innerHeight);
+		this.renderer.setSize(width, height);
+		this.composer.setSize(width, height);
 	}
 }

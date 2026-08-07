@@ -118,7 +118,7 @@ export class CyberPongGame extends BaseGame {
 		const savedDiff = localStorage.getItem("cyberpong-diff");
 		if (
 			savedDiff &&
-			["easy", "medium", "hard", "adaptive"].includes(savedDiff)
+			["easy", "medium", "hard", "extreme", "adaptive"].includes(savedDiff)
 		) {
 			this.aiBot.difficulty = savedDiff as AIDifficulty;
 			this.diffSelectEl.value = savedDiff;
