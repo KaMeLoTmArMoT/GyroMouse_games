@@ -3,7 +3,11 @@ import { BaseGame } from "../../../../shared/baseGame";
 import { MenuNav } from "../../../../shared/menuNav";
 import type { SettingsOverlay } from "../../../../shared/settingsOverlay";
 import type { CraneGraphicsManager } from "../graphics/craneGraphics";
-import type { CranePhysicsManager } from "../physics/cranePhysics";
+import {
+	CRATE_TYPES,
+	type CranePhysicsManager,
+	type CrateTypeId,
+} from "../physics/cranePhysics";
 
 export type GameState =
 	| "IDLE"
@@ -19,6 +23,7 @@ export class CraneGameLogic extends BaseGame {
 	public currentLevel: number = 1;
 	public targetCrateCount: number = 3;
 	public currentCratesSpawned: number = 0;
+	public nextCargoType: CrateTypeId = "STANDARD";
 
 	// Countdown timer
 	public countdownTimer: number = 5.0;
@@ -26,6 +31,12 @@ export class CraneGameLogic extends BaseGame {
 	// UI Element references
 	private hudLevelElem: HTMLElement | null = null;
 	private hudCargoElem: HTMLElement | null = null;
+	private hudNextCargoElem: HTMLElement | null = null;
+	private hudBalanceBarElem: HTMLElement | null = null;
+	private hudBalanceTextElem: HTMLElement | null = null;
+	private hudHeatBarElem: HTMLElement | null = null;
+	private hudHeatTextElem: HTMLElement | null = null;
+
 	private countdownOverlay: HTMLElement | null = null;
 	private modalOverlay: HTMLElement | null = null;
 	private modalTitle: HTMLElement | null = null;
@@ -49,6 +60,10 @@ export class CraneGameLogic extends BaseGame {
 		this.graphics = graphics;
 		this.audio = audio;
 
+		this.physics.onOverheatCallback = () => {
+			this.audio.playTone(180, 0.4, "sawtooth");
+		};
+
 		this.bindUI();
 	}
 
@@ -69,6 +84,12 @@ export class CraneGameLogic extends BaseGame {
 	private bindUI() {
 		this.hudLevelElem = document.getElementById("hud-level");
 		this.hudCargoElem = document.getElementById("hud-cargo");
+		this.hudNextCargoElem = document.getElementById("hud-next-cargo");
+		this.hudBalanceBarElem = document.getElementById("hud-balance-bar");
+		this.hudBalanceTextElem = document.getElementById("hud-balance-text");
+		this.hudHeatBarElem = document.getElementById("hud-heat-bar");
+		this.hudHeatTextElem = document.getElementById("hud-heat-text");
+
 		this.countdownOverlay = document.getElementById("countdown-overlay");
 		this.modalOverlay = document.getElementById("game-modal");
 		this.modalTitle = document.getElementById("modal-title");
@@ -166,6 +187,7 @@ export class CraneGameLogic extends BaseGame {
 
 		this.currentCratesSpawned = 0;
 		this.countdownTimer = 5.0;
+		this.nextCargoType = "STANDARD";
 
 		this.graphics.clearCrates();
 		this.physics.clear();
@@ -217,13 +239,15 @@ export class CraneGameLogic extends BaseGame {
 
 		this.currentCratesSpawned++;
 		const crateId = `crate_lvl${this.currentLevel}_${this.currentCratesSpawned}`;
+		const typeToSpawn = this.nextCargoType;
 
-		// Color variation per level
-		const colors = ["#0284c7", "#059669", "#d97706", "#7c3aed", "#dc2626"];
-		const colorHex = colors[(this.currentCratesSpawned - 1) % colors.length];
+		// Spawn crate matching current type
+		this.physics.spawnCrate(crateId, typeToSpawn);
+		this.graphics.addCrateMesh(crateId, typeToSpawn);
 
-		this.physics.spawnCrate(crateId, { x: 1.2, y: 1.2, z: 1.2 });
-		this.graphics.addCrateMesh(crateId, { x: 1.2, y: 1.2, z: 1.2 }, colorHex);
+		// Select next cargo type for upcoming spawn
+		const types: CrateTypeId[] = ["STANDARD", "LONG", "HEAVY", "LIGHT"];
+		this.nextCargoType = types[Math.floor(Math.random() * types.length)];
 
 		this.updateHUD();
 	}
@@ -275,7 +299,9 @@ export class CraneGameLogic extends BaseGame {
 		this.hideCountdown();
 		this.physics.glueCratesToTrain();
 
-		this.audio.playWin();
+		// Play Train Horn synth
+		this.audio.playTone(320, 0.6, "sawtooth");
+		setTimeout(() => this.audio.playTone(420, 1.2, "sawtooth"), 180);
 
 		setTimeout(() => {
 			this.showModal(
@@ -283,7 +309,7 @@ export class CraneGameLogic extends BaseGame {
 				`Train fully loaded with ${this.targetCrateCount} crates!`,
 				"Next Level ▶",
 			);
-		}, 1500);
+		}, 1800);
 	}
 
 	private triggerGameOver(reason: string) {
@@ -314,6 +340,64 @@ export class CraneGameLogic extends BaseGame {
 		if (this.hudCargoElem) {
 			const displayZone = currentInZone !== undefined ? currentInZone : 0;
 			this.hudCargoElem.textContent = `${displayZone} / ${this.targetCrateCount}`;
+		}
+		if (this.hudNextCargoElem) {
+			const nextConfig = CRATE_TYPES[this.nextCargoType];
+			this.hudNextCargoElem.textContent = nextConfig
+				? nextConfig.name
+				: "Standard";
+			this.hudNextCargoElem.style.color = nextConfig
+				? nextConfig.color
+				: "#38bdf8";
+		}
+
+		// Update Wagon Balance Meter
+		if (this.hudBalanceBarElem && this.hudBalanceTextElem) {
+			const offset = this.physics.centerOfMassOffset; // -1.0 to +1.0
+			const absOffset = Math.abs(offset);
+			const widthPct = Math.min(50, absOffset * 50);
+
+			if (offset >= 0) {
+				this.hudBalanceBarElem.style.left = "50%";
+				this.hudBalanceBarElem.style.width = `${widthPct}%`;
+			} else {
+				this.hudBalanceBarElem.style.left = `${50 - widthPct}%`;
+				this.hudBalanceBarElem.style.width = `${widthPct}%`;
+			}
+
+			if (absOffset < 0.25) {
+				this.hudBalanceBarElem.style.background = "#10b981";
+				this.hudBalanceTextElem.textContent = "BALANCED";
+				this.hudBalanceTextElem.style.color = "#10b981";
+			} else if (absOffset < 0.6) {
+				this.hudBalanceBarElem.style.background = "#f59e0b";
+				this.hudBalanceTextElem.textContent = "SLANTED";
+				this.hudBalanceTextElem.style.color = "#f59e0b";
+			} else {
+				this.hudBalanceBarElem.style.background = "#ef4444";
+				this.hudBalanceTextElem.textContent = "UNBALANCED!";
+				this.hudBalanceTextElem.style.color = "#ef4444";
+			}
+		}
+
+		// Update Magnet Heat Gauge
+		if (this.hudHeatBarElem && this.hudHeatTextElem) {
+			const heat = Math.round(this.physics.magnetHeat);
+			this.hudHeatBarElem.style.width = `${heat}%`;
+
+			if (heat < 40) {
+				this.hudHeatBarElem.style.background = "#38bdf8";
+				this.hudHeatTextElem.textContent = "COOL";
+				this.hudHeatTextElem.style.color = "#38bdf8";
+			} else if (heat < 80) {
+				this.hudHeatBarElem.style.background = "#f59e0b";
+				this.hudHeatTextElem.textContent = `WARM (${heat}%)`;
+				this.hudHeatTextElem.style.color = "#f59e0b";
+			} else {
+				this.hudHeatBarElem.style.background = "#ef4444";
+				this.hudHeatTextElem.textContent = `OVERHEAT! (${heat}%)`;
+				this.hudHeatTextElem.style.color = "#ef4444";
+			}
 		}
 	}
 

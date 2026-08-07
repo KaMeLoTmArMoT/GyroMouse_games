@@ -1,13 +1,55 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 
 export const ARM_MASS = 1.0;
-export const CRATE_MASS = 10.0;
+
+export type CrateTypeId = "STANDARD" | "LONG" | "HEAVY" | "LIGHT";
+
+export interface CrateTypeConfig {
+	id: CrateTypeId;
+	name: string;
+	size: { x: number; y: number; z: number };
+	mass: number;
+	color: string;
+}
+
+export const CRATE_TYPES: Record<CrateTypeId, CrateTypeConfig> = {
+	STANDARD: {
+		id: "STANDARD",
+		name: "Standard Crate",
+		size: { x: 1.2, y: 1.2, z: 1.2 },
+		mass: 10,
+		color: "#0284c7",
+	},
+	LONG: {
+		id: "LONG",
+		name: "Long Container",
+		size: { x: 2.2, y: 1.0, z: 1.2 },
+		mass: 18,
+		color: "#d97706",
+	},
+	HEAVY: {
+		id: "HEAVY",
+		name: "Heavy Cargo",
+		size: { x: 1.0, y: 1.4, z: 1.0 },
+		mass: 25,
+		color: "#7c3aed",
+	},
+	LIGHT: {
+		id: "LIGHT",
+		name: "Light Crate",
+		size: { x: 1.0, y: 1.0, z: 1.0 },
+		mass: 5,
+		color: "#059669",
+	},
+};
 
 export interface CrateItem {
 	id: string;
+	typeId: CrateTypeId;
 	body: RAPIER.RigidBody;
 	collider: RAPIER.Collider;
 	size: { x: number; y: number; z: number };
+	mass: number;
 	isAttachedToMagnet: boolean;
 	isGlued: boolean;
 }
@@ -28,6 +70,13 @@ export class CranePhysicsManager {
 	// Platform (train bed)
 	public trainBody!: RAPIER.RigidBody;
 	public trainCollider!: RAPIER.Collider;
+	public trainTiltAngle: number = 0.0; // Current wagon tilt angle (radians)
+	public targetTiltAngle: number = 0.0;
+	public centerOfMassOffset: number = 0.0; // Normalized -1.0 to +1.0
+
+	// Magnet heat (0 to 100%)
+	public magnetHeat: number = 0.0;
+	public onOverheatCallback?: () => void;
 
 	// Ground plane collider
 	public groundCollider!: RAPIER.Collider;
@@ -42,8 +91,8 @@ export class CranePhysicsManager {
 	public targetRegion: TargetRegionBounds = {
 		minX: 0.7,
 		maxX: 6.3,
-		minY: 0.6,
-		maxY: 8.0,
+		minY: 0.8,
+		maxY: 10.0,
 		minZ: -1.2,
 		maxZ: 1.2,
 	};
@@ -60,19 +109,19 @@ export class CranePhysicsManager {
 	public trolleyX: number = -4.5;
 
 	// Cable & Pendulum State
-	public cableLength: number = 2.2; // Cable length L
+	public cableLength: number = 2.5; // Cable length L
 	public cableAngle: number = 0.0; // Swing angle theta (radians)
 	public cableAngVel: number = 0.0; // Angular velocity omega
 	public magnetX: number = -4.5; // Actual swinging magnet X position
-	public magnetY: number = 5.5; // Actual swinging magnet Y position
+	public magnetY: number = 6.75; // Actual swinging magnet Y position
 	private lastTrolleyVx: number = 0.0;
 
-	// Boundaries for crane movement
+	// Boundaries for crane movement (+20% Gantry height)
 	public readonly minX: number = -6.0;
 	public readonly maxX: number = 9.5;
 	public readonly minCableL: number = 1.0;
-	public readonly maxCableL: number = 6.4;
-	public readonly gantryY: number = 7.7;
+	public readonly maxCableL: number = 7.8;
+	public readonly gantryY: number = 9.25;
 
 	public async init(): Promise<void> {
 		if (this.isInitialized) return;
@@ -94,8 +143,8 @@ export class CranePhysicsManager {
 			groundBody,
 		);
 
-		// Side Supply Dock Platform at X = -4.5 (where new crates rest)
-		const sideDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(-4.5, 0.5, 0);
+		// Side Supply Dock Platform at X = -4.5 (Y raised +10% to 0.75)
+		const sideDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(-4.5, 0.75, 0);
 		this.sidePlatformBody = this.world.createRigidBody(sideDesc);
 		const sideColliderDesc = RAPIER.ColliderDesc.cuboid(1.2, 0.2, 1.2)
 			.setFriction(0.9)
@@ -105,9 +154,13 @@ export class CranePhysicsManager {
 			this.sidePlatformBody,
 		);
 
-		// Train Flatbed Platform at X = 3.5 (Kinematic body so it can drive away)
+		// Train Flatbed Platform at X = 3.5 (Y raised +10% to 0.75 for ground clearance)
 		const trainDesc =
-			RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(3.5, 0.5, 0);
+			RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
+				3.5,
+				0.75,
+				0,
+			);
 		this.trainBody = this.world.createRigidBody(trainDesc);
 
 		// Flatbed collider: Width = 5.2, Height = 0.4, Depth = 2.0
@@ -123,7 +176,7 @@ export class CranePhysicsManager {
 		const magDesc =
 			RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
 				-4.5,
-				5.5,
+				6.75,
 				0,
 			);
 		this.magnetBody = this.world.createRigidBody(magDesc);
@@ -142,14 +195,16 @@ export class CranePhysicsManager {
 	/**
 	 * Spawns a new Crate resting on the side supply dock at X = -4.5.
 	 */
-	public spawnCrate(id: string, size = { x: 1.2, y: 1.2, z: 1.2 }): CrateItem {
+	public spawnCrate(id: string, typeId: CrateTypeId = "STANDARD"): CrateItem {
+		const config = CRATE_TYPES[typeId] || CRATE_TYPES.STANDARD;
+		const size = config.size;
 		const halfX = size.x / 2;
 		const halfY = size.y / 2;
 		const halfZ = size.z / 2;
 
-		// Spawn resting on side platform (X = -4.5, Y = 0.7 + halfY)
+		// Spawn resting on side platform (X = -4.5, Y = 0.95 + halfY)
 		const spawnX = -4.5;
-		const spawnY = 0.7 + halfY;
+		const spawnY = 0.95 + halfY;
 
 		// Create dynamic rigid body for crate locked to 2D X-Y plane (no Z drift or out-of-plane tilt)
 		const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
@@ -163,7 +218,7 @@ export class CranePhysicsManager {
 
 		const body = this.world.createRigidBody(bodyDesc);
 
-		const crateMass = CRATE_MASS;
+		const crateMass = config.mass;
 		const volume = size.x * size.y * size.z;
 		const colliderDesc = RAPIER.ColliderDesc.cuboid(halfX, halfY, halfZ)
 			.setFriction(0.85)
@@ -174,9 +229,11 @@ export class CranePhysicsManager {
 
 		const crate: CrateItem = {
 			id,
+			typeId,
 			body,
 			collider,
 			size,
+			mass: crateMass,
 			isAttachedToMagnet: false, // Unattached on side platform (requires lowering magnet to grab)
 			isGlued: false,
 		};
@@ -339,8 +396,11 @@ export class CranePhysicsManager {
 		// 3. Cable Pendulum Angular Acceleration equation:
 		// alpha = -(g / L) * sin(theta) - (Ax / L) * cos(theta) - damping * omega
 		const g = 9.81;
-		// Air damping: Heavy load (m=11) maintains swing longer than light empty arm (m=1)
-		const mCrane = this.currentHeldCrateId ? ARM_MASS + CRATE_MASS : ARM_MASS;
+		// Air damping: Heavy load maintains swing longer than light empty arm
+		const heldMass = this.currentHeldCrateId
+			? this.crates.get(this.currentHeldCrateId)?.mass || 10
+			: 0;
+		const mCrane = ARM_MASS + heldMass;
 		const damping = 0.12 + 0.13 / mCrane;
 		const alpha =
 			(-g / this.cableLength) * Math.sin(this.cableAngle) -
@@ -569,6 +629,146 @@ export class CranePhysicsManager {
 	public step(dt: number) {
 		this.world.timestep = Math.min(dt, 0.033);
 
+		// 1. Electromagnet Heat accumulation & Overheat release (2x time before overheat)
+		if (this.currentHeldCrateId) {
+			const crate = this.crates.get(this.currentHeldCrateId);
+			const mass = crate ? crate.mass : 10;
+			// Mass 5 (light): ~3%/s -> ~30s max hold. Mass 25 (heavy): ~11%/s -> ~9s max hold.
+			const heatRate = 3.0 + (mass / 25.0) * 8.0;
+			this.magnetHeat = Math.min(100, this.magnetHeat + heatRate * dt);
+
+			if (this.magnetHeat >= 100) {
+				this.releaseHeldCrate();
+				if (this.onOverheatCallback) {
+					this.onOverheatCallback();
+				}
+			}
+		} else {
+			this.magnetHeat = Math.max(0, this.magnetHeat - 35.0 * dt);
+		}
+
+		// 2. Train Wagon Center of Mass & Spring Tilt Calculation (Max ~10 degrees = 0.175 rad)
+		let totalMassOnTrain = 0;
+		let totalTorqueOnTrain = 0;
+		const trainCenterX = 3.5;
+
+		// Set of crate IDs physically resting on the train platform (or stacked on train crates)
+		const touchingTrainCrateIds = new Set<string>();
+
+		// A. Direct Rapier contact check with train platform collider
+		if (this.trainCollider && this.world) {
+			try {
+				this.world.contactPairsWith(
+					this.trainCollider,
+					(otherCollider: RAPIER.Collider) => {
+						for (const [id, crate] of this.crates.entries()) {
+							if (crate.collider.handle === otherCollider.handle) {
+								touchingTrainCrateIds.add(id);
+								break;
+							}
+						}
+					},
+				);
+			} catch {
+				// Fallback if contactPairsWith API differs
+			}
+		}
+
+		// B. Supplementary check: crates resting directly on platform bed surface (Y_bottom <= 1.03, Y_chassis=0.75)
+		for (const [id, crate] of this.crates.entries()) {
+			if (crate.isAttachedToMagnet) continue;
+			const pos = crate.body.translation();
+			const bottomY = pos.y - crate.size.y / 2;
+			if (
+				pos.x >= this.targetRegion.minX &&
+				pos.x <= this.targetRegion.maxX &&
+				bottomY <= 1.03 &&
+				bottomY >= 0.7
+			) {
+				touchingTrainCrateIds.add(id);
+			}
+		}
+
+		// C. Propagation check for crates stacked on top of crates resting on the train bed
+		let addedNew = true;
+		while (addedNew) {
+			addedNew = false;
+			for (const [id, crate] of this.crates.entries()) {
+				if (touchingTrainCrateIds.has(id) || crate.isAttachedToMagnet) continue;
+				const pos = crate.body.translation();
+				const bottomY = pos.y - crate.size.y / 2;
+
+				for (const suppId of Array.from(touchingTrainCrateIds)) {
+					const suppCrate = this.crates.get(suppId);
+					if (!suppCrate) continue;
+					const suppPos = suppCrate.body.translation();
+					const suppTopY = suppPos.y + suppCrate.size.y / 2;
+
+					if (
+						Math.abs(pos.x - suppPos.x) <
+							(crate.size.x + suppCrate.size.x) * 0.45 &&
+						Math.abs(bottomY - suppTopY) < 0.18
+					) {
+						touchingTrainCrateIds.add(id);
+						addedNew = true;
+						break;
+					}
+				}
+			}
+		}
+
+		// Calculate torque ONLY from crates actually touching/resting on the train bed
+		for (const id of touchingTrainCrateIds) {
+			const crate = this.crates.get(id);
+			if (!crate || crate.isAttachedToMagnet) continue;
+			const pos = crate.body.translation();
+			totalMassOnTrain += crate.mass;
+			totalTorqueOnTrain += crate.mass * (pos.x - trainCenterX);
+		}
+
+		if (totalMassOnTrain > 0) {
+			const avgPosOffset = totalTorqueOnTrain / totalMassOnTrain; // average position offset from train center X=3.5
+			const deadzone = 0.4; // 40cm tolerance: 1 light box or slight off-center load produces 0 tilt
+			const absOffset = Math.abs(avgPosOffset);
+
+			if (absOffset <= deadzone) {
+				this.centerOfMassOffset = 0.0;
+			} else {
+				// Progressive spring resistance curve: requires progressively more weight for higher tilt angles
+				const excess = absOffset - deadzone;
+				const maxExcess = 1.8;
+				const normExcess = Math.min(1.0, excess / maxExcess);
+				const progressiveRatio = normExcess ** 1.35;
+				this.centerOfMassOffset = Math.sign(avgPosOffset) * progressiveRatio;
+			}
+		} else {
+			this.centerOfMassOffset = 0.0;
+		}
+
+		const maxTiltAngle = 0.174533; // 10 degrees
+		// Invert sign: positive offset (right side load) causes negative Z rotation (right side drops DOWN under weight)
+		this.targetTiltAngle = -this.centerOfMassOffset * maxTiltAngle;
+		this.trainTiltAngle +=
+			(this.targetTiltAngle - this.trainTiltAngle) * Math.min(1.0, 6.0 * dt);
+
+		// Apply kinematic tilt rotation to train flatbed
+		if (this.trainBody) {
+			const qTrain = new RAPIER.Quaternion(
+				0,
+				0,
+				Math.sin(this.trainTiltAngle / 2),
+				Math.cos(this.trainTiltAngle / 2),
+			);
+			this.trainBody.setNextKinematicRotation(qTrain);
+
+			// Wake up all unglued dynamic crates so Rapier continuously solves gravity & contacts against the rotating platform
+			for (const crate of this.crates.values()) {
+				if (!crate.isGlued && !crate.isAttachedToMagnet) {
+					crate.body.wakeUp();
+				}
+			}
+		}
+
 		// Dynamic AABB Collision Check between swinging crane (magnet or held crate) and target crates
 		if (this.lastHitCooldown > 0) {
 			this.lastHitCooldown -= dt;
@@ -620,10 +820,10 @@ export class CranePhysicsManager {
 					const relativeSpeed = relVx * dir;
 
 					if (isHolding) {
-						// --- CARRIER MODE (Mass 11 vs 10) ---
+						// --- CARRIER MODE ---
 						// Heavy payload plows through: transfers massive impulse to target box, maintains forward swing
-						const m1 = ARM_MASS + CRATE_MASS;
-						const m2 = CRATE_MASS;
+						const m1 = ARM_MASS + (activeCrate ? activeCrate.mass : 10);
+						const m2 = targetCrate.mass;
 						const e = 0.35;
 						const effSpeed = Math.max(0.6, relativeSpeed);
 						const J = ((m1 * m2) / (m1 + m2)) * (1 + e) * effSpeed;
@@ -640,13 +840,14 @@ export class CranePhysicsManager {
 							this.releaseHeldCrate();
 						}
 					} else {
-						// --- EMPTY ARM MODE (Mass 1 vs 10) ---
-						// Guaranteed visible impact on target box + smooth springy pendulum rebound (no position teleporting!)
+						// --- EMPTY ARM MODE ---
+						// Guaranteed visible impact on target box + smooth springy pendulum rebound
 						const minImpulse = 2.4;
 						const effSpeed = Math.max(0.5, relativeSpeed);
+						const targetMass = targetCrate.mass;
 						const J = Math.max(
 							minImpulse,
-							((ARM_MASS * CRATE_MASS) / (ARM_MASS + CRATE_MASS)) *
+							((ARM_MASS * targetMass) / (ARM_MASS + targetMass)) *
 								1.35 *
 								effSpeed,
 						);
@@ -711,17 +912,22 @@ export class CranePhysicsManager {
 	 */
 	public clear() {
 		this.currentHeldCrateId = null;
+		this.magnetHeat = 0.0;
+		this.trainTiltAngle = 0.0;
+		this.targetTiltAngle = 0.0;
+		this.centerOfMassOffset = 0.0;
 		for (const crate of this.crates.values()) {
 			this.world.removeRigidBody(crate.body);
 		}
 		this.crates.clear();
 		this.trolleyX = -4.5;
-		this.cableLength = 2.2;
+		this.cableLength = 2.5;
 		this.cableAngle = 0;
 		this.cableAngVel = 0;
 		this.magnetX = -4.5;
-		this.magnetY = 5.5;
+		this.magnetY = 6.75;
 		this.lastTrolleyVx = 0;
-		this.trainBody.setTranslation({ x: 3.5, y: 0.5, z: 0 }, true);
+		this.trainBody.setTranslation({ x: 3.5, y: 0.75, z: 0 }, true);
+		this.trainBody.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
 	}
 }

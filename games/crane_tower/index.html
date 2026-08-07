@@ -265,6 +265,27 @@
         </div>
         <div style="width: 1px; height: 32px; background: rgba(255,255,255,0.15);"></div>
         <div class="stat-box">
+          <div class="stat-label">Next Cargo</div>
+          <div class="stat-value" id="hud-next-cargo" style="font-size: 1rem; color: #38bdf8;">Standard</div>
+        </div>
+        <div style="width: 1px; height: 32px; background: rgba(255,255,255,0.15);"></div>
+        <div class="stat-box" style="min-width: 120px;">
+          <div class="stat-label">Wagon Balance</div>
+          <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; margin-top: 6px; position: relative;">
+            <div id="hud-balance-bar" style="position: absolute; left: 50%; top: 0; width: 0%; height: 100%; background: #10b981; transition: all 0.15s ease;"></div>
+          </div>
+          <div id="hud-balance-text" style="font-size: 0.7rem; color: #10b981; font-weight: 700; margin-top: 2px;">BALANCED</div>
+        </div>
+        <div style="width: 1px; height: 32px; background: rgba(255,255,255,0.15);"></div>
+        <div class="stat-box" style="min-width: 110px;">
+          <div class="stat-label">Magnet Heat</div>
+          <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; margin-top: 6px;">
+            <div id="hud-heat-bar" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.1s linear;"></div>
+          </div>
+          <div id="hud-heat-text" style="font-size: 0.7rem; color: #38bdf8; font-weight: 700; margin-top: 2px;">COOL</div>
+        </div>
+        <div style="width: 1px; height: 32px; background: rgba(255,255,255,0.15);"></div>
+        <div class="stat-box">
           <div class="stat-label">Aim Goal</div>
           <select id="select-target-goal" class="nav-btn" style="padding: 4px 8px; font-size: 0.85rem; background: rgba(15,23,42,0.9); cursor: pointer;">
             <option value="3" selected>3 Boxes</option>

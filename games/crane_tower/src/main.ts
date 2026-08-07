@@ -65,7 +65,7 @@ async function main() {
 			game.update(dt);
 		}
 
-		graphics.syncGraphics(physics);
+		graphics.syncGraphics(physics, dt, game.state);
 		graphics.render();
 	}
 
