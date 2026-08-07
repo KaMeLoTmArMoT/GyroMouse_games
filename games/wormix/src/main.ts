@@ -100,7 +100,6 @@ export class WormixGame {
 
 	// Reposition State (post-fire movement window)
 	private repositionTimer: number = 0;
-	private lastExplosionX: number = 0;
 
 	// Team Ammo Inventory
 	private teamAmmo: Record<"player" | "ai", TeamAmmo> = { player: {}, ai: {} };
@@ -805,7 +804,6 @@ export class WormixGame {
 			// Second shot (75% damage, slight delay feel)
 			shootRay(0.75);
 
-			this.lastExplosionX = tip.x + Math.cos(rad) * 60;
 			this.phase = "PROJECTILE_FLIGHT";
 		} else {
 			// Spawn Projectile
@@ -832,7 +830,6 @@ export class WormixGame {
 					fuseTime,
 				),
 			);
-			this.lastExplosionX = tip.x;
 
 			if (weapon.id === "dynamite") {
 				// Instant live-fuse escape window: worm runs to safety while Dynamite fuse ticks down!
@@ -948,52 +945,62 @@ export class WormixGame {
 		}
 	}
 
-	/** Pick a reposition spot after firing (crate if low HP, else away from enemies). */
+	/** Pick a reposition spot after firing (crate if low HP, else best LoS cover away from mines). */
 	private pickAiRepositionTarget(w: Worm): number {
-		if (w.health < w.maxHealth * 0.6) {
-			let bestX: number | null = null;
-			let bestD = Infinity;
+		// 1. If injured, seek crate if reachable and landmine-safe
+		if (w.health < w.maxHealth * 0.7) {
+			let bestCrateX: number | null = null;
+			let minCrateDist = Infinity;
 			for (const obj of this.mapObjects) {
 				if (obj.type === "health_crate" && !obj.isDestroyed) {
-					const d = Math.abs(obj.x - w.x);
+					const dist = Math.abs(obj.x - w.x);
 					if (
-						d < bestD &&
-						d < 400 &&
-						WormAI.canWalkTo(this.terrain, w.x, w.y, obj.x)
+						dist < minCrateDist &&
+						dist < 400 &&
+						WormAI.canWalkTo(this.terrain, w.x, w.y, obj.x, this.mapObjects)
 					) {
-						bestD = d;
-						bestX = obj.x;
+						minCrateDist = dist;
+						bestCrateX = obj.x;
 					}
 				}
 			}
-			if (bestX !== null) return bestX;
+			if (bestCrateX !== null) return bestCrateX;
 		}
-		let nearestDist = Infinity;
-		let nearestEnemyX = this.lastExplosionX;
-		for (const e of this.worms) {
-			if (e.team !== w.team && e.isAlive) {
-				const d = Math.hypot(e.x - w.x, e.y - w.y);
-				if (d < nearestDist) {
-					nearestDist = d;
-					nearestEnemyX = e.x;
-				}
+
+		// 2. Evaluate candidate spots (-180px to +180px) for best line-of-sight cover & mine safety
+		const enemies = this.worms.filter((e) => e.team !== w.team && e.isAlive);
+		let bestX = w.x;
+		let bestScore = -Infinity;
+
+		for (let offset = -180; offset <= 180; offset += 30) {
+			const candX = Math.max(
+				30,
+				Math.min(this.terrain.width - 30, w.x + offset),
+			);
+			if (!WormAI.canWalkTo(this.terrain, w.x, w.y, candX, this.mapObjects))
+				continue;
+
+			const groundY = this.terrain.getLocalGroundY(candX, w.y + 20, 20, 15);
+			if (groundY === null || groundY >= this.terrain.waterY - 15) continue;
+			const candY = groundY - 12;
+
+			const cover = WormAI.evaluateCover(candX, candY, this.terrain, enemies);
+			const mineRisk = WormAI.evaluateMineRisk(candX, candY, this.mapObjects);
+			const crateScore = WormAI.evaluateCrates(
+				candX,
+				candY,
+				this.mapObjects,
+				w.health / w.maxHealth,
+			);
+
+			const score = cover + crateScore - mineRisk;
+			if (score > bestScore) {
+				bestScore = score;
+				bestX = candX;
 			}
 		}
-		const preferredDir = w.x >= nearestEnemyX ? 1 : -1;
-		const offsets = [
-			preferredDir * 200,
-			preferredDir * 140,
-			preferredDir * 80,
-			-preferredDir * 120,
-			-preferredDir * 60,
-		];
-		for (const off of offsets) {
-			const candX = Math.max(30, Math.min(this.terrain.width - 30, w.x + off));
-			if (WormAI.canWalkTo(this.terrain, w.x, w.y, candX)) {
-				return candX;
-			}
-		}
-		return w.x;
+
+		return bestX;
 	}
 
 	private gameLoop(timestamp: number): void {
@@ -1343,7 +1350,6 @@ export class WormixGame {
 				this.windX,
 				(p, x, y) => {
 					this.audioManager.playHit(2.0);
-					this.lastExplosionX = x;
 					this.spawnExplosionFx(x, y, p.weaponId);
 
 					// Damage map objects hit by projectile explosion (barrel chain explosions!)
@@ -1840,8 +1846,7 @@ export class WormixGame {
 			const planSurfaceY = this.terrain.getSurfaceY(planX);
 			const planY = planSurfaceY - 12;
 			const rad = (plan.targetAngle * Math.PI) / 180;
-			const speed =
-				plan.targetPower * PROJECTILE_MAX_SPEED[plan.weaponId];
+			const speed = plan.targetPower * PROJECTILE_MAX_SPEED[plan.weaponId];
 			let vx = Math.cos(rad) * speed;
 			let vy = Math.sin(rad) * speed;
 			let px = planX + Math.cos(rad) * 20;

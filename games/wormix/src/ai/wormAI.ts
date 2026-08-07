@@ -71,16 +71,16 @@ export interface WeightedScore {
 // Personality weight presets
 const WEIGHTS: Record<AIPersonality, WeightedScore> = {
 	aggressive: {
-		attack: 2.0,
-		selfRisk: 0.1,
-		cover: 0.1,
-		crates: 0.3,
-		chain: 1.5,
+		attack: 1.3,
+		selfRisk: 1.0,
+		cover: 0.3,
+		crates: 0.5,
+		chain: 1.2,
 	},
-	sniper: { attack: 1.2, selfRisk: 0.8, cover: 1.5, crates: 0.3, chain: 1.0 },
-	looter: { attack: 0.8, selfRisk: 0.6, cover: 0.5, crates: 3.0, chain: 0.8 },
-	chaotic: { attack: 1.0, selfRisk: 0.2, cover: 0.2, crates: 1.0, chain: 2.0 },
-	default: { attack: 1.0, selfRisk: 0.6, cover: 0.5, crates: 0.8, chain: 1.0 },
+	sniper: { attack: 1.0, selfRisk: 1.0, cover: 1.2, crates: 0.5, chain: 1.0 },
+	looter: { attack: 0.8, selfRisk: 1.0, cover: 0.8, crates: 2.0, chain: 0.8 },
+	chaotic: { attack: 1.0, selfRisk: 0.5, cover: 0.4, crates: 1.0, chain: 1.5 },
+	default: { attack: 1.0, selfRisk: 1.0, cover: 0.8, crates: 1.0, chain: 1.0 },
 };
 
 const COARSE_WEAPONS: WeaponId[] = [
@@ -133,48 +133,49 @@ function shotScore(
 	}
 
 	let score =
-		w.attack * shot.enemyDamage -
-		w.selfRisk * (shot.selfDamage * 3.5 + shot.allyDamage * 4.0) +
+		w.attack * shot.enemyDamage +
 		w.chain * shot.chainBonus +
-		w.attack * shot.kills * 200 +
-		shot.terrainDestruction * 0.4;
+		w.attack * shot.kills * 150 +
+		shot.terrainDestruction * 0.2;
 
-	// 1. Drowning K.O. bonus (knocking enemies into water/void)
+	// Penalty for shooting/destroying health crates without hitting enemies
+	if (shot.crateDestroyed && shot.enemyDamage < 30) {
+		score -= 100;
+	}
+
+	// 1. Drowning K.O. bonus (knocking enemies into water/void = instant eliminate)
 	if (shot.waterKnockouts > 0) {
-		score += shot.waterKnockouts * 150;
+		score += shot.waterKnockouts * 200;
 	}
 
 	// 2. Wind adaptation
 	const stats = WEAPON_STATS[shot.weaponId];
 	if (Math.abs(windX) > 2.0) {
-		if (stats.wind) score -= 25;
-		else score += 15;
+		if (stats.wind) score -= 15;
+		else score += 10;
 	}
 
-	// 3. Focus-Fire & Low HP finisher bonus (+1500 for finishing off close low-HP enemy)
+	// 3. Tactical Close Target preference (+25 pts)
 	if (shot.enemyDamage > 0) {
-		score += 25;
-		if (shot.kills > 0) {
-			score += 1500; // Massive bonus for eliminating an enemy
-		}
-		if (distToImpact < 200) {
-			score += 300; // Prefer close targets over distant targets
+		score += 15;
+		if (distToImpact < 150) {
+			score += 25;
 		}
 	}
 
 	// 4. Guerrilla Dynamite tactic
 	if (shot.weaponId === "dynamite") {
 		const distToEnd = Math.hypot(shot.endX - shooterX, shot.endY - shooterY);
-		if (distToEnd < 60 && shot.enemyDamage > 30 && shot.selfDamage < 20) {
-			score += 100;
+		if (distToEnd < 60 && shot.enemyDamage > 30) {
+			score += 40;
 		}
 	}
 
 	// 5. Tactical Acid / Sand
 	if (shot.weaponId === "acid_bomb" && shot.terrainDestruction > 20) {
-		score += 25;
+		score += 20;
 	}
-	if (shot.weaponId === "sand_bomb" && coverScore < 0.3) {
+	if (shot.weaponId === "sand_bomb" && coverScore < 25) {
 		score += 30; // build cover mound when on open ground
 	}
 
@@ -358,7 +359,7 @@ class AIPlannerImpl implements AIPlanner {
 		for (const c of candidates) {
 			if (
 				Math.abs(c.x - aiWorm.x) < 15 ||
-				WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, c.x)
+				WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, c.x, mapObjects)
 			) {
 				this.positions.push(c);
 			}
@@ -381,14 +382,19 @@ class AIPlannerImpl implements AIPlanner {
 	}
 
 	private coarsePosition(pos: { x: number; y: number }): void {
-		const { terrain, mapObjects, gameMode } = this.params;
+		const { terrain, mapObjects, gameMode, aiWorm } = this.params;
 		const coverScore = WormAI.evaluateCover(
 			pos.x,
 			pos.y,
 			terrain,
 			this.enemies,
 		);
-		const crateScore = WormAI.evaluateCrates(pos.x, pos.y, mapObjects);
+		const crateScore = WormAI.evaluateCrates(
+			pos.x,
+			pos.y,
+			mapObjects,
+			aiWorm.health / aiWorm.maxHealth,
+		);
 		const mineRisk = WormAI.evaluateMineRisk(pos.x, pos.y, mapObjects);
 		const elevationScore =
 			gameMode === "rising_water" ? (terrain.height - pos.y) * 0.02 : 0;
@@ -753,6 +759,7 @@ export class WormAI {
 		fromX: number,
 		fromY: number,
 		toX: number,
+		mapObjects: MapObject[] = [],
 	): boolean {
 		if (Math.abs(toX - fromX) < 15) return true;
 		if (Math.abs(toX - fromX) > 600) return false;
@@ -761,9 +768,22 @@ export class WormAI {
 		let feetY = fromY + 12;
 		let x = fromX;
 		const maxSteps = Math.ceil(Math.abs(toX - fromX) / step);
+
+		const activeMines = mapObjects.filter(
+			(o) => o.type === "landmine" && !o.isDestroyed,
+		);
+
 		for (let i = 0; i < maxSteps; i++) {
 			x += dir * step;
 			if (terrain.isSolidAt(x, feetY - 18)) return false;
+
+			// Check if walking path steps directly onto or near an active landmine (<30px)
+			for (const mine of activeMines) {
+				if (Math.hypot(mine.x - x, mine.y - feetY) < 30) {
+					return false; // Refuse path through landmine!
+				}
+			}
+
 			const groundY = terrain.getLocalGroundY(x, feetY, 30, 12);
 			if (groundY !== null) {
 				if (groundY < feetY - 10) return false;
@@ -774,10 +794,6 @@ export class WormAI {
 		}
 		return true;
 	}
-
-	// =========================================================================
-	//  CANDIDATE POSITIONS
-	// =========================================================================
 
 	// =========================================================================
 	//  CANDIDATE POSITIONS
@@ -807,7 +823,7 @@ export class WormAI {
 				if (
 					!terrain.isSolidAt(nx, feetY - 8) &&
 					!terrain.isSolidAt(nx, feetY - 20) &&
-					WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, nx)
+					WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, nx, mapObjects)
 				) {
 					candidates.push({ x: nx, y: feetY });
 				}
@@ -822,7 +838,7 @@ export class WormAI {
 			for (const c of crates) {
 				if (
 					Math.abs(c.x - aiWorm.x) < 300 &&
-					WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, c.x)
+					WormAI.canWalkTo(terrain, aiWorm.x, aiWorm.y, c.x, mapObjects)
 				) {
 					candidates.push({ x: c.x, y: c.y });
 				}
@@ -843,14 +859,14 @@ export class WormAI {
 		coverScore: number,
 	): number {
 		if (allies.length === 0) return 0;
-		// If in deep cover (coverScore >= 0.5), grouping is fine (penalty = 0)
-		if (coverScore >= 0.5) return 0;
+		// If in deep cover (coverScore >= 40), grouping is fine
+		if (coverScore >= 40) return 0;
 		let penalty = 0;
 		for (const ally of allies) {
 			if (!ally.isAlive) continue;
 			const dist = Math.hypot(ally.x - x, ally.y - y);
 			if (dist < 130) {
-				penalty += ((130 - dist) / 130) * (1 - coverScore) * 35;
+				penalty += ((130 - dist) / 130) * (1 - coverScore / 80) * 60;
 			}
 		}
 		return penalty;
@@ -863,40 +879,47 @@ export class WormAI {
 		enemies: Worm[],
 	): number {
 		if (enemies.length === 0) return 0;
-		let score = 0;
-		const numRays = 8;
-		for (let i = 0; i < numRays; i++) {
-			const angle = (i / numRays) * Math.PI * 2;
-			const dx = Math.cos(angle) * 80;
-			const dy = Math.sin(angle) * 80;
-			const steps = 8;
-			let blocked = false;
-			for (let s = 1; s <= steps; s++) {
-				const px = x + dx * (s / steps);
-				const py = y + dy * (s / steps);
+		let blockedEnemies = 0;
+		const aliveEnemies = enemies.filter((e) => e.isAlive);
+		if (aliveEnemies.length === 0) return 0;
+
+		for (const enemy of aliveEnemies) {
+			const dx = enemy.x - x;
+			const dy = enemy.y - 15 - (y - 15);
+			const dist = Math.hypot(dx, dy);
+			const steps = Math.min(16, Math.max(4, Math.floor(dist / 20)));
+			let isBlocked = false;
+			for (let s = 1; s < steps; s++) {
+				const px = x + (dx * s) / steps;
+				const py = y - 15 + (dy * s) / steps;
 				if (terrain.isSolidAt(px, py)) {
-					blocked = true;
+					isBlocked = true;
 					break;
 				}
 			}
-			if (blocked) score += 1;
+			if (isBlocked) blockedEnemies++;
 		}
-		return score / numRays;
+		const ratio = blockedEnemies / aliveEnemies.length;
+		return ratio * 80;
 	}
 
 	public static evaluateCrates(
 		x: number,
 		y: number,
 		mapObjects: MapObject[],
+		aiWormHealthRatio: number = 1.0,
 	): number {
 		let score = 0;
 		for (const obj of mapObjects) {
 			if (obj.type === "health_crate" && !obj.isDestroyed) {
 				const dist = Math.hypot(obj.x - x, obj.y - y);
-				if (dist < 100) score += (100 - dist) / 100;
+				if (dist < 120) {
+					const injuryMultiplier = Math.max(0.2, 1.5 - aiWormHealthRatio);
+					score += ((120 - dist) / 120) * 70 * injuryMultiplier;
+				}
 			}
 		}
-		return score;
+		return Math.min(100, score);
 	}
 
 	public static evaluateMineRisk(
@@ -908,7 +931,9 @@ export class WormAI {
 		for (const obj of mapObjects) {
 			if (obj.type === "landmine" && !obj.isDestroyed) {
 				const d = Math.hypot(obj.x - x, obj.y - y);
-				if (d < 60) risk += ((60 - d) / 60) * 2;
+				if (d < 70) {
+					risk += ((70 - d) / 70) * 400;
+				}
 			}
 		}
 		return risk;

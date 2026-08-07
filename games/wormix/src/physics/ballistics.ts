@@ -21,6 +21,7 @@ export interface ShotResult {
 	kills: number;
 	blockedAtLaunch: boolean;
 	waterKnockouts: number;
+	crateDestroyed: boolean;
 }
 
 const MAX_TICKS = 300;
@@ -75,6 +76,7 @@ export function simulateShot(
 		kills: 0,
 		blockedAtLaunch: false,
 		waterKnockouts: 0,
+		crateDestroyed: false,
 	};
 
 	const addDamage = (w: Worm, dmg: number): void => {
@@ -138,9 +140,12 @@ export function simulateShot(
 		}
 		shot.terrainDestruction += terrainUtility + radius * 0.3;
 		for (const obj of mapObjects) {
-			if (obj.type === "barrel" && !obj.isDestroyed) {
-				const dist = Math.hypot(obj.x - x, obj.y - y);
-				if (dist < radius + 40) shot.chainBonus += 30;
+			if (obj.isDestroyed) continue;
+			const dist = Math.hypot(obj.x - x, obj.y - y);
+			if (obj.type === "barrel" && dist < radius + 40) {
+				shot.chainBonus += 30;
+			} else if (obj.type === "health_crate" && dist < radius + 20) {
+				shot.crateDestroyed = true;
 			}
 		}
 	};
@@ -309,6 +314,9 @@ export function simulateShot(
 			const dist = Math.hypot(dx, dy);
 			if (dist < 6 + obj.radius) {
 				checkLaunchBlock(x, y);
+				if (obj.type === "health_crate") {
+					shot.crateDestroyed = true;
+				}
 				if (obj.type === "landmine" || obj.type === "barrel") {
 					// Detonate the mine / barrel explosion
 					blast(obj.x, obj.y, 55, 50);
