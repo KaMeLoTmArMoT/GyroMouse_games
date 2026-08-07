@@ -304,13 +304,13 @@ class AIPlannerImpl implements AIPlanner {
 			this.candidates.sort((a, b) => b.score - a.score);
 			const topScore = this.candidates[0].score;
 
-			// Filter Top-K candidate moves within 120 points of topScore
+			// Filter high-tier candidate moves within 25 points of topScore
 			const topK = this.candidates
-				.slice(0, 5)
-				.filter((c) => c.score >= topScore - 120);
+				.filter((c) => c.score >= topScore - 25)
+				.slice(0, 4);
 
-			// Top-P Softmax sampling over top candidates for natural AI move variety
-			const temp = 25; // Temperature parameter
+			// Softmax weighted random sampling for realistic tactical variety
+			const temp = 12;
 			const weights = topK.map((c) => Math.exp((c.score - topScore) / temp));
 			const sumWeights = weights.reduce((acc, w) => acc + w, 0);
 			let rnd = Math.random() * sumWeights;

@@ -171,13 +171,13 @@ export class AITurnController {
 		let bestX = w.x;
 		let bestScore = -Infinity;
 
-		for (let offset = -120; offset <= 120; offset += 30) {
+		for (let offset = -45; offset <= 45; offset += 15) {
 			const candX = Math.max(30, Math.min(terrain.width - 30, w.x + offset));
 
-			// Avoid advancing further into enemy territory during repositioning
+			// Avoid advancing into enemy territory during repositioning
 			const isEnemyRight = closestEnemyX > w.x;
-			if (isEnemyRight && candX > w.x + 30) continue;
-			if (!isEnemyRight && candX < w.x - 30) continue;
+			if (isEnemyRight && candX > w.x + 15) continue;
+			if (!isEnemyRight && candX < w.x - 15) continue;
 
 			if (!WormAI.canWalkTo(terrain, w.x, w.y, candX, mapObjects)) continue;
 
@@ -193,8 +193,10 @@ export class AITurnController {
 				mapObjects,
 				w.health / w.maxHealth,
 			);
+			const stayBonus = candX === w.x ? 80 : 0;
+			const walkCost = Math.abs(candX - w.x) * 1.5;
 
-			const score = cover + crateScore - mineRisk;
+			const score = cover + crateScore - mineRisk + stayBonus - walkCost;
 			if (score > bestScore) {
 				bestScore = score;
 				bestX = candX;
