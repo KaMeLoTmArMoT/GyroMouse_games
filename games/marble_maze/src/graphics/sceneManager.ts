@@ -214,10 +214,33 @@ export class SceneManager {
 			emissive: 0x00cc44,
 		});
 
-		// Counters for debugging
-		const floorTiles = 0;
-		const wallSegments = 0;
+		// Instancing storage for Floor Tiles & Guardrails (LOD/Draw call optimization)
+		const tileLists: Record<string, { x: number; y: number; z: number }[]> = {
+			asphalt: [],
+			sand: [],
+			ice: [],
+			snow: [],
+			grass: [],
+			dirt: [],
+			cobblestone: [],
+			goal: [],
+		};
+		const matMap: Record<string, THREE.Material> = {
+			asphalt: asphaltMat,
+			sand: sandMat,
+			ice: iceMat,
+			snow: snowMat,
+			grass: grassMat,
+			dirt: dirtMat,
+			cobblestone: cobbleMat,
+			goal: goalMat,
+		};
+
+		const guardrailsY: { x: number; y: number; z: number }[] = [];
+		const guardrailsX: { x: number; y: number; z: number }[] = [];
+
 		let guardrailSegments = 0;
+		const wallSegments = 0;
 		let gatesRendered = 0;
 		let coinsRendered = 0;
 		let holesRendered = 0;
@@ -229,38 +252,11 @@ export class SceneManager {
 				const cellCenterX = x * cellSize + halfCell - mazeWorldWidth / 2;
 				const cellCenterZ = z * cellSize + halfCell - mazeWorldHeight / 2;
 
-				let mat = asphaltMat;
-				switch (cell.terrain) {
-					case "sand":
-						mat = sandMat;
-						break;
-					case "ice":
-						mat = iceMat;
-						break;
-					case "snow":
-						mat = snowMat;
-						break;
-					case "grass":
-						mat = grassMat;
-						break;
-					case "dirt":
-						mat = dirtMat;
-						break;
-					case "cobblestone":
-						mat = cobbleMat;
-						break;
-					default:
-						mat = asphaltMat;
-						break;
-				}
-				if (cell.isGoal) mat = goalMat;
-
 				if (!cell.isBridge) {
-					const tileMesh = new THREE.Mesh(tileGeo, mat);
-					tileMesh.position.set(cellCenterX, -0.2, cellCenterZ);
-					tileMesh.receiveShadow = true;
-					tileMesh.castShadow = true;
-					this.boardGroup.add(tileMesh);
+					let key: string = cell.terrain || "asphalt";
+					if (cell.isGoal) key = "goal";
+					if (!tileLists[key]) tileLists[key] = [];
+					tileLists[key].push({ x: cellCenterX, y: -0.2, z: cellCenterZ });
 				}
 
 				if (cell.isBridge) {
@@ -286,6 +282,31 @@ export class SceneManager {
 						case "right":
 							bridgeOff = halfCell - halfBridge;
 							holes.push({ offset: -halfBridge, halfW: halfCell - halfBridge });
+							break;
+					}
+
+					let mat = asphaltMat;
+					switch (cell.terrain) {
+						case "sand":
+							mat = sandMat;
+							break;
+						case "ice":
+							mat = iceMat;
+							break;
+						case "snow":
+							mat = snowMat;
+							break;
+						case "grass":
+							mat = grassMat;
+							break;
+						case "dirt":
+							mat = dirtMat;
+							break;
+						case "cobblestone":
+							mat = cobbleMat;
+							break;
+						default:
+							mat = asphaltMat;
 							break;
 					}
 
@@ -378,6 +399,31 @@ export class SceneManager {
 					const halfExtent = isSquare ? cfg.size / 2 : cfg.radius;
 					const isMoving = cfg.movePattern !== "static";
 					holesRendered++;
+
+					let mat = asphaltMat;
+					switch (cell.terrain) {
+						case "sand":
+							mat = sandMat;
+							break;
+						case "ice":
+							mat = iceMat;
+							break;
+						case "snow":
+							mat = snowMat;
+							break;
+						case "grass":
+							mat = grassMat;
+							break;
+						case "dirt":
+							mat = dirtMat;
+							break;
+						case "cobblestone":
+							mat = cobbleMat;
+							break;
+						default:
+							mat = asphaltMat;
+							break;
+					}
 
 					if (isMoving) {
 						// Moving hole: render tile normally + pit group on top that moves
@@ -536,38 +582,109 @@ export class SceneManager {
 				const g = cell.hasGuardrail;
 
 				if (g.top) {
-					const wMesh = new THREE.Mesh(wallGeoY, wallMat);
-					wMesh.position.set(cellCenterX, 0.4, cellCenterZ - halfCell);
-					wMesh.castShadow = true;
-					wMesh.receiveShadow = true;
-					this.boardGroup.add(wMesh);
+					guardrailsY.push({
+						x: cellCenterX,
+						y: 0.4,
+						z: cellCenterZ - halfCell,
+					});
 					guardrailSegments++;
 				}
 				if (g.bottom) {
-					const wMesh = new THREE.Mesh(wallGeoY, wallMat);
-					wMesh.position.set(cellCenterX, 0.4, cellCenterZ + halfCell);
-					wMesh.castShadow = true;
-					wMesh.receiveShadow = true;
-					this.boardGroup.add(wMesh);
+					guardrailsY.push({
+						x: cellCenterX,
+						y: 0.4,
+						z: cellCenterZ + halfCell,
+					});
 					guardrailSegments++;
 				}
 				if (g.left) {
-					const wMesh = new THREE.Mesh(wallGeoX, wallMat);
-					wMesh.position.set(cellCenterX - halfCell, 0.4, cellCenterZ);
-					wMesh.castShadow = true;
-					wMesh.receiveShadow = true;
-					this.boardGroup.add(wMesh);
+					guardrailsX.push({
+						x: cellCenterX - halfCell,
+						y: 0.4,
+						z: cellCenterZ,
+					});
 					guardrailSegments++;
 				}
 				if (g.right) {
-					const wMesh = new THREE.Mesh(wallGeoX, wallMat);
-					wMesh.position.set(cellCenterX + halfCell, 0.4, cellCenterZ);
-					wMesh.castShadow = true;
-					wMesh.receiveShadow = true;
-					this.boardGroup.add(wMesh);
+					guardrailsX.push({
+						x: cellCenterX + halfCell,
+						y: 0.4,
+						z: cellCenterZ,
+					});
 					guardrailSegments++;
 				}
 			}
+		}
+
+		// Instanced Mesh Creation for Floor Tiles
+		const dummy = new THREE.Object3D();
+		let floorTiles = 0;
+		for (const [key, list] of Object.entries(tileLists)) {
+			if (list.length === 0) continue;
+			floorTiles += list.length;
+			const instancedTiles = new THREE.InstancedMesh(
+				tileGeo,
+				matMap[key],
+				list.length,
+			);
+			instancedTiles.receiveShadow = true;
+			instancedTiles.castShadow = true;
+			for (let i = 0; i < list.length; i++) {
+				dummy.position.set(list[i].x, list[i].y, list[i].z);
+				dummy.rotation.set(0, 0, 0);
+				dummy.scale.set(1, 1, 1);
+				dummy.updateMatrix();
+				instancedTiles.setMatrixAt(i, dummy.matrix);
+			}
+			instancedTiles.instanceMatrix.needsUpdate = true;
+			this.boardGroup.add(instancedTiles);
+		}
+
+		// Instanced Mesh Creation for Guardrails
+		if (guardrailsY.length > 0) {
+			const instancedWallsY = new THREE.InstancedMesh(
+				wallGeoY,
+				wallMat,
+				guardrailsY.length,
+			);
+			instancedWallsY.castShadow = true;
+			instancedWallsY.receiveShadow = true;
+			for (let i = 0; i < guardrailsY.length; i++) {
+				dummy.position.set(
+					guardrailsY[i].x,
+					guardrailsY[i].y,
+					guardrailsY[i].z,
+				);
+				dummy.rotation.set(0, 0, 0);
+				dummy.scale.set(1, 1, 1);
+				dummy.updateMatrix();
+				instancedWallsY.setMatrixAt(i, dummy.matrix);
+			}
+			instancedWallsY.instanceMatrix.needsUpdate = true;
+			this.boardGroup.add(instancedWallsY);
+		}
+
+		if (guardrailsX.length > 0) {
+			const instancedWallsX = new THREE.InstancedMesh(
+				wallGeoX,
+				wallMat,
+				guardrailsX.length,
+			);
+			instancedWallsX.castShadow = true;
+			instancedWallsX.receiveShadow = true;
+			for (let i = 0; i < guardrailsX.length; i++) {
+				dummy.position.set(
+					guardrailsX[i].x,
+					guardrailsX[i].y,
+					guardrailsX[i].z,
+				);
+				dummy.rotation.set(0, 0, 0);
+				dummy.scale.set(1, 1, 1);
+				dummy.updateMatrix();
+				instancedWallsX.setMatrixAt(i, dummy.matrix);
+			}
+			instancedWallsX.instanceMatrix.needsUpdate = true;
+			this.boardGroup.add(instancedWallsX);
 		}
 
 		// Gate meshes

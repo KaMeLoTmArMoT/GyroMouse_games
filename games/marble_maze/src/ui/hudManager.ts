@@ -1,6 +1,7 @@
 import type { InputSettings } from "../../../../shared/inputManager";
 import { MenuNav } from "../../../../shared/menuNav";
 import type { TerrainType } from "../maze/mazeGenerator";
+import { GyroHud3D } from "./gyroHud";
 
 export interface HudCallbacks {
 	onRestart: (fromCheckpoint?: boolean) => void;
@@ -19,6 +20,7 @@ export class HudManager {
 	private coinEl!: HTMLElement;
 	private seedEl!: HTMLElement;
 	private surfaceEl!: HTMLElement;
+	private gyroHud?: GyroHud3D;
 
 	private winModal!: HTMLElement;
 	private fallModal!: HTMLElement;
@@ -36,6 +38,17 @@ export class HudManager {
 	constructor(callbacks: HudCallbacks) {
 		this.callbacks = callbacks;
 		this.bindDOM();
+
+		const gyroCardContainer = document.getElementById("hud-gyro-card");
+		if (gyroCardContainer) {
+			this.gyroHud = new GyroHud3D(gyroCardContainer);
+		}
+	}
+
+	public updateTilt(tiltX: number, tiltZ: number) {
+		if (this.gyroHud) {
+			this.gyroHud.updateTilt(tiltX, tiltZ);
+		}
 	}
 
 	private bindDOM() {

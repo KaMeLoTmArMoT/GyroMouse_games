@@ -354,6 +354,7 @@ class Game {
 
 			this.physicsManager.updateBoardTilt(tiltX, tiltZ);
 			this.sceneManager.updateBoardTilt(tiltX, tiltZ);
+			this.hudManager.updateTilt(tiltX, tiltZ);
 
 			this.physicsManager.updateMovingHoles(dt);
 			this.sceneManager.updateMovingHoles(dt);
