@@ -119,26 +119,29 @@ function shotScore(
 	shooterY: number = 0,
 	coverScore: number = 0,
 ): number {
-	// Heavily penalize shots blocked right at origin (hitting obstacle/crate/ally directly)
-	if (shot.blockedAtLaunch) return -500;
+	// Strictly reject shots blocked right at origin (hitting hill/wall/obstacle in front of worm)
+	if (shot.blockedAtLaunch) return -99999;
 
-	// Point-blank bouncy weapon self-harm protection (bouncy grenades/clusters/dynamite at feet)
+	// Point-blank bouncy weapon self & ally protection
 	const isBouncy = WEAPON_STATS[shot.weaponId].bouncy;
 	const distToImpact = Math.hypot(shot.endX - shooterX, shot.endY - shooterY);
-	if (isBouncy && distToImpact < 55 && shot.selfDamage > 0) {
-		return -1000;
+	if (shot.selfDamage > 0 || shot.allyDamage > 0) {
+		return -99999; // ZERO tolerance for AI damaging itself or allies!
+	}
+	if ((shot.weaponId === "dynamite" || isBouncy) && distToImpact < 80) {
+		return -99999; // Strictly forbid dropping dynamite / bouncy explosives at feet
 	}
 
 	let score =
 		w.attack * shot.enemyDamage -
-		w.selfRisk * (shot.selfDamage * 2.5 + shot.allyDamage * 3.0) +
+		w.selfRisk * (shot.selfDamage * 3.5 + shot.allyDamage * 4.0) +
 		w.chain * shot.chainBonus +
-		w.attack * shot.kills * 70 +
+		w.attack * shot.kills * 200 +
 		shot.terrainDestruction * 0.4;
 
 	// 1. Drowning K.O. bonus (knocking enemies into water/void)
 	if (shot.waterKnockouts > 0) {
-		score += shot.waterKnockouts * 80;
+		score += shot.waterKnockouts * 150;
 	}
 
 	// 2. Wind adaptation
@@ -148,16 +151,22 @@ function shotScore(
 		else score += 15;
 	}
 
-	// 3. Focus-Fire & Low HP finisher
+	// 3. Focus-Fire & Low HP finisher bonus (+1500 for finishing off close low-HP enemy)
 	if (shot.enemyDamage > 0) {
-		score += 15;
+		score += 25;
+		if (shot.kills > 0) {
+			score += 1500; // Massive bonus for eliminating an enemy
+		}
+		if (distToImpact < 200) {
+			score += 300; // Prefer close targets over distant targets
+		}
 	}
 
 	// 4. Guerrilla Dynamite tactic
 	if (shot.weaponId === "dynamite") {
 		const distToEnd = Math.hypot(shot.endX - shooterX, shot.endY - shooterY);
 		if (distToEnd < 60 && shot.enemyDamage > 30 && shot.selfDamage < 20) {
-			score += 45;
+			score += 100;
 		}
 	}
 
@@ -215,6 +224,7 @@ class AIPlannerImpl implements AIPlanner {
 	private refineQueue: RefineItem[] = [];
 	private refineIndex: number = 0;
 	private best: BestCandidate | null = null;
+	private candidates: BestCandidate[] = [];
 	private done: boolean = false;
 	private sims: number = 0;
 
@@ -278,24 +288,47 @@ class AIPlannerImpl implements AIPlanner {
 			coverScore: e.coverScore,
 		}));
 
-		if (this.best) {
-			const dx = this.best.x - this.params.aiWorm.x;
+		if (this.candidates.length > 0) {
+			// Sort evaluated candidates by score descending
+			this.candidates.sort((a, b) => b.score - a.score);
+			const topScore = this.candidates[0].score;
+
+			// Filter Top-K candidate moves within 120 points of topScore
+			const topK = this.candidates
+				.slice(0, 5)
+				.filter((c) => c.score >= topScore - 120);
+
+			// Top-P Softmax sampling over top candidates for natural AI move variety
+			const temp = 25; // Temperature parameter
+			const weights = topK.map((c) => Math.exp((c.score - topScore) / temp));
+			const sumWeights = weights.reduce((acc, w) => acc + w, 0);
+			let rnd = Math.random() * sumWeights;
+			let chosen = topK[0];
+			for (let i = 0; i < topK.length; i++) {
+				rnd -= weights[i];
+				if (rnd <= 0) {
+					chosen = topK[i];
+					break;
+				}
+			}
+
+			const dx = chosen.x - this.params.aiWorm.x;
 			let walkDir = 0;
 			if (Math.abs(dx) > 15) walkDir = dx > 0 ? 1 : -1;
 			const angleNoise = (Math.random() - 0.5) * 2 * this.budget.angleNoise;
 			return {
-				targetAngle: clampAngle(this.best.shot.angle + angleNoise),
-				targetPower: clampPower(this.best.shot.power),
-				weaponId: this.best.shot.weaponId,
+				targetAngle: clampAngle(chosen.shot.angle + angleNoise),
+				targetPower: clampPower(chosen.shot.power),
+				weaponId: chosen.shot.weaponId,
 				walkDir,
-				targetX: this.best.x,
+				targetX: chosen.x,
 				evals: evalSummary,
 				personality: this.params.personality,
 				sims: this.sims,
-				enemyDamageEst: this.best.shot.enemyDamage,
-				selfDamageEst: this.best.shot.selfDamage,
-				killsEst: this.best.shot.kills,
-				waterKnockoutsEst: this.best.shot.waterKnockouts,
+				enemyDamageEst: chosen.shot.enemyDamage,
+				selfDamageEst: chosen.shot.selfDamage,
+				killsEst: chosen.shot.kills,
+				waterKnockoutsEst: chosen.shot.waterKnockouts,
 			};
 		}
 		const fallback = this.fallbackPlan();
@@ -528,6 +561,9 @@ class AIPlannerImpl implements AIPlanner {
 				ev.noise
 			: 0;
 		const total = bestScore + positionTerm;
+		if (total > -500) {
+			this.candidates.push({ x: item.x, y: item.y, shot: best, score: total });
+		}
 		if (!this.best || total > this.best.score) {
 			this.best = { x: item.x, y: item.y, shot: best, score: total };
 		}

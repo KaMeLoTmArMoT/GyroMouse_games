@@ -106,16 +106,31 @@ export class Projectile {
 		// === Collision with Map Objects (barrels, mines, crates) ===
 		for (const obj of mapObjects) {
 			if (obj.isDestroyed) continue;
-			const dist = Math.hypot(this.x - obj.x, this.y - obj.y);
+			const dx = this.x - obj.x;
+			const dy = this.y - obj.y;
+			const dist = Math.hypot(dx, dy);
 			if (dist < this.radius + obj.radius) {
+				if (obj.type === "landmine") {
+					obj.takeDamage(10); // Trigger landmine fuse
+				}
+
 				if (
 					this.weaponId === "grenade" ||
 					this.weaponId === "cluster" ||
 					this.weaponId === "dynamite"
 				) {
-					// Bounce off map objects
-					this.vy = -Math.abs(this.vy) * this.bounciness;
-					this.vx *= 0.7;
+					// Smoothly slide / bounce off rounded sides/top of barrels & crates
+					const normLen = dist || 1;
+					const normX = dx / normLen;
+					const normY = dy / normLen;
+
+					// Push outward off object boundary
+					this.x = obj.x + normX * (this.radius + obj.radius + 1);
+					this.y = obj.y + normY * (this.radius + obj.radius + 1);
+
+					// Apply bounce + tangential slide velocity down the slope/side
+					this.vx = normX * 3.0 + Math.sign(normX || 1) * 1.5;
+					this.vy = -Math.abs(this.vy) * this.bounciness - 0.5;
 				} else if (this.weaponId === "drill" && !this.drillPenetrated) {
 					// Drill: destroy the object but keep going
 					obj.takeDamage(100);
@@ -154,7 +169,7 @@ export class Projectile {
 			}
 		}
 
-		// === Terrain Collision ===
+		// === Terrain Collision & Slope Sliding Physics ===
 		const isSolidNow = terrain.isSolidAt(this.x, this.y);
 		const isSolidNext = terrain.isSolidAt(this.x + this.vx, this.y + this.vy);
 
@@ -164,9 +179,20 @@ export class Projectile {
 				(this.weaponId === "cluster" && !this.isClusterChild) ||
 				this.weaponId === "dynamite"
 			) {
-				// Bounce off terrain
+				// Probe terrain surface slope around projectile
+				const leftY = terrain.getSurfaceY(this.x - 8);
+				const rightY = terrain.getSurfaceY(this.x + 8);
+				const slope = (rightY - leftY) / 16; // positive if slope goes downward to the right
+
+				// Add slope acceleration so explosives smoothly roll/slide down hills
+				if (Math.abs(slope) > 0.05) {
+					this.vx += slope * 0.8;
+					this.vx *= 0.94; // Smooth rolling friction
+				} else {
+					this.vx *= 0.7;
+				}
+
 				this.vy = -this.vy * this.bounciness;
-				this.vx *= 0.7;
 			} else if (this.weaponId === "drill") {
 				// Begin/continue boring — carving & drill-time budget handled after terrain collision
 				this.drillPenetrated = true;

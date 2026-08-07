@@ -18,6 +18,7 @@ import type {
 	AIPersonality,
 	CustomMapData,
 	LobbyConfig,
+	MatchSaveData,
 	TeamAmmo,
 	TurnPhase,
 	WeaponId,
@@ -53,6 +54,8 @@ export class WormixGame {
 	public phase: TurnPhase = "MENU";
 	public activeWormIndex: number = 0;
 	public activeWeaponIndex: number = 0;
+	public playerWeaponIndex: number = 0;
+	private turnCount: number = 0;
 
 	// Turn Timer, Wind & Lobby Config
 	public turnTimer: number = 45.0; // 45s countdown
@@ -148,6 +151,7 @@ export class WormixGame {
 			(config, mapData) => this.startMatch(config, mapData),
 			() => this.openMapEditor(),
 			() => this.openMapManager(),
+			(saveData) => this.loadMatchState(saveData),
 		);
 
 		// Initialize Map Manager
@@ -330,6 +334,8 @@ export class WormixGame {
 
 		this.projectiles = [];
 		this.activeWormIndex = 0;
+		this.playerWeaponIndex = 0;
+		this.turnCount = 0;
 		this.phase = "MOVE";
 		this.turnTimer = 45.0;
 		this.aiPlan = null;
@@ -350,6 +356,7 @@ export class WormixGame {
 			mortar: 2,
 			dynamite: 1,
 			shotgun: 3,
+			rifle: 5,
 		};
 		this.teamAmmo = {
 			player: { ...defaultAmmo },
@@ -563,6 +570,9 @@ export class WormixGame {
 						!hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id) &&
 						this.activeWeaponIndex !== startIdx
 					);
+					if (activeWormTeam === "player") {
+						this.playerWeaponIndex = this.activeWeaponIndex;
+					}
 					this.audioManager.playTone(600, 0.03, "sine");
 				} else if (e.code === "KeyD" || e.code === "ArrowRight") {
 					do {
@@ -572,6 +582,9 @@ export class WormixGame {
 						!hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id) &&
 						this.activeWeaponIndex !== startIdx
 					);
+					if (activeWormTeam === "player") {
+						this.playerWeaponIndex = this.activeWeaponIndex;
+					}
 					this.audioManager.playTone(600, 0.03, "sine");
 				}
 			}
@@ -651,7 +664,11 @@ export class WormixGame {
 
 		if (hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id)) return;
 
-		this.activeWeaponIndex = WEAPON_LIST.findIndex((w) => w.id === "bazooka");
+		const bazookaIdx = WEAPON_LIST.findIndex((w) => w.id === "bazooka");
+		this.activeWeaponIndex = bazookaIdx;
+		if (team === "player") {
+			this.playerWeaponIndex = bazookaIdx;
+		}
 	}
 
 	private fireActiveWeapon(): void {
@@ -1049,11 +1066,27 @@ export class WormixGame {
 				}
 			}
 
-			// Turn Countdown Timer
+			// Turn Countdown Timer (if time expires, immediately end turn cleanly)
 			this.turnTimer -= 1 / 30; // 30 FPS tick
 			if (this.turnTimer <= 0) {
 				this.turnTimer = 0;
-				this.phase = "PROJECTILE_FLIGHT";
+				this.checkTurnEnd();
+			}
+		}
+
+		// 4b. PROJECTILE_FLIGHT Phase — allow human player to run & jump for cover while projectile flies!
+		if (
+			this.phase === "PROJECTILE_FLIGHT" &&
+			isHumanTurn &&
+			activeWorm?.isAlive
+		) {
+			const keys = this.inputManager.keysPressed;
+			let dir = 0;
+			if (keys.has("KeyA") || keys.has("ArrowLeft")) dir -= 1;
+			if (keys.has("KeyD") || keys.has("ArrowRight")) dir += 1;
+			activeWorm.walk(dir);
+			if (keys.has("KeyW") || keys.has("ArrowUp")) {
+				activeWorm.jump();
 			}
 		}
 
@@ -1248,8 +1281,8 @@ export class WormixGame {
 
 					// Damage map objects hit by projectile explosion (barrel chain explosions!)
 					for (const obj of this.mapObjects) {
-						if (!obj.isDestroyed && Math.hypot(obj.x - x, obj.y - y) < 45) {
-							obj.takeDamage(45);
+						if (!obj.isDestroyed && Math.hypot(obj.x - x, obj.y - y) < 55) {
+							obj.takeDamage(60);
 						}
 					}
 
@@ -1328,7 +1361,16 @@ export class WormixGame {
 		}
 
 		this.activeWormIndex = nextIdx;
-		this.worms[nextIdx].resetTurnFlags();
+		const nextWorm = this.worms[nextIdx];
+		nextWorm.resetTurnFlags();
+
+		// Restore player's last chosen weapon if starting human turn & ensure valid ammo
+		if (nextWorm.team === "player" || this.lobbyConfig.matchType === "pvp") {
+			this.activeWeaponIndex = this.playerWeaponIndex;
+			this.ensureActiveWeaponHasAmmo();
+		}
+
+		this.turnCount++;
 		this.phase = "MOVE";
 		this.turnTimer = 45.0;
 		this.aiPlan = null;
@@ -1338,6 +1380,94 @@ export class WormixGame {
 		this.repositionTimer = 0;
 		this.aiReposTargetX = null;
 		this.showDecisionOverlay(false);
+		this.updateWind();
+
+		// Auto-save match state to localStorage (keeps 3 latest saves for F5 recovery)
+		this.saveMatchState();
+	}
+
+	private saveMatchState(): void {
+		if (
+			this.phase === "MENU" ||
+			this.phase === "EDITOR" ||
+			this.phase === "GAME_OVER"
+		) {
+			return;
+		}
+
+		const saveObj: MatchSaveData = {
+			id: `save_${Date.now()}`,
+			timestamp: Date.now(),
+			dateString: new Date().toLocaleTimeString([], {
+				hour: "2-digit",
+				minute: "2-digit",
+			}),
+			lobbyConfig: this.lobbyConfig,
+			worms: this.worms.map((w) => ({
+				id: w.id,
+				name: w.name,
+				team: w.team,
+				x: w.x,
+				y: w.y,
+				health: w.health,
+				maxHealth: w.maxHealth,
+				personality: w.personality,
+				isAlive: w.isAlive,
+			})),
+			activeWormIndex: this.activeWormIndex,
+			playerWeaponIndex: this.playerWeaponIndex,
+			teamAmmo: this.teamAmmo,
+			windX: this.windX,
+			turnCount: this.turnCount,
+			terrainData: {
+				gridData: Array.from(this.terrain.grid),
+				waterY: this.terrain.waterY,
+				width: this.terrain.width,
+				height: this.terrain.height,
+			},
+		};
+
+		try {
+			const existingJson = localStorage.getItem("wormix_saved_matches");
+			let saves: MatchSaveData[] = existingJson ? JSON.parse(existingJson) : [];
+			saves.unshift(saveObj);
+			saves = saves.slice(0, 3);
+			localStorage.setItem("wormix_saved_matches", JSON.stringify(saves));
+		} catch (err) {
+			console.warn("Failed to save match state:", err);
+		}
+	}
+
+	public loadMatchState(saveData: MatchSaveData): void {
+		this.lobbyConfig = saveData.lobbyConfig;
+		this.aiDifficulty = saveData.lobbyConfig.aiDifficulty;
+		this.windX = saveData.windX;
+		this.playerWeaponIndex = saveData.playerWeaponIndex ?? 0;
+		this.activeWeaponIndex = this.playerWeaponIndex;
+		this.teamAmmo = saveData.teamAmmo;
+
+		if (saveData.terrainData) {
+			this.terrain.buildTerrainFromHeights(
+				[],
+				saveData.terrainData.waterY,
+				[],
+				saveData.terrainData.gridData,
+			);
+		}
+
+		this.worms = saveData.worms.map((sw) => {
+			const w = new Worm(sw.id, sw.name, sw.team, sw.x, sw.y, sw.personality);
+			w.health = sw.health;
+			w.maxHealth = sw.maxHealth;
+			w.isAlive = sw.isAlive;
+			return w;
+		});
+
+		this.activeWormIndex = saveData.activeWormIndex;
+		this.phase = "MOVE";
+		this.turnTimer = 45.0;
+		this.ensureActiveWeaponHasAmmo();
+		this.showReturnToEditorBtn();
 		this.updateWind();
 	}
 
@@ -1376,12 +1506,8 @@ export class WormixGame {
 		// Render Visual Effect Particles (trails, flashes, smoke)
 		this.effects.draw(this.ctx);
 
-		// Trajectory sighting arc (world space — matches real flight path)
-		if (
-			activeWorm?.isAlive &&
-			!this.aiThinking &&
-			(this.phase === "AIM_FIRE" || this.phase === "MOVE")
-		) {
+		// Trajectory sighting arc (strictly shown ONLY during AIM_FIRE phase)
+		if (activeWorm?.isAlive && !this.aiThinking && this.phase === "AIM_FIRE") {
 			const wid = WEAPON_LIST[this.activeWeaponIndex].id;
 			const powerToDraw = this.isCharging ? this.chargePower : 0.6;
 			const arcWind = WEAPON_LIST[this.activeWeaponIndex].affectedByWind

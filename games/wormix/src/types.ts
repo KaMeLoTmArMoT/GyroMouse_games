@@ -403,3 +403,34 @@ export interface LobbyConfig {
 	matchType: "ai" | "pvp";
 	enableWind?: boolean;
 }
+
+export interface SavedWormState {
+	id: string;
+	name: string;
+	team: "player" | "ai";
+	x: number;
+	y: number;
+	health: number;
+	maxHealth: number;
+	personality?: AIPersonality;
+	isAlive: boolean;
+}
+
+export interface MatchSaveData {
+	id: string;
+	timestamp: number;
+	dateString: string;
+	lobbyConfig: LobbyConfig;
+	worms: SavedWormState[];
+	activeWormIndex: number;
+	playerWeaponIndex: number;
+	teamAmmo: Record<"player" | "ai", TeamAmmo>;
+	windX: number;
+	turnCount: number;
+	terrainData?: {
+		gridData: number[];
+		waterY: number;
+		width: number;
+		height: number;
+	};
+}

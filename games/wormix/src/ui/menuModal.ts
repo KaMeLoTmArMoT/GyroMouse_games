@@ -4,6 +4,7 @@ import type {
 	CustomMapData,
 	GameMode,
 	LobbyConfig,
+	MatchSaveData,
 } from "../types";
 
 export class MenuModal {
@@ -25,15 +26,18 @@ export class MenuModal {
 	) => void;
 	private onOpenEditorCallback: () => void;
 	private onOpenMapManagerCallback: () => void;
+	private onLoadSavedMatchCallback?: (saveData: MatchSaveData) => void;
 
 	constructor(
 		onStartMatch: (config: LobbyConfig, mapData?: CustomMapData) => void,
 		onOpenEditor: () => void,
 		onOpenMapManager: () => void,
+		onLoadSavedMatch?: (saveData: MatchSaveData) => void,
 	) {
 		this.onStartMatchCallback = onStartMatch;
 		this.onOpenEditorCallback = onOpenEditor;
 		this.onOpenMapManagerCallback = onOpenMapManager;
+		this.onLoadSavedMatchCallback = onLoadSavedMatch;
 
 		this.overlayEl = document.createElement("div");
 		this.overlayEl.id = "wormixMenuModal";
@@ -238,6 +242,12 @@ export class MenuModal {
 
       <div class="wormix-menu-card">
         <div class="menu-title">🐛💥 WORMIX</div>
+
+        <!-- Saved Match Recovery Section (F5 recovery) -->
+        <div id="continueMatchSection" style="display:none; margin-bottom: 12px; width:100%;">
+          <div style="font-size:12px; color:#facc15; font-weight:bold; margin-bottom:6px; text-transform:uppercase;">🔄 Continue Saved Match (F5 Recovery)</div>
+          <div id="savedMatchesList" style="display:flex; flex-direction:column; gap:6px;"></div>
+        </div>
 
         <!-- Row 1: Quick Play + Custom Match -->
         <div class="menu-action-row">
@@ -462,8 +472,53 @@ export class MenuModal {
 		}
 	}
 
+	private renderSavedMatches(): void {
+		const section = this.overlayEl.querySelector(
+			"#continueMatchSection",
+		) as HTMLElement | null;
+		const list = this.overlayEl.querySelector(
+			"#savedMatchesList",
+		) as HTMLElement | null;
+		if (!section || !list) return;
+
+		try {
+			const savedJson = localStorage.getItem("wormix_saved_matches");
+			if (!savedJson) {
+				section.style.display = "none";
+				return;
+			}
+			const saves: MatchSaveData[] = JSON.parse(savedJson);
+			if (!saves || saves.length === 0) {
+				section.style.display = "none";
+				return;
+			}
+
+			list.innerHTML = "";
+			saves.forEach((save) => {
+				const aliveWorms = save.worms.filter((w) => w.isAlive).length;
+				const btn = document.createElement("button");
+				btn.className = "gm-action-btn primary";
+				btn.style.background = "linear-gradient(135deg, #2563eb, #3b82f6)";
+				btn.style.width = "100%";
+				btn.style.padding = "8px 12px";
+				btn.style.fontSize = "13px";
+				btn.style.textAlign = "left";
+				btn.innerHTML = `🔄 Resume (${save.dateString}) — ${save.lobbyConfig.gameMode.toUpperCase()} (${aliveWorms} worms alive)`;
+				btn.addEventListener("click", () => {
+					this.hide();
+					this.onLoadSavedMatchCallback?.(save);
+				});
+				list.appendChild(btn);
+			});
+			section.style.display = "block";
+		} catch {
+			section.style.display = "none";
+		}
+	}
+
 	public show(): void {
 		this.populateMapSelect();
+		this.renderSavedMatches();
 		this.overlayEl.style.display = "flex";
 		// Reset custom settings to collapsed
 		const customSettings = this.overlayEl.querySelector(

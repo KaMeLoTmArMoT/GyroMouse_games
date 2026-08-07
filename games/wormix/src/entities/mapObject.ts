@@ -23,7 +23,7 @@ export class MapObject {
 		this.type = data.type;
 		this.x = data.x;
 		this.y = data.y;
-		this.health = data.type === "barrel" ? 50 : 10;
+		this.health = data.type === "barrel" ? 40 : 10;
 	}
 
 	public update(
@@ -95,7 +95,9 @@ export class MapObject {
 			this.health -= amount;
 		} else if (this.type === "landmine") {
 			this.isTriggered = true;
-			this.triggerTimer = Math.min(this.triggerTimer, 5);
+			this.triggerTimer = Math.min(this.triggerTimer, 3); // Immediate detonation on hit!
+		} else if (this.type === "health_crate") {
+			this.isDestroyed = true;
 		}
 	}
 
