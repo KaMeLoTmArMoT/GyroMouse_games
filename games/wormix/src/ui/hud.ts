@@ -100,6 +100,7 @@ export class HUD {
 		teamAmmo: TeamAmmo = {},
 		repositionTimer: number = 0,
 		_isAiDebugMode: boolean = false,
+		isBotVsBot: boolean = false,
 	): void {
 		ctx.save();
 
@@ -115,6 +116,7 @@ export class HUD {
 			isPvP,
 			activeWorm?.team ?? "player",
 			repositionTimer,
+			isBotVsBot,
 		);
 
 		// 3. Power Charge Meter (When holding Space)
@@ -187,13 +189,29 @@ export class HUD {
 		isPvP: boolean = false,
 		activeTeam: "player" | "ai" = "player",
 		repositionTimer: number = 0,
+		isBotVsBot: boolean = false,
 	): void {
 		if (phase === "GAME_OVER" || phase === "PROJECTILE_FLIGHT") return;
 
 		let bannerText = "";
 		let hintText = "";
 
-		if (phase === "MOVE") {
+		if (isBotVsBot) {
+			const teamName = activeTeam === "player" ? "🔴 RED BOT" : "🔵 BLUE BOT";
+			if (phase === "MOVE") {
+				bannerText = `🤖 ${teamName} — THINKING & MOVING`;
+				hintText = "Bot vs Bot Match • Press F3 for AI Debug";
+			} else if (phase === "WEAPON_SELECT") {
+				bannerText = `🤖 ${teamName} — WEAPON SELECT`;
+				hintText = "Bot vs Bot Match • Press F3 for AI Debug";
+			} else if (phase === "AIM_FIRE") {
+				bannerText = `🤖 ${teamName} — AIM & FIRE`;
+				hintText = "Bot vs Bot Match • Press F3 for AI Debug";
+			} else if (phase === "REPOSITION") {
+				bannerText = `🤖 ${teamName} — RUN FOR COVER!`;
+				hintText = `${Math.ceil(repositionTimer)}s — Bot repositioning`;
+			}
+		} else if (phase === "MOVE") {
 			bannerText = isPvP
 				? activeTeam === "player"
 					? "🔴 RED PLAYER TURN — MOVE"

@@ -5,6 +5,7 @@ import type {
 	GameMode,
 	LobbyConfig,
 	MatchSaveData,
+	MatchType,
 } from "../types";
 
 export class MenuModal {
@@ -16,6 +17,8 @@ export class MenuModal {
 		gameMode: "deathmatch",
 		mapId: "random",
 		aiDifficulty: "normal",
+		redAiDifficulty: "normal",
+		blueAiDifficulty: "normal",
 		matchType: "ai",
 		enableWind: false,
 	};
@@ -265,12 +268,22 @@ export class MenuModal {
               <div class="pill-group" data-setting="matchType">
                 <button class="pill active" data-value="ai">🤖 AI</button>
                 <button class="pill" data-value="pvp">👥 PvP</button>
+                <button class="pill" data-value="bot_vs_bot">🤖⚡🤖 Bot vs Bot</button>
               </div>
             </div>
 
-            <div class="menu-row" id="rowDifficulty">
-              <span class="menu-label">🎯 Difficulty</span>
-              <div class="pill-group" data-setting="difficulty">
+            <div class="menu-row" id="rowRedDifficulty" style="display:none;">
+              <span class="menu-label">🔴 Red Bot</span>
+              <div class="pill-group" data-setting="redDifficulty">
+                <button class="pill" data-value="easy">🐣 Easy</button>
+                <button class="pill active" data-value="normal">🎯 Normal</button>
+                <button class="pill" data-value="hard">🔥 Hard</button>
+              </div>
+            </div>
+
+            <div class="menu-row" id="rowBlueDifficulty">
+              <span class="menu-label" id="lblBlueDifficulty">🎯 Bot Difficulty</span>
+              <div class="pill-group" data-setting="blueDifficulty">
                 <button class="pill" data-value="easy">🐣 Easy</button>
                 <button class="pill active" data-value="normal">🎯 Normal</button>
                 <button class="pill" data-value="hard">🔥 Hard</button>
@@ -384,13 +397,30 @@ export class MenuModal {
 
 				const setting = (group as HTMLElement).dataset.setting;
 				if (setting === "matchType") {
-					this.config.matchType = target.dataset.value as "ai" | "pvp";
-					const diffRow = el.querySelector("#rowDifficulty") as HTMLElement;
-					if (diffRow)
-						diffRow.style.display =
-							this.config.matchType === "pvp" ? "none" : "flex";
-				} else if (setting === "difficulty") {
-					this.config.aiDifficulty = target.dataset.value as AIDifficulty;
+					const mt = target.dataset.value as MatchType;
+					this.config.matchType = mt;
+					const rowRed = el.querySelector("#rowRedDifficulty") as HTMLElement;
+					const rowBlue = el.querySelector("#rowBlueDifficulty") as HTMLElement;
+					const lblBlue = el.querySelector("#lblBlueDifficulty") as HTMLElement;
+
+					if (mt === "pvp") {
+						if (rowRed) rowRed.style.display = "none";
+						if (rowBlue) rowBlue.style.display = "none";
+					} else if (mt === "bot_vs_bot") {
+						if (rowRed) rowRed.style.display = "flex";
+						if (rowBlue) rowBlue.style.display = "flex";
+						if (lblBlue) lblBlue.textContent = "🔵 Blue Bot";
+					} else {
+						if (rowRed) rowRed.style.display = "none";
+						if (rowBlue) rowBlue.style.display = "flex";
+						if (lblBlue) lblBlue.textContent = "🎯 Bot Difficulty";
+					}
+				} else if (setting === "redDifficulty") {
+					this.config.redAiDifficulty = target.dataset.value as AIDifficulty;
+				} else if (setting === "blueDifficulty" || setting === "difficulty") {
+					const diff = target.dataset.value as AIDifficulty;
+					this.config.aiDifficulty = diff;
+					this.config.blueAiDifficulty = diff;
 				} else if (setting === "teamSize") {
 					this.config.teamSize = parseInt(target.dataset.value!, 10);
 				} else if (setting === "health") {

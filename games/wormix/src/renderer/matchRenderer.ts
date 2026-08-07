@@ -128,6 +128,7 @@ export class MatchRenderer {
 				teamAmmo[activeTeam as "player" | "ai"] ?? {},
 				repositionTimer,
 				isAiDebugMode,
+				lobbyConfig.matchType === "bot_vs_bot",
 			);
 		} catch (err) {
 			console.error("[Wormix] HUD Render Error:", err);

@@ -26,6 +26,8 @@ export class TurnController {
 		gameMode: "deathmatch",
 		mapId: "random",
 		aiDifficulty: "normal",
+		redAiDifficulty: "normal",
+		blueAiDifficulty: "normal",
 		matchType: "ai",
 	};
 

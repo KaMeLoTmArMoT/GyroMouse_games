@@ -393,6 +393,7 @@ export interface WeightVector {
 }
 
 export type GameMode = "deathmatch" | "rising_water" | "fort_warfare";
+export type MatchType = "ai" | "pvp" | "bot_vs_bot";
 
 export interface LobbyConfig {
 	teamSize: number;
@@ -400,7 +401,9 @@ export interface LobbyConfig {
 	gameMode: GameMode;
 	mapId: string;
 	aiDifficulty: AIDifficulty;
-	matchType: "ai" | "pvp";
+	redAiDifficulty?: AIDifficulty;
+	blueAiDifficulty?: AIDifficulty;
+	matchType: MatchType;
 	enableWind?: boolean;
 }
 

@@ -242,7 +242,12 @@ export class WormixGame {
 			this.worms.push(blueWorm);
 		}
 
-		this.aiTurnCtrl.rollPersonalities(this.worms, config.aiDifficulty);
+		this.aiTurnCtrl.rollPersonalities(
+			this.worms,
+			config.redAiDifficulty ?? "normal",
+			config.blueAiDifficulty ?? config.aiDifficulty ?? "normal",
+			config.matchType,
+		);
 
 		// 3. Initialize Interactive Map Objects
 		this.mapObjects = [];
@@ -451,8 +456,14 @@ export class WormixGame {
 			// 3-Step Turn Flow on Space Bar
 			if (e.code === "Space" && !e.repeat) {
 				const activeWorm = this.getActiveWorm();
-				const isPvP = this.turnCtrl.lobbyConfig.matchType === "pvp";
-				if (activeWorm && (activeWorm.team === "player" || isPvP)) {
+				const matchType = this.turnCtrl.lobbyConfig.matchType;
+				const isPvP = matchType === "pvp";
+				const isBotVsBot = matchType === "bot_vs_bot";
+				if (
+					activeWorm &&
+					!isBotVsBot &&
+					(activeWorm.team === "player" || isPvP)
+				) {
 					if (this.turnCtrl.phase === "MOVE") {
 						this.turnCtrl.phase = "WEAPON_SELECT";
 						this.weaponCtrl.ensureActiveWeaponHasAmmo(activeWorm, (idx) => {
@@ -531,8 +542,11 @@ export class WormixGame {
 			if (this.turnCtrl.phase === "MENU" || this.turnCtrl.phase === "EDITOR")
 				return;
 			const activeWorm = this.getActiveWorm();
-			const isPvP = this.turnCtrl.lobbyConfig.matchType === "pvp";
-			if (!activeWorm || (activeWorm.team !== "player" && !isPvP)) return;
+			const matchType = this.turnCtrl.lobbyConfig.matchType;
+			const isPvP = matchType === "pvp";
+			const isBotVsBot = matchType === "bot_vs_bot";
+			if (!activeWorm || isBotVsBot || (activeWorm.team !== "player" && !isPvP))
+				return;
 
 			const rect = this.canvas.getBoundingClientRect();
 			const clickX = e.clientX - rect.left;
@@ -585,9 +599,12 @@ export class WormixGame {
 				return;
 			if (this.inputManager.settings.mode !== "pointer") return;
 			const activeWorm = this.getActiveWorm();
-			const isPvP = this.turnCtrl.lobbyConfig.matchType === "pvp";
+			const matchType = this.turnCtrl.lobbyConfig.matchType;
+			const isPvP = matchType === "pvp";
+			const isBotVsBot = matchType === "bot_vs_bot";
 			if (
 				!activeWorm ||
+				isBotVsBot ||
 				(activeWorm.team !== "player" && !isPvP) ||
 				this.turnCtrl.phase !== "AIM_FIRE"
 			)
@@ -695,9 +712,13 @@ export class WormixGame {
 		}
 
 		const activeWorm = this.getActiveWorm();
-		const isPvP = this.turnCtrl.lobbyConfig.matchType === "pvp";
+		const matchType = this.turnCtrl.lobbyConfig.matchType;
+		const isPvP = matchType === "pvp";
+		const isBotVsBot = matchType === "bot_vs_bot";
 		const isHumanTurn =
-			activeWorm?.isAlive && (activeWorm.team === "player" || isPvP);
+			activeWorm?.isAlive &&
+			!isBotVsBot &&
+			(activeWorm.team === "player" || isPvP);
 
 		if (isHumanTurn) {
 			const keys = this.inputManager.keysPressed;
@@ -782,7 +803,7 @@ export class WormixGame {
 				if (keys.has("KeyW") || keys.has("ArrowUp")) {
 					activeWorm.jump();
 				}
-			} else if (activeWorm.team === "ai") {
+			} else {
 				if (this.aiTurnCtrl.aiReposTargetX === null) {
 					this.aiTurnCtrl.aiReposTargetX =
 						this.aiTurnCtrl.pickAiRepositionTarget(
@@ -818,14 +839,19 @@ export class WormixGame {
 
 		// AI Turn Logic
 		const isAiTurn =
-			!isPvP &&
-			activeWorm !== null &&
-			activeWorm.isAlive &&
-			activeWorm.team === "ai";
+			Boolean(activeWorm?.isAlive) &&
+			(isBotVsBot || (!isPvP && activeWorm?.team === "ai"));
 
 		this.aiTurnCtrl.showDecisionOverlay(isAiTurn && this.aiTurnCtrl.aiThinking);
 
 		if (isAiTurn && activeWorm) {
+			const activeWormDiff =
+				activeWorm.team === "player"
+					? (this.turnCtrl.lobbyConfig.redAiDifficulty ?? "normal")
+					: (this.turnCtrl.lobbyConfig.blueAiDifficulty ??
+						this.turnCtrl.lobbyConfig.aiDifficulty ??
+						"normal");
+
 			if (
 				!this.aiTurnCtrl.aiDebugFrozen &&
 				(this.turnCtrl.phase === "MOVE" ||
@@ -860,10 +886,10 @@ export class WormixGame {
 						terrain: this.terrain,
 						mapObjects: this.mapObjects,
 						windX: this.turnCtrl.windX,
-						difficulty: this.turnCtrl.aiDifficulty,
+						difficulty: activeWormDiff,
 						personality:
 							this.aiTurnCtrl.aiPersonalities[activeWorm.id] ?? "default",
-						availableAmmo: this.weaponCtrl.teamAmmo.ai,
+						availableAmmo: this.weaponCtrl.teamAmmo[activeWorm.team],
 						gameMode: this.turnCtrl.lobbyConfig.gameMode,
 					});
 					this.aiTurnCtrl.aiThinking = true;
@@ -927,7 +953,7 @@ export class WormixGame {
 						this.terrain,
 						this.mapObjects,
 						this.turnCtrl.windX,
-						this.turnCtrl.aiDifficulty,
+						activeWormDiff,
 						this.weaponCtrl.teamAmmo,
 						this.turnCtrl.lobbyConfig.gameMode,
 					);
@@ -1041,6 +1067,7 @@ export class WormixGame {
 				const nextWorm = this.getActiveWorm();
 				if (
 					nextWorm &&
+					this.turnCtrl.lobbyConfig.matchType !== "bot_vs_bot" &&
 					(nextWorm.team === "player" ||
 						this.turnCtrl.lobbyConfig.matchType === "pvp")
 				) {

@@ -5,6 +5,7 @@ import type {
 	AIDifficulty,
 	AIPersonality,
 	GameMode,
+	MatchType,
 	TeamAmmo,
 	TurnPhase,
 } from "../types";
@@ -38,11 +39,17 @@ export class AITurnController {
 		this.aiReposTargetX = null;
 	}
 
-	public rollPersonalities(worms: Worm[], difficulty: AIDifficulty): void {
+	public rollPersonalities(
+		worms: Worm[],
+		redDifficulty: AIDifficulty,
+		blueDifficulty: AIDifficulty,
+		matchType: MatchType = "ai",
+	): void {
 		this.aiPersonalities = {};
 		for (const w of worms) {
-			if (w.team === "ai") {
-				const p = WormAI.rollPersonality(difficulty);
+			if (matchType === "bot_vs_bot" || w.team === "ai") {
+				const diff = w.team === "player" ? redDifficulty : blueDifficulty;
+				const p = WormAI.rollPersonality(diff);
 				this.aiPersonalities[w.id] = p;
 				w.personality = p;
 			}
@@ -106,7 +113,7 @@ export class AITurnController {
 			windX,
 			difficulty,
 			personality: this.aiPersonalities[activeWorm.id] ?? "default",
-			availableAmmo: teamAmmo.ai,
+			availableAmmo: teamAmmo[activeWorm.team],
 			gameMode,
 			deadlineMs: 80,
 			fixedPositionX: activeWorm.x,
