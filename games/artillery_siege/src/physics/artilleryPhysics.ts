@@ -40,6 +40,17 @@ export interface ImpactRecord {
 	shellType: ShellType;
 }
 
+export interface VoxelChunk {
+	id: string;
+	body: RAPIER.RigidBody;
+	collider: RAPIER.Collider;
+	position: { x: number; y: number; z: number };
+	rotation: { x: number; y: number; z: number; w: number };
+	size: { x: number; y: number; z: number };
+	spawnTime: number;
+	isFrozen?: boolean;
+}
+
 export class ArtilleryPhysicsManager {
 	public world!: RAPIER.World;
 	public isInitialized: boolean = false;
@@ -47,6 +58,7 @@ export class ArtilleryPhysicsManager {
 	public groundCollider!: RAPIER.Collider;
 	public targets: Map<string, TargetStructure> = new Map();
 	public activeBalls: Cannonball[] = [];
+	public voxelChunks: VoxelChunk[] = [];
 	public lastImpact: ImpactRecord | null = null;
 	public impactHistory: ImpactRecord[] = [];
 
@@ -248,11 +260,15 @@ export class ArtilleryPhysicsManager {
 			const category =
 				cfg.category ||
 				(cfg.x < -3 ? "tower_left" : cfg.x > 3 ? "tower_right" : "keep");
+
+			// Foundation / Base blocks (y < 1.0) get 2.5x HP boost for high stability!
+			const finalHp = cfg.y < 1.0 ? Math.floor(cfg.hp * 2.5) : cfg.hp;
+
 			const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
 				.setTranslation(cfg.x, cfg.y + cfg.sizeY / 2, cfg.z)
 				.setLinearDamping(0.6)
 				.setAngularDamping(0.6)
-				.setCanSleep(true); // Optimization: enable rigid body sleeping!
+				.setCanSleep(true);
 			const body = this.world.createRigidBody(bodyDesc);
 
 			const colliderDesc = RAPIER.ColliderDesc.cuboid(
@@ -271,8 +287,8 @@ export class ArtilleryPhysicsManager {
 				collider,
 				position: { x: cfg.x, y: cfg.y + cfg.sizeY / 2, z: cfg.z },
 				size: { x: cfg.sizeX, y: cfg.sizeY, z: cfg.sizeZ },
-				hp: cfg.hp,
-				maxHp: cfg.hp,
+				hp: finalHp,
+				maxHp: finalHp,
 				isDestroyed: false,
 				scoreValue: cfg.score,
 				category,
@@ -525,24 +541,33 @@ export class ArtilleryPhysicsManager {
 				slowMoTrigger: false,
 			};
 
-		// Track active ball trajectory
+		// Track active ball trajectory & handle cluster split
+		const newSubMunitions: Cannonball[] = [];
 		this.activeBalls.forEach((b) => {
 			if (b.active) {
-				const pos = b.body.translation();
-				b.trajectoryPoints.push({ x: pos.x, y: pos.y, z: pos.z });
+				try {
+					const pos = b.body.translation();
+					b.trajectoryPoints.push({ x: pos.x, y: pos.y, z: pos.z });
 
-				// CLUSTER SHELL AUTO-SPLIT at ~45m travel distance!
-				if (b.shellType === "CLUSTER" && !b.hasSplit) {
-					const distTraveled = Math.hypot(
-						pos.x - b.spawnPos.x,
-						pos.z - b.spawnPos.z,
-					);
-					if (distTraveled >= 40.0 || pos.z >= 38.0) {
-						this.splitClusterShell(b);
+					// CLUSTER SHELL AUTO-SPLIT at ~40m travel distance (ONLY for main parent cluster shell!)
+					if (b.shellType === "CLUSTER" && !b.hasSplit && !b.isSubMunition) {
+						const distTraveled = Math.hypot(
+							pos.x - b.spawnPos.x,
+							pos.z - b.spawnPos.z,
+						);
+						if (distTraveled >= 40.0 || pos.z >= 38.0) {
+							b.hasSplit = true;
+							const subs = this.splitClusterShell(b);
+							newSubMunitions.push(...subs);
+						}
 					}
-				}
+				} catch (_e) {}
 			}
 		});
+
+		if (newSubMunitions.length > 0) {
+			this.activeBalls.push(...newSubMunitions);
+		}
 
 		// Step Rapier physics world
 		this.world.step();
@@ -652,11 +677,22 @@ export class ArtilleryPhysicsManager {
 							);
 						}
 
-						// Destruction check
+						// Voxel Destruction check
 						if (target.hp <= 0 && !target.isDestroyed) {
 							target.isDestroyed = true;
 							destroyedTargets.push(target.id);
 							totalCoinsThisFrame += target.scoreValue;
+
+							// 1. Shatter destroyed target block into Voxel Chunks!
+							this.shatterTargetIntoVoxels(target, pos, vel);
+
+							// 2. Levolution Structural Collapse: wake & collapse blocks above
+							this.triggerLevolutionCollapse(tPos);
+
+							// 3. Remove main solid target body from physics world
+							try {
+								this.world.removeRigidBody(target.body);
+							} catch (_e) {}
 						}
 					}
 				});
@@ -700,17 +736,65 @@ export class ArtilleryPhysicsManager {
 			this.coinsEarned += totalCoinsThisFrame;
 		}
 
+		// Process Fall Damage for tumbling/falling blocks upon impact
+		this.targets.forEach((target) => {
+			if (target.isDestroyed) return;
+			try {
+				const p = target.body.translation();
+				const v = target.body.linvel();
+
+				// High-speed fall impact on ground
+				if (v.y < -5.0 && p.y <= target.size.y / 2 + 0.5) {
+					const fallDamage = Math.floor(Math.abs(v.y) * 24.0);
+					target.hp -= fallDamage;
+
+					if (target.hp <= 0 && !target.isDestroyed) {
+						target.isDestroyed = true;
+						destroyedTargets.push(target.id);
+						totalCoinsThisFrame += target.scoreValue;
+
+						this.shatterTargetIntoVoxels(target, p, v);
+						this.triggerLevolutionCollapse(p);
+
+						try {
+							this.world.removeRigidBody(target.body);
+						} catch (_e) {}
+					}
+				}
+			} catch (_e) {}
+		});
+
 		// Remove inactive balls from array
 		this.activeBalls = this.activeBalls.filter(
 			(b) => b.active || performance.now() - b.spawnTime < 1200,
 		);
 
-		// Sync visual positions of target bodies
+		// Cleanup old voxel chunks after 3.5s
+		this.voxelChunks = this.voxelChunks.filter((vc) => {
+			if (now - vc.spawnTime > 3500) {
+				try {
+					this.world.removeRigidBody(vc.body);
+				} catch (_e) {}
+				return false;
+			}
+			return true;
+		});
+
+		// Sync visual positions of target bodies & voxel chunks
 		this.targets.forEach((target) => {
 			if (!target.isDestroyed) {
 				const p = target.body.translation();
 				target.position = { x: p.x, y: p.y, z: p.z };
 			}
+		});
+
+		this.voxelChunks.forEach((vc) => {
+			try {
+				const p = vc.body.translation();
+				const r = vc.body.rotation();
+				vc.position = { x: p.x, y: p.y, z: p.z };
+				vc.rotation = { x: r.x, y: r.y, z: r.z, w: r.w };
+			} catch (_e) {}
 		});
 
 		return {
@@ -722,17 +806,18 @@ export class ArtilleryPhysicsManager {
 		};
 	}
 
-	private splitClusterShell(parentBall: Cannonball) {
+	private splitClusterShell(parentBall: Cannonball): Cannonball[] {
 		parentBall.hasSplit = true;
 		const pos = parentBall.body.translation();
 		const vel = parentBall.body.linvel();
+		const subs: Cannonball[] = [];
 
 		// Spawn 5 sub-munition bombs in radial cone
 		for (let i = 0; i < 5; i++) {
 			const angle = (i / 5) * Math.PI * 2;
-			const spreadSpeed = 8.0;
+			const spreadSpeed = 7.0;
 			const subVx = vel.x + Math.cos(angle) * spreadSpeed;
-			const subVy = vel.y + 4.0 + (Math.random() - 0.5) * 3.0;
+			const subVy = vel.y + 3.0 + (Math.random() - 0.5) * 2.0;
 			const subVz = vel.z + Math.sin(angle) * spreadSpeed;
 
 			const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
@@ -752,7 +837,7 @@ export class ArtilleryPhysicsManager {
 
 			body.setLinvel({ x: subVx, y: subVy, z: subVz }, true);
 
-			this.activeBalls.push({
+			subs.push({
 				id: `sub_${parentBall.id}_${i}`,
 				body,
 				collider,
@@ -761,9 +846,132 @@ export class ArtilleryPhysicsManager {
 				shellType: "CLUSTER",
 				spawnPos: { x: pos.x, y: pos.y, z: pos.z },
 				trajectoryPoints: [{ x: pos.x, y: pos.y, z: pos.z }],
+				hasSplit: true, // CRITICAL: Mark sub-munitions as already split!
 				isSubMunition: true,
 			});
 		}
+		return subs;
+	}
+
+	private shatterTargetIntoVoxels(
+		target: TargetStructure,
+		impactPos: { x: number; y: number; z: number },
+		_impactVel: { x: number; y: number; z: number },
+	) {
+		const tPos = target.position;
+		const sz = target.size;
+		const halfX = sz.x / 2;
+		const halfY = sz.y / 2;
+		const halfZ = sz.z / 2;
+
+		// Spawn 8 voxel sub-chunks (2x2x2 grid)
+		const subSizeX = sz.x / 2.2;
+		const subSizeY = sz.y / 2.2;
+		const subSizeZ = sz.z / 2.2;
+
+		const offsets = [
+			{ x: -halfX / 2, y: -halfY / 2, z: -halfZ / 2 },
+			{ x: halfX / 2, y: -halfY / 2, z: -halfZ / 2 },
+			{ x: -halfX / 2, y: halfY / 2, z: -halfZ / 2 },
+			{ x: halfX / 2, y: halfY / 2, z: -halfZ / 2 },
+			{ x: -halfX / 2, y: -halfY / 2, z: halfZ / 2 },
+			{ x: halfX / 2, y: -halfY / 2, z: halfZ / 2 },
+			{ x: -halfX / 2, y: halfY / 2, z: halfZ / 2 },
+			{ x: halfX / 2, y: halfY / 2, z: halfZ / 2 },
+		];
+
+		const now = performance.now();
+
+		offsets.forEach((off, idx) => {
+			const spawnX = tPos.x + off.x;
+			const spawnY = Math.max(0.4, tPos.y + off.y);
+			const spawnZ = tPos.z + off.z;
+
+			const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
+				.setTranslation(spawnX, spawnY, spawnZ)
+				.setLinearDamping(0.3)
+				.setAngularDamping(0.3)
+				.setCanSleep(true);
+
+			const body = this.world.createRigidBody(bodyDesc);
+			const colliderDesc = RAPIER.ColliderDesc.cuboid(
+				subSizeX / 2,
+				subSizeY / 2,
+				subSizeZ / 2,
+			)
+				.setDensity(1.2)
+				.setRestitution(0.2)
+				.setFriction(0.6);
+
+			const collider = this.world.createCollider(colliderDesc, body);
+
+			// Explosive outward scatter velocity
+			const dirX = spawnX - impactPos.x;
+			const dirY = spawnY - impactPos.y + 1.5;
+			const dirZ = spawnZ - impactPos.z;
+			const len = Math.max(0.1, Math.hypot(dirX, dirY, dirZ));
+
+			const speed = 12.0 + Math.random() * 8.0;
+			const vx = (dirX / len) * speed + (Math.random() - 0.5) * 4.0;
+			const vy = Math.abs(dirY / len) * speed + 3.0;
+			const vz = (dirZ / len) * speed + (Math.random() - 0.5) * 4.0;
+
+			body.setLinvel({ x: vx, y: vy, z: vz }, true);
+			body.setAngvel(
+				{
+					x: (Math.random() - 0.5) * 12,
+					y: (Math.random() - 0.5) * 12,
+					z: (Math.random() - 0.5) * 12,
+				},
+				true,
+			);
+
+			const rot = body.rotation();
+			this.voxelChunks.push({
+				id: `voxel_${target.id}_${idx}_${now}`,
+				body,
+				collider,
+				position: { x: spawnX, y: spawnY, z: spawnZ },
+				rotation: { x: rot.x, y: rot.y, z: rot.z, w: rot.w },
+				size: { x: subSizeX, y: subSizeY, z: subSizeZ },
+				spawnTime: now,
+				isFrozen: target.isFrozen,
+			});
+		});
+
+		// Limit max voxel chunks in scene to 60 for performance
+		while (this.voxelChunks.length > 60) {
+			const oldest = this.voxelChunks.shift();
+			if (oldest) {
+				try {
+					this.world.removeRigidBody(oldest.body);
+				} catch (_e) {}
+			}
+		}
+	}
+
+	private triggerLevolutionCollapse(destroyedPos: {
+		x: number;
+		y: number;
+		z: number;
+	}) {
+		// Wake up & apply downward/tumbling force to any blocks sitting directly above the destroyed block
+		this.targets.forEach((t) => {
+			if (t.isDestroyed) return;
+			const p = t.position;
+			const distXZ = Math.hypot(p.x - destroyedPos.x, p.z - destroyedPos.z);
+			if (distXZ < 3.0 && p.y > destroyedPos.y) {
+				t.body.wakeUp();
+				t.body.applyImpulse(
+					{
+						x: (Math.random() - 0.5) * 15,
+						y: -20.0,
+						z: (Math.random() - 0.5) * 15,
+					},
+					true,
+				);
+			}
+		});
 	}
 
 	public getCastleIntegrity(): {
@@ -816,6 +1024,13 @@ export class ArtilleryPhysicsManager {
 			} catch (_e) {}
 		});
 		this.activeBalls = [];
+
+		this.voxelChunks.forEach((vc) => {
+			try {
+				this.world.removeRigidBody(vc.body);
+			} catch (_e) {}
+		});
+		this.voxelChunks = [];
 
 		this.targets.forEach((target) => {
 			try {

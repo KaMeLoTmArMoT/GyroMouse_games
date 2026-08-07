@@ -433,6 +433,9 @@ export class ArtilleryGraphicsManager {
 		this.defaultCamLookAt.set(lookX, 3.0, lookZ);
 	}
 
+	// Voxel Debris Meshes
+	public voxelMeshes: Map<string, THREE.Mesh> = new Map();
+
 	public syncTargets(targets: Map<string, TargetStructure>) {
 		targets.forEach((target, id) => {
 			let group = this.targetMeshes.get(id);
@@ -469,24 +472,77 @@ export class ArtilleryGraphicsManager {
 				this.targetMeshes.set(id, group);
 			}
 
-			group.position.set(
-				target.position.x,
-				target.position.y,
-				target.position.z,
+			if (target.isDestroyed) {
+				group.visible = false; // Solid block disappears, replaced by shattered voxel chunks!
+			} else {
+				group.visible = true;
+				group.position.set(
+					target.position.x,
+					target.position.y,
+					target.position.z,
+				);
+
+				const boxMesh = group.children[0] as THREE.Mesh;
+				if (target.isFrozen) {
+					boxMesh.material = this.iceMaterial;
+				} else {
+					const hpRatio = target.hp / target.maxHp;
+					const mat = boxMesh.material as THREE.MeshStandardMaterial;
+					mat.color.setHSL(0.0 + hpRatio * 0.15, 0.8, 0.45);
+				}
+			}
+		});
+	}
+
+	public syncVoxelChunks(chunks: Array<any>) {
+		const now = performance.now();
+		chunks.forEach((chunk) => {
+			let mesh = this.voxelMeshes.get(chunk.id);
+			if (!mesh) {
+				const boxGeo = new THREE.BoxGeometry(
+					chunk.size.x,
+					chunk.size.y,
+					chunk.size.z,
+				);
+				const mat = chunk.isFrozen
+					? this.iceMaterial
+					: new THREE.MeshStandardMaterial({
+							map: this.woodTexture,
+							color: 0xd97706,
+							metalness: 0.3,
+							roughness: 0.6,
+						});
+				mesh = new THREE.Mesh(boxGeo, mat);
+				mesh.castShadow = true;
+				mesh.receiveShadow = true;
+				this.scene.add(mesh);
+				this.voxelMeshes.set(chunk.id, mesh);
+			}
+
+			mesh.position.set(chunk.position.x, chunk.position.y, chunk.position.z);
+			mesh.quaternion.set(
+				chunk.rotation.x,
+				chunk.rotation.y,
+				chunk.rotation.z,
+				chunk.rotation.w,
 			);
 
-			const boxMesh = group.children[0] as THREE.Mesh;
-
-			if (target.isDestroyed) {
-				(boxMesh.material as THREE.MeshStandardMaterial).color.setHex(0x334155);
-				(boxMesh.material as THREE.MeshStandardMaterial).opacity = 0.35;
-				(boxMesh.material as THREE.MeshStandardMaterial).transparent = true;
-			} else if (target.isFrozen) {
-				boxMesh.material = this.iceMaterial; // Apply cyan ice material overlay!
+			// Smooth scale fade-out after 2 seconds
+			const ageSec = (now - chunk.spawnTime) / 1000;
+			if (ageSec > 2.0) {
+				const fade = Math.max(0.01, (3.5 - ageSec) / 1.5);
+				mesh.scale.setScalar(fade);
 			} else {
-				const hpRatio = target.hp / target.maxHp;
-				const mat = boxMesh.material as THREE.MeshStandardMaterial;
-				mat.color.setHSL(0.0 + hpRatio * 0.15, 0.8, 0.45);
+				mesh.scale.setScalar(1.0);
+			}
+		});
+
+		// Remove old voxel meshes no longer in physics
+		this.voxelMeshes.forEach((mesh, id) => {
+			if (!chunks.some((c) => c.id === id)) {
+				this.scene.remove(mesh);
+				mesh.geometry.dispose();
+				this.voxelMeshes.delete(id);
 			}
 		});
 	}

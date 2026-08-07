@@ -413,8 +413,9 @@ class ArtilleryGame extends BaseGame {
 			}
 		}
 
-		// 8. Castle Integrity & Targets Sync
+		// 8. Castle Integrity, Targets & Voxel Debris Sync
 		this.graphics.syncTargets(this.physics.targets);
+		this.graphics.syncVoxelChunks(this.physics.voxelChunks);
 		this.hud.updateCastleIntegrity(this.physics.getCastleIntegrity());
 
 		// 9. Stats & Radar update
