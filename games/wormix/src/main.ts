@@ -260,28 +260,26 @@ export class WormixGame {
 		this.camX = this.terrain.width / 2;
 		this.camY = this.terrain.height / 2;
 
-		// 2. Initialize Worm Teams based on LobbyConfig
+		// 2. Initialize Worm Teams based on LobbyConfig (interleaved player-bot order)
 		this.worms = [];
 		const teamSize = config.teamSize;
 		const hp = config.wormHealth;
 
+		const playerSpawns =
+			mapData?.spawnPoints?.filter((sp) => sp.team === "player") || [];
+		const aiSpawns =
+			mapData?.spawnPoints?.filter((sp) => sp.team === "ai") || [];
+
 		for (let i = 0; i < teamSize; i++) {
-			const redX =
-				mapData?.spawnPoints[i]?.x || this.terrain.width * (0.15 + i * 0.12);
-			const redY =
-				mapData?.spawnPoints[i]?.y ?? this.terrain.getSurfaceY(redX) - 12;
+			const redX = playerSpawns[i]?.x || this.terrain.width * (0.15 + i * 0.12);
+			const redY = playerSpawns[i]?.y ?? this.terrain.getSurfaceY(redX) - 12;
 			const redWorm = new Worm(`p_${i}`, `Red #${i + 1}`, "player", redX, redY);
 			redWorm.health = hp;
 			redWorm.maxHealth = hp;
 			this.worms.push(redWorm);
-		}
 
-		for (let i = 0; i < teamSize; i++) {
-			const blueX =
-				mapData?.spawnPoints[i + 2]?.x ||
-				this.terrain.width * (0.65 + i * 0.12);
-			const blueY =
-				mapData?.spawnPoints[i + 2]?.y ?? this.terrain.getSurfaceY(blueX) - 12;
+			const blueX = aiSpawns[i]?.x || this.terrain.width * (0.65 + i * 0.12);
+			const blueY = aiSpawns[i]?.y ?? this.terrain.getSurfaceY(blueX) - 12;
 			const blueWorm = new Worm(
 				`ai_${i}`,
 				`Blue #${i + 1}`,
@@ -298,9 +296,9 @@ export class WormixGame {
 		this.aiPersonalities = {};
 		for (const w of this.worms) {
 			if (w.team === "ai") {
-				this.aiPersonalities[w.id] = WormAI.rollPersonality(
-					config.aiDifficulty,
-				);
+				const p = WormAI.rollPersonality(config.aiDifficulty);
+				this.aiPersonalities[w.id] = p;
+				w.personality = p;
 			}
 		}
 
@@ -1314,10 +1312,19 @@ export class WormixGame {
 			return;
 		}
 
-		// Pass turn to next alive worm
+		// Pass turn to next alive worm of the opposing team (checkerboard alternating order)
+		const currentWorm = this.worms[this.activeWormIndex];
+		const targetTeam = currentWorm?.team === "player" ? "ai" : "player";
+
 		let nextIdx = (this.activeWormIndex + 1) % this.worms.length;
-		while (!this.worms[nextIdx].isAlive) {
+		let attempts = 0;
+		while (attempts < this.worms.length * 2) {
+			const candidate = this.worms[nextIdx];
+			if (candidate?.isAlive && candidate.team === targetTeam) {
+				break;
+			}
 			nextIdx = (nextIdx + 1) % this.worms.length;
+			attempts++;
 		}
 
 		this.activeWormIndex = nextIdx;
