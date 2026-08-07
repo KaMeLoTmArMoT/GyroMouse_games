@@ -23,6 +23,7 @@ export class Projectile {
 	public prevX: number = 0;
 	public prevY: number = 0;
 	private drillEngaged: boolean = false;
+	private hitWorms: Set<string> = new Set();
 	private static readonly MAX_DRILL_FRAMES: number = 15; // ~0.5 seconds
 
 	// Mortar-specific state
@@ -155,12 +156,17 @@ export class Projectile {
 			const dist = Math.hypot(this.x - worm.x, this.y - worm.y);
 			if (dist < this.radius + worm.radius) {
 				if (this.weaponId === "rifle") {
-					worm.takeDamage(30);
 					this.triggerImpactDamage(terrain, worms, mapObjects, onExplode);
 					return;
 				} else if (this.weaponId === "drill") {
-					// Drill: damages worm but keeps going through terrain
-					worm.takeDamage(20);
+					// Drill: direct hit deals 40 damage ONCE per worm as it bores past
+					if (!this.hitWorms.has(worm.id)) {
+						this.hitWorms.add(worm.id);
+						worm.takeDamage(40);
+						const angle = Math.atan2(this.vy || 1, this.vx || 1);
+						worm.vx += Math.cos(angle) * 3;
+						worm.vy += Math.sin(angle) * 3 - 2;
+					}
 					this.drillPenetrated = true;
 				} else {
 					this.triggerExplosion(terrain, worms, mapObjects, onExplode);
@@ -289,17 +295,17 @@ export class Projectile {
 		for (const worm of worms) {
 			if (!worm.isAlive) continue;
 			const dist = Math.hypot(worm.x - this.x, worm.y - this.y);
-			if (dist < 20) {
-				worm.takeDamage(30);
+			if (dist < 22) {
+				worm.takeDamage(35);
 				const angle = Math.atan2(worm.y - this.y, worm.x - this.x);
-				worm.vx += Math.cos(angle) * 4;
-				worm.vy += Math.sin(angle) * 3 - 2;
+				worm.vx += Math.cos(angle) * 5;
+				worm.vy += Math.sin(angle) * 4 - 2;
 			}
 		}
 		// Damage objects
 		for (const obj of mapObjects) {
-			if (!obj.isDestroyed && Math.hypot(obj.x - this.x, obj.y - this.y) < 20) {
-				obj.takeDamage(30);
+			if (!obj.isDestroyed && Math.hypot(obj.x - this.x, obj.y - this.y) < 22) {
+				obj.takeDamage(35);
 			}
 		}
 
@@ -316,11 +322,38 @@ export class Projectile {
 		this.isExpired = true;
 
 		if (this.weaponId === "sand_bomb") {
-			terrain.depositSand(this.x, 35);
+			// Sand Bomb: 30 impact damage + deposit large sand mound (60px) + knockup
+			const blastRadius = 45;
+			terrain.depositSand(this.x, 60);
+			terrain.explode(this.x, this.y - 10, 20);
+			for (const worm of worms) {
+				if (!worm.isAlive) continue;
+				const dist = Math.hypot(worm.x - this.x, worm.y - this.y);
+				if (dist < blastRadius + worm.radius) {
+					const force = 1 - dist / (blastRadius + worm.radius);
+					worm.takeDamage(Math.floor(30 * force));
+					worm.vy -= force * 8; // launch upward onto/into sand mound
+					worm.vx += (Math.random() - 0.5) * 4;
+					worm.isGrounded = false;
+				}
+			}
 		} else if (this.weaponId === "acid_bomb") {
-			// Buffed: small terrain explosion + large acid pool
-			terrain.explode(this.x, this.y, 20);
-			terrain.spawnElementStream(this.x, this.y, CELL_ACID, 30);
+			// Acid Bomb: 40 blast damage + large acid pool (60 acid particles) + strong knockback
+			const blastRadius = 40;
+			terrain.explode(this.x, this.y, blastRadius);
+			terrain.spawnElementStream(this.x, this.y, CELL_ACID, 60);
+			for (const worm of worms) {
+				if (!worm.isAlive) continue;
+				const dist = Math.hypot(worm.x - this.x, worm.y - this.y);
+				if (dist < blastRadius + worm.radius) {
+					const force = 1 - dist / (blastRadius + worm.radius);
+					worm.takeDamage(Math.floor(40 * force));
+					const angle = Math.atan2(worm.y - this.y, worm.x - this.x);
+					worm.vx += Math.cos(angle) * force * 10;
+					worm.vy += Math.sin(angle) * force * 8 - 3;
+					worm.isGrounded = false;
+				}
+			}
 		} else if (this.weaponId === "mortar") {
 			// Airburst: explode at current position, rain 8 fragments downward
 			const fragCount = 8;

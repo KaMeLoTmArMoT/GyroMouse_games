@@ -85,6 +85,7 @@ export class WormixGame {
 
 	// AI Turn State
 	private aiPlan: AITurnPlan | null = null;
+	private lastAiPlan: AITurnPlan | null = null;
 	private aiPersonalities: Record<string, AIPersonality> = {};
 	private aiPlanner: AIPlanner | null = null;
 	private aiThinking: boolean = false;
@@ -524,6 +525,30 @@ export class WormixGame {
 				return;
 			}
 
+			// Number Keys 1-9 to quickly select weapons and enter AIM_FIRE phase
+			if (e.code.startsWith("Digit")) {
+				const num = Number.parseInt(e.code.replace("Digit", ""), 10);
+				if (num >= 1 && num <= WEAPON_LIST.length) {
+					const idx = num - 1;
+					const activeWorm = this.getActiveWorm();
+					const team = activeWorm?.team ?? "player";
+					const ammo = this.teamAmmo[team as "player" | "ai"];
+					const wid = WEAPON_LIST[idx].id;
+					if (wid === "bazooka" || (ammo[wid as keyof TeamAmmo] ?? 0) > 0) {
+						this.activeWeaponIndex = idx;
+						if (team === "player") this.playerWeaponIndex = idx;
+						if (
+							this.phase === "MOVE" ||
+							this.phase === "WEAPON_SELECT" ||
+							this.phase === "AIM_FIRE"
+						) {
+							this.phase = "AIM_FIRE";
+						}
+						this.audioManager.playTone(600, 0.04, "sine");
+					}
+				}
+			}
+
 			// 3-Step Turn Flow on Space Bar Press / Release
 			if (e.code === "Space" && !e.repeat) {
 				const activeWorm = this.getActiveWorm();
@@ -596,13 +621,39 @@ export class WormixGame {
 			}
 		});
 
-		// PC Mode Mouse Clicks
-		this.canvas.addEventListener("mousedown", () => {
+		// Mouse Click Handler (Weapon toolbar click + Aim/Charge)
+		this.canvas.addEventListener("mousedown", (e) => {
 			if (this.phase === "MENU" || this.phase === "EDITOR") return;
-			if (this.inputManager.settings.mode !== "pointer") return;
 			const activeWorm = this.getActiveWorm();
 			const isPvP = this.lobbyConfig.matchType === "pvp";
 			if (!activeWorm || (activeWorm.team !== "player" && !isPvP)) return;
+
+			// Check click on bottom weapon toolbar
+			const rect = this.canvas.getBoundingClientRect();
+			const clickX = e.clientX - rect.left;
+			const clickY = e.clientY - rect.top;
+
+			if (clickY >= this.canvas.height - 80) {
+				const cardW = 60;
+				const gap = 8;
+				const totalW = WEAPON_LIST.length * (cardW + gap) - gap;
+				const startX = this.canvas.width / 2 - totalW / 2;
+				if (clickX >= startX - 12 && clickX <= startX + totalW + 12) {
+					const idx = Math.floor((clickX - startX) / (cardW + gap));
+					if (idx >= 0 && idx < WEAPON_LIST.length) {
+						const team = activeWorm.team;
+						const ammo = this.teamAmmo[team];
+						const wid = WEAPON_LIST[idx].id;
+						if (wid === "bazooka" || (ammo[wid as keyof TeamAmmo] ?? 0) > 0) {
+							this.activeWeaponIndex = idx;
+							if (team === "player") this.playerWeaponIndex = idx;
+							this.phase = "AIM_FIRE";
+							this.audioManager.playTone(600, 0.05, "sine");
+							return;
+						}
+					}
+				}
+			}
 
 			if (this.phase === "MOVE") {
 				this.phase = "WEAPON_SELECT";
@@ -706,9 +757,12 @@ export class WormixGame {
 			this.effects.spawnTracer(tip.x, tip.y, rad, 250, "#fbbf24");
 			const rayLen = 250;
 			const rayStep = 4;
-			const shotDamage = 40;
+			const shotDamage = 35;
 
 			const shootRay = (damageMult: number) => {
+				const hitWormsThisRay = new Set<string>();
+				const hitObjsThisRay = new Set<string>();
+
 				for (let d = 0; d < rayLen; d += rayStep) {
 					const rx = tip.x + Math.cos(rad) * d;
 					const ry = tip.y + Math.sin(rad) * d;
@@ -721,22 +775,26 @@ export class WormixGame {
 						break;
 					}
 
-					// Damage worms along the ray
+					// Damage worms along the ray (ONCE per worm per ray shot)
 					for (const w of this.worms) {
-						if (w !== activeWorm && w.isAlive) {
-							if (Math.hypot(w.x - rx, w.y - ry) < 14) {
+						if (w !== activeWorm && w.isAlive && !hitWormsThisRay.has(w.id)) {
+							if (Math.hypot(w.x - rx, w.y - ry) < 16) {
+								hitWormsThisRay.add(w.id);
 								w.takeDamage(Math.floor(shotDamage * damageMult));
 								const kAngle = Math.atan2(w.y - tip.y, w.x - tip.x);
-								w.vx += Math.cos(kAngle) * 6;
+								w.vx += Math.cos(kAngle) * 5;
 								w.vy += Math.sin(kAngle) * 4 - 2;
 							}
 						}
 					}
 
-					// Damage objects along the ray
+					// Damage objects along the ray (ONCE per object per ray shot)
 					for (const obj of this.mapObjects) {
-						if (!obj.isDestroyed && Math.hypot(obj.x - rx, obj.y - ry) < 14) {
-							obj.takeDamage(Math.floor(shotDamage * damageMult));
+						if (!obj.isDestroyed && !hitObjsThisRay.has(obj.id)) {
+							if (Math.hypot(obj.x - rx, obj.y - ry) < 16) {
+								hitObjsThisRay.add(obj.id);
+								obj.takeDamage(Math.floor(shotDamage * damageMult));
+							}
 						}
 					}
 				}
@@ -1181,6 +1239,7 @@ export class WormixGame {
 				this.aiPlanner.step(16);
 				if (this.aiPlanner.isDone) {
 					this.aiPlan = this.aiPlanner.getPlan();
+					this.lastAiPlan = this.aiPlan;
 					this.aiPlanner = null;
 					this.aiThinking = false;
 					this.aiTargetX = this.aiPlan.targetX;
@@ -1188,6 +1247,14 @@ export class WormixGame {
 					activeWorm.aimAngle = this.aiPlan.targetAngle;
 					activeWorm.facingRight =
 						Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
+
+					// Sync active weapon index to AI's planned weapon for UI visualization
+					const plannedIdx = WEAPON_LIST.findIndex(
+						(w) => w.id === this.aiPlan!.weaponId,
+					);
+					if (plannedIdx !== -1) {
+						this.activeWeaponIndex = plannedIdx;
+					}
 
 					if (this.isAiDebugMode) {
 						this.aiDebugFrozen = true;
@@ -1374,6 +1441,7 @@ export class WormixGame {
 		this.phase = "MOVE";
 		this.turnTimer = 45.0;
 		this.aiPlan = null;
+		this.lastAiPlan = null;
 		this.aiPlanner = null;
 		this.aiThinking = false;
 		this.aiFiringPending = false;
@@ -1506,13 +1574,21 @@ export class WormixGame {
 		// Render Visual Effect Particles (trails, flashes, smoke)
 		this.effects.draw(this.ctx);
 
-		// Trajectory sighting arc (strictly shown ONLY during AIM_FIRE phase)
-		if (activeWorm?.isAlive && !this.aiThinking && this.phase === "AIM_FIRE") {
-			const wid = WEAPON_LIST[this.activeWeaponIndex].id;
+		// Trajectory sighting arc (shown during AIM_FIRE, WEAPON_SELECT, or F3 AI Debug Mode)
+		if (
+			activeWorm?.isAlive &&
+			!this.aiThinking &&
+			(this.phase === "AIM_FIRE" ||
+				this.phase === "WEAPON_SELECT" ||
+				this.isAiDebugMode)
+		) {
+			const safeIdx = Math.max(
+				0,
+				Math.min(WEAPON_LIST.length - 1, this.activeWeaponIndex),
+			);
+			const wid = WEAPON_LIST[safeIdx]?.id ?? "bazooka";
 			const powerToDraw = this.isCharging ? this.chargePower : 0.6;
-			const arcWind = WEAPON_LIST[this.activeWeaponIndex].affectedByWind
-				? this.windX
-				: 0;
+			const arcWind = WEAPON_LIST[safeIdx]?.affectedByWind ? this.windX : 0;
 			this.hud.drawTrajectoryArc(
 				this.ctx,
 				activeWorm,
@@ -1523,7 +1599,7 @@ export class WormixGame {
 		}
 
 		// AI Debug Visualizations (World space: Candidates Heatmap, Target Path, Planned Arc)
-		if (this.isAiDebugMode && this.aiPlan) {
+		if (this.isAiDebugMode && (this.aiPlan || this.lastAiPlan)) {
 			this.renderAiDebugWorld(this.ctx, activeWorm);
 		}
 
@@ -1560,6 +1636,7 @@ export class WormixGame {
 			this.lobbyConfig.matchType === "pvp",
 			this.teamAmmo[activeTeam as "player" | "ai"],
 			this.repositionTimer,
+			this.isAiDebugMode,
 		);
 
 		// Game Over Overlay
@@ -1693,17 +1770,20 @@ export class WormixGame {
 		ctx: CanvasRenderingContext2D,
 		activeWorm: Worm | null,
 	): void {
-		if (!this.aiPlan) return;
+		const plan = this.aiPlan || this.lastAiPlan;
+		if (!plan) return;
+
+		ctx.save();
 
 		// 1. Position Candidates Heatmap
-		if (this.aiPlan.evals && this.aiPlan.evals.length > 0) {
-			const maxScore = Math.max(...this.aiPlan.evals.map((e) => e.totalScore));
-			const minScore = Math.min(...this.aiPlan.evals.map((e) => e.totalScore));
+		if (plan.evals && plan.evals.length > 0) {
+			const maxScore = Math.max(...plan.evals.map((e) => e.totalScore));
+			const minScore = Math.min(...plan.evals.map((e) => e.totalScore));
 			const scoreRange = maxScore - minScore || 1;
 
-			for (const ev of this.aiPlan.evals) {
+			for (const ev of plan.evals) {
 				const norm = (ev.totalScore - minScore) / scoreRange;
-				const isChosen = Math.abs(ev.x - this.aiPlan.targetX) < 5;
+				const isChosen = Math.abs(ev.x - plan.targetX) < 5;
 
 				ctx.fillStyle = isChosen
 					? "rgba(34, 197, 94, 0.85)"
@@ -1736,29 +1816,29 @@ export class WormixGame {
 			ctx.setLineDash([5, 5]);
 			ctx.beginPath();
 			ctx.moveTo(activeWorm.x, activeWorm.y);
-			ctx.lineTo(this.aiPlan.targetX, activeWorm.y);
+			ctx.lineTo(plan.targetX, activeWorm.y);
 			ctx.stroke();
 			ctx.setLineDash([]);
 
 			ctx.font = "16px sans-serif";
 			ctx.textAlign = "center";
-			ctx.fillText("🚩", this.aiPlan.targetX, activeWorm.y - 18);
+			ctx.fillText("🚩", plan.targetX, activeWorm.y - 18);
 		}
 
 		// 3. Planned Trajectory Arc & Target Impact
 		if (activeWorm) {
-			const planX = this.aiPlan.targetX;
+			const planX = plan.targetX;
 			const planSurfaceY = this.terrain.getSurfaceY(planX);
 			const planY = planSurfaceY - 12;
-			const rad = (this.aiPlan.targetAngle * Math.PI) / 180;
+			const rad = (plan.targetAngle * Math.PI) / 180;
 			const speed =
-				this.aiPlan.targetPower * PROJECTILE_MAX_SPEED[this.aiPlan.weaponId];
+				plan.targetPower * PROJECTILE_MAX_SPEED[plan.weaponId];
 			let vx = Math.cos(rad) * speed;
 			let vy = Math.sin(rad) * speed;
 			let px = planX + Math.cos(rad) * 20;
 			let py = planY + Math.sin(rad) * 20;
-			const hasWind = WEAPON_STATS[this.aiPlan.weaponId].wind;
-			const gravity = WEAPON_STATS[this.aiPlan.weaponId].gravity;
+			const hasWind = WEAPON_STATS[plan.weaponId].wind;
+			const gravity = WEAPON_STATS[plan.weaponId].gravity;
 
 			ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
 			ctx.lineWidth = 2.5;
@@ -1767,7 +1847,7 @@ export class WormixGame {
 
 			for (let step = 0; step < 40; step++) {
 				if (hasWind) vx += this.windX * 0.05;
-				if (this.aiPlan.weaponId !== "rifle") vy += gravity;
+				if (plan.weaponId !== "rifle") vy += gravity;
 				px += vx;
 				py += vy;
 				ctx.lineTo(px, py);
@@ -1779,6 +1859,8 @@ export class WormixGame {
 			ctx.textAlign = "center";
 			ctx.fillText("🎯", px, py);
 		}
+
+		ctx.restore();
 	}
 
 	private updateAiDebugOverlay(): void {
@@ -1798,7 +1880,7 @@ export class WormixGame {
 			return;
 		}
 
-		const p = this.aiPlan;
+		const p = this.aiPlan || this.lastAiPlan;
 		if (!p) {
 			contentEl.innerHTML = `<div>🤖 <b>${activeWorm.name}</b> is searching plan...</div>`;
 			return;

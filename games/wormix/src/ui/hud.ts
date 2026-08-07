@@ -99,6 +99,7 @@ export class HUD {
 		isPvP: boolean,
 		teamAmmo: TeamAmmo = {},
 		repositionTimer: number = 0,
+		isAiDebugMode: boolean = false,
 	): void {
 		ctx.save();
 
@@ -121,8 +122,13 @@ export class HUD {
 			this.drawPowerMeter(ctx, width, height, chargePower);
 		}
 
-		// 5. Weapon Selection Toolbar (Bottom) — hide during REPOSITION and PROJECTILE_FLIGHT
-		if (phase === "WEAPON_SELECT" || phase === "AIM_FIRE" || phase === "MOVE") {
+		// 5. Weapon Selection Toolbar (Bottom) — show during active phases & debug mode
+		if (
+			phase === "WEAPON_SELECT" ||
+			phase === "AIM_FIRE" ||
+			phase === "MOVE" ||
+			isAiDebugMode
+		) {
 			this.drawWeaponToolbar(
 				ctx,
 				width,
@@ -256,6 +262,7 @@ export class HUD {
 		windX: number,
 		weaponId: WeaponId,
 	): void {
+		ctx.save();
 		const tip = worm.getCannonTip();
 		const rad = (worm.aimAngle * Math.PI) / 180;
 		const speed = power * PROJECTILE_MAX_SPEED[weaponId];
@@ -279,7 +286,7 @@ export class HUD {
 			ctx.lineTo(px, py);
 		}
 		ctx.stroke();
-		ctx.setLineDash([]);
+		ctx.restore();
 	}
 
 	private drawPowerMeter(
@@ -333,6 +340,10 @@ export class HUD {
 		const totalW = WEAPON_LIST.length * (cardW + gap) - gap;
 		const startX = width / 2 - totalW / 2;
 		const startY = height - 70;
+		const safeActiveIndex = Math.max(
+			0,
+			Math.min(WEAPON_LIST.length - 1, activeIndex),
+		);
 
 		ctx.fillStyle = "rgba(15, 23, 42, 0.8)";
 		ctx.beginPath();
@@ -341,7 +352,7 @@ export class HUD {
 
 		WEAPON_LIST.forEach((w, i) => {
 			const x = startX + i * (cardW + gap);
-			const isSelected = i === activeIndex;
+			const isSelected = i === safeActiveIndex;
 			const ammoCount = teamAmmo[w.id];
 			const isInfinite = ammoCount === undefined; // bazooka (absent from map)
 			const isDepleted = ammoCount !== undefined && ammoCount <= 0;

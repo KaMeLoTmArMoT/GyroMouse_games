@@ -284,6 +284,25 @@ export class TerrainManager {
 		return waterCount;
 	}
 
+	public getAcidDensityAt(x: number, y: number, radiusWorld: number): number {
+		const centerGX = Math.floor(x / this.cellScale);
+		const centerGY = Math.floor(y / this.cellScale);
+		const radiusG = Math.ceil(radiusWorld / this.cellScale);
+
+		let acidCount = 0;
+		for (let dy = -radiusG; dy <= radiusG; dy++) {
+			for (let dx = -radiusG; dx <= radiusG; dx++) {
+				if (dx * dx + dy * dy <= radiusG * radiusG) {
+					const cell = this.getCell(centerGX + dx, centerGY + dy);
+					if (cell === CELL_ACID) {
+						acidCount++;
+					}
+				}
+			}
+		}
+		return acidCount;
+	}
+
 	public explode(centerX: number, centerY: number, radiusWorld: number): void {
 		const centerGX = Math.floor(centerX / this.cellScale);
 		const centerGY = Math.floor(centerY / this.cellScale);

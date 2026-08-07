@@ -236,6 +236,7 @@ export function simulateShot(
 				break;
 			}
 			case "sand":
+				blast(x, y, 45, 30);
 				shot.terrainDestruction += 10;
 				break;
 			default:
@@ -249,6 +250,7 @@ export function simulateShot(
 		const tipX = originX + Math.cos(rad) * CANNON_BARREL;
 		const tipY = originY + Math.sin(rad) * CANNON_BARREL;
 		const raycast = (damage: number): void => {
+			const hitWormsThisRay = new Set<string>();
 			for (let d = 0; d < 250; d += 4) {
 				const rx = tipX + Math.cos(rad) * d;
 				const ry = tipY + Math.sin(rad) * d;
@@ -259,8 +261,9 @@ export function simulateShot(
 					return;
 				}
 				for (const w of worms) {
-					if (!w.isAlive) continue;
+					if (!w.isAlive || hitWormsThisRay.has(w.id)) continue;
 					if (Math.hypot(w.x - rx, w.y - ry) < 14) {
+						hitWormsThisRay.add(w.id);
 						addDamage(w, Math.floor(damage));
 					}
 				}
@@ -301,20 +304,30 @@ export function simulateShot(
 		// Map object collision
 		for (const obj of mapObjects) {
 			if (obj.isDestroyed) continue;
-			const dist = Math.hypot(x - obj.x, y - obj.y);
+			const dx = x - obj.x;
+			const dy = y - obj.y;
+			const dist = Math.hypot(dx, dy);
 			if (dist < 6 + obj.radius) {
 				checkLaunchBlock(x, y);
 				if (obj.type === "landmine" || obj.type === "barrel") {
 					// Detonate the mine / barrel explosion
-					blast(obj.x, obj.y, 45, 40);
+					blast(obj.x, obj.y, 55, 50);
 					if (weaponId !== "drill" && !stats.bouncy) {
 						finalize();
 						return shot;
 					}
 				}
 				if (stats.bouncy) {
-					vy = -Math.abs(vy) * 0.6;
-					vx *= 0.7;
+					const normLen = dist || 1;
+					const normX = dx / normLen;
+					const normY = dy / normLen;
+
+					// Push outward off object boundary in simulation
+					x = obj.x + normX * (6 + obj.radius + 1);
+					y = obj.y + normY * (6 + obj.radius + 1);
+
+					vx = normX * 3.0 + Math.sign(normX || 1) * 1.5;
+					vy = -Math.abs(vy) * 0.4 - 0.5;
 				} else if (weaponId === "drill") {
 					// Drill keeps boring
 				} else if (weaponId === "rifle") {
@@ -336,11 +349,11 @@ export function simulateShot(
 			if (dist < 6 + w.radius) {
 				if (weaponId === "rifle") {
 					checkLaunchBlock(x, y);
-					impactDamage(x, y, 30);
+					impactDamage(x, y, 35);
 					finalize();
 					return shot;
 				} else if (weaponId === "drill") {
-					addDamage(w, 20);
+					addDamage(w, 40);
 				} else {
 					checkLaunchBlock(x, y);
 					explodeAt(x, y);
@@ -350,13 +363,23 @@ export function simulateShot(
 			}
 		}
 
-		// Terrain collision
+		// Terrain collision & Slope Sliding Physics
 		const isSolidNow = terrain.isSolidAt(x, y);
 		const isSolidNext = terrain.isSolidAt(x + vx, y + vy);
 		if (isSolidNow || isSolidNext) {
 			if (stats.bouncy) {
+				// Probe terrain surface slope around projectile in simulation
+				const leftY = terrain.getSurfaceY(x - 8);
+				const rightY = terrain.getSurfaceY(x + 8);
+				const slope = (rightY - leftY) / 16;
+
+				if (Math.abs(slope) > 0.05) {
+					vx += slope * 0.8;
+					vx *= 0.94;
+				} else {
+					vx *= 0.7;
+				}
 				vy = -vy * 0.6;
-				vx *= 0.7;
 			} else if (weaponId === "drill") {
 				drillTime++;
 				shot.terrainDestruction += 3;

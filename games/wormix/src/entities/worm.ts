@@ -73,6 +73,12 @@ export class Worm {
 			this.vx *= 0.85; // Normal friction
 		}
 
+		// Corrosive Acid Contact Burn (burns worms standing in or near acid)
+		const acidCells = terrain.getAcidDensityAt(this.x, this.y, 22);
+		if (acidCells > 0) {
+			this.takeDamage(Math.min(1.5, acidCells * 0.25));
+		}
+
 		// 2. Ceiling / Head Collision (when jumping or swimming upward)
 		if (this.vy < 0) {
 			if (terrain.isSolidAt(this.x, this.y - this.radius)) {
