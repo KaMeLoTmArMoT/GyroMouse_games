@@ -1,34 +1,26 @@
 import { SharedAudioManager } from "../../../shared/audioManager";
 import { SharedInputManager } from "../../../shared/inputManager";
 import { SettingsOverlay } from "../../../shared/settingsOverlay";
-import {
-	type AIPlanner,
-	type AITurnPlan,
-	createPlanner,
-	WormAI,
-} from "./ai/wormAI";
+import { AITurnController } from "./ai/aiTurnController";
+import { createPlanner, WormAI } from "./ai/wormAI";
+import { WeaponController } from "./controllers/weaponController";
 import { MapEditor } from "./editor/mapEditor";
 import { EffectSystem } from "./effects/effects";
+import { CameraController } from "./engine/cameraController";
+import { TurnController } from "./engine/turnController";
 import { MapObject } from "./entities/mapObject";
 import { Worm } from "./entities/worm";
 import { Projectile } from "./physics/projectile";
+import { MatchRenderer } from "./renderer/matchRenderer";
 import { TerrainManager } from "./terrain/terrainManager";
 import type {
-	AIDifficulty,
-	AIPersonality,
 	CustomMapData,
 	LobbyConfig,
 	MatchSaveData,
 	TeamAmmo,
-	TurnPhase,
 	WeaponId,
 } from "./types";
-import {
-	PROJECTILE_MAX_SPEED,
-	WEAPON_STATS,
-	WORLD_HEIGHT,
-	WORLD_WIDTH,
-} from "./types";
+import { WORLD_HEIGHT, WORLD_WIDTH } from "./types";
 import { HUD, WEAPON_LIST } from "./ui/hud";
 import { MapManager } from "./ui/mapManager";
 import { MenuModal } from "./ui/menuModal";
@@ -46,63 +38,17 @@ export class WormixGame {
 	private mapManager: MapManager | null = null;
 	private effects: EffectSystem;
 
+	// Sub-controllers
+	public camera: CameraController;
+	public turnCtrl: TurnController;
+	public weaponCtrl: WeaponController;
+	public aiTurnCtrl: AITurnController;
+	public renderer: MatchRenderer;
+
 	public terrain: TerrainManager;
 	public worms: Worm[] = [];
 	public mapObjects: MapObject[] = [];
 	public projectiles: Projectile[] = [];
-
-	public phase: TurnPhase = "MENU";
-	public activeWormIndex: number = 0;
-	public activeWeaponIndex: number = 0;
-	public playerWeaponIndex: number = 0;
-	private turnCount: number = 0;
-
-	// Turn Timer, Wind & Lobby Config
-	public turnTimer: number = 45.0; // 45s countdown
-	public windX: number = 0.0; // -2.5 to +2.5
-	public aiDifficulty: AIDifficulty = "normal";
-	public lobbyConfig: LobbyConfig = {
-		teamSize: 2,
-		wormHealth: 100,
-		gameMode: "deathmatch",
-		mapId: "random",
-		aiDifficulty: "normal",
-		matchType: "ai",
-	};
-
-	// Charge Power State
-	public isCharging: boolean = false;
-	public chargePower: number = 0.0; // 0 to 1.0
-	public chargeSpeed: number = 0.025; // Speed per tick (30fps)
-
-	// Camera (static world + zoom). camX/camY = world coordinate at screen center.
-	private camScale: number = 1;
-	private camX: number = WORLD_WIDTH / 2;
-	private camY: number = WORLD_HEIGHT / 2;
-	private readonly MIN_CAM_SCALE: number = 0.3;
-	private readonly MAX_CAM_SCALE: number = 2.5;
-	private readonly ZOOM_STEP: number = 1.2;
-
-	// AI Turn State
-	private aiPlan: AITurnPlan | null = null;
-	private lastAiPlan: AITurnPlan | null = null;
-	private aiPersonalities: Record<string, AIPersonality> = {};
-	private aiPlanner: AIPlanner | null = null;
-	private aiThinking: boolean = false;
-	private aiFiringPending: boolean = false;
-	private aiTargetX: number = 0;
-	private aiWalkTimeLeft: number = 0;
-	private aiReposTargetX: number | null = null;
-
-	// AI Debug Mode State
-	private isAiDebugMode: boolean = false;
-	private aiDebugFrozen: boolean = false;
-
-	// Reposition State (post-fire movement window)
-	private repositionTimer: number = 0;
-
-	// Team Ammo Inventory
-	private teamAmmo: Record<"player" | "ai", TeamAmmo> = { player: {}, ai: {} };
 
 	public editingMap: CustomMapData | null = null;
 
@@ -119,6 +65,12 @@ export class WormixGame {
 		this.hud = new HUD();
 		this.effects = new EffectSystem();
 		this.terrain = new TerrainManager(WORLD_WIDTH, WORLD_HEIGHT);
+
+		this.camera = new CameraController();
+		this.turnCtrl = new TurnController();
+		this.weaponCtrl = new WeaponController();
+		this.aiTurnCtrl = new AITurnController();
+		this.renderer = new MatchRenderer();
 
 		// Initialize Settings Overlay with custom Game Modes & Map Editor actions
 		this.settingsOverlay = new SettingsOverlay({
@@ -170,15 +122,16 @@ export class WormixGame {
 	}
 
 	private resizeCanvas(): void {
-		// Only the viewport canvas resizes — the world/terrain stays static.
-		// Never regenerate terrain here, or every resize would wipe explosion
-		// holes, shift the land and teleport worms (F12/open-devtools bug).
 		this.canvas.width = window.innerWidth;
 		this.canvas.height = window.innerHeight;
 	}
 
 	private returnToEditorBtn: HTMLElement | null = null;
 	private lobbyBtn: HTMLElement | null = null;
+
+	public getActiveWorm(): Worm | null {
+		return this.turnCtrl.getActiveWorm(this.worms);
+	}
 
 	public openMapEditor(initialMap?: CustomMapData): void {
 		this.hideReturnToEditorBtn();
@@ -187,18 +140,18 @@ export class WormixGame {
 			this.mapEditor.exit();
 			this.mapEditor = null;
 		}
-		this.phase = "EDITOR";
+		this.turnCtrl.phase = "EDITOR";
 		const targetMap = initialMap || this.editingMap || undefined;
 		this.mapEditor = new MapEditor(
 			this.canvas,
 			(customMap) => {
 				this.editingMap = customMap;
 				if (this.mapEditor) this.mapEditor.exit();
-				this.startMatch(this.lobbyConfig, customMap, true);
+				this.startMatch(this.turnCtrl.lobbyConfig, customMap, true);
 			},
 			() => {
 				this.mapEditor = null;
-				this.phase = "MENU";
+				this.turnCtrl.phase = "MENU";
 				this.menuModal.show();
 			},
 			targetMap,
@@ -217,8 +170,8 @@ export class WormixGame {
 		isTestPlay: boolean = false,
 	): void {
 		this.menuModal.hide();
-		this.lobbyConfig = config;
-		this.aiDifficulty = config.aiDifficulty;
+		this.turnCtrl.lobbyConfig = config;
+		this.turnCtrl.aiDifficulty = config.aiDifficulty;
 
 		if (this.mapEditor) {
 			this.mapEditor.exit();
@@ -231,10 +184,9 @@ export class WormixGame {
 			this.hideReturnToEditorBtn();
 		}
 
-		// Show Lobby button during all active matches
 		this.showLobbyBtn();
 
-		// 1. Generate or Load Terrain (fixed world size, independent of the window)
+		// 1. Terrain Setup
 		if (mapData?.terrainHeights && mapData.terrainHeights.length > 0) {
 			const mw = mapData.width || WORLD_WIDTH;
 			const mh = mapData.height || WORLD_HEIGHT;
@@ -250,21 +202,15 @@ export class WormixGame {
 			this.terrain.resize(WORLD_WIDTH, WORLD_HEIGHT);
 		}
 
-		// Reset camera to fit the freshly generated map
-		this.camScale = Math.max(
-			this.MIN_CAM_SCALE,
-			Math.min(
-				this.MAX_CAM_SCALE,
-				Math.min(
-					this.canvas.width / this.terrain.width,
-					this.canvas.height / this.terrain.height,
-				),
-			),
+		// Reset camera
+		this.camera.resetToFit(
+			this.canvas.width,
+			this.canvas.height,
+			this.terrain.width,
+			this.terrain.height,
 		);
-		this.camX = this.terrain.width / 2;
-		this.camY = this.terrain.height / 2;
 
-		// 2. Initialize Worm Teams based on LobbyConfig (interleaved player-bot order)
+		// 2. Initialize Worm Teams
 		this.worms = [];
 		const teamSize = config.teamSize;
 		const hp = config.wormHealth;
@@ -296,24 +242,15 @@ export class WormixGame {
 			this.worms.push(blueWorm);
 		}
 
-		// Roll a personality per AI worm (each bot gets its own tactics)
-		this.aiPersonalities = {};
-		for (const w of this.worms) {
-			if (w.team === "ai") {
-				const p = WormAI.rollPersonality(config.aiDifficulty);
-				this.aiPersonalities[w.id] = p;
-				w.personality = p;
-			}
-		}
+		this.aiTurnCtrl.rollPersonalities(this.worms, config.aiDifficulty);
 
-		// 3. Initialize Interactive Map Objects (Barrels, Mines, Health Crates)
+		// 3. Initialize Interactive Map Objects
 		this.mapObjects = [];
 		if (mapData?.mapObjects && mapData.mapObjects.length > 0) {
 			mapData.mapObjects.forEach((objData) => {
 				this.mapObjects.push(new MapObject(objData));
 			});
 		} else {
-			// Default Random Objects
 			const objSpawns = [
 				{ type: "barrel" as const, x: this.terrain.width * 0.3 },
 				{ type: "barrel" as const, x: this.terrain.width * 0.7 },
@@ -333,45 +270,17 @@ export class WormixGame {
 		}
 
 		this.projectiles = [];
-		this.activeWormIndex = 0;
-		this.playerWeaponIndex = 0;
-		this.turnCount = 0;
-		this.phase = "MOVE";
-		this.turnTimer = 45.0;
-		this.aiPlan = null;
-		this.aiPlanner = null;
-		this.aiThinking = false;
-		this.aiFiringPending = false;
-		this.repositionTimer = 0;
-		this.aiReposTargetX = null;
-		this.showDecisionOverlay(false);
+		this.turnCtrl.activeWormIndex = 0;
+		this.turnCtrl.playerWeaponIndex = 0;
+		this.weaponCtrl.activeWeaponIndex = 0;
+		this.turnCtrl.turnCount = 0;
+		this.turnCtrl.phase = "MOVE";
+		this.turnCtrl.turnTimer = 45.0;
+		this.aiTurnCtrl.resetTurnState();
+		this.aiTurnCtrl.showDecisionOverlay(false);
 
-		// Initialize team ammo (bazooka is always infinite — absent from map)
-		const defaultAmmo: TeamAmmo = {
-			grenade: 4,
-			cluster: 2,
-			acid_bomb: 2,
-			sand_bomb: 3,
-			drill: 2,
-			mortar: 2,
-			dynamite: 1,
-			shotgun: 3,
-			rifle: 5,
-		};
-		this.teamAmmo = {
-			player: { ...defaultAmmo },
-			ai: { ...defaultAmmo },
-		};
-
-		this.updateWind();
-	}
-
-	private updateWind(): void {
-		if (this.lobbyConfig.enableWind) {
-			this.windX = (Math.random() - 0.5) * 5.0; // -2.5 to +2.5
-		} else {
-			this.windX = 0;
-		}
+		this.weaponCtrl.resetAmmo();
+		this.turnCtrl.updateWind();
 	}
 
 	private spawnProjectileTrail(proj: Projectile): void {
@@ -409,7 +318,7 @@ export class WormixGame {
 		}
 	}
 
-	private spawnExplosionFx(
+	public spawnExplosionFx(
 		x: number,
 		y: number,
 		weaponId: WeaponId | null,
@@ -474,95 +383,88 @@ export class WormixGame {
 				return;
 			}
 			if (e.code === "Escape") {
-				if (this.phase === "EDITOR") return;
+				if (this.turnCtrl.phase === "EDITOR") return;
 				this.settingsOverlay.toggle();
 				return;
 			}
 
-			if (this.phase === "MENU" || this.phase === "EDITOR") return;
+			if (this.turnCtrl.phase === "MENU" || this.turnCtrl.phase === "EDITOR")
+				return;
 
-			// Camera zoom (in/out) — view only, not steering
+			// Camera zoom
 			if (e.code === "Equal" || e.code === "NumpadAdd") {
-				this.camScale = Math.min(
-					this.MAX_CAM_SCALE,
-					this.camScale * this.ZOOM_STEP,
-				);
+				this.camera.zoomIn();
 				return;
 			}
 			if (e.code === "Minus" || e.code === "NumpadSubtract") {
-				this.camScale = Math.max(
-					this.MIN_CAM_SCALE,
-					this.camScale / this.ZOOM_STEP,
-				);
+				this.camera.zoomOut();
 				return;
 			}
 
-			// Focus camera on the currently active worm (F key)
+			// Focus camera on active worm (F key)
 			if (e.code === "KeyF") {
-				const focusWorm = this.getActiveWorm();
-				if (focusWorm) {
-					this.camX = focusWorm.x;
-					this.camY = focusWorm.y - 30;
-				}
+				this.camera.focusOnWorm(this.getActiveWorm());
 				return;
 			}
 
 			// Toggle AI Debug Mode (F3 key)
 			if (e.code === "F3") {
 				e.preventDefault();
-				this.isAiDebugMode = !this.isAiDebugMode;
-				this.aiDebugFrozen = false;
+				this.aiTurnCtrl.isAiDebugMode = !this.aiTurnCtrl.isAiDebugMode;
+				this.aiTurnCtrl.aiDebugFrozen = false;
 				this.audioManager.playTone(800, 0.08, "sine");
 				return;
 			}
 
 			// Enter key to step/unfreeze AI in Debug Mode
-			if (e.code === "Enter" && this.aiDebugFrozen) {
+			if (e.code === "Enter" && this.aiTurnCtrl.aiDebugFrozen) {
 				e.preventDefault();
-				this.aiDebugFrozen = false;
+				this.aiTurnCtrl.aiDebugFrozen = false;
 				this.audioManager.playTone(700, 0.08, "sine");
 				return;
 			}
 
-			// Number Keys 1-9 to quickly select weapons and enter AIM_FIRE phase
+			// Number Keys 1-9 to select weapons
 			if (e.code.startsWith("Digit")) {
 				const num = Number.parseInt(e.code.replace("Digit", ""), 10);
 				if (num >= 1 && num <= WEAPON_LIST.length) {
 					const idx = num - 1;
 					const activeWorm = this.getActiveWorm();
 					const team = activeWorm?.team ?? "player";
-					const ammo = this.teamAmmo[team as "player" | "ai"];
+					const ammo = this.weaponCtrl.teamAmmo[team as "player" | "ai"];
 					const wid = WEAPON_LIST[idx].id;
 					if (wid === "bazooka" || (ammo[wid as keyof TeamAmmo] ?? 0) > 0) {
-						this.activeWeaponIndex = idx;
-						if (team === "player") this.playerWeaponIndex = idx;
+						this.weaponCtrl.activeWeaponIndex = idx;
+						if (team === "player") this.turnCtrl.playerWeaponIndex = idx;
 						if (
-							this.phase === "MOVE" ||
-							this.phase === "WEAPON_SELECT" ||
-							this.phase === "AIM_FIRE"
+							this.turnCtrl.phase === "MOVE" ||
+							this.turnCtrl.phase === "WEAPON_SELECT" ||
+							this.turnCtrl.phase === "AIM_FIRE"
 						) {
-							this.phase = "AIM_FIRE";
+							this.turnCtrl.phase = "AIM_FIRE";
 						}
 						this.audioManager.playTone(600, 0.04, "sine");
 					}
 				}
 			}
 
-			// 3-Step Turn Flow on Space Bar Press / Release
+			// 3-Step Turn Flow on Space Bar
 			if (e.code === "Space" && !e.repeat) {
 				const activeWorm = this.getActiveWorm();
-				const isPvP = this.lobbyConfig.matchType === "pvp";
+				const isPvP = this.turnCtrl.lobbyConfig.matchType === "pvp";
 				if (activeWorm && (activeWorm.team === "player" || isPvP)) {
-					if (this.phase === "MOVE") {
-						this.phase = "WEAPON_SELECT";
-						this.ensureActiveWeaponHasAmmo();
+					if (this.turnCtrl.phase === "MOVE") {
+						this.turnCtrl.phase = "WEAPON_SELECT";
+						this.weaponCtrl.ensureActiveWeaponHasAmmo(activeWorm, (idx) => {
+							this.turnCtrl.playerWeaponIndex = idx;
+						});
 						this.audioManager.playTone(440, 0.05, "sine");
-					} else if (this.phase === "WEAPON_SELECT") {
-						this.phase = "AIM_FIRE";
+					} else if (this.turnCtrl.phase === "WEAPON_SELECT") {
+						this.turnCtrl.phase = "AIM_FIRE";
 						this.audioManager.playTone(550, 0.05, "sine");
-					} else if (this.phase === "AIM_FIRE") {
-						this.isCharging = true;
-						this.chargePower = 0.0;
+					} else if (this.turnCtrl.phase === "AIM_FIRE") {
+						this.weaponCtrl.isCharging = true;
+						this.weaponCtrl.chargePower = 0.0;
 						this.audioManager.playTone(300, 0.1, "sawtooth");
 					}
 				}
@@ -571,43 +473,43 @@ export class WormixGame {
 			// Back key (S / Down arrow in weapon select returns to move)
 			if (
 				(e.code === "KeyS" || e.code === "ArrowDown") &&
-				this.phase === "WEAPON_SELECT"
+				this.turnCtrl.phase === "WEAPON_SELECT"
 			) {
-				this.phase = "MOVE";
+				this.turnCtrl.phase = "MOVE";
 				this.audioManager.playTone(350, 0.05, "sine");
 			}
 
-			// Cycle weapons with A/D or Left/Right during WEAPON_SELECT
-			if (this.phase === "WEAPON_SELECT") {
+			// Cycle weapons during WEAPON_SELECT
+			if (this.turnCtrl.phase === "WEAPON_SELECT") {
 				const activeWormTeam = this.getActiveWorm()?.team ?? "player";
-				const ammo = this.teamAmmo[activeWormTeam];
+				const ammo = this.weaponCtrl.teamAmmo[activeWormTeam];
 				const hasAmmo = (wid: string) =>
 					wid === "bazooka" || (ammo[wid as keyof TeamAmmo] ?? 0) > 0;
 
-				const startIdx = this.activeWeaponIndex;
+				const startIdx = this.weaponCtrl.activeWeaponIndex;
 				if (e.code === "KeyA" || e.code === "ArrowLeft") {
 					do {
-						this.activeWeaponIndex =
-							(this.activeWeaponIndex - 1 + WEAPON_LIST.length) %
+						this.weaponCtrl.activeWeaponIndex =
+							(this.weaponCtrl.activeWeaponIndex - 1 + WEAPON_LIST.length) %
 							WEAPON_LIST.length;
 					} while (
-						!hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id) &&
-						this.activeWeaponIndex !== startIdx
+						!hasAmmo(WEAPON_LIST[this.weaponCtrl.activeWeaponIndex].id) &&
+						this.weaponCtrl.activeWeaponIndex !== startIdx
 					);
 					if (activeWormTeam === "player") {
-						this.playerWeaponIndex = this.activeWeaponIndex;
+						this.turnCtrl.playerWeaponIndex = this.weaponCtrl.activeWeaponIndex;
 					}
 					this.audioManager.playTone(600, 0.03, "sine");
 				} else if (e.code === "KeyD" || e.code === "ArrowRight") {
 					do {
-						this.activeWeaponIndex =
-							(this.activeWeaponIndex + 1) % WEAPON_LIST.length;
+						this.weaponCtrl.activeWeaponIndex =
+							(this.weaponCtrl.activeWeaponIndex + 1) % WEAPON_LIST.length;
 					} while (
-						!hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id) &&
-						this.activeWeaponIndex !== startIdx
+						!hasAmmo(WEAPON_LIST[this.weaponCtrl.activeWeaponIndex].id) &&
+						this.weaponCtrl.activeWeaponIndex !== startIdx
 					);
 					if (activeWormTeam === "player") {
-						this.playerWeaponIndex = this.activeWeaponIndex;
+						this.turnCtrl.playerWeaponIndex = this.weaponCtrl.activeWeaponIndex;
 					}
 					this.audioManager.playTone(600, 0.03, "sine");
 				}
@@ -615,19 +517,23 @@ export class WormixGame {
 		});
 
 		window.addEventListener("keyup", (e) => {
-			if (e.code === "Space" && this.isCharging && this.phase === "AIM_FIRE") {
+			if (
+				e.code === "Space" &&
+				this.weaponCtrl.isCharging &&
+				this.turnCtrl.phase === "AIM_FIRE"
+			) {
 				this.fireActiveWeapon();
 			}
 		});
 
-		// Mouse Click Handler (Weapon toolbar click + Aim/Charge)
+		// Mouse Click Handler
 		this.canvas.addEventListener("mousedown", (e) => {
-			if (this.phase === "MENU" || this.phase === "EDITOR") return;
+			if (this.turnCtrl.phase === "MENU" || this.turnCtrl.phase === "EDITOR")
+				return;
 			const activeWorm = this.getActiveWorm();
-			const isPvP = this.lobbyConfig.matchType === "pvp";
+			const isPvP = this.turnCtrl.lobbyConfig.matchType === "pvp";
 			if (!activeWorm || (activeWorm.team !== "player" && !isPvP)) return;
 
-			// Check click on bottom weapon toolbar
 			const rect = this.canvas.getBoundingClientRect();
 			const clickX = e.clientX - rect.left;
 			const clickY = e.clientY - rect.top;
@@ -641,12 +547,12 @@ export class WormixGame {
 					const idx = Math.floor((clickX - startX) / (cardW + gap));
 					if (idx >= 0 && idx < WEAPON_LIST.length) {
 						const team = activeWorm.team;
-						const ammo = this.teamAmmo[team];
+						const ammo = this.weaponCtrl.teamAmmo[team];
 						const wid = WEAPON_LIST[idx].id;
 						if (wid === "bazooka" || (ammo[wid as keyof TeamAmmo] ?? 0) > 0) {
-							this.activeWeaponIndex = idx;
-							if (team === "player") this.playerWeaponIndex = idx;
-							this.phase = "AIM_FIRE";
+							this.weaponCtrl.activeWeaponIndex = idx;
+							if (team === "player") this.turnCtrl.playerWeaponIndex = idx;
+							this.turnCtrl.phase = "AIM_FIRE";
 							this.audioManager.playTone(600, 0.05, "sine");
 							return;
 						}
@@ -654,365 +560,81 @@ export class WormixGame {
 				}
 			}
 
-			if (this.phase === "MOVE") {
-				this.phase = "WEAPON_SELECT";
-				this.ensureActiveWeaponHasAmmo();
-			} else if (this.phase === "WEAPON_SELECT") {
-				this.phase = "AIM_FIRE";
-			} else if (this.phase === "AIM_FIRE") {
-				this.isCharging = true;
-				this.chargePower = 0.0;
+			if (this.turnCtrl.phase === "MOVE") {
+				this.turnCtrl.phase = "WEAPON_SELECT";
+				this.weaponCtrl.ensureActiveWeaponHasAmmo(activeWorm, (idx) => {
+					this.turnCtrl.playerWeaponIndex = idx;
+				});
+			} else if (this.turnCtrl.phase === "WEAPON_SELECT") {
+				this.turnCtrl.phase = "AIM_FIRE";
+			} else if (this.turnCtrl.phase === "AIM_FIRE") {
+				this.weaponCtrl.isCharging = true;
+				this.weaponCtrl.chargePower = 0.0;
 			}
 		});
 
 		this.canvas.addEventListener("mouseup", () => {
-			if (this.isCharging && this.phase === "AIM_FIRE") {
+			if (this.weaponCtrl.isCharging && this.turnCtrl.phase === "AIM_FIRE") {
 				this.fireActiveWeapon();
 			}
 		});
 
-		// PC Mode Mouse Aiming
+		// Mouse Aiming
 		this.canvas.addEventListener("mousemove", (e) => {
-			if (this.phase === "MENU" || this.phase === "EDITOR") return;
+			if (this.turnCtrl.phase === "MENU" || this.turnCtrl.phase === "EDITOR")
+				return;
 			if (this.inputManager.settings.mode !== "pointer") return;
 			const activeWorm = this.getActiveWorm();
-			const isPvP = this.lobbyConfig.matchType === "pvp";
+			const isPvP = this.turnCtrl.lobbyConfig.matchType === "pvp";
 			if (
 				!activeWorm ||
 				(activeWorm.team !== "player" && !isPvP) ||
-				this.phase !== "AIM_FIRE"
+				this.turnCtrl.phase !== "AIM_FIRE"
 			)
 				return;
 
 			const rect = this.canvas.getBoundingClientRect();
-			const mouseX = e.clientX - rect.left;
-			const mouseY = e.clientY - rect.top;
+			const worldPos = this.camera.screenToWorld(
+				e.clientX - rect.left,
+				e.clientY - rect.top,
+				this.canvas.width,
+				this.canvas.height,
+			);
 
-			// Convert screen -> world (camera zoom + pan)
-			const worldX =
-				(mouseX - this.canvas.width / 2) / this.camScale + this.camX;
-			const worldY =
-				(mouseY - this.canvas.height / 2) / this.camScale + this.camY;
-
-			const dx = worldX - activeWorm.x;
-			const dy = worldY - activeWorm.y;
+			const dx = worldPos.x - activeWorm.x;
+			const dy = worldPos.y - activeWorm.y;
 			activeWorm.aimAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
 			activeWorm.facingRight = dx >= 0;
 		});
 	}
 
-	/**
-	 * Ensure activeWeaponIndex points at a weapon the active worm's team still has
-	 * ammo for (bazooka is always infinite). Keeps the current selection if valid,
-	 * otherwise falls back to bazooka.
-	 */
-	private ensureActiveWeaponHasAmmo(): void {
-		const team = (this.getActiveWorm()?.team ?? "player") as "player" | "ai";
-		const ammo = this.teamAmmo[team];
-		const hasAmmo = (wid: string) =>
-			wid === "bazooka" || (ammo[wid as keyof TeamAmmo] ?? 0) > 0;
-
-		if (hasAmmo(WEAPON_LIST[this.activeWeaponIndex].id)) return;
-
-		const bazookaIdx = WEAPON_LIST.findIndex((w) => w.id === "bazooka");
-		this.activeWeaponIndex = bazookaIdx;
-		if (team === "player") {
-			this.playerWeaponIndex = bazookaIdx;
-		}
-	}
-
-	private fireActiveWeapon(): void {
-		this.isCharging = false;
-		const activeWorm = this.getActiveWorm();
-		if (!activeWorm) return;
-
-		const weapon = WEAPON_LIST[this.activeWeaponIndex];
-		const team = activeWorm.team as "player" | "ai";
-		const teamAmmo = this.teamAmmo[team];
-		const ammoCount = teamAmmo[weapon.id];
-
-		// Guard: no ammo for selected weapon — drop back to weapon select so the
-		// player can pick another (bazooka is always infinite — ammoCount undefined)
-		if (ammoCount !== undefined && ammoCount <= 0) {
-			this.ensureActiveWeaponHasAmmo();
-			this.phase = "WEAPON_SELECT";
-			this.audioManager.playTone(220, 0.1, "square");
-			return;
-		}
-
-		const tip = activeWorm.getCannonTip();
-		const rad = (activeWorm.aimAngle * Math.PI) / 180;
-		const launchSpeed =
-			Math.max(0.15, this.chargePower) * PROJECTILE_MAX_SPEED[weapon.id];
-
-		this.effects.spawnMuzzleFlash(tip.x, tip.y, rad);
-
-		const vx = Math.cos(rad) * launchSpeed;
-		const vy = Math.sin(rad) * launchSpeed;
-
-		if (weapon.id === "shotgun") {
-			// Shotgun: raycast along aim direction, double-tap
-			this.audioManager.playHit(1.5);
-			this.effects.spawnTracer(tip.x, tip.y, rad, 250, "#fbbf24");
-			const rayLen = 250;
-			const rayStep = 4;
-			const shotDamage = 35;
-
-			const shootRay = (damageMult: number) => {
-				const hitWormsThisRay = new Set<string>();
-				const hitObjsThisRay = new Set<string>();
-
-				for (let d = 0; d < rayLen; d += rayStep) {
-					const rx = tip.x + Math.cos(rad) * d;
-					const ry = tip.y + Math.sin(rad) * d;
-
-					// Stop at first terrain hit
-					if (this.terrain.isSolidAt(rx, ry)) {
-						this.terrain.explode(rx, ry, 18);
-						this.effects.spawnFlash(rx, ry, 12);
-						this.effects.spawnSparks(rx, ry, 10, 1, 4, "#fbbf24");
-						break;
-					}
-
-					// Damage worms along the ray (ONCE per worm per ray shot)
-					for (const w of this.worms) {
-						if (w !== activeWorm && w.isAlive && !hitWormsThisRay.has(w.id)) {
-							if (Math.hypot(w.x - rx, w.y - ry) < 16) {
-								hitWormsThisRay.add(w.id);
-								w.takeDamage(Math.floor(shotDamage * damageMult));
-								const kAngle = Math.atan2(w.y - tip.y, w.x - tip.x);
-								w.vx += Math.cos(kAngle) * 5;
-								w.vy += Math.sin(kAngle) * 4 - 2;
-							}
-						}
-					}
-
-					// Damage objects along the ray (ONCE per object per ray shot)
-					for (const obj of this.mapObjects) {
-						if (!obj.isDestroyed && !hitObjsThisRay.has(obj.id)) {
-							if (Math.hypot(obj.x - rx, obj.y - ry) < 16) {
-								hitObjsThisRay.add(obj.id);
-								obj.takeDamage(Math.floor(shotDamage * damageMult));
-							}
-						}
-					}
-				}
-			};
-
-			// First shot (full damage)
-			shootRay(1.0);
-			// Second shot (75% damage, slight delay feel)
-			shootRay(0.75);
-
-			this.phase = "PROJECTILE_FLIGHT";
-		} else {
-			// Spawn Projectile
-			this.audioManager.playTone(220, 0.15, "sawtooth");
-			if (weapon.id === "rifle") {
-				this.effects.spawnTracer(
-					tip.x,
-					tip.y,
-					rad,
-					300,
-					"rgba(103, 232, 249, 0.8)",
-				);
-			}
-			const fuseTime =
-				weapon.id === "dynamite" ? 4 : weapon.id === "mortar" ? 2.5 : 3;
-			this.projectiles.push(
-				new Projectile(
-					weapon.id,
-					tip.x,
-					tip.y,
-					vx,
-					vy,
-					activeWorm.team,
-					fuseTime,
-				),
-			);
-
-			if (weapon.id === "dynamite") {
-				// Instant live-fuse escape window: worm runs to safety while Dynamite fuse ticks down!
-				this.phase = "REPOSITION";
-				this.repositionTimer = 3.5;
-				this.aiReposTargetX = null;
-			} else {
-				this.phase = "PROJECTILE_FLIGHT";
-			}
-		}
-
-		// Decrement ammo (skip if undefined = infinite bazooka)
-		if (ammoCount !== undefined) {
-			this.teamAmmo[team][weapon.id] = ammoCount - 1;
-		}
-	}
-
-	private getActiveWorm(): Worm | null {
-		return this.worms[this.activeWormIndex] || null;
-	}
-
-	/**
-	 * Smoothly keep the camera centered on the active worm (or the live projectile
-	 * while one is flying) so gameplay stays in view regardless of zoom.
-	 */
-	private updateCamera(): void {
-		let targetX: number | null = null;
-		let targetY: number | null = null;
-
-		if (this.phase === "PROJECTILE_FLIGHT" && this.projectiles.length > 0) {
-			const p = this.projectiles[0];
-			targetX = p.x;
-			targetY = p.y;
-		} else {
-			const focusWorm = this.getActiveWorm();
-			if (focusWorm) {
-				targetX = focusWorm.x;
-				targetY = focusWorm.y - 30;
-			}
-		}
-
-		if (targetX === null || targetY === null) return;
-
-		const k = 0.15;
-		this.camX += (targetX - this.camX) * k;
-		this.camY += (targetY - this.camY) * k;
-	}
-
-	/** Show/hide the DOM "making decision…" spinner overlay during AI thinking. */
-	private showDecisionOverlay(show: boolean): void {
-		const el = document.getElementById("aiDecisionOverlay");
-		if (el) el.hidden = !show;
-	}
-
-	/**
-	 * Emergency turn end: if the 45s timer expires while the AI is still
-	 * thinking/walking, stop searching, apply the best-known plan and fire.
-	 */
-	private forceFinishAiTurn(activeWorm: Worm): void {
-		if (this.aiPlanner && !this.aiPlan) {
-			this.aiPlanner.step(500);
-			this.aiPlan = this.aiPlanner.getPlan();
-			this.aiPlanner = null;
-			this.aiThinking = false;
-			this.showDecisionOverlay(false);
-		}
-		if (this.aiPlan && !this.aiFiringPending) {
-			this.aiFiringPending = true;
-			activeWorm.aimAngle = this.aiPlan.targetAngle;
-			activeWorm.facingRight =
-				Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
-			const weaponIdx = WEAPON_LIST.findIndex(
-				(w) => w.id === this.aiPlan!.weaponId,
-			);
-			if (weaponIdx !== -1) this.activeWeaponIndex = weaponIdx;
-			this.chargePower = this.aiPlan.targetPower;
-			this.aiPlan = null;
-			this.phase = "AIM_FIRE";
-			this.fireActiveWeapon();
-		} else if (!this.aiPlan && !this.aiFiringPending) {
-			this.phase = "PROJECTILE_FLIGHT"; // skip the turn
-		}
-	}
-
-	/**
-	 * Fire-from-actual-position: if walking toward the planned spot was blocked
-	 * (cliff/water), rescan the best shot cheaply from where the worm actually
-	 * stopped so it doesn't fire a stale plan.
-	 */
-	private maybeReplanFromHere(activeWorm: Worm): void {
-		if (!this.aiPlan) return;
-		if (Math.abs(activeWorm.x - this.aiTargetX) <= 20) return;
-		const planner = createPlanner({
-			aiWorm: activeWorm,
-			allWorms: this.worms,
-			terrain: this.terrain,
-			mapObjects: this.mapObjects,
-			windX: this.windX,
-			difficulty: this.aiDifficulty,
-			personality: this.aiPersonalities[activeWorm.id] ?? "default",
-			availableAmmo: this.teamAmmo.ai,
-			gameMode: this.lobbyConfig.gameMode,
-			deadlineMs: 80,
-			fixedPositionX: activeWorm.x,
-		});
-		planner.step(80);
-		if (planner.isDone) {
-			const p = planner.getPlan();
-			if (p) {
-				this.aiPlan = p;
-				this.aiTargetX = activeWorm.x;
-			}
-		}
-	}
-
-	/** Pick a reposition spot after firing (crate if low HP, else best LoS cover away from mines). */
-	private pickAiRepositionTarget(w: Worm): number {
-		// 1. If injured, seek crate if reachable and landmine-safe
-		if (w.health < w.maxHealth * 0.7) {
-			let bestCrateX: number | null = null;
-			let minCrateDist = Infinity;
-			for (const obj of this.mapObjects) {
-				if (obj.type === "health_crate" && !obj.isDestroyed) {
-					const dist = Math.abs(obj.x - w.x);
-					if (
-						dist < minCrateDist &&
-						dist < 400 &&
-						WormAI.canWalkTo(this.terrain, w.x, w.y, obj.x, this.mapObjects)
-					) {
-						minCrateDist = dist;
-						bestCrateX = obj.x;
-					}
-				}
-			}
-			if (bestCrateX !== null) return bestCrateX;
-		}
-
-		// 2. Evaluate candidate spots (-180px to +180px) for best line-of-sight cover & mine safety
-		const enemies = this.worms.filter((e) => e.team !== w.team && e.isAlive);
-		let bestX = w.x;
-		let bestScore = -Infinity;
-
-		for (let offset = -180; offset <= 180; offset += 30) {
-			const candX = Math.max(
-				30,
-				Math.min(this.terrain.width - 30, w.x + offset),
-			);
-			if (!WormAI.canWalkTo(this.terrain, w.x, w.y, candX, this.mapObjects))
-				continue;
-
-			const groundY = this.terrain.getLocalGroundY(candX, w.y + 20, 20, 15);
-			if (groundY === null || groundY >= this.terrain.waterY - 15) continue;
-			const candY = groundY - 12;
-
-			const cover = WormAI.evaluateCover(candX, candY, this.terrain, enemies);
-			const mineRisk = WormAI.evaluateMineRisk(candX, candY, this.mapObjects);
-			const crateScore = WormAI.evaluateCrates(
-				candX,
-				candY,
-				this.mapObjects,
-				w.health / w.maxHealth,
-			);
-
-			const score = cover + crateScore - mineRisk;
-			if (score > bestScore) {
-				bestScore = score;
-				bestX = candX;
-			}
-		}
-
-		return bestX;
+	public fireActiveWeapon(): void {
+		this.weaponCtrl.fireActiveWeapon(
+			this.getActiveWorm(),
+			this.worms,
+			this.terrain,
+			this.mapObjects,
+			this.projectiles,
+			this.effects,
+			this.audioManager,
+			(phase) => {
+				this.turnCtrl.phase = phase;
+			},
+			(sec) => {
+				this.turnCtrl.repositionTimer = sec;
+			},
+		);
 	}
 
 	private gameLoop(timestamp: number): void {
 		if (!this.lastTickTime) this.lastTickTime = timestamp;
 		const elapsed = timestamp - this.lastTickTime;
 
-		// Fixed 30 FPS Tick Lock
 		if (elapsed >= this.frameInterval) {
 			this.lastTickTime = timestamp - (elapsed % this.frameInterval);
-			if (this.phase === "EDITOR" && this.mapEditor) {
+			if (this.turnCtrl.phase === "EDITOR" && this.mapEditor) {
 				this.mapEditor.render();
-			} else if (this.phase !== "MENU") {
+			} else if (this.turnCtrl.phase !== "MENU") {
 				this.updateFixedTick();
 				this.render();
 			}
@@ -1022,20 +644,17 @@ export class WormixGame {
 	}
 
 	private updateFixedTick(): void {
-		// Sudden Death / Rising Water Mode Tick
-		if (this.lobbyConfig.gameMode === "rising_water") {
+		if (this.turnCtrl.lobbyConfig.gameMode === "rising_water") {
 			this.terrain.waterY = Math.max(100, this.terrain.waterY - 0.08);
 		}
 
-		// 1. Update Terrain & Live Dynamic Water Physics
 		this.terrain.updatePhysics();
 
-		// 2. Update Worm Physics & Water Oxygen
 		for (const worm of this.worms) {
 			worm.update(this.terrain);
 		}
 
-		// 3. Update Interactive Map Objects (Barrels, Mines, Crates)
+		// Update Map Objects
 		for (let i = this.mapObjects.length - 1; i >= 0; i--) {
 			const obj = this.mapObjects[i];
 			obj.update(
@@ -1046,7 +665,6 @@ export class WormixGame {
 					this.terrain.explode(x, y, radius);
 					this.spawnExplosionFx(x, y, null, radius);
 
-					// Explosion damage to nearby worms
 					for (const w of this.worms) {
 						if (w.isAlive) {
 							const d = Math.hypot(w.x - x, w.y - y);
@@ -1056,7 +674,6 @@ export class WormixGame {
 						}
 					}
 
-					// Chain explosion: damage nearby barrels/objects (for barrel chain reactions)
 					for (const other of this.mapObjects) {
 						if (other !== obj && !other.isDestroyed) {
 							const d = Math.hypot(other.x - x, other.y - y);
@@ -1078,23 +695,18 @@ export class WormixGame {
 		}
 
 		const activeWorm = this.getActiveWorm();
-
-		// 4. Process Active Turn Input
-		// In PvP mode both teams are human-controlled; in AI mode only 'player' team is human.
-		const isPvP = this.lobbyConfig.matchType === "pvp";
+		const isPvP = this.turnCtrl.lobbyConfig.matchType === "pvp";
 		const isHumanTurn =
 			activeWorm?.isAlive && (activeWorm.team === "player" || isPvP);
 
 		if (isHumanTurn) {
 			const keys = this.inputManager.keysPressed;
 
-			// Movement Phase Controls
-			if (this.phase === "MOVE") {
+			if (this.turnCtrl.phase === "MOVE") {
 				let dir = 0;
 				if (keys.has("KeyA") || keys.has("ArrowLeft")) dir -= 1;
 				if (keys.has("KeyD") || keys.has("ArrowRight")) dir += 1;
 
-				// GyroMouse Roll Steering
 				const steer = this.inputManager.getSteeringValue();
 				if (Math.abs(steer.x) > 0.2) dir = Math.sign(steer.x);
 
@@ -1106,8 +718,7 @@ export class WormixGame {
 				}
 			}
 
-			// Aiming Controls (Aim angle up/down)
-			if (this.phase === "AIM_FIRE") {
+			if (this.turnCtrl.phase === "AIM_FIRE") {
 				if (keys.has("KeyW") || keys.has("ArrowUp")) {
 					activeWorm.aimAngle -= 2.5;
 				}
@@ -1115,33 +726,30 @@ export class WormixGame {
 					activeWorm.aimAngle += 2.5;
 				}
 
-				// GyroMouse Pitch Steering
 				const steer = this.inputManager.getSteeringValue();
 				if (Math.abs(steer.y) > 0.2) {
 					activeWorm.aimAngle += steer.y * 3.0;
 				}
 
-				// Charge Shot Power Meter
-				if (this.isCharging) {
-					this.chargePower += this.chargeSpeed;
-					if (this.chargePower >= 1.0) {
-						this.chargePower = 1.0;
-						this.fireActiveWeapon(); // Auto-fire at 100% max power
+				if (this.weaponCtrl.isCharging) {
+					this.weaponCtrl.chargePower += this.weaponCtrl.chargeSpeed;
+					if (this.weaponCtrl.chargePower >= 1.0) {
+						this.weaponCtrl.chargePower = 1.0;
+						this.fireActiveWeapon();
 					}
 				}
 			}
 
-			// Turn Countdown Timer (if time expires, immediately end turn cleanly)
-			this.turnTimer -= 1 / 30; // 30 FPS tick
-			if (this.turnTimer <= 0) {
-				this.turnTimer = 0;
+			this.turnCtrl.turnTimer -= 1 / 30;
+			if (this.turnCtrl.turnTimer <= 0) {
+				this.turnCtrl.turnTimer = 0;
 				this.checkTurnEnd();
 			}
 		}
 
-		// 4b. PROJECTILE_FLIGHT Phase — allow human player to run & jump for cover while projectile flies!
+		// Allow human player to run & jump during projectile flight
 		if (
-			this.phase === "PROJECTILE_FLIGHT" &&
+			this.turnCtrl.phase === "PROJECTILE_FLIGHT" &&
 			isHumanTurn &&
 			activeWorm?.isAlive
 		) {
@@ -1155,14 +763,17 @@ export class WormixGame {
 			}
 		}
 
-		// 5. REPOSITION Phase — post-fire movement window (separate from turn timer)
-		if (this.phase === "REPOSITION" && activeWorm && activeWorm.isAlive) {
-			this.repositionTimer -= 1 / 30;
+		// REPOSITION Phase
+		if (
+			this.turnCtrl.phase === "REPOSITION" &&
+			activeWorm &&
+			activeWorm.isAlive
+		) {
+			this.turnCtrl.repositionTimer -= 1 / 30;
 
-			if (this.repositionTimer <= 0) {
+			if (this.turnCtrl.repositionTimer <= 0) {
 				this.checkTurnEnd();
 			} else if (isHumanTurn) {
-				// Human: allow walk + jump only (no weapon switch, no firing)
 				const keys = this.inputManager.keysPressed;
 				let dir = 0;
 				if (keys.has("KeyA") || keys.has("ArrowLeft")) dir -= 1;
@@ -1172,14 +783,17 @@ export class WormixGame {
 					activeWorm.jump();
 				}
 			} else if (activeWorm.team === "ai") {
-				// AI: reposition toward a chosen safe spot (crate if low HP,
-				// otherwise away from the nearest enemy / last explosion)
-				if (this.aiReposTargetX === null) {
-					this.aiReposTargetX = this.pickAiRepositionTarget(activeWorm);
+				if (this.aiTurnCtrl.aiReposTargetX === null) {
+					this.aiTurnCtrl.aiReposTargetX =
+						this.aiTurnCtrl.pickAiRepositionTarget(
+							activeWorm,
+							this.worms,
+							this.terrain,
+							this.mapObjects,
+						);
 				}
-				if (Math.abs(this.aiReposTargetX - activeWorm.x) > 20) {
-					const dir = this.aiReposTargetX > activeWorm.x ? 1 : -1;
-					// Check if there's ground ahead before walking
+				if (Math.abs(this.aiTurnCtrl.aiReposTargetX - activeWorm.x) > 20) {
+					const dir = this.aiTurnCtrl.aiReposTargetX > activeWorm.x ? 1 : -1;
 					const nextX = activeWorm.x + dir * 30;
 					if (
 						this.terrain.getLocalGroundY(
@@ -1190,12 +804,11 @@ export class WormixGame {
 						) !== null
 					) {
 						activeWorm.walk(dir);
-						// Jump if hitting a wall (stuck with zero horizontal velocity)
 						if (activeWorm.isGrounded && activeWorm.vx === 0) {
 							activeWorm.jump();
 						}
 					} else {
-						activeWorm.walk(0); // stop if no ground ahead
+						activeWorm.walk(0);
 					}
 				} else {
 					activeWorm.walk(0);
@@ -1203,82 +816,93 @@ export class WormixGame {
 			}
 		}
 
-		// 6. AI Turn Logic (only in AI match mode and only for Blue team worms)
+		// AI Turn Logic
 		const isAiTurn =
 			!isPvP &&
 			activeWorm !== null &&
 			activeWorm.isAlive &&
 			activeWorm.team === "ai";
 
-		this.showDecisionOverlay(isAiTurn && this.aiThinking);
+		this.aiTurnCtrl.showDecisionOverlay(isAiTurn && this.aiTurnCtrl.aiThinking);
 
 		if (isAiTurn && activeWorm) {
-			// AI turn clock: thinking + walking consume the 45s turn timer (paused when debug frozen)
 			if (
-				!this.aiDebugFrozen &&
-				(this.phase === "MOVE" ||
-					this.phase === "WEAPON_SELECT" ||
-					this.phase === "AIM_FIRE")
+				!this.aiTurnCtrl.aiDebugFrozen &&
+				(this.turnCtrl.phase === "MOVE" ||
+					this.turnCtrl.phase === "WEAPON_SELECT" ||
+					this.turnCtrl.phase === "AIM_FIRE")
 			) {
-				this.turnTimer -= 1 / 30;
-				if (this.turnTimer <= 0) {
-					this.turnTimer = 0;
-					this.forceFinishAiTurn(activeWorm);
+				this.turnCtrl.turnTimer -= 1 / 30;
+				if (this.turnCtrl.turnTimer <= 0) {
+					this.turnCtrl.turnTimer = 0;
+					this.aiTurnCtrl.forceFinishAiTurn(
+						activeWorm,
+						() => this.fireActiveWeapon(),
+						(idx) => {
+							this.weaponCtrl.activeWeaponIndex = idx;
+						},
+						(p) => {
+							this.weaponCtrl.chargePower = p;
+						},
+						(phase) => {
+							this.turnCtrl.phase = phase;
+						},
+					);
 				}
 			}
 
-			// 6a. Decision phase — frame-sliced search (spinner + timer tick)
-			if (this.phase === "MOVE" && !this.aiPlan) {
-				if (!this.aiPlanner) {
-					this.aiPlanner = createPlanner({
+			// Decision phase
+			if (this.turnCtrl.phase === "MOVE" && !this.aiTurnCtrl.aiPlan) {
+				if (!this.aiTurnCtrl.aiPlanner) {
+					this.aiTurnCtrl.aiPlanner = createPlanner({
 						aiWorm: activeWorm,
 						allWorms: this.worms,
 						terrain: this.terrain,
 						mapObjects: this.mapObjects,
-						windX: this.windX,
-						difficulty: this.aiDifficulty,
-						personality: this.aiPersonalities[activeWorm.id] ?? "default",
-						availableAmmo: this.teamAmmo.ai,
-						gameMode: this.lobbyConfig.gameMode,
+						windX: this.turnCtrl.windX,
+						difficulty: this.turnCtrl.aiDifficulty,
+						personality:
+							this.aiTurnCtrl.aiPersonalities[activeWorm.id] ?? "default",
+						availableAmmo: this.weaponCtrl.teamAmmo.ai,
+						gameMode: this.turnCtrl.lobbyConfig.gameMode,
 					});
-					this.aiThinking = true;
+					this.aiTurnCtrl.aiThinking = true;
 				}
-				this.aiPlanner.step(16);
-				if (this.aiPlanner.isDone) {
-					this.aiPlan = this.aiPlanner.getPlan();
-					this.lastAiPlan = this.aiPlan;
-					this.aiPlanner = null;
-					this.aiThinking = false;
-					this.aiTargetX = this.aiPlan.targetX;
-					this.aiWalkTimeLeft = 240; // 8 seconds max at 30fps
-					activeWorm.aimAngle = this.aiPlan.targetAngle;
+				this.aiTurnCtrl.aiPlanner.step(16);
+				if (this.aiTurnCtrl.aiPlanner.isDone) {
+					this.aiTurnCtrl.aiPlan = this.aiTurnCtrl.aiPlanner.getPlan();
+					this.aiTurnCtrl.lastAiPlan = this.aiTurnCtrl.aiPlan;
+					this.aiTurnCtrl.aiPlanner = null;
+					this.aiTurnCtrl.aiThinking = false;
+					this.aiTurnCtrl.aiTargetX = this.aiTurnCtrl.aiPlan.targetX;
+					this.aiTurnCtrl.aiWalkTimeLeft = 240;
+					activeWorm.aimAngle = this.aiTurnCtrl.aiPlan.targetAngle;
 					activeWorm.facingRight =
-						Math.cos((this.aiPlan.targetAngle * Math.PI) / 180) >= 0;
+						Math.cos((this.aiTurnCtrl.aiPlan.targetAngle * Math.PI) / 180) >= 0;
 
-					// Sync active weapon index to AI's planned weapon for UI visualization
 					const plannedIdx = WEAPON_LIST.findIndex(
-						(w) => w.id === this.aiPlan!.weaponId,
+						(w) => w.id === this.aiTurnCtrl.aiPlan!.weaponId,
 					);
 					if (plannedIdx !== -1) {
-						this.activeWeaponIndex = plannedIdx;
+						this.weaponCtrl.activeWeaponIndex = plannedIdx;
 					}
 
-					if (this.isAiDebugMode) {
-						this.aiDebugFrozen = true;
+					if (this.aiTurnCtrl.isAiDebugMode) {
+						this.aiTurnCtrl.aiDebugFrozen = true;
 					}
 				}
 			}
 
-			// 6b. Walk toward planned position (with jump obstacle handling, paused if debug frozen)
+			// Walk phase
 			if (
-				this.phase === "MOVE" &&
-				this.aiPlan &&
-				!this.aiThinking &&
-				!this.aiDebugFrozen
+				this.turnCtrl.phase === "MOVE" &&
+				this.aiTurnCtrl.aiPlan &&
+				!this.aiTurnCtrl.aiThinking &&
+				!this.aiTurnCtrl.aiDebugFrozen
 			) {
-				const distToTarget = Math.abs(this.aiTargetX - activeWorm.x);
-				if (distToTarget > 5 && this.aiWalkTimeLeft > 0) {
-					const dir = this.aiTargetX > activeWorm.x ? 1 : -1;
+				const distToTarget = Math.abs(this.aiTurnCtrl.aiTargetX - activeWorm.x);
+				if (distToTarget > 5 && this.aiTurnCtrl.aiWalkTimeLeft > 0) {
+					const dir = this.aiTurnCtrl.aiTargetX > activeWorm.x ? 1 : -1;
 					activeWorm.walk(dir);
 					if (activeWorm.isGrounded) {
 						const nextX = activeWorm.x + dir * 18;
@@ -1293,73 +917,78 @@ export class WormixGame {
 							activeWorm.jump();
 						}
 					}
-					this.aiWalkTimeLeft--;
+					this.aiTurnCtrl.aiWalkTimeLeft--;
 				} else {
-					activeWorm.walk(0); // stop
-					this.phase = "WEAPON_SELECT";
-					// If walking was cliff-blocked, rescan the shot from here
-					this.maybeReplanFromHere(activeWorm);
+					activeWorm.walk(0);
+					this.turnCtrl.phase = "WEAPON_SELECT";
+					this.aiTurnCtrl.maybeReplanFromHere(
+						activeWorm,
+						this.worms,
+						this.terrain,
+						this.mapObjects,
+						this.turnCtrl.windX,
+						this.turnCtrl.aiDifficulty,
+						this.weaponCtrl.teamAmmo,
+						this.turnCtrl.lobbyConfig.gameMode,
+					);
 				}
-			} else if (this.phase === "WEAPON_SELECT" && this.aiPlan) {
-				this.phase = "AIM_FIRE";
 			} else if (
-				this.phase === "AIM_FIRE" &&
-				this.aiPlan &&
-				!this.aiFiringPending
+				this.turnCtrl.phase === "WEAPON_SELECT" &&
+				this.aiTurnCtrl.aiPlan
 			) {
-				this.aiFiringPending = true;
+				this.turnCtrl.phase = "AIM_FIRE";
+			} else if (
+				this.turnCtrl.phase === "AIM_FIRE" &&
+				this.aiTurnCtrl.aiPlan &&
+				!this.aiTurnCtrl.aiFiringPending
+			) {
+				this.aiTurnCtrl.aiFiringPending = true;
 
-				// Recalculate precise aim angle and facing direction from CURRENT position
 				const enemies = this.worms.filter(
 					(e) => e.isAlive && e.team !== activeWorm.team,
 				);
 				const est = WormAI.estimateAnglePower(
-					this.aiPlan.weaponId,
+					this.aiTurnCtrl.aiPlan.weaponId,
 					activeWorm.x,
 					activeWorm.y,
 					enemies,
 				);
-				activeWorm.aimAngle = this.aiPlan.targetAngle || est.angle;
+				activeWorm.aimAngle = this.aiTurnCtrl.aiPlan.targetAngle || est.angle;
 				activeWorm.facingRight =
 					Math.cos((activeWorm.aimAngle * Math.PI) / 180) >= 0;
 
-				// Set weapon
 				const weaponIdx = WEAPON_LIST.findIndex(
-					(w) => w.id === this.aiPlan!.weaponId,
+					(w) => w.id === this.aiTurnCtrl.aiPlan!.weaponId,
 				);
-				if (weaponIdx !== -1) this.activeWeaponIndex = weaponIdx;
-				this.chargePower = this.aiPlan.targetPower;
-				this.aiPlan = null;
+				if (weaponIdx !== -1) this.weaponCtrl.activeWeaponIndex = weaponIdx;
+				this.weaponCtrl.chargePower = this.aiTurnCtrl.aiPlan.targetPower;
+				this.aiTurnCtrl.aiPlan = null;
 
-				// Delay fire so player can see the aim. Phase stays AIM_FIRE until
-				// projectile actually exists — prevents premature turn resolution.
 				setTimeout(() => {
-					this.fireActiveWeapon(); // sets phase = 'PROJECTILE_FLIGHT' inside
-					this.aiFiringPending = false;
+					this.fireActiveWeapon();
+					this.aiTurnCtrl.aiFiringPending = false;
 				}, 300);
 			}
 		}
 
-		// 6. Update Projectiles Physics & Collisions
+		// Update Projectiles
 		for (let i = this.projectiles.length - 1; i >= 0; i--) {
 			const proj = this.projectiles[i];
 			proj.update(
 				this.terrain,
 				this.worms,
 				this.mapObjects,
-				this.windX,
+				this.turnCtrl.windX,
 				(p, x, y) => {
 					this.audioManager.playHit(2.0);
 					this.spawnExplosionFx(x, y, p.weaponId);
 
-					// Damage map objects hit by projectile explosion (barrel chain explosions!)
 					for (const obj of this.mapObjects) {
 						if (!obj.isDestroyed && Math.hypot(obj.x - x, obj.y - y) < 55) {
 							obj.takeDamage(60);
 						}
 					}
 
-					// Handle Cluster Split
 					if (p.weaponId === "cluster" && !p.isClusterChild) {
 						for (let c = 0; c < 5; c++) {
 							const angle = Math.PI / 4 + (c * Math.PI) / 8;
@@ -1387,138 +1016,62 @@ export class WormixGame {
 			}
 		}
 
-		// Update visual effect particles (smoke trails, sparks, flashes)
 		this.effects.update();
 
-		// 7. Turn Resolution Check — enter REPOSITION phase only if active worm took NO damage
-		if (this.phase === "PROJECTILE_FLIGHT" && this.projectiles.length === 0) {
+		// Turn Resolution Check
+		if (
+			this.turnCtrl.phase === "PROJECTILE_FLIGHT" &&
+			this.projectiles.length === 0
+		) {
 			const currentWorm = this.getActiveWorm();
 			if (currentWorm?.tookDamageThisTurn) {
 				this.checkTurnEnd();
 			} else {
-				this.phase = "REPOSITION";
-				this.repositionTimer = 3.0; // 3 seconds to reposition
+				this.turnCtrl.phase = "REPOSITION";
+				this.turnCtrl.repositionTimer = 3.0;
 			}
 		}
 	}
 
-	private checkTurnEnd(): void {
-		const redAlive = this.worms.filter(
-			(w) => w.team === "player" && w.isAlive,
-		).length;
-		const blueAlive = this.worms.filter(
-			(w) => w.team === "ai" && w.isAlive,
-		).length;
-
-		if (redAlive === 0 || blueAlive === 0) {
-			this.phase = "GAME_OVER";
-			this.audioManager.playWin();
-			this.aiThinking = false;
-			this.showDecisionOverlay(false);
-			return;
-		}
-
-		// Pass turn to next alive worm of the opposing team (checkerboard alternating order)
-		const currentWorm = this.worms[this.activeWormIndex];
-		const targetTeam = currentWorm?.team === "player" ? "ai" : "player";
-
-		let nextIdx = (this.activeWormIndex + 1) % this.worms.length;
-		let attempts = 0;
-		while (attempts < this.worms.length * 2) {
-			const candidate = this.worms[nextIdx];
-			if (candidate?.isAlive && candidate.team === targetTeam) {
-				break;
-			}
-			nextIdx = (nextIdx + 1) % this.worms.length;
-			attempts++;
-		}
-
-		this.activeWormIndex = nextIdx;
-		const nextWorm = this.worms[nextIdx];
-		nextWorm.resetTurnFlags();
-
-		// Restore player's last chosen weapon if starting human turn & ensure valid ammo
-		if (nextWorm.team === "player" || this.lobbyConfig.matchType === "pvp") {
-			this.activeWeaponIndex = this.playerWeaponIndex;
-			this.ensureActiveWeaponHasAmmo();
-		}
-
-		this.turnCount++;
-		this.phase = "MOVE";
-		this.turnTimer = 45.0;
-		this.aiPlan = null;
-		this.lastAiPlan = null;
-		this.aiPlanner = null;
-		this.aiThinking = false;
-		this.aiFiringPending = false;
-		this.repositionTimer = 0;
-		this.aiReposTargetX = null;
-		this.showDecisionOverlay(false);
-		this.updateWind();
-
-		// Auto-save match state to localStorage (keeps 3 latest saves for F5 recovery)
-		this.saveMatchState();
-	}
-
-	private saveMatchState(): void {
-		if (
-			this.phase === "MENU" ||
-			this.phase === "EDITOR" ||
-			this.phase === "GAME_OVER"
-		) {
-			return;
-		}
-
-		const saveObj: MatchSaveData = {
-			id: `save_${Date.now()}`,
-			timestamp: Date.now(),
-			dateString: new Date().toLocaleTimeString([], {
-				hour: "2-digit",
-				minute: "2-digit",
-			}),
-			lobbyConfig: this.lobbyConfig,
-			worms: this.worms.map((w) => ({
-				id: w.id,
-				name: w.name,
-				team: w.team,
-				x: w.x,
-				y: w.y,
-				health: w.health,
-				maxHealth: w.maxHealth,
-				personality: w.personality,
-				isAlive: w.isAlive,
-			})),
-			activeWormIndex: this.activeWormIndex,
-			playerWeaponIndex: this.playerWeaponIndex,
-			teamAmmo: this.teamAmmo,
-			windX: this.windX,
-			turnCount: this.turnCount,
-			terrainData: {
-				gridData: Array.from(this.terrain.grid),
-				waterY: this.terrain.waterY,
-				width: this.terrain.width,
-				height: this.terrain.height,
+	public checkTurnEnd(): void {
+		this.turnCtrl.checkTurnEnd(
+			this.worms,
+			this.audioManager,
+			() => {
+				const nextWorm = this.getActiveWorm();
+				if (
+					nextWorm &&
+					(nextWorm.team === "player" ||
+						this.turnCtrl.lobbyConfig.matchType === "pvp")
+				) {
+					this.weaponCtrl.activeWeaponIndex = this.turnCtrl.playerWeaponIndex;
+					this.weaponCtrl.ensureActiveWeaponHasAmmo(nextWorm, (idx) => {
+						this.turnCtrl.playerWeaponIndex = idx;
+					});
+				}
+				this.aiTurnCtrl.resetTurnState();
 			},
-		};
-
-		try {
-			const existingJson = localStorage.getItem("wormix_saved_matches");
-			let saves: MatchSaveData[] = existingJson ? JSON.parse(existingJson) : [];
-			saves.unshift(saveObj);
-			saves = saves.slice(0, 3);
-			localStorage.setItem("wormix_saved_matches", JSON.stringify(saves));
-		} catch (err) {
-			console.warn("Failed to save match state:", err);
-		}
+			() => {
+				this.aiTurnCtrl.aiThinking = false;
+				this.aiTurnCtrl.showDecisionOverlay(false);
+			},
+			() => {
+				this.turnCtrl.saveMatchState(
+					this.worms,
+					this.weaponCtrl.teamAmmo,
+					this.terrain,
+				);
+			},
+		);
 	}
 
 	public loadMatchState(saveData: MatchSaveData): void {
-		this.lobbyConfig = saveData.lobbyConfig;
-		this.aiDifficulty = saveData.lobbyConfig.aiDifficulty;
-		this.windX = saveData.windX;
-		this.playerWeaponIndex = saveData.playerWeaponIndex ?? 0;
-		this.activeWeaponIndex = this.playerWeaponIndex;
-		this.teamAmmo = saveData.teamAmmo;
+		this.turnCtrl.lobbyConfig = saveData.lobbyConfig;
+		this.turnCtrl.aiDifficulty = saveData.lobbyConfig.aiDifficulty;
+		this.turnCtrl.windX = saveData.windX;
+		this.turnCtrl.playerWeaponIndex = saveData.playerWeaponIndex ?? 0;
+		this.weaponCtrl.activeWeaponIndex = this.turnCtrl.playerWeaponIndex;
+		this.weaponCtrl.teamAmmo = saveData.teamAmmo;
 
 		if (saveData.terrainData) {
 			this.terrain.buildTerrainFromHeights(
@@ -1537,150 +1090,42 @@ export class WormixGame {
 			return w;
 		});
 
-		this.activeWormIndex = saveData.activeWormIndex;
-		this.phase = "MOVE";
-		this.turnTimer = 45.0;
-		this.ensureActiveWeaponHasAmmo();
+		this.turnCtrl.activeWormIndex = saveData.activeWormIndex;
+		this.turnCtrl.phase = "MOVE";
+		this.turnCtrl.turnTimer = 45.0;
+		this.weaponCtrl.ensureActiveWeaponHasAmmo(this.getActiveWorm(), (idx) => {
+			this.turnCtrl.playerWeaponIndex = idx;
+		});
 		this.showReturnToEditorBtn();
-		this.updateWind();
+		this.turnCtrl.updateWind();
 	}
 
 	private render(): void {
-		this.updateCamera();
-
-		// Screen space: clear + fill background
-		this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-		this.ctx.fillStyle = "#0f172a";
-		this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-		// World space: apply camera zoom + pan so all game entities keep world coords
-		this.ctx.setTransform(
-			this.camScale,
-			0,
-			0,
-			this.camScale,
-			this.canvas.width / 2 - this.camX * this.camScale,
-			this.canvas.height / 2 - this.camY * this.camScale,
+		this.renderer.renderMatch(
+			this.ctx,
+			this.canvas,
+			this.camera,
+			this.terrain,
+			this.worms,
+			this.mapObjects,
+			this.projectiles,
+			this.effects,
+			this.hud,
+			this.getActiveWorm(),
+			this.weaponCtrl.activeWeaponIndex,
+			this.weaponCtrl.chargePower,
+			this.weaponCtrl.isCharging,
+			this.turnCtrl.windX,
+			this.turnCtrl.turnTimer,
+			this.turnCtrl.repositionTimer,
+			this.turnCtrl.phase,
+			this.turnCtrl.lobbyConfig,
+			this.weaponCtrl.teamAmmo,
+			this.aiTurnCtrl.isAiDebugMode,
+			this.aiTurnCtrl.aiPlan,
+			this.aiTurnCtrl.lastAiPlan,
+			this.aiTurnCtrl.aiDebugFrozen,
 		);
-
-		// Render Terrain, Water, Particles, Portals
-		this.terrain.draw(this.ctx);
-
-		// Render Interactive Map Objects (Barrels, Mines, Crates)
-		this.mapObjects.forEach((obj) => obj.draw(this.ctx));
-
-		// Render Worms
-		const activeWorm = this.getActiveWorm();
-		this.worms.forEach((w) => w.draw(this.ctx, w === activeWorm));
-
-		// Render Projectiles
-		this.projectiles.forEach((p) => p.draw(this.ctx));
-
-		// Render Visual Effect Particles (trails, flashes, smoke)
-		this.effects.draw(this.ctx);
-
-		// Trajectory sighting arc (Shown strictly during AIM_FIRE phase or F3 AI Debug Mode)
-		if (
-			activeWorm?.isAlive &&
-			(this.phase === "AIM_FIRE" || this.isAiDebugMode)
-		) {
-			try {
-				const safeIdx = Math.max(
-					0,
-					Math.min(WEAPON_LIST.length - 1, this.activeWeaponIndex),
-				);
-				const wid = WEAPON_LIST[safeIdx]?.id ?? "bazooka";
-				const powerToDraw = this.isCharging ? this.chargePower : 0.6;
-				const arcWind = WEAPON_LIST[safeIdx]?.affectedByWind ? this.windX : 0;
-				this.hud.drawTrajectoryArc(
-					this.ctx,
-					activeWorm,
-					powerToDraw,
-					arcWind,
-					wid,
-				);
-			} catch (err) {
-				console.error("[Wormix] Trajectory Arc Render Error:", err);
-			}
-		}
-
-		// AI Debug Visualizations (World space: Candidates Heatmap, Target Path, Planned Arc)
-		if (this.isAiDebugMode && (this.aiPlan || this.lastAiPlan)) {
-			try {
-				this.renderAiDebugWorld(this.ctx, activeWorm);
-			} catch (err) {
-				console.error("[Wormix] AI Debug Render Error:", err);
-			}
-		}
-
-		// Back to screen space for UI overlay
-		this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-		// Update AI Debug DOM Panel
-		this.updateAiDebugOverlay();
-
-		// Calculate Team Total HPs
-		const playerHp = this.worms
-			.filter((w) => w.team === "player")
-			.reduce((acc, w) => acc + w.health, 0);
-		const aiHp = this.worms
-			.filter((w) => w.team === "ai")
-			.reduce((acc, w) => acc + w.health, 0);
-
-		// Render Glassmorphism HUD overlay
-		try {
-			const activeTeam = activeWorm?.team ?? "player";
-			this.hud.draw(
-				this.ctx,
-				this.canvas.width,
-				this.canvas.height,
-				this.phase,
-				activeWorm,
-				this.activeWeaponIndex,
-				this.chargePower,
-				this.isCharging,
-				this.windX,
-				this.turnTimer,
-				playerHp,
-				aiHp,
-				this.inputManager.settings.mode === "pointer",
-				this.lobbyConfig.matchType === "pvp",
-				this.teamAmmo[activeTeam as "player" | "ai"] ?? {},
-				this.repositionTimer,
-				this.isAiDebugMode,
-			);
-		} catch (err) {
-			console.error("[Wormix] HUD Render Error:", err);
-		}
-
-		// Game Over Overlay
-		if (this.phase === "GAME_OVER") {
-			const redAlive = this.worms.filter(
-				(w) => w.team === "player" && w.isAlive,
-			).length;
-			this.ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
-			this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-			this.ctx.fillStyle = redAlive > 0 ? "#22c55e" : "#ef4444";
-			this.ctx.font = "bold 36px Outfit, sans-serif";
-			this.ctx.textAlign = "center";
-			this.ctx.fillText(
-				redAlive > 0
-					? "🏆 RED TEAM VICTORIOUS!"
-					: "💀 DEFEAT - BLUE TEAM WINS!",
-				this.canvas.width / 2,
-				this.canvas.height / 2 - 20,
-			);
-
-			this.ctx.fillStyle = "#9ca3af";
-			this.ctx.font = "16px Outfit, sans-serif";
-			this.ctx.fillText(
-				"Press ESC to open menu or refresh to replay",
-				this.canvas.width / 2,
-				this.canvas.height / 2 + 30,
-			);
-		}
 	}
 
 	private showReturnToEditorBtn(): void {
@@ -1779,135 +1224,6 @@ export class WormixGame {
 		if (this.lobbyBtn) {
 			this.lobbyBtn.style.display = "none";
 		}
-	}
-
-	private renderAiDebugWorld(
-		ctx: CanvasRenderingContext2D,
-		activeWorm: Worm | null,
-	): void {
-		const plan = this.aiPlan || this.lastAiPlan;
-		if (!plan) return;
-
-		ctx.save();
-
-		// 1. Position Candidates Heatmap
-		if (plan.evals && plan.evals.length > 0) {
-			const maxScore = Math.max(...plan.evals.map((e) => e.totalScore));
-			const minScore = Math.min(...plan.evals.map((e) => e.totalScore));
-			const scoreRange = maxScore - minScore || 1;
-
-			for (const ev of plan.evals) {
-				const norm = (ev.totalScore - minScore) / scoreRange;
-				const isChosen = Math.abs(ev.x - plan.targetX) < 5;
-
-				ctx.fillStyle = isChosen
-					? "rgba(34, 197, 94, 0.85)"
-					: norm > 0.65
-						? "rgba(56, 189, 248, 0.55)"
-						: norm > 0.35
-							? "rgba(234, 179, 8, 0.55)"
-							: "rgba(239, 68, 68, 0.45)";
-
-				ctx.beginPath();
-				ctx.arc(ev.x, ev.y, isChosen ? 14 : 8, 0, Math.PI * 2);
-				ctx.fill();
-				ctx.strokeStyle = isChosen ? "#ffffff" : "rgba(255, 255, 255, 0.3)";
-				ctx.lineWidth = isChosen ? 2.5 : 1;
-				ctx.stroke();
-
-				ctx.font = isChosen
-					? "bold 11px Outfit, sans-serif"
-					: "9px Outfit, sans-serif";
-				ctx.fillStyle = isChosen ? "#ffffff" : "#cbd5e1";
-				ctx.textAlign = "center";
-				ctx.fillText(`${Math.round(ev.totalScore)}`, ev.x, ev.y - 12);
-			}
-		}
-
-		// 2. Target Walk Path & Flag Marker
-		if (activeWorm) {
-			ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
-			ctx.lineWidth = 2;
-			ctx.setLineDash([5, 5]);
-			ctx.beginPath();
-			ctx.moveTo(activeWorm.x, activeWorm.y);
-			ctx.lineTo(plan.targetX, activeWorm.y);
-			ctx.stroke();
-			ctx.setLineDash([]);
-
-			ctx.font = "16px sans-serif";
-			ctx.textAlign = "center";
-			ctx.fillText("🚩", plan.targetX, activeWorm.y - 18);
-		}
-
-		// 3. Planned Trajectory Arc & Target Impact
-		if (activeWorm) {
-			const planX = plan.targetX;
-			const planSurfaceY = this.terrain.getSurfaceY(planX);
-			const planY = planSurfaceY - 12;
-			const rad = (plan.targetAngle * Math.PI) / 180;
-			const speed = plan.targetPower * PROJECTILE_MAX_SPEED[plan.weaponId];
-			let vx = Math.cos(rad) * speed;
-			let vy = Math.sin(rad) * speed;
-			let px = planX + Math.cos(rad) * 20;
-			let py = planY + Math.sin(rad) * 20;
-			const hasWind = WEAPON_STATS[plan.weaponId].wind;
-			const gravity = WEAPON_STATS[plan.weaponId].gravity;
-
-			ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
-			ctx.lineWidth = 2.5;
-			ctx.beginPath();
-			ctx.moveTo(px, py);
-
-			for (let step = 0; step < 40; step++) {
-				if (hasWind) vx += this.windX * 0.05;
-				if (plan.weaponId !== "rifle") vy += gravity;
-				px += vx;
-				py += vy;
-				ctx.lineTo(px, py);
-				if (this.terrain.isSolidAt(px, py) || py >= this.terrain.waterY) break;
-			}
-			ctx.stroke();
-
-			ctx.font = "18px sans-serif";
-			ctx.textAlign = "center";
-			ctx.fillText("🎯", px, py);
-		}
-
-		ctx.restore();
-	}
-
-	private updateAiDebugOverlay(): void {
-		const panelEl = document.getElementById("aiDebugPanel");
-		const contentEl = document.getElementById("aiDebugContent");
-		const freezeEl = document.getElementById("aiDebugFreezeBadge");
-		if (!panelEl || !contentEl || !freezeEl) return;
-
-		panelEl.hidden = !this.isAiDebugMode;
-		if (!this.isAiDebugMode) return;
-
-		const activeWorm = this.getActiveWorm();
-		freezeEl.hidden = !this.aiDebugFrozen;
-
-		if (activeWorm?.team !== "ai") {
-			contentEl.innerHTML = `<div>Waiting for AI turn...</div>`;
-			return;
-		}
-
-		const p = this.aiPlan || this.lastAiPlan;
-		if (!p) {
-			contentEl.innerHTML = `<div>🤖 <b>${activeWorm.name}</b> is searching plan...</div>`;
-			return;
-		}
-
-		contentEl.innerHTML = `
-			<div>🤖 <b>${activeWorm.name}</b> [<code>${p.personality || "default"}</code>]</div>
-			<div>📍 Target X: <b>${Math.round(p.targetX)}</b> (Current: ${Math.round(activeWorm.x)})</div>
-			<div>🚀 Weapon: <b>${p.weaponId.toUpperCase()}</b> (Angle: ${Math.round(p.targetAngle)}°, Power: ${Math.round(p.targetPower * 100)}%)</div>
-			<div>💥 Est. Dmg: <b>${p.enemyDamageEst ?? 0}</b> enemy | <b>${p.selfDamageEst ?? 0}</b> self</div>
-			<div>☠️ Est. Kills: <b>${p.killsEst ?? 0}</b> | Water KO: <b>${p.waterKnockoutsEst ?? 0}</b></div>
-			<div>⏱️ Sims: <b>${p.sims ?? 0}</b> | Wind: <b>${this.windX.toFixed(1)}</b></div>
-		`;
 	}
 }
 
