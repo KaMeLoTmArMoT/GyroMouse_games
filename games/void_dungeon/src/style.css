@@ -67,7 +67,7 @@ canvas#gameCanvas {
 }
 
 .top-right {
-	top: 20px;
+	top: 72px;
 	right: 20px;
 	padding: 10px;
 	align-items: center;
@@ -80,6 +80,55 @@ canvas#gameCanvas {
 	border: 1px solid rgba(56, 189, 248, 0.3);
 	background: #020617;
 	display: block;
+}
+
+/* Regenerate 3s Hold Button */
+.regen-btn {
+	position: relative;
+	overflow: hidden;
+	background: rgba(30, 41, 59, 0.8);
+	border: 1px solid rgba(251, 191, 36, 0.4);
+	color: #fbbf24;
+	font-family: inherit;
+	font-weight: 700;
+	font-size: 0.8rem;
+	padding: 6px 12px;
+	border-radius: 8px;
+	cursor: pointer;
+	user-select: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition:
+		border-color 0.2s ease,
+		transform 0.1s ease;
+	margin-top: 4px;
+}
+
+.regen-btn:hover {
+	border-color: #fbbf24;
+	background: rgba(30, 41, 59, 0.95);
+}
+
+.regen-btn:active {
+	transform: scale(0.98);
+}
+
+.regen-bar {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 0%;
+	background: rgba(245, 158, 11, 0.45);
+	transition: width 0.05s linear;
+	pointer-events: none;
+}
+
+.regen-text {
+	position: relative;
+	z-index: 2;
+	pointer-events: none;
 }
 
 .hud-title {
@@ -117,6 +166,15 @@ canvas#gameCanvas {
 .badge.mode {
 	background: rgba(168, 85, 247, 0.25);
 	color: #c084fc;
+	cursor: pointer;
+	transition:
+		background 0.2s,
+		color 0.2s;
+}
+
+.badge.mode:hover {
+	background: rgba(168, 85, 247, 0.5);
+	color: #ffffff;
 }
 
 /* Key Slot Badges */

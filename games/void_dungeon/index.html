@@ -17,7 +17,12 @@
       <div class="hud-title">🗡️ VOID DUNGEON</div>
       <div class="hud-row"><span class="badge p1">P1</span> WASD: Move | Space: Push Crate</div>
       <div class="hud-row"><span class="badge p2">P2</span> Arrows: Aim | Enter: Sonar Pulse</div>
-      <div class="hud-row mode-hint"><span class="badge mode">MODES</span> Alt+1: Fog | Alt+2: Reveal All | Alt+3: Grid | Alt+4: ESP</div>
+      <div class="hud-row mode-hint">
+        <span class="badge mode" id="btn-mode-1" title="Click or press Alt+1 / 1">1: Fog</span>
+        <span class="badge mode" id="btn-mode-2" title="Click or press Alt+2 / 2">2: Reveal</span>
+        <span class="badge mode" id="btn-mode-3" title="Click or press Alt+3 / 3">3: Grid</span>
+        <span class="badge mode" id="btn-mode-4" title="Click or press Alt+4 / 4">4: ESP</span>
+      </div>
     </div>
 
     <!-- Minimap (Top Right) -->
@@ -41,6 +46,10 @@
         <span>🌱 Seed:</span>
         <span id="hud-seed">void-1</span>
       </div>
+      <button id="btn-regen-map" class="regen-btn" type="button">
+        <span id="regen-bar" class="regen-bar"></span>
+        <span id="regen-text" class="regen-text">🎲 Hold to Reset Map (3s)</span>
+      </button>
       <div id="hud-mode" class="mode-status">Mode 1: Normal Gameplay (Fog Active)</div>
     </div>
 

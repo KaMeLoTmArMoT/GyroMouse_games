@@ -69,6 +69,9 @@ export class VoidDungeonGame extends BaseGame {
 			});
 		}
 
+		this.setupModeBadges();
+		this.setupRegenHoldButton();
+
 		// F5 state persistence setup
 		this.loadSavedState();
 		window.addEventListener("beforeunload", () => this.saveState());
@@ -78,6 +81,72 @@ export class VoidDungeonGame extends BaseGame {
 		// Start game loop
 		this.isStarted = true;
 		requestAnimationFrame((timestamp) => this.gameLoop(timestamp));
+	}
+
+	private setupModeBadges(): void {
+		for (let i = 1; i <= 4; i++) {
+			const btn = document.getElementById(`btn-mode-${i}`);
+			if (btn) {
+				btn.addEventListener("click", () => this.setMode(i));
+			}
+		}
+	}
+
+	private setupRegenHoldButton(): void {
+		const regenBtn = document.getElementById("btn-regen-map");
+		const regenBar = document.getElementById("regen-bar");
+		const regenText = document.getElementById("regen-text");
+
+		if (!regenBtn || !regenBar || !regenText) return;
+
+		let holdStartTime = 0;
+		let holdTimer: number | null = null;
+		const HOLD_DURATION = 3000; // 3 seconds in ms
+
+		const resetHold = () => {
+			if (holdTimer !== null) {
+				cancelAnimationFrame(holdTimer);
+				holdTimer = null;
+			}
+			holdStartTime = 0;
+			regenBar.style.width = "0%";
+			regenText.textContent = "🎲 Hold to Reset Map (3s)";
+		};
+
+		const updateHold = (now: number) => {
+			if (holdStartTime === 0) return;
+			const elapsed = now - holdStartTime;
+			const progress = Math.min(1, elapsed / HOLD_DURATION);
+
+			regenBar.style.width = `${progress * 100}%`;
+			const remaining = Math.max(0, (HOLD_DURATION - elapsed) / 1000).toFixed(
+				1,
+			);
+			regenText.textContent = `Hold... ${remaining}s`;
+
+			if (progress >= 1) {
+				resetHold();
+				this.restartGame();
+				this.showModeNotification("New Dungeon Generated! 🎲");
+			} else {
+				holdTimer = requestAnimationFrame(updateHold);
+			}
+		};
+
+		const startHold = (e: Event) => {
+			e.preventDefault();
+			resetHold();
+			holdStartTime = performance.now();
+			holdTimer = requestAnimationFrame(updateHold);
+		};
+
+		regenBtn.addEventListener("mousedown", startHold);
+		regenBtn.addEventListener("touchstart", startHold, { passive: false });
+
+		regenBtn.addEventListener("mouseup", resetHold);
+		regenBtn.addEventListener("mouseleave", resetHold);
+		regenBtn.addEventListener("touchend", resetHold);
+		regenBtn.addEventListener("touchcancel", resetHold);
 	}
 
 	private setupPlayerCallbacks(): void {
@@ -98,29 +167,39 @@ export class VoidDungeonGame extends BaseGame {
 	}
 
 	protected override onKeyDown(e: KeyboardEvent): void {
-		// Alt + Number Mode Switching
-		if (e.altKey) {
-			if (e.code === "Digit1" || e.key === "1") {
-				e.preventDefault();
-				this.renderer.modes.fogEnabled = true;
-				this.showModeNotification("Mode 1: Normal Gameplay (Fog Active)");
-			} else if (e.code === "Digit2" || e.key === "2") {
-				e.preventDefault();
-				this.renderer.modes.fogEnabled = false;
-				this.showModeNotification("Mode 2: Debug Reveal All Map (Fog Off)");
-			} else if (e.code === "Digit3" || e.key === "3") {
-				e.preventDefault();
-				this.renderer.modes.showGrid = !this.renderer.modes.showGrid;
-				this.showModeNotification(
-					`Mode 3: Grid Overlay ${this.renderer.modes.showGrid ? "ON" : "OFF"}`,
-				);
-			} else if (e.code === "Digit4" || e.key === "4") {
-				e.preventDefault();
-				this.renderer.modes.showESP = !this.renderer.modes.showESP;
-				this.showModeNotification(
-					`Mode 4: Key/Exit ESP ${this.renderer.modes.showESP ? "ON" : "OFF"}`,
-				);
-			}
+		// Support 1/2/3/4 keys both with or without Alt key modifier
+		if (e.code === "Digit1" || e.code === "Numpad1" || e.key === "1") {
+			e.preventDefault();
+			this.setMode(1);
+		} else if (e.code === "Digit2" || e.code === "Numpad2" || e.key === "2") {
+			e.preventDefault();
+			this.setMode(2);
+		} else if (e.code === "Digit3" || e.code === "Numpad3" || e.key === "3") {
+			e.preventDefault();
+			this.setMode(3);
+		} else if (e.code === "Digit4" || e.code === "Numpad4" || e.key === "4") {
+			e.preventDefault();
+			this.setMode(4);
+		}
+	}
+
+	public setMode(modeNum: number): void {
+		if (modeNum === 1) {
+			this.renderer.modes.fogEnabled = true;
+			this.showModeNotification("Mode 1: Normal Gameplay (Fog Active)");
+		} else if (modeNum === 2) {
+			this.renderer.modes.fogEnabled = false;
+			this.showModeNotification("Mode 2: Debug Reveal All Map (Fog Off)");
+		} else if (modeNum === 3) {
+			this.renderer.modes.showGrid = !this.renderer.modes.showGrid;
+			this.showModeNotification(
+				`Mode 3: Grid Overlay ${this.renderer.modes.showGrid ? "ON" : "OFF"}`,
+			);
+		} else if (modeNum === 4) {
+			this.renderer.modes.showESP = !this.renderer.modes.showESP;
+			this.showModeNotification(
+				`Mode 4: Key/Exit ESP ${this.renderer.modes.showESP ? "ON" : "OFF"}`,
+			);
 		}
 	}
 
