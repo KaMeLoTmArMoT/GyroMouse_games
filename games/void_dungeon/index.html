@@ -14,9 +14,10 @@
 
     <!-- Controls Overlay / Guide -->
     <div id="hud-controls" class="hud-card">
-      <div class="hud-title">🎮 CONTROLS</div>
+      <div class="hud-title">🗡️ VOID DUNGEON</div>
       <div class="hud-row"><span class="badge p1">P1</span> WASD: Move | Space: Interact</div>
-      <div class="hud-row"><span class="badge p2">P2</span> Arrows: Aim | Enter: Action</div>
+      <div class="hud-row"><span class="badge p2">P2</span> Arrows: Aim | Enter: Sonar Pulse</div>
+      <div class="hud-row mode-hint"><span class="badge mode">MODES</span> Alt+1: Fog | Alt+2: Reveal All | Alt+3: Grid | Alt+4: ESP</div>
     </div>
 
     <!-- HUD Info (Bottom Left) -->
@@ -27,15 +28,9 @@
       </div>
       <div class="hud-row">
         <span>🌱 Seed:</span>
-        <span id="hud-seed">void-test</span>
+        <span id="hud-seed">void-1</span>
       </div>
-    </div>
-
-    <!-- Debug HUD (Top Left below hub button) -->
-    <div id="hud-debug" class="hud-card top-left-debug" style="display: none;">
-      <div class="hud-title">⚙️ DEBUG MODE</div>
-      <div>F1: Toggle Fog</div>
-      <div>F3: Toggle Grid</div>
+      <div id="hud-mode" class="mode-status">Mode 1: Normal Gameplay (Fog Active)</div>
     </div>
   </div>
 
