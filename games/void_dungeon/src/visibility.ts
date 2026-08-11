@@ -1,6 +1,11 @@
 import type { DungeonLevel } from "./level";
 import { DIR_ANGLES, type Direction } from "./types";
 
+export interface RayPoint {
+	x: number;
+	y: number;
+}
+
 export enum VisibilityState {
 	UNSEEN = 0,
 	REVEALED = 1,
@@ -11,6 +16,7 @@ export class VisibilityMap {
 	public width: number;
 	public height: number;
 	public grid: VisibilityState[][];
+	public coneRayEndpoints: RayPoint[] = [];
 
 	constructor(width: number, height: number) {
 		this.width = width;
@@ -21,6 +27,7 @@ export class VisibilityMap {
 
 	public resetAll(): void {
 		this.grid = [];
+		this.coneRayEndpoints = [];
 		for (let y = 0; y < this.height; y++) {
 			const row: VisibilityState[] = [];
 			for (let x = 0; x < this.width; x++) {
@@ -53,6 +60,8 @@ export class VisibilityMap {
 		level: DungeonLevel,
 		sonarActive: boolean = false,
 	): void {
+		this.coneRayEndpoints = [];
+
 		// Step 1: Transition all currently VISIBLE tiles to REVEALED
 		for (let y = 0; y < this.height; y++) {
 			for (let x = 0; x < this.width; x++) {
@@ -93,11 +102,15 @@ export class VisibilityMap {
 
 			// Raycast marching
 			let rayDist = 0;
-			const step = 0.3; // tile step fraction
+			const step = 0.2; // finer tile step fraction
+			let endSampleX = playerTileX + 0.5;
+			let endSampleY = playerTileY + 0.5;
 
 			while (rayDist <= maxRange) {
 				const sampleX = playerTileX + 0.5 + cosA * rayDist;
 				const sampleY = playerTileY + 0.5 + sinA * rayDist;
+				endSampleX = sampleX;
+				endSampleY = sampleY;
 
 				const tx = Math.floor(sampleX);
 				const ty = Math.floor(sampleY);
@@ -115,6 +128,12 @@ export class VisibilityMap {
 
 				rayDist += step;
 			}
+
+			// Save ray endpoint in world pixel coordinates
+			this.coneRayEndpoints.push({
+				x: endSampleX * 32,
+				y: endSampleY * 32,
+			});
 		}
 	}
 }

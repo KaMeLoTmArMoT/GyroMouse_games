@@ -76,12 +76,6 @@ export class DungeonRenderer {
 				}
 
 				this.drawTile(ctx, tile, px, py, x, y, vis);
-
-				// Draw Fog overlay for REVEALED tiles (memory)
-				if (this.modes.fogEnabled && vis === VisibilityState.REVEALED) {
-					ctx.fillStyle = "rgba(2, 6, 23, 0.65)";
-					ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-				}
 			}
 		}
 

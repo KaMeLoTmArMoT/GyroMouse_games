@@ -41,7 +41,7 @@ export class LightingManager {
 			tileX,
 			tileY,
 			flickerOffset: Math.random() * Math.PI * 2,
-			radius: 90 + Math.random() * 20,
+			radius: 75 + Math.random() * 15,
 		});
 	}
 
@@ -89,11 +89,11 @@ export class LightingManager {
 		cameraX: number,
 		cameraY: number,
 		player: Player,
-		_level: DungeonLevel,
+		level: DungeonLevel,
 		visMap: VisibilityMap,
 		fogEnabled: boolean,
 		time: number,
-		sonarActive: boolean = false,
+		_sonarActive: boolean = false,
 	): void {
 		if (!fogEnabled) return;
 
@@ -108,9 +108,33 @@ export class LightingManager {
 		const ctx = this.offscreenCtx;
 		ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-		// Fill offscreen canvas with dark void fog
-		ctx.fillStyle = "rgba(2, 6, 23, 0.96)";
-		ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+		// Fill dark void fog for UNSEEN tiles, and clean translucent memory fog (0.20) for REVEALED tiles
+		const startTileX = Math.max(0, Math.floor(cameraX / TILE_SIZE) - 1);
+		const endTileX = Math.min(
+			level.width,
+			Math.ceil((cameraX + canvasWidth) / TILE_SIZE) + 1,
+		);
+		const startTileY = Math.max(0, Math.floor(cameraY / TILE_SIZE) - 1);
+		const endTileY = Math.min(
+			level.height,
+			Math.ceil((cameraY + canvasHeight) / TILE_SIZE) + 1,
+		);
+
+		for (let y = startTileY; y < endTileY; y++) {
+			for (let x = startTileX; x < endTileX; x++) {
+				const vis = visMap.getVisibility(x, y);
+				const tilePx = x * TILE_SIZE - cameraX;
+				const tilePy = y * TILE_SIZE - cameraY;
+
+				if (vis === VisibilityState.UNSEEN) {
+					ctx.fillStyle = "rgba(2, 6, 23, 0.96)";
+					ctx.fillRect(tilePx, tilePy, TILE_SIZE, TILE_SIZE);
+				} else if (vis === VisibilityState.REVEALED) {
+					ctx.fillStyle = "rgba(2, 6, 23, 0.48)";
+					ctx.fillRect(tilePx, tilePy, TILE_SIZE, TILE_SIZE);
+				}
+			}
+		}
 
 		// Cut out light using destination-out composite mode for ultra smooth radial gradients
 		ctx.save();
@@ -122,7 +146,7 @@ export class LightingManager {
 		// 1. Soft Omni-directional ambient glow around player (radius ~85px)
 		const omniGrad = ctx.createRadialGradient(px, py, 10, px, py, 95);
 		omniGrad.addColorStop(0, "rgba(0, 0, 0, 1)");
-		omniGrad.addColorStop(0.6, "rgba(0, 0, 0, 0.85)");
+		omniGrad.addColorStop(0.65, "rgba(0, 0, 0, 0.85)");
 		omniGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
 
 		ctx.fillStyle = omniGrad;
@@ -130,26 +154,19 @@ export class LightingManager {
 		ctx.arc(px, py, 95, 0, Math.PI * 2);
 		ctx.fill();
 
-		// 2. Smooth Radial Directional Flashlight Cone
-		const angle = DIR_ANGLES[player.aimDirection];
-		const coneRange = sonarActive ? 420 : 260;
-		const coneArc = sonarActive ? Math.PI * 1.1 : Math.PI / 1.8;
-		const halfArc = coneArc / 2;
+		// 2. Raycasted Flashlight Vision Cone (Stops at opaque walls — NO wallhack)
+		if (visMap.coneRayEndpoints.length > 0) {
+			ctx.fillStyle = "rgba(0, 0, 0, 0.92)";
+			ctx.beginPath();
+			ctx.moveTo(px, py);
+			for (const pt of visMap.coneRayEndpoints) {
+				ctx.lineTo(pt.x - cameraX, pt.y - cameraY);
+			}
+			ctx.closePath();
+			ctx.fill();
+		}
 
-		const coneGrad = ctx.createRadialGradient(px, py, 15, px, py, coneRange);
-		coneGrad.addColorStop(0, "rgba(0, 0, 0, 1)");
-		coneGrad.addColorStop(0.5, "rgba(0, 0, 0, 0.9)");
-		coneGrad.addColorStop(0.85, "rgba(0, 0, 0, 0.5)");
-		coneGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-
-		ctx.fillStyle = coneGrad;
-		ctx.beginPath();
-		ctx.moveTo(px, py);
-		ctx.arc(px, py, coneRange, angle - halfArc, angle + halfArc);
-		ctx.closePath();
-		ctx.fill();
-
-		// 3. Torch Warm Light Radiance
+		// 3. Torch Warm Light Radiance (Cuts out fog softly around torches)
 		for (const torch of this.torches) {
 			const vis = visMap.getVisibility(torch.tileX, torch.tileY);
 			if (vis === VisibilityState.UNSEEN) continue;
@@ -157,8 +174,9 @@ export class LightingManager {
 			const tPx = (torch.tileX + 0.5) * TILE_SIZE - cameraX;
 			const tPy = (torch.tileY + 0.5) * TILE_SIZE - cameraY;
 
-			const flicker = Math.sin(time * 10 + torch.flickerOffset) * 8;
-			const currentRadius = Math.max(40, torch.radius + flicker);
+			// Very slow, smooth breathing pulse (no fast flickering or popping)
+			const slowBreathing = Math.sin(time * 1.5 + torch.flickerOffset) * 2;
+			const currentRadius = Math.max(50, torch.radius + slowBreathing);
 
 			const torchGrad = ctx.createRadialGradient(
 				tPx,
@@ -168,8 +186,8 @@ export class LightingManager {
 				tPy,
 				currentRadius,
 			);
-			torchGrad.addColorStop(0, "rgba(0, 0, 0, 0.95)");
-			torchGrad.addColorStop(0.6, "rgba(0, 0, 0, 0.6)");
+			torchGrad.addColorStop(0, "rgba(0, 0, 0, 0.9)");
+			torchGrad.addColorStop(0.7, "rgba(0, 0, 0, 0.6)");
 			torchGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
 
 			ctx.fillStyle = torchGrad;
@@ -185,7 +203,7 @@ export class LightingManager {
 	}
 
 	/**
-	 * Renders torch entities and flame particles
+	 * Renders torch entities, flame particles, and subtle warm ambient room radiance
 	 */
 	public renderTorches(
 		ctx: CanvasRenderingContext2D,
@@ -204,6 +222,32 @@ export class LightingManager {
 			const py = (torch.tileY + 0.5) * TILE_SIZE;
 
 			ctx.save();
+
+			// Soft, non-glaring warmth aura around room torch
+			const slowBreathing = Math.sin(time * 1.5 + torch.flickerOffset) * 0.03;
+			const torchRadGrad = ctx.createRadialGradient(
+				px,
+				py,
+				6,
+				px,
+				py,
+				torch.radius,
+			);
+			torchRadGrad.addColorStop(
+				0,
+				`rgba(251, 146, 60, ${0.18 + slowBreathing})`,
+			);
+			torchRadGrad.addColorStop(
+				0.7,
+				`rgba(249, 115, 22, ${0.06 + slowBreathing})`,
+			);
+			torchRadGrad.addColorStop(1, "rgba(249, 115, 22, 0)");
+
+			ctx.fillStyle = torchRadGrad;
+			ctx.beginPath();
+			ctx.arc(px, py, torch.radius, 0, Math.PI * 2);
+			ctx.fill();
+
 			ctx.translate(px, py);
 
 			// Wall Torch Bracket
@@ -212,17 +256,17 @@ export class LightingManager {
 			ctx.fillStyle = "#1e293b";
 			ctx.fillRect(-2, 2, 4, 6);
 
-			// Flickering Warm Outer Glow
-			const flicker = Math.sin(time * 12 + torch.flickerOffset) * 0.15;
-			ctx.fillStyle = `rgba(249, 115, 22, ${0.4 + flicker})`;
+			// Soft Flame Glow
+			const flamePulse = Math.sin(time * 2 + torch.flickerOffset) * 0.05;
+			ctx.fillStyle = `rgba(249, 115, 22, ${0.3 + flamePulse})`;
 			ctx.beginPath();
-			ctx.arc(0, -6, 12, 0, Math.PI * 2);
+			ctx.arc(0, -6, 10, 0, Math.PI * 2);
 			ctx.fill();
 
 			// Core Flame
 			ctx.fillStyle = "#facc15";
 			ctx.beginPath();
-			ctx.arc(0, -6, 4 + Math.sin(time * 15) * 1, 0, Math.PI * 2);
+			ctx.arc(0, -6, 3, 0, Math.PI * 2);
 			ctx.fill();
 
 			// White Hot Flame Tip
