@@ -1,12 +1,13 @@
 import { BaseGame } from "../../../shared/baseGame";
 import { SettingsOverlay } from "../../../shared/settingsOverlay";
 import { DungeonGenerator } from "./dungeon_gen";
+import { type EditorTool, LevelEditor } from "./editor";
 import { DungeonInputManager } from "./input";
 import type { DungeonLevel } from "./level";
 import { MinimapRenderer } from "./minimap";
 import { Player } from "./player";
 import { DungeonRenderer } from "./renderer";
-import { TileType } from "./types";
+import { TILE_SIZE, TileType } from "./types";
 import { VisibilityMap, VisibilityState } from "./visibility";
 
 export class VoidDungeonGame extends BaseGame {
@@ -19,6 +20,7 @@ export class VoidDungeonGame extends BaseGame {
 	public visibility: VisibilityMap;
 	public renderer: DungeonRenderer;
 	public minimapRenderer?: MinimapRenderer;
+	public editor: LevelEditor;
 	public settingsOverlay: SettingsOverlay;
 
 	private seed: string = "void-seed-1";
@@ -32,6 +34,7 @@ export class VoidDungeonGame extends BaseGame {
 		this.ctx = this.canvas.getContext("2d") as CanvasRenderingContext2D;
 
 		this.dungeonInput = new DungeonInputManager(this.input);
+		this.editor = new LevelEditor();
 
 		// Generate initial level using BSP
 		this.level = DungeonGenerator.generate(40, 30, this.seed);
@@ -71,6 +74,7 @@ export class VoidDungeonGame extends BaseGame {
 
 		this.setupModeBadges();
 		this.setupRegenHoldButton();
+		this.setupEditorUI();
 
 		// F5 state persistence setup
 		this.loadSavedState();
@@ -149,6 +153,111 @@ export class VoidDungeonGame extends BaseGame {
 		regenBtn.addEventListener("touchcancel", resetHold);
 	}
 
+	private setupEditorUI(): void {
+		const toggleBtn = document.getElementById("btn-toggle-editor");
+		if (toggleBtn) {
+			toggleBtn.addEventListener("click", () => {
+				const active = this.editor.toggle();
+				this.showModeNotification(
+					active ? "🛠️ Level Editor Enabled" : "🎮 Level Editor Disabled",
+				);
+			});
+		}
+
+		// Tool palette selection
+		const toolBtns = document.querySelectorAll(".editor-tool-btn");
+		toolBtns.forEach((btn) => {
+			btn.addEventListener("click", () => {
+				const toolStr = btn.getAttribute("data-tool");
+				if (toolStr) {
+					const numericTool = Number.parseInt(toolStr, 10);
+					this.editor.setTool(
+						Number.isNaN(numericTool)
+							? (toolStr as EditorTool)
+							: (numericTool as unknown as EditorTool),
+					);
+				}
+			});
+		});
+
+		// Export JSON
+		const exportBtn = document.getElementById("btn-editor-export");
+		if (exportBtn) {
+			exportBtn.addEventListener("click", () => {
+				const json = this.editor.exportJSON(this.level, this.seed);
+				const blob = new Blob([json], { type: "application/json" });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = `void_dungeon_${this.seed}.json`;
+				a.click();
+				URL.revokeObjectURL(url);
+				this.showModeNotification("Level Exported to JSON! 💾");
+			});
+		}
+
+		// Import JSON
+		const importBtn = document.getElementById("btn-editor-import");
+		const fileInput = document.getElementById(
+			"editor-file-input",
+		) as HTMLInputElement;
+
+		if (importBtn && fileInput) {
+			importBtn.addEventListener("click", () => fileInput.click());
+			fileInput.addEventListener("change", (e) => {
+				const file = (e.target as HTMLInputElement).files?.[0];
+				if (file) {
+					const reader = new FileReader();
+					reader.onload = (event) => {
+						const jsonText = event.target?.result as string;
+						if (
+							jsonText &&
+							this.editor.importJSON(jsonText, this.level, this.player)
+						) {
+							this.visibility.resetAll();
+							this.updateHUD();
+							this.showModeNotification("Custom Level Imported! 📂");
+						} else {
+							this.showModeNotification("Failed to parse level JSON ❌");
+						}
+					};
+					reader.readAsText(file);
+				}
+			});
+		}
+
+		// Canvas mouse/pointer paint listeners
+		this.canvas.addEventListener("pointerdown", (e) => {
+			const rect = this.canvas.getBoundingClientRect();
+			const px = e.clientX - rect.left;
+			const py = e.clientY - rect.top;
+			this.editor.onPointerDown(
+				px,
+				py,
+				this.renderer.cameraX,
+				this.renderer.cameraY,
+				this.level,
+				this.player,
+			);
+		});
+
+		this.canvas.addEventListener("pointermove", (e) => {
+			const rect = this.canvas.getBoundingClientRect();
+			const px = e.clientX - rect.left;
+			const py = e.clientY - rect.top;
+			this.editor.onPointerMove(
+				px,
+				py,
+				this.renderer.cameraX,
+				this.renderer.cameraY,
+				this.level,
+				this.player,
+			);
+		});
+
+		window.addEventListener("pointerup", () => this.editor.onPointerUp());
+	}
+
 	private setupPlayerCallbacks(): void {
 		this.player.onKeyPickup = (_color: string) => {
 			this.updateHUD();
@@ -167,6 +276,15 @@ export class VoidDungeonGame extends BaseGame {
 	}
 
 	protected override onKeyDown(e: KeyboardEvent): void {
+		if (e.code === "KeyE") {
+			e.preventDefault();
+			const active = this.editor.toggle();
+			this.showModeNotification(
+				active ? "🛠️ Level Editor Enabled" : "🎮 Level Editor Disabled",
+			);
+			return;
+		}
+
 		// Support 1/2/3/4 keys both with or without Alt key modifier
 		if (e.code === "Digit1" || e.code === "Numpad1" || e.key === "1") {
 			e.preventDefault();
@@ -366,6 +484,14 @@ export class VoidDungeonGame extends BaseGame {
 				this.level.crateManager.update(dt, this.level);
 			}
 
+			if (this.level.lightingManager) {
+				this.level.lightingManager.update(
+					dt,
+					this.level.width * TILE_SIZE,
+					this.level.height * TILE_SIZE,
+				);
+			}
+
 			this.player.update(dt, move, aim, this.level, interact);
 
 			// Compute fog of war & vision cone
@@ -386,6 +512,16 @@ export class VoidDungeonGame extends BaseGame {
 			this.visibility,
 			timestamp / 1000,
 		);
+
+		if (this.editor.active) {
+			this.editor.renderCursor(
+				this.ctx,
+				this.renderer.cameraX,
+				this.renderer.cameraY,
+				this.input.mouseX,
+				this.input.mouseY,
+			);
+		}
 
 		if (this.minimapRenderer) {
 			this.minimapRenderer.render(

@@ -61,13 +61,25 @@ games/void_dungeon/
 
 ---
 
+## 🛠️ Level Editor & JSON Map Loading (`Key E`)
+
+Press `E` or click **`🛠️ Level Editor`** in the HUD to enter real-time edit mode:
+- **Tile Palette**: Paint `Wall`, `Floor`, `Hole`, `Box/Crate`, `Red Key`, `Blue Key`, `Green Key`, `Spawn`, `Exit`.
+- **JSON Export (`💾 Export JSON`)**: Export custom level layout, entities, spawn, and exit points into a `.json` map file.
+- **JSON Import (`📂 Import JSON`)**: Import custom `.json` map files to play user-created dungeons instantly.
+
+---
+
 ## 🔮 Game Features & Mechanics
 
 1. **BSP Procedural Dungeon Generation**: Generates varied dungeons with interconnected rooms of multiple architectural shapes (**Oval**, **Diamond**, **Cross**, **Rectangle**) using seeded randomness (`DungeonGenerator.generate(width, height, seed)`).
-2. **Key Collection & Exit Unlock**: 3 colored keys (**Red**, **Blue**, **Green**) spawn in distant rooms with floating animations, HUD slot tracking, and automatic door unlocking.
-3. **Raycasted Shadowcasting Fog of War**:
-   - **Omni-vision**: 2.5 tiles immediate surrounding area always lit.
-   - **90° Forward Cone**: Casts ray paths up to 8 tiles away along aim direction. Opaque walls block light propagation.
-   - **Memory**: Previously visited tiles remain visible in grayed/desaturated memory.
-4. **F5 State Persistence**: Automatically persists current level seed, player tile position, collected keys, revealed fog map, and mode settings into `sessionStorage`. Reloading (`F5`) restores the exact game state.
-5. **Settings & Overlay Integration**: Press `Esc` or click the `⚙️` icon to adjust control modes and settings via `SettingsOverlay`.
+2. **Movable Boxes & Pitfall Puzzles**: Push crates (`Space` key) into pitfall `HOLE` tiles to fill gaps and bridge paths to keys.
+3. **Ambient Torch Lighting & Flashlight Dust Motes**:
+   - **Soft Radial Fog Gradients**: Smooth radial opacity gradients replace sharp tile cutoffs.
+   - **Flickering Room Torches**: Wall-mounted torches illuminate rooms with animated warmth radii.
+   - **Drifting Dust Motes**: Floating dust particles drift softly in air currents and glow inside the flashlight vision cone.
+4. **Top-Right Tactical Minimap**: Displays explored rooms, player position, keys, crates, holes, and exit door in real time.
+5. **Key Collection & Exit Unlock**: 3 colored keys (**Red**, **Blue**, **Green**) spawn in distant rooms with floating animations, HUD slot tracking, and automatic door unlocking.
+6. **3-Second Hold Map Regenerate**: Requires holding the reset button for 3 full seconds with progress bar fill to avoid accidental level resets.
+7. **F5 State Persistence**: Automatically persists current level seed, player tile position, crates, collected keys, revealed fog map, and mode settings into `sessionStorage`. Reloading (`F5`) restores exact game state.
+8. **Settings & Overlay Integration**: Press `Esc` or click the `⚙️` icon to adjust control modes and settings via `SettingsOverlay`.

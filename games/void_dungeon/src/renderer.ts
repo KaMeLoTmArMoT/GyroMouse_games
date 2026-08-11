@@ -85,6 +85,11 @@ export class DungeonRenderer {
 			}
 		}
 
+		// Render Torches
+		if (level.lightingManager) {
+			level.lightingManager.renderTorches(ctx, visMap, time);
+		}
+
 		// Render Key Entities
 		level.entities.renderKeys(
 			ctx,
@@ -109,6 +114,11 @@ export class DungeonRenderer {
 		// Render Player
 		player.render(ctx);
 
+		// Render Floating Dust Particles
+		if (level.lightingManager) {
+			level.lightingManager.renderDustParticles(ctx, player, visMap, time);
+		}
+
 		// Render ESP Markers if Alt+4 mode active
 		if (this.modes.showESP) {
 			this.renderESP(ctx, level);
@@ -120,6 +130,23 @@ export class DungeonRenderer {
 		}
 
 		ctx.restore();
+
+		// Render Smooth Radial Fog & Torch Lighting Mask overlay (screen space)
+		if (level.lightingManager) {
+			level.lightingManager.renderLightingMask(
+				this.ctx,
+				this.canvas.width,
+				this.canvas.height,
+				this.cameraX,
+				this.cameraY,
+				player,
+				level,
+				visMap,
+				this.modes.fogEnabled,
+				time,
+				false,
+			);
+		}
 	}
 
 	private drawTile(

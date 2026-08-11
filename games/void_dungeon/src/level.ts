@@ -1,5 +1,6 @@
 import type { CrateManager } from "./crates";
 import { EntityManager } from "./entities";
+import type { LightingManager } from "./lighting";
 import { TILE_SIZE, TileType } from "./types";
 
 export class DungeonLevel {
@@ -10,6 +11,7 @@ export class DungeonLevel {
 	public exitTile: { x: number; y: number } = { x: 17, y: 12 };
 	public entities: EntityManager = new EntityManager();
 	public crateManager?: CrateManager;
+	public lightingManager?: LightingManager;
 
 	constructor(width: number = 20, height: number = 15) {
 		this.width = width;

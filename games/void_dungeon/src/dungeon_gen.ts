@@ -1,6 +1,7 @@
 import { CrateManager } from "./crates";
 import type { KeyColor } from "./entities";
 import { DungeonLevel } from "./level";
+import { LightingManager } from "./lighting";
 import { TileType } from "./types";
 import { SeededRandom } from "./utils/seedrandom";
 
@@ -36,6 +37,7 @@ export class DungeonGenerator {
 		const level = new DungeonLevel(width, height);
 		level.entities.clear();
 		level.crateManager = new CrateManager();
+		level.lightingManager = new LightingManager();
 
 		// Fill map with WALL tiles initially
 		for (let y = 0; y < height; y++) {
@@ -238,9 +240,26 @@ export class DungeonGenerator {
 
 			// Generate 1-2 Pitfall & Crate Puzzles in candidate rooms
 			DungeonGenerator.placePitfallPuzzles(level, candidateRooms, rng);
+
+			// Place ambient room wall torches
+			DungeonGenerator.placeTorches(level, rooms);
 		}
 
 		return level;
+	}
+
+	private static placeTorches(level: DungeonLevel, rooms: Room[]): void {
+		if (!level.lightingManager) return;
+		level.lightingManager.clear();
+
+		for (let i = 0; i < rooms.length; i++) {
+			const room = rooms[i];
+			const tx = room.centerX;
+			const ty = room.centerY - Math.floor(room.height / 3);
+			if (level.getTile(tx, ty) === TileType.FLOOR) {
+				level.lightingManager.addTorch(`torch_${i}`, tx, ty);
+			}
+		}
 	}
 
 	private static placePitfallPuzzles(

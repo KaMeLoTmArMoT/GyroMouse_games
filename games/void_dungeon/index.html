@@ -50,7 +50,34 @@
         <span id="regen-bar" class="regen-bar"></span>
         <span id="regen-text" class="regen-text">🎲 Hold to Reset Map (3s)</span>
       </button>
+      <button id="btn-toggle-editor" class="editor-toggle-btn" type="button">
+        🛠️ Level Editor (Key E)
+      </button>
       <div id="hud-mode" class="mode-status">Mode 1: Normal Gameplay (Fog Active)</div>
+    </div>
+
+    <!-- Level Editor Toolbar (Bottom Center) -->
+    <div id="editor-toolbar" class="hud-card bottom-center" style="display: none;">
+      <div class="editor-header">
+        <span class="editor-title">🛠️ LEVEL EDITOR</span>
+        <span class="editor-hint">Click/Drag on grid to paint tiles</span>
+      </div>
+      <div class="editor-palette">
+        <button class="editor-tool-btn active" data-tool="1" type="button">🧱 Wall</button>
+        <button class="editor-tool-btn" data-tool="2" type="button">⬛ Floor</button>
+        <button class="editor-tool-btn" data-tool="9" type="button">🕳️ Hole</button>
+        <button class="editor-tool-btn" data-tool="8" type="button">📦 Box</button>
+        <button class="editor-tool-btn" data-tool="KEY_RED" type="button">🔴 Key</button>
+        <button class="editor-tool-btn" data-tool="KEY_BLUE" type="button">🔵 Key</button>
+        <button class="editor-tool-btn" data-tool="KEY_GREEN" type="button">🟢 Key</button>
+        <button class="editor-tool-btn" data-tool="10" type="button">🚩 Spawn</button>
+        <button class="editor-tool-btn" data-tool="5" type="button">🚪 Exit</button>
+      </div>
+      <div class="editor-actions">
+        <button id="btn-editor-export" class="editor-action-btn primary" type="button">💾 Export JSON</button>
+        <button id="btn-editor-import" class="editor-action-btn" type="button">📂 Import JSON</button>
+        <input type="file" id="editor-file-input" accept=".json" style="display: none;" />
+      </div>
     </div>
 
     <!-- Victory Modal -->

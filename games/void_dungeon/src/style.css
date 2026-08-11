@@ -131,6 +131,115 @@ canvas#gameCanvas {
 	pointer-events: none;
 }
 
+/* Editor Toggle Button */
+.editor-toggle-btn {
+	background: rgba(14, 165, 233, 0.2);
+	border: 1px solid rgba(56, 189, 248, 0.4);
+	color: #38bdf8;
+	font-family: inherit;
+	font-weight: 700;
+	font-size: 0.75rem;
+	padding: 4px 8px;
+	border-radius: 6px;
+	cursor: pointer;
+	margin-top: 2px;
+	transition: all 0.2s ease;
+}
+
+.editor-toggle-btn:hover {
+	background: rgba(14, 165, 233, 0.4);
+	color: #ffffff;
+}
+
+.bottom-center {
+	bottom: 20px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 100;
+	align-items: center;
+	gap: 8px;
+}
+
+.editor-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	justify-content: space-between;
+}
+
+.editor-title {
+	font-weight: 800;
+	color: #c084fc;
+	font-size: 0.8rem;
+}
+
+.editor-hint {
+	font-size: 0.7rem;
+	color: #94a3b8;
+}
+
+.editor-palette {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	justify-content: center;
+}
+
+.editor-tool-btn {
+	background: rgba(30, 41, 59, 0.8);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	color: #cbd5e1;
+	font-family: inherit;
+	font-size: 0.75rem;
+	font-weight: 700;
+	padding: 4px 8px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.editor-tool-btn:hover {
+	border-color: #38bdf8;
+	color: #ffffff;
+}
+
+.editor-tool-btn.active {
+	background: #0284c7;
+	border-color: #38bdf8;
+	color: #ffffff;
+	box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+
+.editor-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+.editor-action-btn {
+	background: rgba(51, 65, 85, 0.8);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	color: #f1f5f9;
+	font-family: inherit;
+	font-size: 0.75rem;
+	font-weight: 700;
+	padding: 4px 10px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.editor-action-btn.primary {
+	background: #16a34a;
+	border-color: #22c55e;
+	color: #ffffff;
+}
+
+.editor-action-btn:hover {
+	filter: brightness(1.2);
+}
+
 .hud-title {
 	font-weight: 800;
 	color: #38bdf8;
