@@ -18,6 +18,7 @@ export default defineConfig({
 				artillery_siege: resolve(__dirname, "games/artillery_siege/index.html"),
 				cyber_pong: resolve(__dirname, "games/cyber_pong/index.html"),
 				wormix: resolve(__dirname, "games/wormix/index.html"),
+				void_dungeon: resolve(__dirname, "games/void_dungeon/index.html"),
 			},
 		},
 	},
