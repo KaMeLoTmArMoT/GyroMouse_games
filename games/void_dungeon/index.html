@@ -26,11 +26,28 @@
         <span>🔑 Keys:</span>
         <span id="hud-keys">0 / 3</span>
       </div>
+      <div id="hud-key-slots" class="key-slots">
+        <span class="key-badge red" id="key-red">🔴 Red</span>
+        <span class="key-badge blue" id="key-blue">🔵 Blue</span>
+        <span class="key-badge green" id="key-green">🟢 Green</span>
+      </div>
       <div class="hud-row">
         <span>🌱 Seed:</span>
         <span id="hud-seed">void-1</span>
       </div>
       <div id="hud-mode" class="mode-status">Mode 1: Normal Gameplay (Fog Active)</div>
+    </div>
+
+    <!-- Victory Modal -->
+    <div class="modal-overlay" id="win-modal" style="display: none;">
+      <div class="modal-box">
+        <div class="modal-title">🎉 DUNGEON ESCAPED!</div>
+        <p style="margin-bottom: 16px; color: #9ca3af;">You collected all 3 keys and escaped the void dungeon!</p>
+        <div class="modal-actions">
+          <button class="icon-btn primary" id="btn-next-dungeon">🎲 Next Dungeon</button>
+          <a href="../../index.html" class="icon-btn">🏠 Hub</a>
+        </div>
+      </div>
     </div>
   </div>
 

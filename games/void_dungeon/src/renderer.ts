@@ -1,3 +1,4 @@
+import { KEY_COLOR_HEX } from "./entities";
 import type { DungeonLevel } from "./level";
 import type { Player } from "./player";
 import { TILE_SIZE, TileType } from "./types";
@@ -38,6 +39,7 @@ export class DungeonRenderer {
 		level: DungeonLevel,
 		player: Player,
 		visMap: VisibilityMap,
+		time: number = 0,
 	): void {
 		const ctx = this.ctx;
 		ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -68,7 +70,7 @@ export class DungeonRenderer {
 				const px = x * TILE_SIZE;
 				const py = y * TILE_SIZE;
 
-				// Skip completely unseen tiles if fog enabled (remains black)
+				// Skip completely unseen tiles if fog enabled
 				if (this.modes.fogEnabled && vis === VisibilityState.UNSEEN) {
 					continue;
 				}
@@ -82,6 +84,15 @@ export class DungeonRenderer {
 				}
 			}
 		}
+
+		// Render Key Entities
+		level.entities.renderKeys(
+			ctx,
+			(tx, ty) =>
+				!this.modes.fogEnabled ||
+				visMap.getVisibility(tx, ty) === VisibilityState.VISIBLE,
+			time,
+		);
 
 		// Render Player
 		player.render(ctx);
@@ -120,6 +131,7 @@ export class DungeonRenderer {
 				break;
 
 			case TileType.FLOOR:
+			case TileType.KEY:
 				ctx.fillStyle = (tx + ty) % 2 === 0 ? "#0f172a" : "#131c31";
 				ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 				break;
@@ -149,10 +161,34 @@ export class DungeonRenderer {
 	}
 
 	private renderESP(ctx: CanvasRenderingContext2D, level: DungeonLevel): void {
+		ctx.save();
+
+		// ESP Markers for Uncollected Keys
+		for (const key of level.entities.keys) {
+			if (key.collected) continue;
+
+			const keyPx = (key.tileX + 0.5) * TILE_SIZE;
+			const keyPy = (key.tileY + 0.5) * TILE_SIZE;
+			const colorHex = KEY_COLOR_HEX[key.color];
+
+			ctx.fillStyle = colorHex;
+			ctx.strokeStyle = "#ffffff";
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.arc(keyPx, keyPy, 10, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.stroke();
+
+			ctx.font = "bold 9px sans-serif";
+			ctx.fillStyle = "#ffffff";
+			ctx.textAlign = "center";
+			ctx.fillText("KEY", keyPx, keyPy + 3);
+		}
+
+		// ESP Marker for Exit Door
 		const exitPx = (level.exitTile.x + 0.5) * TILE_SIZE;
 		const exitPy = (level.exitTile.y + 0.5) * TILE_SIZE;
 
-		ctx.save();
 		ctx.fillStyle = "#ef4444";
 		ctx.strokeStyle = "#ffffff";
 		ctx.lineWidth = 2;
@@ -165,6 +201,7 @@ export class DungeonRenderer {
 		ctx.fillStyle = "#ffffff";
 		ctx.textAlign = "center";
 		ctx.fillText("EXIT", exitPx, exitPy + 4);
+
 		ctx.restore();
 	}
 

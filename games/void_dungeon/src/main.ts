@@ -5,6 +5,7 @@ import { DungeonInputManager } from "./input";
 import type { DungeonLevel } from "./level";
 import { Player } from "./player";
 import { DungeonRenderer } from "./renderer";
+import { TileType } from "./types";
 import { VisibilityMap, VisibilityState } from "./visibility";
 
 export class VoidDungeonGame extends BaseGame {
@@ -36,6 +37,8 @@ export class VoidDungeonGame extends BaseGame {
 
 		// Spawn player at generated spawn tile
 		this.player = new Player(this.level.spawnTile.x, this.level.spawnTile.y);
+		this.setupPlayerCallbacks();
+
 		this.renderer = new DungeonRenderer(this.canvas, this.ctx);
 
 		this.settingsOverlay = new SettingsOverlay({
@@ -47,6 +50,16 @@ export class VoidDungeonGame extends BaseGame {
 		this.resizeCanvas();
 		window.addEventListener("resize", () => this.resizeCanvas());
 
+		// Wire Victory Modal next button
+		const nextBtn = document.getElementById("btn-next-dungeon");
+		if (nextBtn) {
+			nextBtn.addEventListener("click", () => {
+				const winModal = document.getElementById("win-modal");
+				if (winModal) winModal.style.display = "none";
+				this.restartGame();
+			});
+		}
+
 		// F5 state persistence setup
 		this.loadSavedState();
 		window.addEventListener("beforeunload", () => this.saveState());
@@ -56,6 +69,18 @@ export class VoidDungeonGame extends BaseGame {
 		// Start game loop
 		this.isStarted = true;
 		requestAnimationFrame((timestamp) => this.gameLoop(timestamp));
+	}
+
+	private setupPlayerCallbacks(): void {
+		this.player.onKeyPickup = (_color: string) => {
+			this.updateHUD();
+		};
+
+		this.player.onWin = () => {
+			this.isPaused = true;
+			const winModal = document.getElementById("win-modal");
+			if (winModal) winModal.style.display = "flex";
+		};
 	}
 
 	private resizeCanvas(): void {
@@ -102,10 +127,16 @@ export class VoidDungeonGame extends BaseGame {
 	}
 
 	private restartGame(): void {
+		const winModal = document.getElementById("win-modal");
+		if (winModal) winModal.style.display = "none";
+
+		this.isPaused = false;
 		this.seed = `void-${Math.floor(Math.random() * 10000)}`;
 		this.level = DungeonGenerator.generate(40, 30, this.seed);
 		this.visibility = new VisibilityMap(this.level.width, this.level.height);
 		this.player = new Player(this.level.spawnTile.x, this.level.spawnTile.y);
+		this.setupPlayerCallbacks();
+
 		sessionStorage.removeItem(this.storageKey);
 		this.updateHUD();
 	}
@@ -113,11 +144,35 @@ export class VoidDungeonGame extends BaseGame {
 	private updateHUD(): void {
 		const seedEl = document.getElementById("hud-seed");
 		if (seedEl) seedEl.textContent = this.seed;
+
+		const keysEl = document.getElementById("hud-keys");
+		if (keysEl) keysEl.textContent = `${this.player.collectedKeys.size} / 3`;
+
+		// Toggle key slot active badges
+		const redBadge = document.getElementById("key-red");
+		if (redBadge) {
+			redBadge.classList.toggle("active", this.player.collectedKeys.has("red"));
+		}
+
+		const blueBadge = document.getElementById("key-blue");
+		if (blueBadge) {
+			blueBadge.classList.toggle(
+				"active",
+				this.player.collectedKeys.has("blue"),
+			);
+		}
+
+		const greenBadge = document.getElementById("key-green");
+		if (greenBadge) {
+			greenBadge.classList.toggle(
+				"active",
+				this.player.collectedKeys.has("green"),
+			);
+		}
 	}
 
 	private saveState(): void {
 		try {
-			// Convert visibility grid to 2D revealed boolean array
 			const revealedGrid: boolean[][] = [];
 			for (let y = 0; y < this.visibility.height; y++) {
 				const row: boolean[] = [];
@@ -134,6 +189,7 @@ export class VoidDungeonGame extends BaseGame {
 				player: this.player.getState(),
 				revealedGrid,
 				modes: this.renderer.modes,
+				collectedKeyIds: Array.from(this.player.collectedKeys),
 				timestamp: Date.now(),
 			};
 			sessionStorage.setItem(this.storageKey, JSON.stringify(saveData));
@@ -155,6 +211,25 @@ export class VoidDungeonGame extends BaseGame {
 				}
 				if (saveData.player) {
 					this.player.setState(saveData.player);
+				}
+				if (saveData.collectedKeyIds) {
+					for (const keyId of saveData.collectedKeyIds) {
+						this.player.collectedKeys.add(keyId);
+						const kEntity = this.level.entities.keys.find(
+							(k) => k.color === keyId,
+						);
+						if (kEntity) {
+							kEntity.collected = true;
+							this.level.setTile(kEntity.tileX, kEntity.tileY, TileType.FLOOR);
+						}
+					}
+					if (this.player.collectedKeys.size >= 3) {
+						this.level.setTile(
+							this.level.exitTile.x,
+							this.level.exitTile.y,
+							TileType.EXIT_OPEN,
+						);
+					}
 				}
 				if (saveData.revealedGrid) {
 					for (let y = 0; y < this.visibility.height; y++) {
@@ -199,7 +274,12 @@ export class VoidDungeonGame extends BaseGame {
 			this.renderer.updateCamera(this.player);
 		}
 
-		this.renderer.render(this.level, this.player, this.visibility);
+		this.renderer.render(
+			this.level,
+			this.player,
+			this.visibility,
+			timestamp / 1000,
+		);
 
 		requestAnimationFrame((ts) => this.gameLoop(ts));
 	}

@@ -4,6 +4,7 @@ import {
 	type Direction,
 	type PlayerState,
 	TILE_SIZE,
+	TileType,
 } from "./types";
 
 export class Player {
@@ -13,6 +14,8 @@ export class Player {
 	public radius: number = 11; // collision radius
 	public aimDirection: Direction = "S";
 	public collectedKeys: Set<string> = new Set();
+	public onWin?: () => void;
+	public onKeyPickup?: (color: string) => void;
 
 	constructor(startTileX: number = 2, startTileY: number = 2) {
 		this.x = (startTileX + 0.5) * TILE_SIZE;
@@ -35,21 +38,47 @@ export class Player {
 	): void {
 		this.aimDirection = aimDir;
 
-		if (moveVec.dx === 0 && moveVec.dy === 0) return;
+		if (moveVec.dx !== 0 || moveVec.dy !== 0) {
+			const deltaX = moveVec.dx * this.speed * dt;
+			const deltaY = moveVec.dy * this.speed * dt;
 
-		const deltaX = moveVec.dx * this.speed * dt;
-		const deltaY = moveVec.dy * this.speed * dt;
+			const newX = this.x + deltaX;
+			if (!level.checkBoundingCollision(newX, this.y, this.radius)) {
+				this.x = newX;
+			}
 
-		// Move on X axis with collision
-		const newX = this.x + deltaX;
-		if (!level.checkBoundingCollision(newX, this.y, this.radius)) {
-			this.x = newX;
+			const newY = this.y + deltaY;
+			if (!level.checkBoundingCollision(this.x, newY, this.radius)) {
+				this.y = newY;
+			}
 		}
 
-		// Move on Y axis with collision
-		const newY = this.y + deltaY;
-		if (!level.checkBoundingCollision(this.x, newY, this.radius)) {
-			this.y = newY;
+		// Check Key Pickups
+		for (const key of level.entities.keys) {
+			if (key.collected) continue;
+
+			const keyPx = (key.tileX + 0.5) * TILE_SIZE;
+			const keyPy = (key.tileY + 0.5) * TILE_SIZE;
+			const dist = Math.hypot(this.x - keyPx, this.y - keyPy);
+
+			if (dist <= TILE_SIZE * 0.75) {
+				key.collected = true;
+				this.collectedKeys.add(key.color);
+				level.setTile(key.tileX, key.tileY, TileType.FLOOR);
+
+				if (this.onKeyPickup) this.onKeyPickup(key.color);
+
+				// Unlock Exit Door when all 3 keys collected!
+				if (this.collectedKeys.size >= 3) {
+					level.setTile(level.exitTile.x, level.exitTile.y, TileType.EXIT_OPEN);
+				}
+			}
+		}
+
+		// Check Win Condition (stepping on open exit door)
+		const currentTile = level.getTile(this.tileX, this.tileY);
+		if (currentTile === TileType.EXIT_OPEN && this.onWin) {
+			this.onWin();
 		}
 	}
 
@@ -73,7 +102,6 @@ export class Player {
 	}
 
 	public render(ctx: CanvasRenderingContext2D): void {
-		// Player Body (Pixel style character circle / body with highlight)
 		ctx.save();
 
 		// Shadow
@@ -108,9 +136,8 @@ export class Player {
 		// Aim Indicator Cone / Line
 		const angle = DIR_ANGLES[this.aimDirection];
 		const coneLength = 36;
-		const halfArc = Math.PI / 4; // 90 deg cone = +/- 45 deg
+		const halfArc = Math.PI / 4;
 
-		// Draw aim cone preview line
 		ctx.fillStyle = "rgba(56, 189, 248, 0.15)";
 		ctx.strokeStyle = "rgba(56, 189, 248, 0.6)";
 		ctx.lineWidth = 1.5;

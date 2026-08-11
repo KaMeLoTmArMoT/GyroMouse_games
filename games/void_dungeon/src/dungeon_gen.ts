@@ -1,6 +1,9 @@
+import type { KeyColor } from "./entities";
 import { DungeonLevel } from "./level";
 import { TileType } from "./types";
 import { SeededRandom } from "./utils/seedrandom";
+
+export type RoomShape = "rectangle" | "oval" | "diamond" | "cross";
 
 export interface Room {
 	x: number;
@@ -9,6 +12,7 @@ export interface Room {
 	height: number;
 	centerX: number;
 	centerY: number;
+	shape: RoomShape;
 }
 
 interface BSPNode {
@@ -29,6 +33,7 @@ export class DungeonGenerator {
 	): DungeonLevel {
 		const rng = new SeededRandom(seed);
 		const level = new DungeonLevel(width, height);
+		level.entities.clear();
 
 		// Fill map with WALL tiles initially
 		for (let y = 0; y < height; y++) {
@@ -49,9 +54,8 @@ export class DungeonGenerator {
 
 			// Decide split direction
 			let splitHorizontally = rng.nextBool() === 1;
-			if (node.width / node.height >= 1.5)
-				splitHorizontally = false; // split vertically if wide
-			else if (node.height / node.width >= 1.5) splitHorizontally = true; // split horizontally if tall
+			if (node.width / node.height >= 1.5) splitHorizontally = false;
+			else if (node.height / node.width >= 1.5) splitHorizontally = true;
 
 			const max = (splitHorizontally ? node.height : node.width) - minLeafSize;
 			if (max <= minLeafSize) return;
@@ -92,6 +96,9 @@ export class DungeonGenerator {
 
 		splitNode(root);
 
+		// Shapes palette
+		const shapes: RoomShape[] = ["rectangle", "oval", "diamond", "cross"];
+
 		// Create rooms in leaf nodes
 		const createRooms = (node: BSPNode) => {
 			if (node.leftChild || node.rightChild) {
@@ -100,11 +107,11 @@ export class DungeonGenerator {
 			} else {
 				// Leaf node: create a room
 				const roomWidth = rng.nextInt(
-					Math.max(4, Math.floor(node.width * 0.6)),
+					Math.max(4, Math.floor(node.width * 0.65)),
 					node.width - 2,
 				);
 				const roomHeight = rng.nextInt(
-					Math.max(4, Math.floor(node.height * 0.6)),
+					Math.max(4, Math.floor(node.height * 0.65)),
 					node.height - 2,
 				);
 				const roomX = rng.nextInt(
@@ -116,6 +123,8 @@ export class DungeonGenerator {
 					node.y + node.height - roomHeight - 1,
 				);
 
+				const shape = rng.choice(shapes);
+
 				const room: Room = {
 					x: roomX,
 					y: roomY,
@@ -123,17 +132,14 @@ export class DungeonGenerator {
 					height: roomHeight,
 					centerX: Math.floor(roomX + roomWidth / 2),
 					centerY: Math.floor(roomY + roomHeight / 2),
+					shape,
 				};
 
 				node.room = room;
 				rooms.push(room);
 
-				// Carve room floor tiles
-				for (let ry = room.y; ry < room.y + room.height; ry++) {
-					for (let rx = room.x; rx < room.x + room.width; rx++) {
-						level.setTile(rx, ry, TileType.FLOOR);
-					}
-				}
+				// Carve room floor based on shape
+				DungeonGenerator.carveRoomShape(level, room);
 			}
 		};
 
@@ -163,7 +169,6 @@ export class DungeonGenerator {
 
 		connectNodes(root);
 
-		// Helper to find a leaf room
 		function getLeafRoom(n: BSPNode): Room | undefined {
 			if (n.room) return n.room;
 			if (n.leftChild) {
@@ -199,9 +204,76 @@ export class DungeonGenerator {
 
 			level.exitTile = { x: exitRoom.centerX, y: exitRoom.centerY };
 			level.setTile(exitRoom.centerX, exitRoom.centerY, TileType.EXIT_LOCKED);
+
+			// Scatter 3 Keys (Red, Blue, Green) in distinct candidate rooms
+			const candidateRooms = rooms.filter(
+				(r) => r !== spawnRoom && r !== exitRoom,
+			);
+
+			// Shuffle candidates deterministically using rng
+			for (let i = candidateRooms.length - 1; i > 0; i--) {
+				const j = rng.nextInt(0, i);
+				const temp = candidateRooms[i];
+				candidateRooms[i] = candidateRooms[j];
+				candidateRooms[j] = temp;
+			}
+
+			const keyColors: KeyColor[] = ["red", "blue", "green"];
+			for (let k = 0; k < keyColors.length; k++) {
+				const targetRoom = candidateRooms[k] || rooms[(k + 1) % rooms.length];
+				const color = keyColors[k];
+				const keyId = `key_${color}`;
+
+				// Ensure key tile is walkable FLOOR
+				level.setTile(targetRoom.centerX, targetRoom.centerY, TileType.KEY);
+				level.entities.addKey(
+					keyId,
+					targetRoom.centerX,
+					targetRoom.centerY,
+					color,
+				);
+			}
 		}
 
 		return level;
+	}
+
+	private static carveRoomShape(level: DungeonLevel, room: Room): void {
+		const cx = room.centerX;
+		const cy = room.centerY;
+		const halfW = room.width / 2;
+		const halfH = room.height / 2;
+
+		for (let ry = room.y; ry < room.y + room.height; ry++) {
+			for (let rx = room.x; rx < room.x + room.width; rx++) {
+				const dx = (rx + 0.5 - cx) / halfW;
+				const dy = (ry + 0.5 - cy) / halfH;
+
+				let inside = false;
+
+				switch (room.shape) {
+					case "rectangle":
+						inside = true;
+						break;
+					case "oval":
+						inside = dx * dx + dy * dy <= 1.05;
+						break;
+					case "diamond":
+						inside = Math.abs(dx) + Math.abs(dy) <= 1.1;
+						break;
+					case "cross":
+						inside = Math.abs(dx) <= 0.45 || Math.abs(dy) <= 0.45;
+						break;
+				}
+
+				if (inside) {
+					level.setTile(rx, ry, TileType.FLOOR);
+				}
+			}
+		}
+
+		// Ensure center of room is always carved FLOOR for connectivity
+		level.setTile(cx, cy, TileType.FLOOR);
 	}
 
 	private static carveCorridor(
@@ -216,7 +288,6 @@ export class DungeonGenerator {
 		let currY = y1;
 
 		if (rng.nextBool() === 1) {
-			// Move horizontally first, then vertically
 			while (currX !== x2) {
 				level.setTile(currX, currY, TileType.FLOOR);
 				currX += Math.sign(x2 - currX);
@@ -226,7 +297,6 @@ export class DungeonGenerator {
 				currY += Math.sign(y2 - currY);
 			}
 		} else {
-			// Move vertically first, then horizontally
 			while (currY !== y2) {
 				level.setTile(currX, currY, TileType.FLOOR);
 				currY += Math.sign(y2 - currY);
