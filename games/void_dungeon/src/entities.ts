@@ -19,8 +19,6 @@ export interface KeyEntity {
 export class EntityManager {
 	public keys: KeyEntity[] = [];
 
-	constructor() {}
-
 	public addKey(
 		id: string,
 		tileX: number,

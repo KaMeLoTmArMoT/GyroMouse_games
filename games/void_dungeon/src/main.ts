@@ -3,6 +3,7 @@ import { SettingsOverlay } from "../../../shared/settingsOverlay";
 import { DungeonGenerator } from "./dungeon_gen";
 import { DungeonInputManager } from "./input";
 import type { DungeonLevel } from "./level";
+import { MinimapRenderer } from "./minimap";
 import { Player } from "./player";
 import { DungeonRenderer } from "./renderer";
 import { TileType } from "./types";
@@ -17,6 +18,7 @@ export class VoidDungeonGame extends BaseGame {
 	public player: Player;
 	public visibility: VisibilityMap;
 	public renderer: DungeonRenderer;
+	public minimapRenderer?: MinimapRenderer;
 	public settingsOverlay: SettingsOverlay;
 
 	private seed: string = "void-seed-1";
@@ -40,6 +42,13 @@ export class VoidDungeonGame extends BaseGame {
 		this.setupPlayerCallbacks();
 
 		this.renderer = new DungeonRenderer(this.canvas, this.ctx);
+
+		const minimapCanvas = document.getElementById(
+			"minimapCanvas",
+		) as HTMLCanvasElement;
+		if (minimapCanvas) {
+			this.minimapRenderer = new MinimapRenderer(minimapCanvas);
+		}
 
 		this.settingsOverlay = new SettingsOverlay({
 			gameId: "void_dungeon",
@@ -190,6 +199,13 @@ export class VoidDungeonGame extends BaseGame {
 				revealedGrid,
 				modes: this.renderer.modes,
 				collectedKeyIds: Array.from(this.player.collectedKeys),
+				crates: this.level.crateManager
+					? this.level.crateManager.crates.map((c) => ({
+							id: c.id,
+							tileX: c.tileX,
+							tileY: c.tileY,
+						}))
+					: [],
 				timestamp: Date.now(),
 			};
 			sessionStorage.setItem(this.storageKey, JSON.stringify(saveData));
@@ -211,6 +227,12 @@ export class VoidDungeonGame extends BaseGame {
 				}
 				if (saveData.player) {
 					this.player.setState(saveData.player);
+				}
+				if (saveData.crates && this.level.crateManager) {
+					this.level.crateManager.clear();
+					for (const c of saveData.crates) {
+						this.level.crateManager.addCrate(c.id, c.tileX, c.tileY);
+					}
 				}
 				if (saveData.collectedKeyIds) {
 					for (const keyId of saveData.collectedKeyIds) {
@@ -259,8 +281,13 @@ export class VoidDungeonGame extends BaseGame {
 			const move = this.dungeonInput.getMovement();
 			const aim = this.dungeonInput.getAimDirection();
 			const sonar = this.dungeonInput.isShootPressed();
+			const interact = this.dungeonInput.isInteractPressed();
 
-			this.player.update(dt, move, aim, this.level);
+			if (this.level.crateManager) {
+				this.level.crateManager.update(dt, this.level);
+			}
+
+			this.player.update(dt, move, aim, this.level, interact);
 
 			// Compute fog of war & vision cone
 			this.visibility.computeVisibility(
@@ -280,6 +307,16 @@ export class VoidDungeonGame extends BaseGame {
 			this.visibility,
 			timestamp / 1000,
 		);
+
+		if (this.minimapRenderer) {
+			this.minimapRenderer.render(
+				this.level,
+				this.player,
+				this.visibility,
+				this.level.crateManager ? this.level.crateManager.crates : [],
+				this.renderer.modes,
+			);
+		}
 
 		requestAnimationFrame((ts) => this.gameLoop(ts));
 	}

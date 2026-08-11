@@ -1,3 +1,4 @@
+import type { CrateManager } from "./crates";
 import { EntityManager } from "./entities";
 import { TILE_SIZE, TileType } from "./types";
 
@@ -8,6 +9,7 @@ export class DungeonLevel {
 	public spawnTile: { x: number; y: number } = { x: 2, y: 2 };
 	public exitTile: { x: number; y: number } = { x: 17, y: 12 };
 	public entities: EntityManager = new EntityManager();
+	public crateManager?: CrateManager;
 
 	constructor(width: number = 20, height: number = 15) {
 		this.width = width;
@@ -49,6 +51,12 @@ export class DungeonLevel {
 	public setTile(x: number, y: number, type: TileType): void {
 		if (x >= 0 && y >= 0 && x < this.width && y < this.height) {
 			this.grid[y][x] = type;
+		}
+	}
+
+	public fillHole(x: number, y: number): void {
+		if (this.getTile(x, y) === TileType.HOLE) {
+			this.setTile(x, y, TileType.FLOOR);
 		}
 	}
 
@@ -102,6 +110,27 @@ export class DungeonLevel {
 				}
 			}
 		}
+
+		// Check collision against crate entities
+		if (this.crateManager) {
+			for (const crate of this.crateManager.crates) {
+				const crateLeft = crate.tileX * TILE_SIZE;
+				const crateRight = (crate.tileX + 1) * TILE_SIZE;
+				const crateTop = crate.tileY * TILE_SIZE;
+				const crateBottom = (crate.tileY + 1) * TILE_SIZE;
+
+				const nearestX = Math.max(crateLeft, Math.min(pixelX, crateRight));
+				const nearestY = Math.max(crateTop, Math.min(pixelY, crateBottom));
+
+				const distX = pixelX - nearestX;
+				const distY = pixelY - nearestY;
+
+				if (distX * distX + distY * distY < radius * radius) {
+					return true;
+				}
+			}
+		}
+
 		return false;
 	}
 }

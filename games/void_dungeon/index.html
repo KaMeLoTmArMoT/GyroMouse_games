@@ -15,9 +15,15 @@
     <!-- Controls Overlay / Guide -->
     <div id="hud-controls" class="hud-card">
       <div class="hud-title">🗡️ VOID DUNGEON</div>
-      <div class="hud-row"><span class="badge p1">P1</span> WASD: Move | Space: Interact</div>
+      <div class="hud-row"><span class="badge p1">P1</span> WASD: Move | Space: Push Crate</div>
       <div class="hud-row"><span class="badge p2">P2</span> Arrows: Aim | Enter: Sonar Pulse</div>
       <div class="hud-row mode-hint"><span class="badge mode">MODES</span> Alt+1: Fog | Alt+2: Reveal All | Alt+3: Grid | Alt+4: ESP</div>
+    </div>
+
+    <!-- Minimap (Top Right) -->
+    <div id="hud-minimap" class="hud-card top-right">
+      <div class="hud-title" style="margin-bottom: 4px; font-size: 0.75rem;">🗺️ MINIMAP</div>
+      <canvas id="minimapCanvas" width="130" height="130"></canvas>
     </div>
 
     <!-- HUD Info (Bottom Left) -->

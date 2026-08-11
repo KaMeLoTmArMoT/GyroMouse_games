@@ -29,13 +29,24 @@ export interface PlayerState {
 	collectedKeys: string[];
 }
 
+export interface CrateEntity {
+	id: string;
+	tileX: number;
+	tileY: number;
+	targetTileX: number;
+	targetTileY: number;
+	slideProgress: number; // 0 to 1
+	isSliding: boolean;
+}
+
 export interface GameSaveData {
 	seed: string;
 	player: PlayerState;
-	revealedTiles?: boolean[][];
+	revealedGrid?: boolean[][];
 	levelData?: number[][];
 	collectedKeyIds?: string[];
-	boxPositions?: { id: string; x: number; y: number }[];
+	crates?: { id: string; tileX: number; tileY: number }[];
+	filledHoles?: { x: number; y: number }[];
 	timestamp: number;
 }
 

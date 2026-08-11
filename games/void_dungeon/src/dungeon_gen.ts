@@ -1,3 +1,4 @@
+import { CrateManager } from "./crates";
 import type { KeyColor } from "./entities";
 import { DungeonLevel } from "./level";
 import { TileType } from "./types";
@@ -34,6 +35,7 @@ export class DungeonGenerator {
 		const rng = new SeededRandom(seed);
 		const level = new DungeonLevel(width, height);
 		level.entities.clear();
+		level.crateManager = new CrateManager();
 
 		// Fill map with WALL tiles initially
 		for (let y = 0; y < height; y++) {
@@ -233,9 +235,48 @@ export class DungeonGenerator {
 					color,
 				);
 			}
+
+			// Generate 1-2 Pitfall & Crate Puzzles in candidate rooms
+			DungeonGenerator.placePitfallPuzzles(level, candidateRooms, rng);
 		}
 
 		return level;
+	}
+
+	private static placePitfallPuzzles(
+		level: DungeonLevel,
+		candidateRooms: Room[],
+		rng: SeededRandom,
+	): void {
+		if (!level.crateManager) return;
+
+		let crateCount = 0;
+		const offsets = [
+			{ hx: 0, hy: -1, cx: 0, cy: -2 },
+			{ hx: 0, hy: 1, cx: 0, cy: 2 },
+			{ hx: -1, hy: 0, cx: -2, cy: 0 },
+			{ hx: 1, hy: 0, cx: 2, cy: 0 },
+		];
+
+		for (const room of candidateRooms) {
+			if (crateCount >= 2) break;
+
+			const offset = rng.choice(offsets);
+			const holeX = room.centerX + offset.hx;
+			const holeY = room.centerY + offset.hy;
+			const crateX = room.centerX + offset.cx;
+			const crateY = room.centerY + offset.cy;
+
+			// Verify floor tiles
+			if (
+				level.getTile(holeX, holeY) === TileType.FLOOR &&
+				level.getTile(crateX, crateY) === TileType.FLOOR
+			) {
+				level.setTile(holeX, holeY, TileType.HOLE);
+				level.crateManager.addCrate(`crate_${crateCount + 1}`, crateX, crateY);
+				crateCount++;
+			}
+		}
 	}
 
 	private static carveRoomShape(level: DungeonLevel, room: Room): void {

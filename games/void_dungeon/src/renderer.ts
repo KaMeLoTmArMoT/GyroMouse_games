@@ -94,6 +94,18 @@ export class DungeonRenderer {
 			time,
 		);
 
+		// Render Crate Entities
+		if (level.crateManager) {
+			level.crateManager.render(
+				ctx,
+				(tx, ty) =>
+					!this.modes.fogEnabled ||
+					visMap.getVisibility(tx, ty) === VisibilityState.VISIBLE,
+				player.x,
+				player.y,
+			);
+		}
+
 		// Render Player
 		player.render(ctx);
 
@@ -136,6 +148,17 @@ export class DungeonRenderer {
 				ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 				break;
 
+			case TileType.HOLE:
+				ctx.fillStyle = "#020617";
+				ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+				ctx.strokeStyle = "#334155";
+				ctx.lineWidth = 1;
+				ctx.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+				ctx.strokeStyle = "rgba(245, 158, 11, 0.4)";
+				ctx.lineWidth = 1;
+				ctx.strokeRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+				break;
+
 			case TileType.EXIT_LOCKED:
 				ctx.fillStyle = "#7f1d1d";
 				ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
@@ -143,7 +166,7 @@ export class DungeonRenderer {
 				ctx.lineWidth = 2;
 				ctx.strokeRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
 				ctx.fillStyle = "#facc15";
-				ctx.fillRect(px + 12, py + 14, 8, 10);
+				ctx.fillRect(px + 14, py + 14, 4, 4);
 				break;
 
 			case TileType.EXIT_OPEN:

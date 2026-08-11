@@ -1,6 +1,7 @@
 import type { DungeonLevel } from "./level";
 import {
 	DIR_ANGLES,
+	DIR_VECTORS,
 	type Direction,
 	type PlayerState,
 	TILE_SIZE,
@@ -35,6 +36,7 @@ export class Player {
 		moveVec: { dx: number; dy: number },
 		aimDir: Direction,
 		level: DungeonLevel,
+		interactPressed: boolean = false,
 	): void {
 		this.aimDirection = aimDir;
 
@@ -51,6 +53,27 @@ export class Player {
 			if (!level.checkBoundingCollision(this.x, newY, this.radius)) {
 				this.y = newY;
 			}
+
+			// Try pushing crate when moving towards crate
+			if (level.crateManager) {
+				level.crateManager.tryPushCrate(
+					this.tileX,
+					this.tileY,
+					moveVec.dx,
+					moveVec.dy,
+					level,
+				);
+			}
+		} else if (interactPressed && level.crateManager) {
+			// Try pushing crate in player's current aim direction
+			const aimVec = DIR_VECTORS[this.aimDirection];
+			level.crateManager.tryPushCrate(
+				this.tileX,
+				this.tileY,
+				aimVec.x,
+				aimVec.y,
+				level,
+			);
 		}
 
 		// Check Key Pickups
