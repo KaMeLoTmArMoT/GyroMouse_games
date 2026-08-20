@@ -117,128 +117,8 @@ export class ArtilleryPhysicsManager {
 			z: (Math.random() - 0.5) * 2.0,
 		};
 
-		const configs: Array<{
-			x: number;
-			y: number;
-			z: number;
-			sizeX: number;
-			sizeY: number;
-			sizeZ: number;
-			hp: number;
-			score: number;
-			category: "tower_left" | "tower_right" | "gate" | "keep" | "wall";
-		}> = [];
-
-		const centerZ = 45;
-
-		// 1. Central Keep Citadel (4 blocks stacked)
-		for (let h = 0; h < 4; h++) {
-			configs.push({
-				x: 0,
-				y: h * 2.5,
-				z: centerZ,
-				sizeX: 4.5 - h * 0.4,
-				sizeY: 2.4,
-				sizeZ: 4.5 - h * 0.4,
-				hp: 250 + h * 50,
-				score: 300,
-				category: "keep",
-			});
-		}
-
-		// 2. Main Gate (2 side posts + arch)
-		configs.push(
-			{
-				x: -3.5,
-				y: 0,
-				z: centerZ - 6,
-				sizeX: 2.0,
-				sizeY: 4.0,
-				sizeZ: 2.0,
-				hp: 180,
-				score: 200,
-				category: "gate",
-			},
-			{
-				x: 3.5,
-				y: 0,
-				z: centerZ - 6,
-				sizeX: 2.0,
-				sizeY: 4.0,
-				sizeZ: 2.0,
-				hp: 180,
-				score: 200,
-				category: "gate",
-			},
-			{
-				x: 0,
-				y: 4.0,
-				z: centerZ - 6,
-				sizeX: 9.0,
-				sizeY: 1.8,
-				sizeZ: 2.2,
-				hp: 220,
-				score: 250,
-				category: "gate",
-			},
-		);
-
-		// 3. Left Flank Tower (3 tiers)
-		for (let h = 0; h < 3; h++) {
-			configs.push({
-				x: -11,
-				y: h * 3.0,
-				z: centerZ - 2,
-				sizeX: 3.2,
-				sizeY: 2.8,
-				sizeZ: 3.2,
-				hp: 200,
-				score: 220,
-				category: "tower_left",
-			});
-		}
-
-		// 4. Right Flank Tower (3 tiers)
-		for (let h = 0; h < 3; h++) {
-			configs.push({
-				x: 11,
-				y: h * 3.0,
-				z: centerZ - 2,
-				sizeX: 3.2,
-				sizeY: 2.8,
-				sizeZ: 3.2,
-				hp: 200,
-				score: 220,
-				category: "tower_right",
-			});
-		}
-
-		// 5. Curtain Walls connecting towers
-		configs.push(
-			{
-				x: -7.5,
-				y: 0,
-				z: centerZ - 4,
-				sizeX: 4.5,
-				sizeY: 3.0,
-				sizeZ: 1.5,
-				hp: 150,
-				score: 150,
-				category: "wall",
-			},
-			{
-				x: 7.5,
-				y: 0,
-				z: centerZ - 4,
-				sizeX: 4.5,
-				sizeY: 3.0,
-				sizeZ: 1.5,
-				hp: 150,
-				score: 150,
-				category: "wall",
-			},
-		);
-
+		const randomThemeLevel = Math.floor(Math.random() * 5) + 1;
+		const configs = this.getLevelTargetConfigs(randomThemeLevel);
 		this.createTargetBodies(configs);
 	}
 
@@ -297,117 +177,291 @@ export class ArtilleryPhysicsManager {
 	}
 
 	private getLevelTargetConfigs(level: number) {
-		const baseDistance = 35 + level * 4;
-		const configs = [];
+		const baseZ = 38 + (level % 3) * 5;
+		const configs: Array<{
+			x: number;
+			y: number;
+			z: number;
+			sizeX: number;
+			sizeY: number;
+			sizeZ: number;
+			hp: number;
+			score: number;
+			category: "tower_left" | "tower_right" | "gate" | "keep" | "wall";
+		}> = [];
 
-		if (level === 1) {
-			configs.push(
-				{
-					x: -5,
-					y: 0,
-					z: baseDistance,
-					sizeX: 2.6,
-					sizeY: 3.5,
-					sizeZ: 2.6,
-					hp: 100,
-					score: 100,
-					category: "tower_left" as const,
-				},
-				{
-					x: 0,
-					y: 0,
-					z: baseDistance + 5,
-					sizeX: 3.2,
-					sizeY: 4.5,
-					sizeZ: 3.2,
-					hp: 150,
-					score: 200,
-					category: "keep" as const,
-				},
-				{
-					x: 5,
-					y: 0,
-					z: baseDistance + 2,
-					sizeX: 2.6,
-					sizeY: 3.5,
-					sizeZ: 2.6,
-					hp: 100,
-					score: 100,
-					category: "tower_right" as const,
-				},
-			);
-		} else if (level === 2) {
-			configs.push(
-				{
-					x: -9,
-					y: 0,
-					z: baseDistance,
-					sizeX: 2.6,
-					sizeY: 4.0,
-					sizeZ: 2.6,
-					hp: 120,
-					score: 150,
-					category: "tower_left" as const,
-				},
-				{
-					x: 0,
-					y: 0,
-					z: baseDistance + 8,
-					sizeX: 3.5,
-					sizeY: 5.2,
-					sizeZ: 3.5,
-					hp: 220,
-					score: 250,
-					category: "keep" as const,
-				},
-				{
-					x: 0,
-					y: 0,
-					z: baseDistance + 1,
-					sizeX: 6.0,
-					sizeY: 2.5,
-					sizeZ: 1.8,
-					hp: 140,
-					score: 180,
-					category: "gate" as const,
-				},
-				{
-					x: 9,
-					y: 0,
-					z: baseDistance + 3,
-					sizeX: 2.6,
-					sizeY: 4.0,
-					sizeZ: 2.6,
-					hp: 120,
-					score: 150,
-					category: "tower_right" as const,
-				},
-			);
-		} else {
-			const count = Math.min(4 + level, 8);
-			for (let i = 0; i < count; i++) {
-				const spreadX = (i - count / 2) * 5.5;
-				const spreadZ = baseDistance + (i % 3) * 6;
-				const cat =
-					spreadX < -3
-						? "tower_left"
-						: spreadX > 3
-							? "tower_right"
-							: i % 2 === 0
-								? "keep"
-								: "gate";
+		const theme = (level - 1) % 5;
+
+		if (theme === 0) {
+			// Archetype 1: High Royal Citadel (Central 4-story keep + 2 towers + gate)
+			// Central Keep (3 stacked tiers)
+			for (let h = 0; h < 3; h++) {
 				configs.push({
-					x: spreadX,
-					y: 0,
-					z: spreadZ,
-					sizeX: 2.5 + (i % 2) * 0.5,
-					sizeY: 3.5 + (i % 3) * 0.8,
-					sizeZ: 2.5 + (i % 2) * 0.5,
-					hp: 120 + (i % 3) * 40,
-					score: 150 + i * 40,
-					category: cat as any,
+					x: 0,
+					y: h * 2.6,
+					z: baseZ + 6,
+					sizeX: 4.2 - h * 0.4,
+					sizeY: 2.5,
+					sizeZ: 4.2 - h * 0.4,
+					hp: 180 + h * 40,
+					score: 250,
+					category: "keep",
 				});
 			}
+			// Left Tower (2 tiers)
+			for (let h = 0; h < 2; h++) {
+				configs.push({
+					x: -8,
+					y: h * 2.8,
+					z: baseZ + 2,
+					sizeX: 2.8,
+					sizeY: 2.6,
+					sizeZ: 2.8,
+					hp: 140,
+					score: 160,
+					category: "tower_left",
+				});
+			}
+			// Right Tower (2 tiers)
+			for (let h = 0; h < 2; h++) {
+				configs.push({
+					x: 8,
+					y: h * 2.8,
+					z: baseZ + 2,
+					sizeX: 2.8,
+					sizeY: 2.6,
+					sizeZ: 2.8,
+					hp: 140,
+					score: 160,
+					category: "tower_right",
+				});
+			}
+			// Front Gate Arch
+			configs.push(
+				{
+					x: -3.2,
+					y: 0,
+					z: baseZ - 2,
+					sizeX: 1.8,
+					sizeY: 3.2,
+					sizeZ: 1.8,
+					hp: 120,
+					score: 130,
+					category: "gate",
+				},
+				{
+					x: 3.2,
+					y: 0,
+					z: baseZ - 2,
+					sizeX: 1.8,
+					sizeY: 3.2,
+					sizeZ: 1.8,
+					hp: 120,
+					score: 130,
+					category: "gate",
+				},
+				{
+					x: 0,
+					y: 3.2,
+					z: baseZ - 2,
+					sizeX: 8.0,
+					sizeY: 1.5,
+					sizeZ: 2.0,
+					hp: 160,
+					score: 200,
+					category: "gate",
+				},
+			);
+		} else if (theme === 1) {
+			// Archetype 2: Twin Spires Bastion (Two 4-story towers + high skybridge)
+			for (let h = 0; h < 4; h++) {
+				configs.push({
+					x: -7,
+					y: h * 2.6,
+					z: baseZ + 3,
+					sizeX: 3.2 - h * 0.2,
+					sizeY: 2.4,
+					sizeZ: 3.2 - h * 0.2,
+					hp: 160,
+					score: 180,
+					category: "tower_left",
+				});
+				configs.push({
+					x: 7,
+					y: h * 2.6,
+					z: baseZ + 3,
+					sizeX: 3.2 - h * 0.2,
+					sizeY: 2.4,
+					sizeZ: 3.2 - h * 0.2,
+					hp: 160,
+					score: 180,
+					category: "tower_right",
+				});
+			}
+			// High Skybridge Arch between spires
+			configs.push({
+				x: 0,
+				y: 5.2,
+				z: baseZ + 3,
+				sizeX: 11.0,
+				sizeY: 1.6,
+				sizeZ: 2.2,
+				hp: 200,
+				score: 280,
+				category: "gate",
+			});
+			// Central Sanctuary under bridge
+			configs.push({
+				x: 0,
+				y: 0,
+				z: baseZ + 3,
+				sizeX: 4.0,
+				sizeY: 3.0,
+				sizeZ: 3.5,
+				hp: 220,
+				score: 300,
+				category: "keep",
+			});
+		} else if (theme === 2) {
+			// Archetype 3: Stepped Pyramid Stronghold (3-tier stepped ziggurat)
+			// Base tier (3 blocks wide)
+			[-5, 0, 5].forEach((offsetX) => {
+				configs.push({
+					x: offsetX,
+					y: 0,
+					z: baseZ + 4,
+					sizeX: 4.6,
+					sizeY: 2.5,
+					sizeZ: 4.6,
+					hp: 180,
+					score: 160,
+					category:
+						offsetX < 0
+							? "tower_left"
+							: offsetX > 0
+								? "tower_right"
+								: "keep",
+				});
+			});
+			// Mid tier (2 blocks)
+			[-2.5, 2.5].forEach((offsetX) => {
+				configs.push({
+					x: offsetX,
+					y: 2.5,
+					z: baseZ + 4,
+					sizeX: 4.4,
+					sizeY: 2.4,
+					sizeZ: 4.4,
+					hp: 200,
+					score: 220,
+					category: "keep",
+				});
+			});
+			// Top Crown Pinnacle
+			configs.push({
+				x: 0,
+				y: 4.9,
+				z: baseZ + 4,
+				sizeX: 3.2,
+				sizeY: 2.8,
+				sizeZ: 3.2,
+				hp: 240,
+				score: 350,
+				category: "keep",
+			});
+		} else if (theme === 3) {
+			// Archetype 4: Barbican Fortress Gatehouse (Heavy double curtain wall + flank bastions)
+			// Front heavy curtain walls
+			configs.push(
+				{
+					x: -6,
+					y: 0,
+					z: baseZ - 1,
+					sizeX: 5.0,
+					sizeY: 3.2,
+					sizeZ: 2.2,
+					hp: 160,
+					score: 150,
+					category: "wall",
+				},
+				{
+					x: 6,
+					y: 0,
+					z: baseZ - 1,
+					sizeX: 5.0,
+					sizeY: 3.2,
+					sizeZ: 2.2,
+					hp: 160,
+					score: 150,
+					category: "wall",
+				},
+			);
+			// Gatehouse Arch
+			configs.push({
+				x: 0,
+				y: 0,
+				z: baseZ - 1,
+				sizeX: 3.2,
+				sizeY: 4.2,
+				sizeZ: 2.5,
+				hp: 210,
+				score: 220,
+				category: "gate",
+			});
+			// Rear Fortress Keep (2 tiers)
+			for (let h = 0; h < 2; h++) {
+				configs.push({
+					x: 0,
+					y: h * 2.8,
+					z: baseZ + 7,
+					sizeX: 5.5 - h * 0.8,
+					sizeY: 2.7,
+					sizeZ: 4.5 - h * 0.8,
+					hp: 220,
+					score: 280,
+					category: "keep",
+				});
+			}
+		} else {
+			// Archetype 5: Sky Watchtower Mountain Redoubt (Tall 5-story central monolith spire)
+			for (let h = 0; h < 5; h++) {
+				configs.push({
+					x: 0,
+					y: h * 2.4,
+					z: baseZ + 5,
+					sizeX: 4.2 - h * 0.35,
+					sizeY: 2.3,
+					sizeZ: 4.2 - h * 0.35,
+					hp: 180 + h * 30,
+					score: 200 + h * 50,
+					category: "keep",
+				});
+			}
+			// Forward Bunker Pillboxes
+			configs.push(
+				{
+					x: -6,
+					y: 0,
+					z: baseZ,
+					sizeX: 3.0,
+					sizeY: 2.5,
+					sizeZ: 3.0,
+					hp: 140,
+					score: 140,
+					category: "tower_left",
+				},
+				{
+					x: 6,
+					y: 0,
+					z: baseZ,
+					sizeX: 3.0,
+					sizeY: 2.5,
+					sizeZ: 3.0,
+					hp: 140,
+					score: 140,
+					category: "tower_right",
+				},
+			);
 		}
 
 		return configs;

@@ -15,6 +15,8 @@ export class CraneGraphicsManager {
 	private magnetMesh!: THREE.Mesh;
 	private magnetLed!: THREE.PointLight;
 	private cableLine!: THREE.Line;
+	private laserLine!: THREE.Line;
+	private laserReticle!: THREE.Mesh;
 
 	private trainGroup!: THREE.Group;
 	private crateMeshes: Map<string, THREE.Mesh> = new Map();
@@ -343,6 +345,53 @@ export class CraneGraphicsManager {
 		});
 		this.cableLine = new THREE.Line(cableGeo, cableMat);
 		this.scene.add(this.cableLine);
+
+		// Dynamic Ballistic Trajectory Laser Line (parabolic curve with momentum)
+		const initialPoints: THREE.Vector3[] = [];
+		for (let i = 0; i <= 12; i++) {
+			initialPoints.push(new THREE.Vector3(0, 6.75 - (6.0 * i) / 12, 0));
+		}
+		const laserGeo = new THREE.BufferGeometry().setFromPoints(initialPoints);
+		const laserMat = new THREE.LineDashedMaterial({
+			color: "#38bdf8",
+			dashSize: 0.3,
+			gapSize: 0.15,
+			transparent: true,
+			opacity: 0.75,
+			linewidth: 2,
+		});
+		this.laserLine = new THREE.Line(laserGeo, laserMat);
+		this.laserLine.computeLineDistances();
+		this.scene.add(this.laserLine);
+
+		// Dynamic Drop Target Reticle on floor / train level
+		const reticleGroup = new THREE.Group();
+		const ringGeo = new THREE.RingGeometry(0.3, 0.45, 24);
+		const ringMat = new THREE.MeshBasicMaterial({
+			color: "#38bdf8",
+			side: THREE.DoubleSide,
+			transparent: true,
+			opacity: 0.75,
+		});
+		const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+		ringMesh.rotation.x = -Math.PI / 2;
+		reticleGroup.add(ringMesh);
+
+		const dotGeo = new THREE.CircleGeometry(0.1, 16);
+		const dotMat = new THREE.MeshBasicMaterial({
+			color: "#38bdf8",
+			side: THREE.DoubleSide,
+			transparent: true,
+			opacity: 0.9,
+		});
+		const dotMesh = new THREE.Mesh(dotGeo, dotMat);
+		dotMesh.rotation.x = -Math.PI / 2;
+		dotMesh.position.y = 0.01;
+		reticleGroup.add(dotMesh);
+
+		this.laserReticle = reticleGroup as unknown as THREE.Mesh;
+		this.laserReticle.position.set(0, 0.76, 0);
+		this.scene.add(this.laserReticle);
 	}
 
 	private buildTrainPlatform() {
@@ -556,6 +605,44 @@ export class CraneGraphicsManager {
 		positions.setXYZ(0, physics.trolleyX, physics.gantryY, 0);
 		positions.setXYZ(1, physics.magnetX, physics.magnetY, 0);
 		positions.needsUpdate = true;
+
+		// Dynamic Ballistic Laser Guide: calculates drop curve with pendulum swing & trolley inertia (shown ONLY when holding a crate)
+		if (this.laserLine && this.laserReticle) {
+			const held = physics.currentHeldCrateId !== null;
+			this.laserLine.visible = held;
+			this.laserReticle.visible = held;
+
+			if (held) {
+				const targetGroundY = 0.75;
+				const { landingX, points } =
+					physics.getPredictedDropLanding(targetGroundY);
+
+				const laserPos = this.laserLine.geometry.attributes
+					.position as THREE.BufferAttribute;
+				for (let i = 0; i < points.length; i++) {
+					laserPos.setXYZ(i, points[i].x, points[i].y, points[i].z);
+				}
+				laserPos.needsUpdate = true;
+				this.laserLine.computeLineDistances();
+
+				// Update Drop Reticle position to exact predicted ballistic landing point
+				this.laserReticle.position.set(landingX, targetGroundY + 0.01, 0);
+				const pulse = 1.0 + Math.sin(this.animTime * 6) * 0.08;
+				this.laserReticle.scale.set(pulse, 1, pulse);
+
+				// Amber color for held cargo drop projection
+				const targetColor = "#f59e0b";
+				(this.laserLine.material as THREE.LineDashedMaterial).color.set(
+					targetColor,
+				);
+				this.laserReticle.children.forEach((child) => {
+					const mesh = child as THREE.Mesh;
+					if (mesh.material) {
+						(mesh.material as THREE.MeshBasicMaterial).color.set(targetColor);
+					}
+				});
+			}
+		}
 
 		// 2. Electromagnet Heat Visual Glow Effect
 		const heat = physics.magnetHeat;

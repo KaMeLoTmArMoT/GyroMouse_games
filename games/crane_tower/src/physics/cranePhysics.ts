@@ -291,6 +291,53 @@ export class CranePhysicsManager {
 	}
 
 	/**
+	 * Calculates ballistic landing prediction accounting for pendulum swing velocity and trolley inertia.
+	 */
+	public getPredictedDropLanding(targetGroundY: number = 0.95): {
+		landingX: number;
+		points: Array<{ x: number; y: number; z: number }>;
+	} {
+		const cosAngle = Math.cos(this.cableAngle);
+		const sinAngle = Math.sin(this.cableAngle);
+
+		const vx =
+			((this.lastTrolleyVx || 0) +
+				this.cableAngVel * this.cableLength * cosAngle) *
+			0.7;
+		const vy = Math.max(
+			-1.5,
+			this.cableAngVel * this.cableLength * sinAngle * 0.5,
+		);
+
+		const g = 9.81;
+		const startX = this.magnetX;
+		const startY = this.magnetY - 0.25;
+
+		const deltaY = startY - targetGroundY;
+		let tLand = 0.2;
+		if (deltaY > 0) {
+			const discriminant = vy * vy + 2 * g * deltaY;
+			if (discriminant >= 0) {
+				tLand = (vy + Math.sqrt(discriminant)) / g;
+			}
+		}
+
+		const landingX = startX + vx * tLand;
+
+		// Sample 12 parabolic arc points
+		const points: Array<{ x: number; y: number; z: number }> = [];
+		const steps = 12;
+		for (let i = 0; i <= steps; i++) {
+			const t = (tLand * i) / steps;
+			const sampleX = startX + vx * t;
+			const sampleY = Math.max(targetGroundY, startY + vy * t - 0.5 * g * t * t);
+			points.push({ x: sampleX, y: sampleY, z: 0 });
+		}
+
+		return { landingX, points };
+	}
+
+	/**
 	 * Try to re-grab a nearby crate under the magnet if no crate is currently held
 	 */
 	public tryRegrabCrate(): boolean {

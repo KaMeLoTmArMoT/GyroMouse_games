@@ -6,6 +6,7 @@ export class CollisionManager {
 		runner: Runner,
 		trackManager: TrackManager,
 		onCoinCollected: () => void,
+		onPowerUpCollected?: (type: "magnet" | "shield" | "jetpack") => void,
 	): boolean {
 		const rBox = runner.getBoundingBox();
 
@@ -23,14 +24,56 @@ export class CollisionManager {
 			const distZ = Math.abs(obs.z - runner.posZ);
 			if (distZ > 4.5) continue;
 
+			if (obs.type === "ramp") {
+				// Walkable ramp
+				continue;
+			}
+
+			if (obs.type === "train") {
+				// 1. Running on train roof or jumped above roof level
+				if (runner.posY >= 2.5) {
+					continue;
+				}
+				// 2. Climbing the attached front ramp onto the train (posZ entering train from front)
+				if (runner.posZ <= obs.z - 3.5 && runner.posY >= 0.5) {
+					continue;
+				}
+			}
+
 			const oBox = this.getObstacleBoundingBox(obs);
 			if (this.boxIntersect(rBox, oBox)) {
 				if (obs.type === "coin") {
 					obs.active = false;
 					obs.mesh.visible = false;
 					onCoinCollected();
+				} else if (
+					obs.type === "powerup_magnet" ||
+					obs.type === "powerup_shield" ||
+					obs.type === "powerup_jetpack"
+				) {
+					obs.active = false;
+					obs.mesh.visible = false;
+					const pType = obs.type.replace("powerup_", "") as
+						| "magnet"
+						| "shield"
+						| "jetpack";
+					runner.activatePowerUp(pType);
+					if (onPowerUpCollected) onPowerUpCollected(pType);
 				} else {
-					// Crash collision!
+					// Shield Absorption
+					if (runner.hasShield) {
+						runner.hasShield = false;
+						runner.triggerStumble(2.0);
+						return false; // Shield saved the player!
+					}
+
+					// Check Stumble Grace System (7 seconds window)
+					if (runner.stumbleTimer <= 0) {
+						runner.triggerStumble(7.0);
+						// Push runner back slightly on lateral impact
+						return false; // Survived first stumble!
+					}
+					// Second hit during stumble -> GAME OVER!
 					return true;
 				}
 			}

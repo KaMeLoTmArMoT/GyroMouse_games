@@ -47,11 +47,27 @@ export class Player {
 			const newX = this.x + deltaX;
 			if (!level.checkBoundingCollision(newX, this.y, this.radius)) {
 				this.x = newX;
+			} else if (moveVec.dy === 0 && Math.abs(deltaX) > 0.001) {
+				// Corner sliding when moving purely horizontally
+				const nudge = this.speed * dt * 0.8;
+				if (!level.checkBoundingCollision(newX, this.y - 6, this.radius)) {
+					this.y -= nudge;
+				} else if (!level.checkBoundingCollision(newX, this.y + 6, this.radius)) {
+					this.y += nudge;
+				}
 			}
 
 			const newY = this.y + deltaY;
 			if (!level.checkBoundingCollision(this.x, newY, this.radius)) {
 				this.y = newY;
+			} else if (moveVec.dx === 0 && Math.abs(deltaY) > 0.001) {
+				// Corner sliding when moving purely vertically
+				const nudge = this.speed * dt * 0.8;
+				if (!level.checkBoundingCollision(this.x - 6, newY, this.radius)) {
+					this.x -= nudge;
+				} else if (!level.checkBoundingCollision(this.x + 6, newY, this.radius)) {
+					this.x += nudge;
+				}
 			}
 
 			// Try pushing crate when moving towards crate

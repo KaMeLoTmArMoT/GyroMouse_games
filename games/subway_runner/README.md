@@ -18,11 +18,17 @@ An endless 3D obstacle runner game built with **Three.js** inspired by Subway Su
 
 ## 🎨 Visuals & Obstacle Mechanics
 
-### 🧱 Obstacle Types
-1. **🚈 Trains**: Tall red train cars occupying a full lane.
-2. **⬆️ Low Hurdles (Jump over)**: Ground-level orange hurdles topped with glowing red warning strips (`height = 0.5m`). Cannot be crawled under!
-3. **⬇️ High Hurdles / Arches (Slide under)**: Overhead arches (`height clearance = 1.1m`) featuring purple banners with **glowing neon arrows pointing DOWN**, making it immediately clear that you must slide.
-4. **🪙 Gold Coins**: Collectible gold rings placed in strings along lanes.
+### 🧱 Obstacle & Element Types
+1. **🚈 Trains & Convoys**: Tall red train cars occupying a full lane. Spawn as single cars or 2–3 car linked convoys with roof coin paths.
+2. **🛹 Launch Ramps**: Sloped ramps before train convoys with glowing chevron arrows allowing seamless running onto train roofs.
+3. **⬆️ Low Hurdles (Jump over)**: Ground-level orange hurdles topped with glowing red warning strips (`height = 0.5m`). Cannot be crawled under!
+4. **⬇️ High Hurdles / Arches (Slide under)**: Overhead arches (`height clearance = 1.1m`) featuring purple banners with **glowing neon arrows pointing DOWN**, making it immediately clear that you must slide.
+5. **🪙 Gold Coins**: Collectible gold rings placed along ground lanes and train roofs.
+6. **🎁 Collectible Power-Ups**:
+   - 🧲 **Magnet (10s)**: Pulls all coins in a 9m radius directly to the runner.
+   - 🛡️ **Shield**: Surrounds the runner with a glowing energy bubble that absorbs 1 collision.
+   - 🚀 **Jetpack (6s)**: Launches the player into the sky ($Y=6.0\text{m}$) above all obstacles.
+7. **⚠️ Stumble Grace System**: Side-swiping or bumping an obstacle triggers a 7-second blinking grace state; only a second consecutive mistake during this window ends the run.
 
 ### 🌟 Graphics Features
 - **Lighting & Shadows**: Directional sun with soft PCF shadow maps + cyber-blue ambient fill.

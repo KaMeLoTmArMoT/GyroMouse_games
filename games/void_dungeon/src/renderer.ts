@@ -40,6 +40,7 @@ export class DungeonRenderer {
 		player: Player,
 		visMap: VisibilityMap,
 		time: number = 0,
+		enemyManager?: { render: (ctx: CanvasRenderingContext2D, isVisible: (tx: number, ty: number) => boolean) => void },
 	): void {
 		const ctx = this.ctx;
 		ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -102,6 +103,16 @@ export class DungeonRenderer {
 					visMap.getVisibility(tx, ty) === VisibilityState.VISIBLE,
 				player.x,
 				player.y,
+			);
+		}
+
+		// Render Enemies & Projectiles
+		if (enemyManager) {
+			enemyManager.render(
+				ctx,
+				(tx, ty) =>
+					!this.modes.fogEnabled ||
+					visMap.getVisibility(tx, ty) === VisibilityState.VISIBLE,
 			);
 		}
 

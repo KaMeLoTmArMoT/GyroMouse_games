@@ -1,7 +1,15 @@
 import * as THREE from "three";
 import type { BiomeTheme, SceneManager } from "../graphics/sceneManager";
 
-export type ObstacleType = "train" | "low_hurdle" | "high_hurdle" | "coin";
+export type ObstacleType =
+	| "train"
+	| "low_hurdle"
+	| "high_hurdle"
+	| "coin"
+	| "ramp"
+	| "powerup_magnet"
+	| "powerup_shield"
+	| "powerup_jetpack";
 
 export interface TrackObstacle {
 	type: ObstacleType;
@@ -22,6 +30,7 @@ export class TrackManager {
 	private hurdleLowPool: THREE.Group[] = [];
 	private hurdleHighPool: THREE.Group[] = [];
 	private coinPool: THREE.Mesh[] = [];
+	private rampPool: THREE.Group[] = [];
 	private chunkPool: THREE.Group[] = [];
 
 	// Spatial Grid Bucket Lookup: Map<"lane:zBucket", TrackObstacle[]>
@@ -47,6 +56,11 @@ export class TrackManager {
 		color: "#fbbf24",
 		roughness: 0.2,
 		metalness: 0.9,
+	});
+	private rampMat = new THREE.MeshStandardMaterial({
+		color: "#f59e0b",
+		roughness: 0.3,
+		metalness: 0.6,
 	});
 	private coinGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.1, 16);
 
@@ -113,6 +127,45 @@ export class TrackManager {
 			}
 		}
 		return candidates;
+	}
+
+	/**
+	 * Returns floor surface height at the given world position (e.g. 3.2m for train roofs, or sloped for ramps)
+	 */
+	public getSurfaceHeightAt(
+		lane: number,
+		posX: number,
+		posZ: number,
+	): { height: number; isRamp: boolean } {
+		const candidates = this.getCandidateObstacles(lane, posZ);
+		for (let i = 0; i < candidates.length; i++) {
+			const obs = candidates[i];
+			if (!obs.active) continue;
+
+			if (obs.type === "ramp") {
+				const rampX = obs.mesh.position.x;
+				const rampZ = obs.z;
+				if (
+					Math.abs(posX - rampX) <= 1.15 &&
+					posZ >= rampZ - 2.3 &&
+					posZ <= rampZ + 2.3
+				) {
+					const t = Math.max(0, Math.min(1, (posZ - (rampZ - 2.25)) / 4.5));
+					return { height: t * 3.2, isRamp: true };
+				}
+			} else if (obs.type === "train") {
+				const trainX = obs.mesh.position.x;
+				const trainZ = obs.z;
+				if (
+					Math.abs(posX - trainX) <= 1.15 &&
+					posZ >= trainZ - 4.1 &&
+					posZ <= trainZ + 4.1
+				) {
+					return { height: 3.2, isRamp: false };
+				}
+			}
+		}
+		return { height: 0, isRamp: false };
 	}
 
 	private spawnChunk(safe: boolean) {
@@ -237,44 +290,262 @@ export class TrackManager {
 
 	private populateObstacles(chunkStartZ: number) {
 		const lanes = [-1, 0, 1];
+		const patternType = Math.random();
 
-		for (let zOffset = 10; zOffset < this.CHUNK_LENGTH; zOffset += 12) {
-			const z = chunkStartZ + zOffset;
-			const rand = Math.random();
+		if (patternType < 0.28) {
+			// Pattern A: Long Multi-Wagon Convoy with Ramp (2-3 cars in a line to run on roofs)
+			const trainLane = lanes[Math.floor(Math.random() * lanes.length)];
+			const numCars = Math.random() < 0.5 ? 2 : 3;
+			this.createTrain(trainLane, chunkStartZ + 8, true, numCars);
 
-			if (rand < 0.35) {
+			// Adjacent lane has obstacles on ground
+			const otherLanes = lanes.filter((l) => l !== trainLane);
+			const hurdleLane = otherLanes[0];
+			this.createHurdle(hurdleLane, chunkStartZ + 15, "low_hurdle");
+			this.createHurdle(hurdleLane, chunkStartZ + 27, "high_hurdle");
+
+			// 3rd lane has ground coins
+			const coinLane = otherLanes[1];
+			this.createCoinRing(coinLane, chunkStartZ + 12);
+		} else if (patternType < 0.52) {
+			// Pattern B: Side-by-Side Staggered Trains (Ramp on 1st train, jump across to 2nd train roof!)
+			const rampTrainLane = Math.random() < 0.5 ? -1 : 1;
+			const blockerTrainLane = 0;
+			// Train 1 has ramp
+			this.createTrain(rampTrainLane, chunkStartZ + 6, true, 2);
+			// Train 2 has NO ramp (obstacle train or side-jump target)
+			this.createTrain(blockerTrainLane, chunkStartZ + 14, false, 2);
+
+			// Free lane has ground coin rings
+			const openLane = -rampTrainLane;
+			this.createCoinRing(openLane, chunkStartZ + 10);
+		} else if (patternType < 0.76) {
+			// Pattern C: Classic Obstacle Trains (NO ramp, must dodge or jump)
+			const blockerLane1 = lanes[Math.floor(Math.random() * lanes.length)];
+			this.createTrain(blockerLane1, chunkStartZ + 10, false, 1);
+
+			const remainingLanes = lanes.filter((l) => l !== blockerLane1);
+			const blockerLane2 =
+				remainingLanes[Math.floor(Math.random() * remainingLanes.length)];
+			this.createTrain(blockerLane2, chunkStartZ + 24, false, 1);
+
+			const openLane = remainingLanes.find((l) => l !== blockerLane2) ?? 0;
+			this.createHurdle(openLane, chunkStartZ + 16, "low_hurdle");
+			this.createCoinRing(openLane, chunkStartZ + 28);
+		} else {
+			// Pattern D: Hurdle Slalom & Coin Run
+			for (let zOffset = 8; zOffset < this.CHUNK_LENGTH; zOffset += 10) {
+				const z = chunkStartZ + zOffset;
 				const lane = lanes[Math.floor(Math.random() * lanes.length)];
-				this.createTrain(lane, z);
-			} else if (rand < 0.6) {
-				const lane = lanes[Math.floor(Math.random() * lanes.length)];
-				this.createHurdle(lane, z, "low_hurdle");
-			} else if (rand < 0.8) {
-				const lane = lanes[Math.floor(Math.random() * lanes.length)];
-				this.createHurdle(lane, z, "high_hurdle");
-			} else {
-				const lane = lanes[Math.floor(Math.random() * lanes.length)];
-				this.createCoinRing(lane, z);
+				if (Math.random() < 0.45) {
+					this.createHurdle(
+						lane,
+						z,
+						Math.random() < 0.5 ? "low_hurdle" : "high_hurdle",
+					);
+				} else {
+					this.createCoinRing(lane, z);
+				}
 			}
+		}
+
+		// Spawn rare Power-Up (approx 1 per 160m)
+		if (Math.random() < 0.22) {
+			const freeLane = lanes[Math.floor(Math.random() * lanes.length)];
+			const pZ = chunkStartZ + 20;
+			const pTypeRand = Math.random();
+			const pType =
+				pTypeRand < 0.36
+					? ("powerup_magnet" as const)
+					: pTypeRand < 0.7
+						? ("powerup_shield" as const)
+						: ("powerup_jetpack" as const);
+			this.createPowerUp(freeLane, pZ, pType);
 		}
 	}
 
-	private createTrain(lane: number, z: number) {
-		let train: THREE.Mesh;
-		if (this.trainPool.length > 0) {
-			train = this.trainPool.pop()!;
-			train.visible = true;
+	private createPowerUp(
+		lane: number,
+		z: number,
+		type: "powerup_magnet" | "powerup_shield" | "powerup_jetpack",
+	) {
+		const group = new THREE.Group();
+
+		if (type === "powerup_magnet") {
+			// Glowing Horseshoe Magnet
+			const ringGeo = new THREE.TorusGeometry(0.35, 0.1, 12, 24, Math.PI * 1.3);
+			const magnetMat = new THREE.MeshStandardMaterial({
+				color: "#38bdf8",
+				metalness: 0.8,
+				roughness: 0.2,
+				emissive: "#0284c7",
+				emissiveIntensity: 0.8,
+			});
+			const ring = new THREE.Mesh(ringGeo, magnetMat);
+			ring.rotation.z = Math.PI * 0.35;
+			group.add(ring);
+
+			const tipGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+			const tipMat = new THREE.MeshBasicMaterial({ color: "#ef4444" });
+			const tip1 = new THREE.Mesh(tipGeo, tipMat);
+			tip1.position.set(-0.3, -0.18, 0);
+			const tip2 = new THREE.Mesh(tipGeo, tipMat);
+			tip2.position.set(0.3, -0.18, 0);
+			group.add(tip1);
+			group.add(tip2);
+		} else if (type === "powerup_shield") {
+			// Glowing Emerald Shield Sphere
+			const sphereGeo = new THREE.IcosahedronGeometry(0.4, 1);
+			const shieldMat = new THREE.MeshStandardMaterial({
+				color: "#10b981",
+				metalness: 0.5,
+				roughness: 0.2,
+				emissive: "#059669",
+				emissiveIntensity: 0.9,
+			});
+			const sphere = new THREE.Mesh(sphereGeo, shieldMat);
+			group.add(sphere);
+
+			const outerRingGeo = new THREE.TorusGeometry(0.55, 0.04, 8, 24);
+			const ringMat = new THREE.MeshBasicMaterial({ color: "#6ee7b7" });
+			const outerRing = new THREE.Mesh(outerRingGeo, ringMat);
+			outerRing.rotation.x = Math.PI / 2;
+			group.add(outerRing);
 		} else {
-			const trainGeo = new THREE.BoxGeometry(2.0, 3.2, 8.0);
-			train = new THREE.Mesh(trainGeo, this.trainMat);
-			train.castShadow = true;
-			train.receiveShadow = true;
-			this.scene.add(train);
+			// Glowing Rocket Jetpack
+			const jetGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.6, 8);
+			const jetMat = new THREE.MeshStandardMaterial({
+				color: "#f97316",
+				metalness: 0.8,
+				roughness: 0.2,
+				emissive: "#ea580c",
+				emissiveIntensity: 0.8,
+			});
+			const tank1 = new THREE.Mesh(jetGeo, jetMat);
+			tank1.position.x = -0.18;
+			const tank2 = new THREE.Mesh(jetGeo, jetMat);
+			tank2.position.x = 0.18;
+			group.add(tank1);
+			group.add(tank2);
+
+			const coneGeo = new THREE.ConeGeometry(0.14, 0.3, 8);
+			const coneMat = new THREE.MeshBasicMaterial({ color: "#fbbf24" });
+			const cone1 = new THREE.Mesh(coneGeo, coneMat);
+			cone1.rotation.x = Math.PI;
+			cone1.position.set(-0.18, -0.4, 0);
+			const cone2 = new THREE.Mesh(coneGeo, coneMat);
+			cone2.rotation.x = Math.PI;
+			cone2.position.set(0.18, -0.4, 0);
+			group.add(cone1);
+			group.add(cone2);
 		}
 
-		train.position.set(lane * this.LANE_DISTANCE, 1.6, z);
+		group.position.set(lane * this.LANE_DISTANCE, 1.2, z);
+		this.scene.add(group);
+
 		const obs: TrackObstacle = {
-			type: "train",
-			mesh: train,
+			type,
+			mesh: group,
+			lane,
+			z,
+			active: true,
+		};
+		this.activeObstacles.push(obs);
+		this.registerSpatialObstacle(obs);
+	}
+
+	private createTrain(
+		lane: number,
+		z: number,
+		hasRamp: boolean = false,
+		numCars: number = 1,
+	) {
+		for (let c = 0; c < numCars; c++) {
+			const carZ = z + c * 8.4;
+			let train: THREE.Mesh;
+			if (this.trainPool.length > 0) {
+				train = this.trainPool.pop()!;
+				train.visible = true;
+			} else {
+				const trainGeo = new THREE.BoxGeometry(2.0, 3.2, 8.0);
+				train = new THREE.Mesh(trainGeo, this.trainMat);
+				train.castShadow = true;
+				train.receiveShadow = true;
+				this.scene.add(train);
+			}
+
+			train.position.set(lane * this.LANE_DISTANCE, 1.6, carZ);
+			const obs: TrackObstacle = {
+				type: "train",
+				mesh: train,
+				lane,
+				z: carZ,
+				active: true,
+			};
+			this.activeObstacles.push(obs);
+			this.registerSpatialObstacle(obs);
+
+			// Place golden coins along each car's roof
+			[-2.0, 0, 2.0].forEach((offset) => {
+				let coin: THREE.Mesh;
+				const coinZ = carZ + offset;
+				if (this.coinPool.length > 0) {
+					coin = this.coinPool.pop()!;
+					coin.visible = true;
+				} else {
+					coin = new THREE.Mesh(this.coinGeo, this.coinMat);
+					this.scene.add(coin);
+				}
+				coin.position.set(lane * this.LANE_DISTANCE, 4.0, coinZ);
+				const coinObs: TrackObstacle = {
+					type: "coin",
+					mesh: coin,
+					lane,
+					z: coinZ,
+					active: true,
+				};
+				this.activeObstacles.push(coinObs);
+				this.registerSpatialObstacle(coinObs);
+			});
+		}
+
+		// Place an inclined launch ramp in front of ONLY the first car if hasRamp is true
+		if (hasRamp) {
+			this.createRamp(lane, z - 6.25);
+		}
+	}
+
+	private createRamp(lane: number, z: number) {
+		let group: THREE.Group;
+		if (this.rampPool.length > 0) {
+			group = this.rampPool.pop()!;
+			group.visible = true;
+		} else {
+			group = new THREE.Group();
+			// Ramp base box sloped from y=0 to y=3.2 over 4.5m length
+			const rampGeo = new THREE.BoxGeometry(1.9, 0.2, 4.5);
+			const rampMesh = new THREE.Mesh(rampGeo, this.rampMat);
+			rampMesh.rotation.x = -Math.atan2(3.2, 4.5);
+			rampMesh.position.set(0, 1.6, 0);
+			rampMesh.castShadow = true;
+			rampMesh.receiveShadow = true;
+			group.add(rampMesh);
+
+			// Neon chevron arrow indicator on ramp
+			const chevronGeo = new THREE.ConeGeometry(0.35, 0.6, 4);
+			const chevronMat = new THREE.MeshBasicMaterial({ color: "#38bdf8" });
+			const chevron = new THREE.Mesh(chevronGeo, chevronMat);
+			chevron.rotation.x = rampMesh.rotation.x + Math.PI / 2;
+			chevron.position.set(0, 1.65, 0);
+			group.add(chevron);
+
+			this.scene.add(group);
+		}
+
+		group.position.set(lane * this.LANE_DISTANCE, 0, z);
+		const obs: TrackObstacle = {
+			type: "ramp",
+			mesh: group,
 			lane,
 			z,
 			active: true,

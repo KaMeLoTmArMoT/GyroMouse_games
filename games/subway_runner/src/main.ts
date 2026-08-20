@@ -194,7 +194,21 @@ class SubwayRunnerGame extends BaseGame {
 		if (this.isRunning && !this.isPaused) {
 			// Speed up over time
 			this.forwardSpeed += dt * 0.15;
-			this.runner.update(dt, this.forwardSpeed);
+
+			const surface = this.trackManager.getSurfaceHeightAt(
+				this.runner.currentLane,
+				this.runner.posX,
+				this.runner.posZ,
+			);
+			let targetGround = 0;
+			if (surface.isRamp) {
+				// Ramps continuously elevate player from ground level upwards
+				targetGround = surface.height;
+			} else if (surface.height > 0) {
+				// Train roof: player smoothly transitions onto roof if elevated (>= 1.5m) from ramp or jump
+				targetGround = this.runner.posY >= 1.5 ? surface.height : 0;
+			}
+			this.runner.update(dt, this.forwardSpeed, targetGround);
 
 			this.distance = this.runner.posZ;
 			this.scoreValEl.textContent = `${Math.floor(this.distance)} m`;
@@ -226,13 +240,81 @@ class SubwayRunnerGame extends BaseGame {
 			);
 			this.sceneManager.updateParticles(this.runner.posZ, this.forwardSpeed);
 
-			// Check Collisions using Spatial Grid
+			// 1. Coin Magnet Active Suction
+			if (this.runner.activePowerUp === "magnet") {
+				const rPos = this.runner.mesh.position;
+				for (let i = 0; i < this.trackManager.activeObstacles.length; i++) {
+					const obs = this.trackManager.activeObstacles[i];
+					if (obs.active && obs.type === "coin") {
+						const dist = obs.mesh.position.distanceTo(rPos);
+						if (dist < 9.0) {
+							obs.mesh.position.lerp(rPos, Math.min(1.0, dt * 14.0));
+							if (dist < 1.1) {
+								obs.active = false;
+								obs.mesh.visible = false;
+								this.coinsCount++;
+								this.coinsValEl.textContent = `${this.coinsCount}`;
+								this.soundFX.playCoin();
+							}
+						}
+					}
+				}
+			}
+
+			// 2. Update Active Power-Up HUD Badge
+			const powerUpBadgeEl = document.getElementById("powerup-badge");
+			const powerUpIconEl = document.getElementById("powerup-icon");
+			const powerUpNameEl = document.getElementById("powerup-name");
+			const powerUpTimerFillEl = document.getElementById("powerup-timer-fill");
+
+			if (
+				powerUpBadgeEl &&
+				powerUpIconEl &&
+				powerUpNameEl &&
+				powerUpTimerFillEl
+			) {
+				if (this.runner.activePowerUp || this.runner.hasShield) {
+					powerUpBadgeEl.classList.remove("hidden");
+					if (this.runner.hasShield && !this.runner.activePowerUp) {
+						powerUpIconEl.textContent = "🛡️";
+						powerUpNameEl.textContent = "SHIELD ACTIVE";
+						powerUpTimerFillEl.style.width = "100%";
+						powerUpTimerFillEl.style.background = "#10b981";
+					} else if (this.runner.activePowerUp === "magnet") {
+						powerUpIconEl.textContent = "🧲";
+						powerUpNameEl.textContent = `MAGNET ${this.runner.powerUpTimer.toFixed(1)}s`;
+						const pct =
+							(this.runner.powerUpTimer /
+								(this.runner.maxPowerUpTimer || 10)) *
+							100;
+						powerUpTimerFillEl.style.width = `${pct}%`;
+						powerUpTimerFillEl.style.background = "#38bdf8";
+					} else if (this.runner.activePowerUp === "jetpack") {
+						powerUpIconEl.textContent = "🚀";
+						powerUpNameEl.textContent = `JETPACK ${this.runner.powerUpTimer.toFixed(1)}s`;
+						const pct =
+							(this.runner.powerUpTimer /
+								(this.runner.maxPowerUpTimer || 6)) *
+							100;
+						powerUpTimerFillEl.style.width = `${pct}%`;
+						powerUpTimerFillEl.style.background = "#f97316";
+					}
+				} else {
+					powerUpBadgeEl.classList.add("hidden");
+				}
+			}
+
+			// 3. Check Collisions using Spatial Grid
 			const crashed = this.collisionManager.checkCollisions(
 				this.runner,
 				this.trackManager,
 				() => {
 					this.coinsCount++;
 					this.coinsValEl.textContent = `${this.coinsCount}`;
+					this.soundFX.playCoin();
+				},
+				() => {
+					// Play special power-up collection sound
 					this.soundFX.playCoin();
 				},
 			);

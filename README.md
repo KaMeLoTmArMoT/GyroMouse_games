@@ -50,7 +50,12 @@ GyroMouse_games/
 │   │   ├── README.md          # Game documentation & handoff state
 │   │   └── src/
 │   │
-│   └── wormix/                # 🐛💥 Wormix (Turn-based 2D elemental artillery battle)
+│   ├── wormix/                # 🐛💥 Wormix (Turn-based 2D elemental artillery battle)
+│   │   ├── index.html
+│   │   ├── README.md          # Game documentation & handoff state
+│   │   └── src/
+│   │
+│   └── void_dungeon/          # 🗡️ Void Dungeon (Co-op 2P dungeon crawler with raycast auto-aim & enemies)
 │       ├── index.html
 │       ├── README.md          # Game documentation & handoff state
 │       └── src/
@@ -81,6 +86,7 @@ GyroMouse_games/
    - **3D Artillery Siege:** `http://localhost:5173/games/artillery_siege/index.html`
    - **3D Cyber Air Hockey:** `http://localhost:5173/games/cyber_pong/index.html`
    - **Wormix Artillery:** `http://localhost:5173/games/wormix/index.html`
+   - **Void Dungeon:** `http://localhost:5173/games/void_dungeon/index.html`
 
 ---
 
@@ -88,35 +94,44 @@ GyroMouse_games/
 
 ### 1. 🔮 3D Marble Maze (`games/marble_maze/`)
 * **Perspective:** Top-Down 90° overhead camera.
-* **Physics:** Rapier3D static floor colliders with gravity vector tilt simulation $\vec{g}$.
+* **Physics:** Rapier3D static floor colliders with gravity vector tilt simulation $\vec{g}$, Continuous Collision Detection (CCD), and delta-time capping.
 * **Features:** Organic Voronoi terrain clusters (Snow/Ice/Asphalt, City, Forest), procedural pitfall holes, checkpoint respawns, and seed sharing.
 * **Controls:** GyroMouse tilt / Keyboard Arrow keys / `WASD`. Re-Center with `C`. Pause via `ESC`.
 
 ### 2. 🏃‍♂️ 3D Subway Runner (`games/subway_runner/`)
 * **Perspective:** Third-person runner camera.
-* **Gameplay:** Endless 3-lane obstacle runner with chunk-based track generation, coin rings, trains, and low/high hurdles.
-* **Visuals:** Three.js directional sun + soft shadow mapping, glowing neon rail guides, speed particle streaks, background city skyline, and exponential fog.
+* **Gameplay:** Endless 3-lane obstacle runner with chunk-based track generation, coin rings, low/high hurdles, launch ramps, train roof running with coin lines, multi-car train convoys, and 7s stumble grace period.
+* **Power-Ups:** Collectible 🧲 *Magnet* (10s coin suction), 🛡️ *Shield* (absorbs 1 hit), and 🚀 *Jetpack* (soars $Y=6.0\text{m}$ above tracks for 6s).
 * **Controls:** Arrow Keys & `WASD` (`A`/`←` & `D`/`→` for lanes, `W`/`↑` for Jump, `S`/`↓` for Slide, `ESC` for Pause).
 
 ### 3. 🏗️ 3D Crane Tower (`games/crane_tower/`)
 * **Perspective:** Industrial depot profile view.
 * **Gameplay:** Cooperative dual-axis cargo stacker. Player 1 controls Hook Height (Y), Player 2 controls Trolley Position (X). Drop crates onto a train flatbed with Rapier3D physics.
+* **Features:** Dynamic 12-point ballistic trajectory laser arc calculating pendulum swing velocity and trolley inertia (automatically visible when cargo is held).
 * **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Drop (`Space`), Pause (`ESC`).
 
 ### 4. 💥 3D Artillery Siege (`games/artillery_siege/`)
 * **Perspective:** Dynamic 3D behind-the-turret camera with automatic orbit follow & Tactical Radar overlay.
-* **Gameplay:** Cooperative dual-axis artillery bombardment. Player 1 controls Elevation Pitch & Power, Player 2 controls Turret Azimuth & Micro Wind Tuning.
+* **Gameplay:** Cooperative dual-axis artillery bombardment. Player 1 controls Elevation Pitch & Power, Player 2 controls Turret Azimuth.
+* **Features:** High-impact positional and lookAt rotational screenshake, plus 5 procedurally stacked destructible fortress archetypes (Citadel, Twin Spires, Stepped Pyramid, Barbican Gatehouse, Sky Watchtower Redoubt).
 * **Controls:** Player 1 (`Up`/`Down` pitch & power), Player 2 (`Left`/`Right` direction), Stage Lock / Fire (`Space`), Pause (`ESC`).
 
 ### 5. 🏓 3D Cyber Air Hockey / Cyber Pong (`games/cyber_pong/`)
 * **Perspective:** 3D overhead neon arena view.
 * **Gameplay:** 1-Player vs AI Bot (3 difficulties) or 2-Player local versus air hockey with brick shield destruction.
+* **Features:** Curved paddle surface normal reflections (up to $\pm 56^\circ$ deflection), spin shot velocity transfer, and Rapier3D CCD anti-tunneling.
 * **Controls:** Player 1 (`W`/`S` or `Up`/`Down`), Player 2 (`A`/`D` or `Left`/`Right`), Start/Pause (`Space` / `ESC`).
 
 ### 6. 🐛💥 Wormix Artillery (`games/wormix/`)
 * **Perspective:** 2D profile tactical arena.
 * **Gameplay:** Turn-based elemental artillery with Offscreen Pixel-Mask Destructible Terrain (Grass, Dirt, Stone, Bedrock, Sand, Water, Acid, Portals), wind physics, trajectory arcs, and smart AI opponents.
 * **Controls:** GyroMouse Restricted Mode (3-step turn flow with `WASD`/Arrows + `Space`) & PC Mode (Mouse aiming/clicking). 30 FPS locked simulation tick.
+
+### 7. 🗡️ Void Dungeon (`games/void_dungeon/`)
+* **Perspective:** Top-down co-op dungeon crawler.
+* **Gameplay:** Procedural dungeon mazes with fog-of-war visibility, key collection, and exit portal.
+* **Features:** Smooth wall and corner-sliding physics, 8 patrolling shadow phantom enemies with HP bars, and magic projectile shooting with a 90° forward vision cone auto-aim.
+* **Controls:** Player 1 (`WASD` move), Player 2 (Arrow keys aim torch), Shoot (`Space` / `Enter`), Pause (`ESC`).
 
 ---
 

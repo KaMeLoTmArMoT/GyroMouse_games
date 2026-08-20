@@ -2,6 +2,7 @@ import { BaseGame } from "../../../shared/baseGame";
 import { SettingsOverlay } from "../../../shared/settingsOverlay";
 import { DungeonGenerator } from "./dungeon_gen";
 import { type EditorTool, LevelEditor } from "./editor";
+import { EnemyManager } from "./enemyManager";
 import { DungeonInputManager } from "./input";
 import type { DungeonLevel } from "./level";
 import { MinimapRenderer } from "./minimap";
@@ -19,6 +20,7 @@ export class VoidDungeonGame extends BaseGame {
 	public player: Player;
 	public visibility: VisibilityMap;
 	public renderer: DungeonRenderer;
+	public enemyManager: EnemyManager;
 	public minimapRenderer?: MinimapRenderer;
 	public editor: LevelEditor;
 	public settingsOverlay: SettingsOverlay;
@@ -35,10 +37,12 @@ export class VoidDungeonGame extends BaseGame {
 
 		this.dungeonInput = new DungeonInputManager(this.input);
 		this.editor = new LevelEditor();
+		this.enemyManager = new EnemyManager();
 
 		// Generate initial level using BSP
 		this.level = DungeonGenerator.generate(40, 30, this.seed);
 		this.visibility = new VisibilityMap(this.level.width, this.level.height);
+		this.enemyManager.spawnEnemies(this.level, 8);
 
 		// Spawn player at generated spawn tile
 		this.player = new Player(this.level.spawnTile.x, this.level.spawnTile.y);
@@ -342,6 +346,7 @@ export class VoidDungeonGame extends BaseGame {
 		this.visibility = new VisibilityMap(this.level.width, this.level.height);
 		this.player = new Player(this.level.spawnTile.x, this.level.spawnTile.y);
 		this.setupPlayerCallbacks();
+		this.enemyManager.spawnEnemies(this.level, 8);
 
 		sessionStorage.removeItem(this.storageKey);
 		this.updateHUD();
@@ -494,6 +499,14 @@ export class VoidDungeonGame extends BaseGame {
 
 			this.player.update(dt, move, aim, this.level, interact);
 
+			// Update Enemies & Magic Projectiles
+			this.enemyManager.update(dt, this.level);
+
+			// Shooting Magic Bolts (Space / Enter / Shift) with hard 90° auto-aim
+			if (sonar || interact || this.input.isKeyPressed("Space")) {
+				this.enemyManager.fireMagicBolt(this.player, this.level);
+			}
+
 			// Compute fog of war & vision cone
 			this.visibility.computeVisibility(
 				this.player.tileX,
@@ -511,6 +524,7 @@ export class VoidDungeonGame extends BaseGame {
 			this.player,
 			this.visibility,
 			timestamp / 1000,
+			this.enemyManager,
 		);
 
 		if (this.editor.active) {

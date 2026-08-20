@@ -88,6 +88,26 @@
       font-size: 0.85rem;
       font-weight: 700;
     }
+    .powerup-badge {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 2px solid #38bdf8;
+      border-radius: 16px;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+      animation: pulseBadge 1.2s infinite alternate ease-in-out;
+    }
+    @keyframes pulseBadge {
+      from { transform: scale(0.98); }
+      to { transform: scale(1.02); }
+    }
+    .powerup-icon { font-size: 1.8rem; }
+    .powerup-name { font-size: 0.85rem; font-weight: 800; color: #38bdf8; letter-spacing: 1px; text-transform: uppercase; }
+    .powerup-timer-bar { width: 80px; height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+    .powerup-timer-fill { height: 100%; width: 100%; background: #38bdf8; transition: width 0.1s linear; }
     
     .overlay-screen {
       position: absolute;
@@ -169,6 +189,15 @@
         <div class="stat">
           <span class="stat-label">Coins</span>
           <span id="coins-val" class="stat-val coins">0</span>
+        </div>
+      </div>
+
+      <!-- Active Power-Up Timer Badge -->
+      <div id="powerup-badge" class="powerup-badge hidden">
+        <span id="powerup-icon" class="powerup-icon">🧲</span>
+        <div class="powerup-info">
+          <span id="powerup-name" class="powerup-name">MAGNET</span>
+          <div class="powerup-timer-bar"><div id="powerup-timer-fill" class="powerup-timer-fill"></div></div>
         </div>
       </div>
 

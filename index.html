@@ -211,6 +211,32 @@
         });
         nav.activate();
       }
+
+      // Display saved high scores on game cards if present
+      const statsMap = {
+        './games/marble_maze/index.html': { key: 'marble_maze_best_time', label: 'Best', format: v => `${parseFloat(v).toFixed(1)}s` },
+        './games/subway_runner/index.html': { key: 'subway_runner_highscore', label: 'Best', format: v => `${v} m` },
+        './games/crane_tower/index.html': { key: 'crane_tower_highscore', label: 'Best', format: v => `${v} pts` },
+        './games/artillery_siege/index.html': { key: 'artillery_siege_highscore', label: 'Best', format: v => `${v} pts` },
+        './games/cyber_pong/index.html': { key: 'cyber_pong_wins', label: 'Wins', format: v => `${v}` },
+        './games/wormix/index.html': { key: 'wormix_wins', label: 'Wins', format: v => `${v}` },
+        './games/void_dungeon/index.html': { key: 'void_dungeon_best_time', label: 'Best', format: v => `${v}s` },
+      };
+
+      document.querySelectorAll('.game-card').forEach(card => {
+        const href = card.getAttribute('href');
+        const stat = statsMap[href];
+        if (stat) {
+          const val = localStorage.getItem(stat.key);
+          if (val) {
+            const pill = document.createElement('div');
+            pill.style.cssText = 'background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 12px; margin-bottom: 12px; display: inline-flex; align-items: center; gap: 4px;';
+            pill.innerHTML = `🏆 ${stat.label}: <strong>${stat.format(val)}</strong>`;
+            const desc = card.querySelector('.game-desc');
+            if (desc) desc.after(pill);
+          }
+        }
+      });
     });
   </script>
 </body>

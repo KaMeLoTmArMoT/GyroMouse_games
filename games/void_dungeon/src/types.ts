@@ -39,6 +39,32 @@ export interface CrateEntity {
 	isSliding: boolean;
 }
 
+export interface EnemyEntity {
+	id: string;
+	x: number; // pixel position X
+	y: number; // pixel position Y
+	radius: number;
+	speed: number;
+	hp: number;
+	maxHp: number;
+	vx: number;
+	vy: number;
+	changeDirTimer: number;
+	hitFlashTimer: number;
+	isDead: boolean;
+}
+
+export interface ProjectileEntity {
+	id: string;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	life: number;
+	radius: number;
+	color: string;
+}
+
 export interface GameSaveData {
 	seed: string;
 	player: PlayerState;

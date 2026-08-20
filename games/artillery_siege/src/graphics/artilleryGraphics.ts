@@ -597,14 +597,25 @@ export class ArtilleryGraphicsManager {
 		});
 	}
 
+	// Camera Shake State
+	private shakeIntensity: number = 0;
+	private shakeDecay: number = 4.5;
+
+	public addScreenShake(intensity: number = 0.5) {
+		this.shakeIntensity = Math.min(1.8, this.shakeIntensity + intensity);
+	}
+
 	public triggerRecoil() {
 		this.recoilOffset = 0.8;
+		this.addScreenShake(0.85);
 	}
 
 	public triggerExplosion(
 		pos: { x: number; y: number; z: number },
 		colorType: "fire" | "smoke" | "spark" | "ice" = "fire",
 	) {
+		this.addScreenShake(1.65);
+
 		const craterGeo = new THREE.CircleGeometry(2.2, 16);
 		const craterMat = new THREE.MeshBasicMaterial({
 			color: colorType === "ice" ? 0x0284c7 : 0x090d16,
@@ -648,14 +659,13 @@ export class ArtilleryGraphicsManager {
 			if (p.life >= p.maxLife) {
 				p.active = false;
 				this.particleDummy.position.set(0, -999, 0);
-				this.particleDummy.scale.set(0.001, 0.001, 0.001);
 				this.particleDummy.updateMatrix();
 				this.particleInstancedMesh.setMatrixAt(i, this.particleDummy.matrix);
 				continue;
 			}
 
 			p.position.addScaledVector(p.velocity, dt);
-			p.velocity.y -= 9.81 * dt * 0.4; // Particle gravity
+			p.velocity.y -= 9.8 * dt; // Gravity on debris
 
 			const progress = p.life / p.maxLife;
 			const currentScale = (1.0 - progress) * p.scale;
@@ -697,8 +707,32 @@ export class ArtilleryGraphicsManager {
 			);
 		}
 
-		this.camera.position.copy(this.currentCamPos);
-		this.camera.lookAt(this.currentCamLookAt);
+		// Apply High-Impact Camera Screenshake (Positional + Rotational Jitter)
+		if (this.shakeIntensity > 0) {
+			this.shakeIntensity = Math.max(
+				0,
+				this.shakeIntensity - dt * this.shakeDecay,
+			);
+			const shakeX = (Math.random() - 0.5) * this.shakeIntensity * 1.6;
+			const shakeY = (Math.random() - 0.5) * this.shakeIntensity * 1.6;
+			const shakeZ = (Math.random() - 0.5) * this.shakeIntensity * 1.0;
+
+			const lookShakeX = (Math.random() - 0.5) * this.shakeIntensity * 2.8;
+			const lookShakeY = (Math.random() - 0.5) * this.shakeIntensity * 2.8;
+
+			this.camera.position
+				.copy(this.currentCamPos)
+				.add(new THREE.Vector3(shakeX, shakeY, shakeZ));
+			const shakenLookAt = new THREE.Vector3(
+				this.currentCamLookAt.x + lookShakeX,
+				this.currentCamLookAt.y + lookShakeY,
+				this.currentCamLookAt.z,
+			);
+			this.camera.lookAt(shakenLookAt);
+		} else {
+			this.camera.position.copy(this.currentCamPos);
+			this.camera.lookAt(this.currentCamLookAt);
+		}
 
 		this.renderer.render(this.scene, this.camera);
 	}

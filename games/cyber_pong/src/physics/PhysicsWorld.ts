@@ -470,7 +470,7 @@ export class PhysicsWorld {
 			}
 		});
 
-		if (hitPaddleThisFrame && now - this.lastPaddleHitTime > 150) {
+		if (hitPaddleThisFrame && now - this.lastPaddleHitTime > 120) {
 			this.lastPaddleHitTime = now;
 			const hitPaddle = hitPaddleThisFrame;
 			this.setPuckOwner(hitPaddle);
@@ -479,25 +479,28 @@ export class PhysicsWorld {
 				hitPaddle === "p1" ? this.p1PaddleBody : this.p2PaddleBody;
 			const paddleZ = paddleBody.translation().z;
 			const offsetZ = puckPos.z - paddleZ;
-			const halfLength = 1.6;
-			const normRatio = offsetZ / halfLength;
+			const scale = hitPaddle === "p1" ? this.p1Scale : this.p2Scale;
+			const halfLength = 1.6 * scale;
+			const normRatio = Math.max(-1.0, Math.min(1.0, offsetZ / halfLength));
 
-			if (Math.abs(normRatio) > 0.75) {
-				const currentVel = this.puckBody.linvel();
-				const currentSpeed = Math.hypot(currentVel.x, currentVel.z) || 12;
-				const edgeSign = Math.sign(normRatio);
-				const newDirX = hitPaddle === "p1" ? 0.6 : -0.6;
-				const newDirZ = edgeSign * 0.8;
+			// Continuous arc curvature reflection (up to ±56 degrees deflection)
+			const maxDeflection = Math.PI / 3.2;
+			const bounceAngle = normRatio * maxDeflection;
+			const forwardX = hitPaddle === "p1" ? 1 : -1;
+			const dirX = forwardX * Math.cos(bounceAngle);
+			const dirZ = Math.sin(bounceAngle);
 
-				this.puckBody.setLinvel(
-					{
-						x: newDirX * currentSpeed,
-						y: 0,
-						z: newDirZ * currentSpeed,
-					},
-					true,
-				);
-			}
+			const currentVel = this.puckBody.linvel();
+			const currentSpeed = Math.max(12, Math.hypot(currentVel.x, currentVel.z) * 1.04);
+
+			this.puckBody.setLinvel(
+				{
+					x: dirX * currentSpeed,
+					y: 0,
+					z: dirZ * currentSpeed,
+				},
+				true,
+			);
 		}
 
 		for (const id of destroyedBrickIds) {
