@@ -164,3 +164,10 @@ All games automatically receive gyroscope stream data via `SharedInputManager` f
 | Build (Type-check + Bundle) | `npm run build` |
 | Preview Production Build | `npm run preview` |
 | Type-check only | `npx tsc --noEmit` |
+
+---
+
+## License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+
