@@ -4,7 +4,7 @@ repos:
     hooks:
       - id: stampver
   - repo: https://github.com/kucherenko/jscpd
-    rev: 5.4.2
+    rev: v5.4.2
     hooks:
       - id: jscpd
         args: ['--threshold', '2', '--min-tokens', '50', '--min-lines', '5', '--pattern', '**/*.ts', 'games', 'shared']
