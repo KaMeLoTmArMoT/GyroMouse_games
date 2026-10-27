@@ -58,4 +58,4 @@ An endless 3D obstacle runner game built with **Three.js** inspired by Subway Su
    ```bash
    npm run dev
    ```
-2. Open in browser: `http://localhost:5173/games/subway_runner/index.html`
+2. Open in browser: `http://localhost:5175/games/subway_runner/index.html`

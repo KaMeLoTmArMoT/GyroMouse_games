@@ -46,4 +46,4 @@ A 3D cyberpunk air-hockey & brick breaker fusion built with **Three.js**, **Rapi
    ```bash
    npm run dev
    ```
-2. Open in browser: `http://localhost:5173/games/cyber_pong/index.html`
+2. Open in browser: `http://localhost:5175/games/cyber_pong/index.html`

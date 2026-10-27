@@ -71,4 +71,4 @@ Surfaces are generated in **organic clusters** (Voronoi seed placement) rather t
    ```bash
    npm run dev
    ```
-2. Open in your browser: `http://localhost:5173/games/marble_maze/index.html`
+2. Open in your browser: `http://localhost:5175/games/marble_maze/index.html`

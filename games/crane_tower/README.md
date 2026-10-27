@@ -51,4 +51,4 @@ A cooperative 2-Player / Dual-Axis 3D physics cargo stacker built with **Three.j
    ```bash
    npm run dev
    ```
-2. Open in browser: `http://localhost:5173/games/crane_tower/index.html`
+2. Open in browser: `http://localhost:5175/games/crane_tower/index.html`

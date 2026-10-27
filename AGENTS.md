@@ -4,7 +4,7 @@
 
 | Task                        | Command            |
 | -----------------------------| --------------------|
-| Dev server (LAN, port 5173) | `npm run dev`      |
+| Dev server (LAN, port 5175) | `npm run dev`      |
 | Build (typecheck + bundle)  | `npm run build`    |
 | Preview production build    | `npm run preview`  |
 | Type-check only             | `npx tsc --noEmit` |

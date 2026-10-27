@@ -50,4 +50,4 @@ A cooperative 2-Player / Dual-Axis 3D artillery bombardment game built with **Th
    cd GyroMouse_games
    npm run dev
    ```
-2. Open in browser: `http://localhost:5173/games/artillery_siege/index.html`
+2. Open in browser: `http://localhost:5175/games/artillery_siege/index.html`

@@ -146,4 +146,4 @@ A 2D turn-based tactical artillery battle game (inspired by Worms & Wormix) buil
    ```bash
    npm run dev
    ```
-2. Open in browser: `http://localhost:5173/games/wormix/index.html`
+2. Open in browser: `http://localhost:5175/games/wormix/index.html`

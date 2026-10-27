@@ -79,14 +79,14 @@ GyroMouse_games/
    npm run dev
    ```
 4. Access in your browser:
-   - **Game Hub:** `http://localhost:5173/`
-   - **3D Marble Maze:** `http://localhost:5173/games/marble_maze/index.html`
-   - **3D Subway Runner:** `http://localhost:5173/games/subway_runner/index.html`
-   - **3D Crane Tower:** `http://localhost:5173/games/crane_tower/index.html`
-   - **3D Artillery Siege:** `http://localhost:5173/games/artillery_siege/index.html`
-   - **3D Cyber Air Hockey:** `http://localhost:5173/games/cyber_pong/index.html`
-   - **Wormix Artillery:** `http://localhost:5173/games/wormix/index.html`
-   - **Void Dungeon:** `http://localhost:5173/games/void_dungeon/index.html`
+   - **Game Hub:** `http://localhost:5175/`
+   - **3D Marble Maze:** `http://localhost:5175/games/marble_maze/index.html`
+   - **3D Subway Runner:** `http://localhost:5175/games/subway_runner/index.html`
+   - **3D Crane Tower:** `http://localhost:5175/games/crane_tower/index.html`
+   - **3D Artillery Siege:** `http://localhost:5175/games/artillery_siege/index.html`
+   - **3D Cyber Air Hockey:** `http://localhost:5175/games/cyber_pong/index.html`
+   - **Wormix Artillery:** `http://localhost:5175/games/wormix/index.html`
+   - **Void Dungeon:** `http://localhost:5175/games/void_dungeon/index.html`
 
 ---
 
