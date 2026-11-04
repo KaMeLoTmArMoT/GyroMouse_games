@@ -1,4 +1,4 @@
-// Deterministic client combat simulation runner with dynamic combat maneuvering, spring-damping escorts, and active broadside tracking
+// Deterministic client combat simulation runner with dynamic combat maneuvering, spring-damping escorts, active broadside tracking, and visual event hooks
 
 import type {
   GroupOrder,
@@ -21,12 +21,15 @@ import {
   vecSub,
 } from "./math2d";
 
+export type BeamFireCallback = (from: Vector2, to: Vector2, color: string, width: number) => void;
+
 export class ClientCombatSimulation {
   ships: ShipState[] = [];
   projectiles: ProjectileState[] = [];
   orders: Map<number, GroupOrder> = new Map();
   timeElapsed = 0;
   private projectileCounter = 0;
+  onBeamFire: BeamFireCallback | null = null;
 
   addShip(ship: ShipState): void {
     this.ships.push(ship);
@@ -151,71 +154,60 @@ export class ClientCombatSimulation {
     let targetHeading = ship.heading;
     let desiredSpeed = 0;
 
-    // 1. Organic Escort Movement (Soft Spring Anchor, not glued like a tail!)
+    // 1. Organic Escort Movement (Flexible spring around flagship)
     if (ship.flagshipId) {
       const flagship = aliveShips.find((s) => s.id === ship.flagshipId);
       if (flagship) {
-        // Escort orbits or floats flexibly in the defense perimeter (110-180u around flagship)
         const toFlagship = vecSub(ship.pos, flagship.pos);
         const distFromFlagship = vecDistance(ship.pos, flagship.pos);
-        const _idealDistance = 140;
 
-        // If hostile missiles or fighters exist nearby, escort breaks off slightly to intercept!
         const nearbyThreat = aliveShips.find(
           (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) < 280,
         );
 
         if (nearbyThreat && distFromFlagship < 240) {
-          // Patrol toward threat
           const toThreat = vecSub(nearbyThreat.pos, ship.pos);
           targetHeading = Math.atan2(toThreat[1], toThreat[0]);
           desiredSpeed = ship.maxSpeed * 0.7;
         } else if (distFromFlagship > 220) {
-          // Catch up to flagship smoothly
           targetHeading = Math.atan2(-toFlagship[1], -toFlagship[0]);
           desiredSpeed = ship.maxSpeed;
         } else if (distFromFlagship < 80) {
-          // Push away slightly (don't crowd the flagship)
           targetHeading = Math.atan2(toFlagship[1], toFlagship[0]);
           desiredSpeed = ship.maxSpeed * 0.4;
         } else {
-          // Cruise flexibly in formation alongside flagship
           targetHeading = flagship.heading + Math.sin(this.timeElapsed * 0.8) * 0.2;
           desiredSpeed = Math.max(ship.maxSpeed * 0.4, vecDistance([0, 0], flagship.velocity));
         }
       }
     } else if (target) {
-      // 2. Active Battleship / Cruiser Combat Navigation
+      // 2. Active Battleship / Cruiser Navigation (No deadlock / endless circling!)
       const toTarget = vecSub(target.pos, ship.pos);
       const dist = vecDistance(ship.pos, target.pos);
       const angleToTarget = Math.atan2(toTarget[1], toTarget[0]);
 
       if (ship.hullClass === "battleship") {
-        // Check if spinal railgun is ready to fire
         const spinalTurret = ship.turrets.find((t) => t.isSpinalGimbal);
-        const spinalReady = spinalTurret && spinalTurret.cooldownTimer <= 0.6;
+        const spinalReady = spinalTurret && spinalTurret.cooldownTimer <= 0.8;
 
-        if (spinalReady || dist > 600) {
-          // 1. Nose-in: Turn directly to face enemy for devastating spinal railgun shot!
+        if (spinalReady || dist > 550) {
+          // Nose-in mode: turn aggressively to align spinal railgun!
           targetHeading = angleToTarget;
-          desiredSpeed = dist > 500 ? ship.maxSpeed * 0.8 : ship.maxSpeed * 0.3;
+          desiredSpeed = dist > 450 ? ship.maxSpeed * 0.8 : ship.maxSpeed * 0.3;
         } else {
-          // 2. Broadside Maneuver: Turn 75 degrees to fire side laser batteries while reloading
-          // Pick left or right broadside depending on which battery faces target best
-          const currentDiff = normalizeAngle(angleToTarget - ship.heading);
-          const broadsideOffset = currentDiff > 0 ? Math.PI * 0.42 : -Math.PI * 0.42;
-          targetHeading = normalizeAngle(angleToTarget + broadsideOffset);
-          // Keep cruising slowly in wide combat circle, NEVER freeze!
-          desiredSpeed = ship.maxSpeed * 0.55;
+          // Broadside mode: choose the broadside that requires the SHORTEST turn!
+          const relAngle = normalizeAngle(angleToTarget - ship.heading);
+          // If enemy is to our left (relAngle in [-PI, 0]), turn left broadside (-PI/2). Else turn right (+PI/2).
+          const chosenBroadside = relAngle < 0 ? -Math.PI * 0.5 : Math.PI * 0.5;
+          targetHeading = normalizeAngle(angleToTarget + chosenBroadside);
+          desiredSpeed = ship.maxSpeed * 0.5;
         }
       } else if (ship.hullClass === "cruiser") {
-        // Cruisers maintain continuous flanking speed (circling at 320u)
         targetHeading = angleToTarget + Math.PI * 0.35;
         desiredSpeed = ship.maxSpeed * 0.75;
       } else if (ship.hullClass === "strike_craft") {
-        // Strike craft strafe runs
         if (dist < 120) {
-          targetHeading = angleToTarget + Math.PI * 0.7; // sharp peel away
+          targetHeading = angleToTarget + Math.PI * 0.7;
           desiredSpeed = ship.maxSpeed;
         } else {
           targetHeading = angleToTarget;
@@ -227,9 +219,10 @@ export class ClientCombatSimulation {
       }
     }
 
-    // 3. Smooth Turn (Responsive turning, preventing stall locks)
+    // 3. Smooth Turn: Increased turn responsiveness on capitals so they don't get trapped
+    const turnRate = ship.hullClass === "battleship" ? 0.75 : ship.turnRate;
     const angleDiff = normalizeAngle(targetHeading - ship.heading);
-    const turnStep = clamp(angleDiff, -ship.turnRate * dt, ship.turnRate * dt);
+    const turnStep = clamp(angleDiff, -turnRate * dt, turnRate * dt);
     ship.heading = normalizeAngle(ship.heading + turnStep);
 
     // 4. Thrust & Lateral Control
@@ -242,7 +235,7 @@ export class ClientCombatSimulation {
     const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
     const newLateralSpeed = currentLateralSpeed * Math.max(0, 1 - dt * lateralDamping);
 
-    const forwardAccel = ship.hullClass === "strike_craft" ? 240.0 : 90.0;
+    const forwardAccel = ship.hullClass === "strike_craft" ? 240.0 : 110.0;
     const speedError = desiredSpeed - currentForwardSpeed;
     const forwardStep = clamp(speedError, -forwardAccel * dt, forwardAccel * dt);
     const newForwardSpeed = currentForwardSpeed + forwardStep;
@@ -331,7 +324,7 @@ export class ClientCombatSimulation {
     turret.currentLocalAngle = normalizeAngle(turret.currentLocalAngle + step);
 
     const isInArc = desiredLocal >= minArc && desiredLocal <= maxArc;
-    const alignTolerance = turret.isSpinalGimbal ? 0.05 : 0.12;
+    const alignTolerance = turret.isSpinalGimbal ? 0.08 : 0.15;
     const isAligned = Math.abs(diff) < alignTolerance;
     return isInArc && isAligned;
   }
@@ -346,21 +339,28 @@ export class ClientCombatSimulation {
     const rotatedOffset = rotatePoint(turret.offset, ship.heading);
     const spawnPos = vecAdd(ship.pos, rotatedOffset);
 
+    // Hitscan (Laser / PD) -> Fire visual beam effect!
     if (turret.weapon.projectileSpeed <= 0) {
+      const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
+      const beamWidth = turret.weapon.weaponType === "point_defense" ? 1.5 : 3.0;
+
       if (turret.weapon.weaponType === "point_defense") {
         const missile = this.findMissileTarget(ship, turret.weapon.range);
         if (missile) {
           missile.hp -= turret.weapon.damage * 6.0;
+          if (this.onBeamFire) this.onBeamFire(spawnPos, missile.pos, "#facc15", 1.5);
         }
       } else if (targetShip?.isAlive) {
         const dist = vecDistance(spawnPos, targetShip.pos);
         if (dist <= turret.weapon.range) {
           this.applyDamage(targetShip, turret.weapon.damage, turret.weapon);
+          if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, beamWidth);
         }
       }
       return;
     }
 
+    // Physical projectile
     this.projectileCounter += 1;
     const toTarget = vecNormalize(vecSub(targetPos, spawnPos));
     const velocity = vecScale(toTarget, turret.weapon.projectileSpeed);

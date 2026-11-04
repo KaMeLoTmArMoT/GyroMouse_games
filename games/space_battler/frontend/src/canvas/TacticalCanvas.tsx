@@ -23,6 +23,11 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
   const hasDraggedRef = useRef(false);
 
   useEffect(() => {
+    // Hook visual beam effects to combat simulation events
+    sim.onBeamFire = (from, to, color, width) => {
+      effectsRef.current.addBeam(from, to, color, width, 0.16);
+    };
+
     let animId: number;
     let lastTime = performance.now();
 
