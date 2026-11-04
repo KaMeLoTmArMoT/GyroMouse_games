@@ -1,6 +1,7 @@
 // Deterministic client combat simulation runner with point defense ship bombardment, cruiser forward torpedo tracking, and shield bounce physics
 
 import type {
+  FighterPhase,
   GroupOrder,
   ProjectileState,
   ShipState,
@@ -27,6 +28,21 @@ export type FlakBurstCallback = (pos: Vector2) => void;
 const FIGHTER_STANDOFF = 385;
 const FIGHTER_CLEARANCE = 45;
 const FIGHTER_EGRESS_DISTANCE = 200;
+const WING_SIZE = 5;
+const WING_WAVE_DELAY = 1.8;
+const WING_RALLY_TOLERANCE = 65;
+
+interface FighterWing {
+  team: number;
+  index: number;
+  members: string[];
+  phase: FighterPhase;
+  phaseStarted: number;
+  launchAt: number;
+  targetId: string | null;
+  heading: number;
+  rally: Vector2;
+}
 const CRUISER_STANDOFF = 480;
 const CRUISER_CLEARANCE = 100;
 const CRUISER_BOW_LIMIT = (12 * Math.PI) / 180;
@@ -57,6 +73,8 @@ export class ClientCombatSimulation {
   orders: Map<number, GroupOrder> = new Map();
   timeElapsed = 0;
   private projectileCounter = 0;
+  private fighterWings: FighterWing[] = [];
+  private nextWingLaunch = new Map<number, number>();
   onBeamFire: BeamFireCallback | null = null;
   onFlakBurst: FlakBurstCallback | null = null;
 
@@ -83,7 +101,8 @@ export class ClientCombatSimulation {
 
     // 2. Tactical Movement & Targeting AI
     const aliveShips = this.ships.filter((s) => s.isAlive);
-    this.ensureFighterLanes(aliveShips);
+    this.ensureFighterWings(aliveShips);
+    this.updateFighterWings(aliveShips);
     for (const ship of aliveShips) {
       const order = this.orders.get(ship.groupId) ?? {
         groupId: ship.groupId,
@@ -184,6 +203,14 @@ export class ClientCombatSimulation {
     let enemies = aliveShips.filter((s) => s.team !== ship.team);
     if (enemies.length === 0) return null;
 
+    if (ship.hullClass === "strike_craft") {
+      const wing = this.fighterWings.find(
+        (w) => w.team === ship.team && w.index === ship.wingIndex,
+      );
+      const wingTarget = enemies.find((enemy) => enemy.id === wing?.targetId);
+      if (wingTarget) return wingTarget;
+    }
+
     if (ship.hullClass === "battleship" || order.priority === "capitals") {
       const capitals = enemies.filter(
         (s) => s.hullClass === "cruiser" || s.hullClass === "battleship",
@@ -221,33 +248,144 @@ export class ClientCombatSimulation {
     );
   }
 
-  private ensureFighterLanes(aliveShips: ShipState[]): void {
+  private ensureFighterWings(aliveShips: ShipState[]): void {
     const fightersByTeam = new Map<number, ShipState[]>();
-
+    const assigned = new Set(this.fighterWings.flatMap((wing) => wing.members));
     for (const ship of aliveShips) {
-      if (ship.hullClass !== "strike_craft") continue;
+      if (ship.hullClass !== "strike_craft" || assigned.has(ship.id)) continue;
       const wing = fightersByTeam.get(ship.team) ?? [];
       wing.push(ship);
       fightersByTeam.set(ship.team, wing);
     }
 
-    for (const wing of fightersByTeam.values()) {
-      wing.forEach((ship, index) => {
-        if (ship.fighterLaneAngle !== undefined) return;
+    for (const [team, fighters] of fightersByTeam) {
+      fighters.sort((a, b) => a.id.localeCompare(b.id));
+      const count = Math.max(
+        1,
+        Math.ceil(fighters.length / 6),
+        Math.round(fighters.length / WING_SIZE),
+      );
+      const firstIndex = this.fighterWings.filter((wing) => wing.team === team).length;
+      let offset = 0;
+      for (let i = 0; i < count; i++) {
+        const size = Math.ceil((fighters.length - offset) / (count - i));
+        const members = fighters.slice(offset, offset + size);
+        const index = firstIndex + i;
+        this.fighterWings.push({
+          team,
+          index,
+          members: members.map((ship) => ship.id),
+          phase: "staging",
+          phaseStarted: this.timeElapsed,
+          launchAt: this.timeElapsed + i * WING_WAVE_DELAY,
+          targetId: null,
+          heading: members[0].heading,
+          rally: [...members[0].pos],
+        });
+        members.forEach((ship, slot) => {
+          ship.wingIndex = index;
+          ship.wingSlot = slot - (size - 1) / 2;
+          ship.fighterPhase = "staging";
+        });
+        offset += size;
+      }
+    }
+  }
 
-        ship.fighterLaneAngle = (index * 2 * Math.PI) / wing.length;
-        ship.fighterLaneIndex = index;
-        ship.fighterPhase = "staging";
-        ship.fighterPhaseTimer = (index * 1.7) % 5.0;
-      });
+  private fighterNeedsCover(ship: ShipState): boolean {
+    return ship.hullCurrent < ship.hullMax * 0.4 || (ship.shieldMax > 0 && ship.shieldCurrent < 10);
+  }
+
+  private fighterRallySlot(wing: FighterWing, ship: ShipState): Vector2 {
+    const slot = ship.wingSlot ?? 0;
+    return vecAdd(wing.rally, rotatePoint([-Math.abs(slot) * 22, slot * 28], wing.heading));
+  }
+
+  private updateFighterWings(aliveShips: ShipState[]): void {
+    for (const wing of this.fighterWings) {
+      const members = aliveShips.filter((ship) => wing.members.includes(ship.id));
+      if (members.length === 0) continue;
+      const leader = members[0];
+      let target = aliveShips.find((ship) => ship.id === wing.targetId);
+      if (!target) {
+        target =
+          this.findTargetForShip(
+            leader,
+            {
+              groupId: leader.groupId,
+              priority: "capitals",
+              stance: "optimal_range",
+            },
+            aliveShips,
+          ) ?? undefined;
+        wing.targetId = target?.id ?? null;
+        wing.phase = "staging";
+        wing.phaseStarted = this.timeElapsed;
+        for (const ship of members) ship.fighterPhase = "staging";
+        if (!target) continue;
+        const anchor = aliveShips.find(
+          (ship) =>
+            ship.team === wing.team &&
+            (ship.hullClass === "battleship" || ship.hullClass === "cruiser"),
+        );
+        const approach = vecSub(target.pos, anchor?.pos ?? leader.pos);
+        // Freeze each corridor's bearing for the pass, even while individual craft jink.
+        wing.heading =
+          Math.atan2(approach[1], approach[0]) +
+          (wing.index % 2 === 0 ? 1 : -1) * (0.15 + Math.floor(wing.index / 2) * 0.18);
+      }
+      wing.rally = vecAdd(target.pos, rotatePoint([-FIGHTER_STANDOFF, 0], wing.heading));
+      const healthy = members.filter((ship) => !this.fighterNeedsCover(ship));
+      const assembled =
+        healthy.length > 0 &&
+        healthy.every(
+          (ship) =>
+            vecDistance(ship.pos, this.fighterRallySlot(wing, ship)) <= WING_RALLY_TOLERANCE,
+        );
+      const elapsed = this.timeElapsed - wing.phaseStarted;
+      let phase = wing.phase;
+      if (
+        phase === "staging" &&
+        assembled &&
+        this.timeElapsed >= wing.launchAt &&
+        this.timeElapsed >= (this.nextWingLaunch.get(wing.team) ?? 0) &&
+        healthy.every((ship) => ship.turrets.every((turret) => turret.cooldownTimer <= 0.2))
+      ) {
+        phase = "attack";
+        this.nextWingLaunch.set(wing.team, this.timeElapsed + WING_WAVE_DELAY);
+      } else if (
+        phase === "attack" &&
+        (healthy.length === 0 ||
+          elapsed >= 6 ||
+          healthy.some((ship) => vecDistance(ship.pos, target.pos) <= FIGHTER_EGRESS_DISTANCE) ||
+          healthy.every(
+            (ship) =>
+              ship.turrets.length > 0 &&
+              ship.turrets.every(
+                (turret) => (turret.lastFiredTime ?? -Infinity) >= wing.phaseStarted,
+              ),
+          ))
+      ) {
+        phase = "egress";
+      } else if (phase === "egress" && elapsed >= 1.4) {
+        phase = "rejoin";
+      } else if (phase === "rejoin" && assembled) {
+        phase = "staging";
+        wing.launchAt = this.timeElapsed + WING_WAVE_DELAY;
+      }
+      if (phase !== wing.phase) {
+        wing.phase = phase;
+        wing.phaseStarted = this.timeElapsed;
+        for (const ship of members) {
+          ship.fighterPhase = this.fighterNeedsCover(ship) ? "egress" : phase;
+        }
+      }
     }
   }
 
   private updateFighterCycle(
     ship: ShipState,
     target: ShipState,
-    angleToTarget: number,
-    dist: number,
     dt: number,
     aliveShips: ShipState[],
   ): { heading: number; speed: number } {
@@ -291,84 +429,41 @@ export class ClientCombatSimulation {
     }
 
     const safeHaven = friendlyAnchors.find((a) => a.id === ship.safeHavenId) ?? null;
-    const isDamaged = ship.hullCurrent < ship.hullMax * 0.4 || ship.shieldCurrent < 10;
-    const laneIndex = ship.fighterLaneIndex ?? 0;
+    const isDamaged = this.fighterNeedsCover(ship);
+    const wing = this.fighterWings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
+    if (!wing) return { heading: ship.heading, speed: 0 };
     let phase = ship.fighterPhase ?? "staging";
 
-    // Emergency egress if badly damaged
-    if (isDamaged && phase === "attack") {
+    // Emergency cover overrides formation intent in every phase.
+    if (isDamaged) {
       phase = "egress";
-      ship.fighterPhase = "egress";
-      ship.fighterPhaseTimer = 2.0;
+    } else if (phase === "egress" && wing.phase !== "egress") {
+      phase = "rejoin";
     }
+    ship.fighterPhase = phase;
 
-    // 2. High-level intent / phase progression
+    // 2. Shared corridor intent; local steering remains free to break formation.
     let intentTarget: Vector2;
-    const attackOffset = target.size + 35;
-    const flankSign = laneIndex % 2 === 0 ? 1 : -1;
-    const attackPoint: Vector2 = [
-      target.pos[0] + Math.cos(angleToTarget + flankSign * 0.4) * attackOffset,
-      target.pos[1] + Math.sin(angleToTarget + flankSign * 0.4) * attackOffset,
-    ];
+    const slot = ship.wingSlot ?? 0;
+    const rallySlot = this.fighterRallySlot(wing, ship);
 
     switch (phase) {
-      case "staging": {
-        // Assemble in loose formation on the friendly side of the target
-        const stagingDist = FIGHTER_STANDOFF + ((laneIndex % 3) - 1) * 40;
-        const stagingAngle = safeHaven
-          ? Math.atan2(safeHaven.pos[1] - target.pos[1], safeHaven.pos[0] - target.pos[0])
-          : angleToTarget + Math.PI;
-        intentTarget = [
-          target.pos[0] + Math.cos(stagingAngle + flankSign * 0.3) * stagingDist,
-          target.pos[1] + Math.sin(stagingAngle + flankSign * 0.3) * stagingDist,
-        ];
-
-        ship.fighterPhaseTimer = (ship.fighterPhaseTimer ?? 0) - dt;
-        const gun = ship.turrets[0];
-        const gunReady = !gun || gun.cooldownTimer <= 0.2;
-        if ((ship.fighterPhaseTimer ?? 0) <= 0 && gunReady && !isDamaged) {
-          ship.fighterPhase = "attack";
-          ship.fighterPhaseTimer = 0;
-        }
+      case "staging":
+      case "rejoin": {
+        intentTarget = rallySlot;
         break;
       }
 
       case "attack": {
-        intentTarget = attackPoint;
-        if (dist <= FIGHTER_EGRESS_DISTANCE) {
-          ship.fighterPhase = "egress";
-          ship.fighterPhaseTimer = 1.4;
-        }
+        intentTarget = vecAdd(target.pos, rotatePoint([target.size + 35, slot * 28], wing.heading));
         break;
       }
 
       case "egress": {
-        // Peel towards safe haven if present, or away at sharp angle
-        if (safeHaven) {
-          intentTarget = safeHaven.pos;
-        } else {
-          intentTarget = [
-            ship.pos[0] + Math.cos(angleToTarget + flankSign * Math.PI * 0.7) * 300,
-            ship.pos[1] + Math.sin(angleToTarget + flankSign * Math.PI * 0.7) * 300,
-          ];
-        }
-
-        ship.fighterPhaseTimer = (ship.fighterPhaseTimer ?? 0) - dt;
-        if ((ship.fighterPhaseTimer ?? 0) <= 0 || dist > 380) {
-          ship.fighterPhase = "rejoin";
-          ship.fighterPhaseTimer = 0;
-        }
-        break;
-      }
-
-      case "rejoin": {
-        if (safeHaven && vecDistance(ship.pos, safeHaven.pos) > 180) {
-          intentTarget = safeHaven.pos;
-        } else {
-          ship.fighterPhase = "staging";
-          ship.fighterPhaseTimer = 0.5 + ((laneIndex * 0.9) % 2.5);
-          intentTarget = target.pos;
-        }
+        const peelSign = wing.index % 2 === 0 ? 1 : -1;
+        intentTarget = safeHaven
+          ? vecAdd(safeHaven.pos, rotatePoint([-safeHaven.size - 55, slot * 28], wing.heading))
+          : vecAdd(rallySlot, rotatePoint([0, peelSign * 150], wing.heading));
         break;
       }
     }
@@ -460,7 +555,7 @@ export class ClientCombatSimulation {
     const speed =
       maxDangerObserved > 0.4 || phase === "attack" || phase === "egress"
         ? ship.maxSpeed
-        : ship.maxSpeed * 0.7;
+        : Math.min(ship.maxSpeed * 0.7, vecDistance(ship.pos, intentTarget) * 1.5);
 
     return { heading: finalHeading, speed };
   }
@@ -519,6 +614,7 @@ export class ClientCombatSimulation {
       }
     } else if (
       ship.hullClass !== "corvette" &&
+      ship.hullClass !== "strike_craft" &&
       ship.flagshipId &&
       aliveShips.some((s) => s.id === ship.flagshipId)
     ) {
@@ -663,7 +759,7 @@ export class ClientCombatSimulation {
         targetHeading = Math.atan2(direction[1], direction[0]);
       } else if (ship.hullClass === "strike_craft") {
         // Staggered staged attack runs: staging -> attack -> egress -> rejoin
-        const maneuver = this.updateFighterCycle(ship, target, angleToTarget, dist, dt, aliveShips);
+        const maneuver = this.updateFighterCycle(ship, target, dt, aliveShips);
         targetHeading = maneuver.heading;
         desiredSpeed = maneuver.speed;
       } else {

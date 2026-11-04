@@ -71,6 +71,8 @@ export interface ShipState {
   flagshipId?: string;
 
   fighterPhase?: FighterPhase;
+  wingIndex?: number;
+  wingSlot?: number;
   fighterLaneAngle?: number;
   fighterLaneIndex?: number;
   fighterPhaseTimer?: number;
