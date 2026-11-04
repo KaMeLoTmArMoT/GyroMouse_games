@@ -42,9 +42,9 @@ const FLAK_BLAST_WEAPON: WeaponDefinition = {
   range: FLAK_BLAST_RADIUS,
   projectileSpeed: FLAK_PROJECTILE_SPEED,
   trackingSpeed: 0,
-  shieldMultiplier: 1.0,
-  armorMultiplier: 1.0,
-  hullMultiplier: 1.0,
+  shieldMultiplier: 0.15, // Heavily deflected by capital shields
+  armorMultiplier: 0.1, // Absorbed by heavy armor plating
+  hullMultiplier: 0.15,
   cost: 0,
 };
 
@@ -141,13 +141,24 @@ export class ClientCombatSimulation {
           }
         }
 
-        const isAimed = this.updateTurretAim(turret, dt, ship, targetPos);
+        let aimPos = targetPos;
+        // Lead targeting for ballistic/projectile weapons
+        if (turretTarget && targetPos && turret.weapon.projectileSpeed > 0) {
+          const targetSpeedSq = vecDot(turretTarget.velocity, turretTarget.velocity);
+          if (targetSpeedSq > 25) {
+            const dist = vecDistance(ship.pos, targetPos);
+            const leadTime = dist / turret.weapon.projectileSpeed;
+            aimPos = vecAdd(targetPos, vecScale(turretTarget.velocity, leadTime));
+          }
+        }
+
+        const isAimed = this.updateTurretAim(turret, dt, ship, aimPos);
         const maxEngagementRange = turret.weapon.range * 1.1;
         const inEngagementRange = Boolean(
           targetPos && vecDistance(ship.pos, targetPos) <= maxEngagementRange,
         );
-        if (canFire && isAimed && inEngagementRange && turret.cooldownTimer <= 0 && targetPos) {
-          this.fireWeapon(ship, turret, targetPos, turretTarget);
+        if (canFire && isAimed && inEngagementRange && turret.cooldownTimer <= 0 && aimPos) {
+          this.fireWeapon(ship, turret, aimPos, turretTarget);
         }
       }
     }
@@ -233,6 +244,19 @@ export class ClientCombatSimulation {
     dist: number,
     dt: number,
   ): { heading: number; speed: number } {
+    // Evasive maneuver: detect incoming heavy torpedoes and perform rapid jink!
+    const nearbyMissile = this.projectiles.find(
+      (p) =>
+        p.ownerTeam !== ship.team &&
+        p.weaponType === "missile" &&
+        vecDistance(ship.pos, p.pos) < 180,
+    );
+    if (nearbyMissile) {
+      const toMissile = vecSub(ship.pos, nearbyMissile.pos);
+      const escapeHeading = Math.atan2(toMissile[1], toMissile[0]);
+      return { heading: escapeHeading, speed: ship.maxSpeed * 1.25 };
+    }
+
     const laneAngle = ship.fighterLaneAngle ?? 0;
     const laneIndex = ship.fighterLaneIndex ?? 0;
     const phase = ship.fighterPhase ?? "staging";
@@ -383,14 +407,21 @@ export class ClientCombatSimulation {
       if (ship.hullClass === "battleship") {
         const spinalTurret = ship.turrets.find((t) => t.isSpinalGimbal);
         const spinalReady = spinalTurret && spinalTurret.cooldownTimer <= 0.8;
-        const optimalCombatDist = 540;
+        const optimalCombatDist = 600;
+
+        const friendlyBattleships = aliveShips.filter(
+          (s) => s.team === ship.team && s.hullClass === "battleship",
+        );
+        const bsIndex = friendlyBattleships.findIndex((s) => s.id === ship.id);
+        const totalBs = Math.max(1, friendlyBattleships.length);
+        const bsSpread = totalBs > 1 ? (bsIndex - (totalBs - 1) / 2) * 0.22 : 0;
 
         if (dist < optimalCombatDist * 0.75) {
           // Reverse thrust to keep stand-off distance
           targetHeading = angleToTarget;
-          desiredSpeed = -ship.maxSpeed * 0.45;
+          desiredSpeed = -ship.maxSpeed * 0.5;
         } else if (spinalReady || dist > optimalCombatDist * 1.2) {
-          targetHeading = angleToTarget;
+          targetHeading = normalizeAngle(angleToTarget + bsSpread);
           desiredSpeed = dist > optimalCombatDist ? ship.maxSpeed * 0.6 : 0;
         } else {
           const relAngle = normalizeAngle(angleToTarget - ship.heading);
@@ -399,18 +430,26 @@ export class ClientCombatSimulation {
           desiredSpeed = ship.maxSpeed * 0.35;
         }
       } else if (ship.hullClass === "cruiser") {
-        // Cruisers: align forward bow-on for prow heavy torpedo tube when ready, flank otherwise!
-        const torpTurret = ship.turrets.find((t) => t.weapon.weaponType === "missile");
-        const torpReady = torpTurret && torpTurret.cooldownTimer <= 0.5;
+        // Cruisers: form a concave firing fan facing the target
+        // Keep fixed prow heavy torpedoes and dorsal beams bearing at all times!
+        const friendlyCruisers = aliveShips.filter(
+          (s) => s.team === ship.team && s.hullClass === "cruiser",
+        );
+        const cruiserIndex = friendlyCruisers.findIndex((s) => s.id === ship.id);
+        const totalCruisers = Math.max(1, friendlyCruisers.length);
+        const spreadOffset =
+          totalCruisers > 1 ? (cruiserIndex - (totalCruisers - 1) / 2) * 0.35 : 0;
 
-        if (torpReady && dist <= 1000) {
-          // Direct nose attack to launch torpedoes!
-          targetHeading = angleToTarget;
-          desiredSpeed = dist > 400 ? ship.maxSpeed * 0.8 : -ship.maxSpeed * 0.3;
+        const optimalCombatDist = 480;
+        targetHeading = normalizeAngle(angleToTarget + spreadOffset * 0.45);
+
+        if (dist < optimalCombatDist * 0.75) {
+          // Reverse thrust to prevent collision & maintain torpedo standoff!
+          desiredSpeed = -ship.maxSpeed * 0.5;
+        } else if (dist > optimalCombatDist * 1.2) {
+          desiredSpeed = ship.maxSpeed * 0.85;
         } else {
-          // Flank with beam lasers
-          targetHeading = angleToTarget + Math.PI * 0.35;
-          desiredSpeed = ship.maxSpeed * 0.7;
+          desiredSpeed = ship.maxSpeed * 0.25;
         }
       } else if (ship.hullClass === "corvette") {
         // Aggressive wolf-pack escort: circle targets at 260u and fire flak continuously
@@ -425,6 +464,19 @@ export class ClientCombatSimulation {
         targetHeading = angleToTarget;
         desiredSpeed = ship.maxSpeed * 0.6;
       }
+    }
+
+    // Friendly ship spatial avoidance (breaks up conga lines & collisions between teammates)
+    const nearbyFriendly = aliveShips.find((other) => {
+      if (other.id === ship.id || other.team !== ship.team) return false;
+      const d = vecDistance(ship.pos, other.pos);
+      return d < (ship.size + other.size) * 1.35;
+    });
+    if (nearbyFriendly) {
+      const avoidVec = vecSub(ship.pos, nearbyFriendly.pos);
+      const pushAngle = Math.atan2(avoidVec[1], avoidVec[0]);
+      targetHeading = normalizeAngle(targetHeading * 0.65 + pushAngle * 0.35);
+      desiredSpeed = Math.max(desiredSpeed * 0.5, ship.maxSpeed * 0.2);
     }
 
     // 3. Smooth Turn
@@ -477,9 +529,9 @@ export class ClientCombatSimulation {
         const b = aliveShips[j];
         const d = vecDistance(a.pos, b.pos);
 
-        // Effective Shield Perimeter: uses full 1.5x shield bubble radius so shields NEVER clip!
-        const shieldA = a.size * (a.shieldCurrent > 0 ? 1.5 : 1.0);
-        const shieldB = b.size * (b.shieldCurrent > 0 ? 1.5 : 1.0);
+        // Effective Shield Perimeter: calibrated 1.40x shield bubble
+        const shieldA = a.size * (a.shieldCurrent > 0 ? 1.4 : 1.0);
+        const shieldB = b.size * (b.shieldCurrent > 0 ? 1.4 : 1.0);
         const minBubbleDist = shieldA + shieldB;
         const repulsorZone = minBubbleDist + 20;
 
@@ -506,8 +558,8 @@ export class ClientCombatSimulation {
           a.pos = vecAdd(a.pos, vecScale(normal, repulsorForce * pushRatioA * dt));
           b.pos = vecSub(b.pos, vecScale(normal, repulsorForce * pushRatioB * dt));
 
-          // Physical shield clash & ramming
-          if (d <= minBubbleDist) {
+          // Physical shield clash & ramming (hostile ships only!)
+          if (d <= minBubbleDist && a.team !== b.team) {
             const relSpeed = vecDistance(a.velocity, b.velocity);
             const ramDamage = Math.max(30, relSpeed * 1.2);
 
@@ -710,7 +762,17 @@ export class ClientCombatSimulation {
     for (const ship of aliveShips) {
       if (ship.team === flak.ownerTeam) continue;
       if (vecDistance(flak.pos, ship.pos) <= FLAK_BLAST_RADIUS + ship.size) {
-        this.applyDamage(ship, FLAK_BLAST_DAMAGE, FLAK_BLAST_WEAPON);
+        if (ship.hullClass === "strike_craft") {
+          const swarmWeapon: WeaponDefinition = {
+            ...FLAK_BLAST_WEAPON,
+            shieldMultiplier: 1.0,
+            armorMultiplier: 1.0,
+            hullMultiplier: 1.0,
+          };
+          this.applyDamage(ship, FLAK_BLAST_DAMAGE, swarmWeapon);
+        } else {
+          this.applyDamage(ship, FLAK_BLAST_DAMAGE, FLAK_BLAST_WEAPON);
+        }
       }
     }
 

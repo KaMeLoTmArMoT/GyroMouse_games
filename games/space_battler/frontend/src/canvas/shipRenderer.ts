@@ -49,10 +49,10 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
     renderTurret(ctx, ship, turret, primaryColor);
   }
 
-  // 4. Render Shield Bubble (generous 1.5x envelope, prevents capital prow clipping)
+  // 4. Render Shield Bubble (calibrated 1.40x envelope, completely encloses prow and stern)
   if (ship.shieldCurrent > 0) {
     const shieldRatio = ship.shieldCurrent / ship.shieldMax;
-    const shieldBubbleRadius = ship.size * 1.5;
+    const shieldBubbleRadius = ship.size * 1.4;
 
     ctx.strokeStyle = `rgba(56, 189, 248, ${0.18 + shieldRatio * 0.42})`;
     ctx.lineWidth = 2.0;
@@ -77,7 +77,8 @@ function drawTerranHull(
   hullDarkColor: string,
   accentColor: string,
 ): void {
-  const s = ship.size * 1.25; // 25% larger vessels!
+  // Calibrated scale: 100% fits strictly within the 1.40x shield bubble (<= 5% area delta vs Alien)
+  const s = ship.size;
 
   ctx.fillStyle = hullDarkColor;
   ctx.strokeStyle = primaryColor;
@@ -87,7 +88,7 @@ function drawTerranHull(
   switch (ship.hullClass) {
     case "strike_craft":
       // Terran Viper / Dart: faceted wedge with twin tail thrusters
-      ctx.moveTo(s, 0);
+      ctx.moveTo(s * 1.1, 0);
       ctx.lineTo(-s * 0.7, -s * 0.55);
       ctx.lineTo(-s * 0.5, -s * 0.2);
       ctx.lineTo(-s * 0.85, 0);
@@ -100,40 +101,40 @@ function drawTerranHull(
       // Terran Aegis: angular escort with armored side sponsons
       ctx.moveTo(s * 1.15, 0);
       ctx.lineTo(s * 0.4, -s * 0.45);
-      ctx.lineTo(-s * 0.5, -s * 0.65);
-      ctx.lineTo(-s, -s * 0.35);
-      ctx.lineTo(-s * 0.8, 0);
-      ctx.lineTo(-s, s * 0.35);
-      ctx.lineTo(-s * 0.5, s * 0.65);
+      ctx.lineTo(-s * 0.5, -s * 0.58);
+      ctx.lineTo(-s * 0.95, -s * 0.32);
+      ctx.lineTo(-s * 0.75, 0);
+      ctx.lineTo(-s * 0.95, s * 0.32);
+      ctx.lineTo(-s * 0.5, s * 0.58);
       ctx.lineTo(s * 0.4, s * 0.45);
       ctx.closePath();
       break;
 
     case "cruiser":
       // Terran Cruiser: heavy armored prow, long spinal trench, flanking engine pods
-      ctx.moveTo(s * 1.35, 0);
-      ctx.lineTo(s * 0.7, -s * 0.4);
-      ctx.lineTo(s * 0.2, -s * 0.4);
-      ctx.lineTo(-s * 0.7, -s * 0.55);
-      ctx.lineTo(-s * 1.1, -s * 0.3);
-      ctx.lineTo(-s * 1.1, s * 0.3);
-      ctx.lineTo(-s * 0.7, s * 0.55);
-      ctx.lineTo(s * 0.2, s * 0.4);
-      ctx.lineTo(s * 0.7, s * 0.4);
+      ctx.moveTo(s * 1.22, 0);
+      ctx.lineTo(s * 0.6, -s * 0.38);
+      ctx.lineTo(s * 0.2, -s * 0.38);
+      ctx.lineTo(-s * 0.65, -s * 0.5);
+      ctx.lineTo(-s * 1.1, -s * 0.28);
+      ctx.lineTo(-s * 1.1, s * 0.28);
+      ctx.lineTo(-s * 0.65, s * 0.5);
+      ctx.lineTo(s * 0.2, s * 0.38);
+      ctx.lineTo(s * 0.6, s * 0.38);
       ctx.closePath();
       break;
 
     default:
       // Terran Battleship: massive segmented dreadnought with conning tower bridge and prow hangar
-      ctx.moveTo(s * 1.45, 0);
-      ctx.lineTo(s * 0.9, -s * 0.4);
-      ctx.lineTo(s * 0.3, -s * 0.62);
-      ctx.lineTo(-s * 0.9, -s * 0.68);
-      ctx.lineTo(-s * 1.3, -s * 0.4);
-      ctx.lineTo(-s * 1.3, s * 0.4);
-      ctx.lineTo(-s * 0.9, s * 0.68);
-      ctx.lineTo(s * 0.3, s * 0.62);
-      ctx.lineTo(s * 0.9, s * 0.4);
+      ctx.moveTo(s * 1.28, 0);
+      ctx.lineTo(s * 0.8, -s * 0.38);
+      ctx.lineTo(s * 0.25, -s * 0.58);
+      ctx.lineTo(-s * 0.85, -s * 0.62);
+      ctx.lineTo(-s * 1.2, -s * 0.35);
+      ctx.lineTo(-s * 1.2, s * 0.35);
+      ctx.lineTo(-s * 0.85, s * 0.62);
+      ctx.lineTo(s * 0.25, s * 0.58);
+      ctx.lineTo(s * 0.8, s * 0.38);
       ctx.closePath();
       break;
   }
@@ -148,14 +149,14 @@ function drawTerranHull(
   // Bridge Conning Tower
   ctx.strokeRect(-s * 0.35, -s * 0.15, s * 0.35, s * 0.3);
   // Armor Seam Centerline
-  ctx.moveTo(s * 0.6, 0);
-  ctx.lineTo(-s * 0.7, 0);
+  ctx.moveTo(s * 0.55, 0);
+  ctx.lineTo(-s * 0.65, 0);
   ctx.stroke();
 
   // Engine exhaust glowing nozzles
   ctx.fillStyle = "#38bdf8";
-  ctx.fillRect(-s * 1.05, -s * 0.2, s * 0.15, s * 0.1);
-  ctx.fillRect(-s * 1.05, s * 0.1, s * 0.15, s * 0.1);
+  ctx.fillRect(-s * 1.0, -s * 0.18, s * 0.15, s * 0.08);
+  ctx.fillRect(-s * 1.0, s * 0.1, s * 0.15, s * 0.08);
 }
 
 function drawAlienHull(
@@ -165,7 +166,8 @@ function drawAlienHull(
   hullDarkColor: string,
   accentColor: string,
 ): void {
-  const s = ship.size * 1.25;
+  // Calibrated scale: 100% fits strictly within the 1.40x shield bubble (<= 5% area delta vs Terran)
+  const s = ship.size;
 
   ctx.fillStyle = hullDarkColor;
   ctx.strokeStyle = primaryColor;
@@ -175,41 +177,41 @@ function drawAlienHull(
   switch (ship.hullClass) {
     case "strike_craft":
       // Cylon Raider / Bio-Crescent: curved swept-forward wings
-      ctx.moveTo(s * 0.9, -s * 0.6);
-      ctx.quadraticCurveTo(s * 0.2, -s * 0.1, -s * 0.7, -s * 0.3);
-      ctx.lineTo(-s * 0.4, 0);
-      ctx.lineTo(-s * 0.7, s * 0.3);
-      ctx.quadraticCurveTo(s * 0.2, s * 0.1, s * 0.9, s * 0.6);
-      ctx.quadraticCurveTo(s * 0.6, 0, s * 0.9, -s * 0.6);
+      ctx.moveTo(s * 0.85, -s * 0.55);
+      ctx.quadraticCurveTo(s * 0.15, -s * 0.1, -s * 0.65, -s * 0.28);
+      ctx.lineTo(-s * 0.35, 0);
+      ctx.lineTo(-s * 0.65, s * 0.28);
+      ctx.quadraticCurveTo(s * 0.15, s * 0.1, s * 0.85, s * 0.55);
+      ctx.quadraticCurveTo(s * 0.55, 0, s * 0.85, -s * 0.55);
       ctx.closePath();
       break;
 
     case "corvette":
       // Alien Sentinel: predatory stingray / manta silhouette
-      ctx.moveTo(s * 1.2, 0);
-      ctx.quadraticCurveTo(s * 0.3, -s * 0.7, -s * 0.8, -s * 0.5);
-      ctx.quadraticCurveTo(-s * 0.5, 0, -s * 0.8, s * 0.5);
-      ctx.quadraticCurveTo(s * 0.3, s * 0.7, s * 1.2, 0);
+      ctx.moveTo(s * 1.15, 0);
+      ctx.quadraticCurveTo(s * 0.25, -s * 0.65, -s * 0.75, -s * 0.45);
+      ctx.quadraticCurveTo(-s * 0.45, 0, -s * 0.75, s * 0.45);
+      ctx.quadraticCurveTo(s * 0.25, s * 0.65, s * 1.15, 0);
       ctx.closePath();
       break;
 
     case "cruiser":
       // Alien Warship: serpentine curved war-hull with biomorphic mandible prow
-      ctx.moveTo(s * 1.4, -s * 0.25);
-      ctx.lineTo(s * 1.0, 0);
-      ctx.lineTo(s * 1.4, s * 0.25);
-      ctx.quadraticCurveTo(s * 0.4, s * 0.55, -s * 0.9, s * 0.4);
-      ctx.quadraticCurveTo(-s * 1.2, 0, -s * 0.9, -s * 0.4);
-      ctx.quadraticCurveTo(s * 0.4, -s * 0.55, s * 1.4, -s * 0.25);
+      ctx.moveTo(s * 1.22, -s * 0.22);
+      ctx.lineTo(s * 0.9, 0);
+      ctx.lineTo(s * 1.22, s * 0.22);
+      ctx.quadraticCurveTo(s * 0.35, s * 0.5, -s * 0.85, s * 0.36);
+      ctx.quadraticCurveTo(-s * 1.1, 0, -s * 0.85, -s * 0.36);
+      ctx.quadraticCurveTo(s * 0.35, -s * 0.5, s * 1.22, -s * 0.22);
       ctx.closePath();
       break;
 
     default:
       // Alien Dreadnought: massive curved crescent basestar with central energy eye
-      ctx.moveTo(s * 1.5, 0);
-      ctx.quadraticCurveTo(s * 0.6, -s * 0.75, -s * 1.2, -s * 0.55);
-      ctx.quadraticCurveTo(-s * 0.4, 0, -s * 1.2, s * 0.55);
-      ctx.quadraticCurveTo(s * 0.6, s * 0.75, s * 1.5, 0);
+      ctx.moveTo(s * 1.28, 0);
+      ctx.quadraticCurveTo(s * 0.5, -s * 0.68, -s * 1.15, -s * 0.5);
+      ctx.quadraticCurveTo(-s * 0.4, 0, -s * 1.15, s * 0.5);
+      ctx.quadraticCurveTo(s * 0.5, s * 0.68, s * 1.28, 0);
       ctx.closePath();
       break;
   }
@@ -220,7 +222,7 @@ function drawAlienHull(
   // Alien Bio-Mechanical Details: pulsing central red eye / plasma core
   ctx.fillStyle = "#ef4444";
   ctx.beginPath();
-  ctx.arc(s * 0.1, 0, s * 0.12, 0, Math.PI * 2);
+  ctx.arc(s * 0.08, 0, s * 0.1, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.strokeStyle = accentColor;

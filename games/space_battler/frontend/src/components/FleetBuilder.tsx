@@ -101,8 +101,8 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
     shield: 45,
     armor: 30,
     hull: 65,
-    speed: 230,
-    turnRate: "3.20 rad/s",
+    speed: 280,
+    turnRate: "4.20 rad/s",
     weapons: [
       { name: "Fixed Plasma Cannon", type: "Plasma Bolt", damage: 18, range: 280, cooldown: 0.8 },
     ],
@@ -375,22 +375,34 @@ export function FleetBuilder({
                     </div>
                   </div>
 
-                  {/* Hover Weapon Spec Disclosure */}
-                  {isInspecting && (
-                    <div className="mt-2.5 p-2 rounded-lg bg-zinc-950/90 border border-cyan-500/30 text-[10px] font-mono space-y-1 animate-in fade-in duration-150">
-                      <div className="text-zinc-400 font-semibold flex items-center gap-1">
-                        <Zap className="w-3 h-3 text-cyan-400" /> Weapons Loadout
-                      </div>
+                  {/* Permanent Armament Loadout - Fixed height so cards never jump on hover */}
+                  <div
+                    className={`mt-2.5 p-2 rounded-lg text-[10px] font-mono min-h-[56px] flex flex-col justify-center transition-colors ${
+                      isInspecting
+                        ? "bg-zinc-950 border border-cyan-500/40 text-cyan-300"
+                        : "bg-zinc-950/60 border border-zinc-800/80 text-zinc-400"
+                    }`}
+                  >
+                    <div className="text-zinc-500 font-semibold flex items-center gap-1 text-[9px] uppercase tracking-wider mb-1">
+                      <Zap
+                        className={`w-2.5 h-2.5 ${isInspecting ? "text-cyan-400" : "text-zinc-500"}`}
+                      />{" "}
+                      Armament Loadout
+                    </div>
+                    <div className="space-y-0.5">
                       {spec.weapons.map((w) => (
-                        <div key={w.name} className="flex justify-between text-zinc-300">
-                          <span>{w.name}</span>
-                          <span className="text-cyan-400 font-semibold">
+                        <div
+                          key={w.name}
+                          className="flex justify-between items-center text-zinc-300"
+                        >
+                          <span className="truncate pr-2">{w.name}</span>
+                          <span className="text-cyan-400 font-semibold shrink-0">
                             {w.damage} dmg / {w.range}u
                           </span>
                         </div>
                       ))}
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 <button
