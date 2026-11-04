@@ -1,15 +1,17 @@
-// Showcase demo scene: all 4 ship classes (Battleship, Cruiser, Corvette, Strike Craft) facing each other in Blue vs Red lineups
+// Calibrated showcase demo scene: strict dead zones, spinal mounts, proportional calibers, and escort formations
 
 import type { ShipState } from "../types/combat";
 
 export function createShowcaseDemoFleets(): ShipState[] {
   const ships: ShipState[] = [];
 
-  // Team 0: BLUE TASK FORCE (Left Side, facing Right: heading = 0)
-  const blueX = -450;
+  // ==========================================
+  // BLUE TASK FORCE (Left Side: -480, heading: 0)
+  // ==========================================
+  const blueX = -480;
 
-  // 1. Blue Dreadnought / Battleship (Center)
-  ships.push({
+  // 1. Blue Dreadnought (Flagship)
+  const blueBb: ShipState = {
     id: "blue_bb",
     name: "Leviathan Battleship",
     team: 0,
@@ -18,8 +20,8 @@ export function createShowcaseDemoFleets(): ShipState[] {
     pos: [blueX, 0],
     velocity: [0, 0],
     heading: 0,
-    maxSpeed: 45,
-    turnRate: 0.45,
+    maxSpeed: 38,
+    turnRate: 0.35, // Slow, imposing turn
     size: 55,
     shieldMax: 1800,
     shieldCurrent: 1800,
@@ -33,66 +35,76 @@ export function createShowcaseDemoFleets(): ShipState[] {
     cost: 3200,
     isAlive: true,
     turrets: [
+      // Massive Spinal Railgun: fixed forward along ship axis with narrow +-6 deg gimbal
       {
-        id: "blue_bb_rg",
-        offset: [25, 0],
-        baseArc: [-Math.PI / 2, Math.PI / 2],
-        trackingSpeed: 0.6,
+        id: "blue_bb_spinal",
+        offset: [28, 0],
+        baseArc: [-Math.PI / 30, Math.PI / 30], // +-6 degrees
+        trackingSpeed: 0.4,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 26,
+        baseRadius: 8,
+        isSpinalGimbal: true,
         weapon: {
           weaponType: "railgun",
-          name: "Spinal Railgun",
-          damage: 85,
-          cooldown: 2.5,
-          range: 950,
-          projectileSpeed: 1200,
-          trackingSpeed: 0.8,
+          name: "Spinal Heavy Railgun",
+          damage: 180,
+          cooldown: 3.5,
+          range: 980,
+          projectileSpeed: 1400,
+          trackingSpeed: 0.4,
           shieldMultiplier: 1.6,
           armorMultiplier: 0.75,
           hullMultiplier: 1.0,
-          cost: 320,
+          cost: 450,
         },
       },
+      // Port Broadside Battery: strict left side sector (40 deg to 140 deg)
       {
         id: "blue_bb_port",
-        offset: [-10, -15],
-        baseArc: [-Math.PI + 0.2, -0.2],
-        trackingSpeed: 1.2,
-        currentLocalAngle: -Math.PI / 4,
+        offset: [-8, -16],
+        baseArc: [-Math.PI * 0.78, -Math.PI * 0.22],
+        trackingSpeed: 1.1,
+        currentLocalAngle: -Math.PI / 2,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 13,
+        baseRadius: 5,
         weapon: {
           weaponType: "beam_laser",
-          name: "Port Beam Battery",
-          damage: 45,
+          name: "Port Laser Battery",
+          damage: 50,
           cooldown: 1.2,
-          range: 600,
+          range: 580,
           projectileSpeed: 0,
-          trackingSpeed: 1.8,
+          trackingSpeed: 1.4,
           shieldMultiplier: 0.5,
           armorMultiplier: 1.6,
           hullMultiplier: 1.0,
           cost: 250,
         },
       },
+      // Starboard Broadside Battery: strict right side sector (-140 deg to -40 deg)
       {
         id: "blue_bb_stbd",
-        offset: [-10, 15],
-        baseArc: [0.2, Math.PI - 0.2],
-        trackingSpeed: 1.2,
-        currentLocalAngle: Math.PI / 4,
+        offset: [-8, 16],
+        baseArc: [Math.PI * 0.22, Math.PI * 0.78],
+        trackingSpeed: 1.1,
+        currentLocalAngle: Math.PI / 2,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 13,
+        baseRadius: 5,
         weapon: {
           weaponType: "beam_laser",
-          name: "Starboard Beam Battery",
-          damage: 45,
+          name: "Starboard Laser Battery",
+          damage: 50,
           cooldown: 1.2,
-          range: 600,
+          range: 580,
           projectileSpeed: 0,
-          trackingSpeed: 1.8,
+          trackingSpeed: 1.4,
           shieldMultiplier: 0.5,
           armorMultiplier: 1.6,
           hullMultiplier: 1.0,
@@ -100,20 +112,21 @@ export function createShowcaseDemoFleets(): ShipState[] {
         },
       },
     ],
-  });
+  };
+  ships.push(blueBb);
 
-  // 2. Blue Cruiser (Upper Flank)
+  // 2. Blue Cruiser (Upper Battle Line)
   ships.push({
     id: "blue_cr",
     name: "Vanguard Cruiser",
     team: 0,
     groupId: 1,
     hullClass: "cruiser",
-    pos: [blueX + 60, -160],
+    pos: [blueX + 40, -180],
     velocity: [0, 0],
     heading: 0,
-    maxSpeed: 90,
-    turnRate: 1.2,
+    maxSpeed: 85,
+    turnRate: 1.0,
     size: 34,
     shieldMax: 600,
     shieldCurrent: 600,
@@ -128,21 +141,23 @@ export function createShowcaseDemoFleets(): ShipState[] {
     isAlive: true,
     turrets: [
       {
-        id: "blue_cr_beam",
-        offset: [10, 0],
-        baseArc: [-Math.PI, Math.PI],
-        trackingSpeed: 1.8,
+        id: "blue_cr_laser",
+        offset: [8, 0],
+        baseArc: [-Math.PI * 0.7, Math.PI * 0.7], // Forward 250 deg arc
+        trackingSpeed: 1.6,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 12,
+        baseRadius: 4.5,
         weapon: {
           weaponType: "beam_laser",
-          name: "Heavy Beam Laser",
+          name: "Heavy Beam Turret",
           damage: 45,
           cooldown: 1.2,
-          range: 600,
+          range: 580,
           projectileSpeed: 0,
-          trackingSpeed: 1.8,
+          trackingSpeed: 1.6,
           shieldMultiplier: 0.5,
           armorMultiplier: 1.6,
           hullMultiplier: 1.0,
@@ -151,12 +166,14 @@ export function createShowcaseDemoFleets(): ShipState[] {
       },
       {
         id: "blue_cr_torp",
-        offset: [18, 0],
-        baseArc: [-Math.PI / 3, Math.PI / 3],
-        trackingSpeed: 2.0,
+        offset: [16, 0],
+        baseArc: [-Math.PI / 6, Math.PI / 6], // Forward narrow torpedo tube
+        trackingSpeed: 1.5,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 8,
+        baseRadius: 3.5,
         weapon: {
           weaponType: "missile",
           name: "Heavy Torpedo Tube",
@@ -164,7 +181,7 @@ export function createShowcaseDemoFleets(): ShipState[] {
           cooldown: 4.5,
           range: 1100,
           projectileSpeed: 320,
-          trackingSpeed: 2.5,
+          trackingSpeed: 1.5,
           shieldMultiplier: 1.0,
           armorMultiplier: 1.8,
           hullMultiplier: 1.8,
@@ -174,18 +191,18 @@ export function createShowcaseDemoFleets(): ShipState[] {
     ],
   });
 
-  // 3. Blue Point Defense Corvette (Lower Flank)
+  // 3. Blue Point Defense Corvette (Assigned Escort to Battleship!)
   ships.push({
     id: "blue_cv",
     name: "Aegis Corvette",
     team: 0,
     groupId: 2,
     hullClass: "corvette",
-    pos: [blueX + 60, 160],
+    pos: [blueX - 50, 90],
     velocity: [0, 0],
     heading: 0,
-    maxSpeed: 150,
-    turnRate: 2.2,
+    maxSpeed: 140,
+    turnRate: 2.0,
     size: 20,
     shieldMax: 180,
     shieldCurrent: 180,
@@ -198,18 +215,22 @@ export function createShowcaseDemoFleets(): ShipState[] {
     hullCurrent: 220,
     cost: 350,
     isAlive: true,
+    flagshipId: "blue_bb",
+    formationOffset: [-30, 85], // Sticks right next to the Battleship
     turrets: [
       {
         id: "blue_cv_pd1",
-        offset: [-3, -4],
+        offset: [-4, -4],
         baseArc: [-Math.PI, Math.PI],
         trackingSpeed: 6.28,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 6,
+        baseRadius: 2.2, // Miniature high-speed mount
         weapon: {
           weaponType: "point_defense",
-          name: "Flak PD Alpha",
+          name: "Rapid Flak Alpha",
           damage: 12,
           cooldown: 0.15,
           range: 350,
@@ -223,15 +244,17 @@ export function createShowcaseDemoFleets(): ShipState[] {
       },
       {
         id: "blue_cv_pd2",
-        offset: [-3, 4],
+        offset: [-4, 4],
         baseArc: [-Math.PI, Math.PI],
         trackingSpeed: 6.28,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 6,
+        baseRadius: 2.2,
         weapon: {
           weaponType: "point_defense",
-          name: "Flak PD Beta",
+          name: "Rapid Flak Beta",
           damage: 12,
           cooldown: 0.15,
           range: 350,
@@ -246,20 +269,20 @@ export function createShowcaseDemoFleets(): ShipState[] {
     ],
   });
 
-  // 4. Blue Strike Craft Interceptors (Forward Vanguard)
+  // 4. Blue Interceptor Wing (Vanguard)
   for (let i = 0; i < 4; i++) {
-    const yOff = (i - 1.5) * 45;
+    const yOff = (i - 1.5) * 50;
     ships.push({
       id: `blue_sc_${i}`,
       name: `Interceptor B-${i + 1}`,
       team: 0,
       groupId: 3,
       hullClass: "strike_craft",
-      pos: [blueX + 160, yOff],
+      pos: [blueX + 180, yOff],
       velocity: [0, 0],
       heading: 0,
-      maxSpeed: 240,
-      turnRate: 3.5,
+      maxSpeed: 230,
+      turnRate: 3.2,
       size: 11,
       shieldMax: 60,
       shieldCurrent: 60,
@@ -276,11 +299,13 @@ export function createShowcaseDemoFleets(): ShipState[] {
         {
           id: `blue_sc_gun_${i}`,
           offset: [6, 0],
-          baseArc: [-Math.PI / 4, Math.PI / 4],
-          trackingSpeed: 4.0,
+          baseArc: [-Math.PI / 5, Math.PI / 5],
+          trackingSpeed: 3.5,
           currentLocalAngle: 0,
           cooldownTimer: 0,
           currentTargetId: null,
+          barrelLength: 6,
+          baseRadius: 2.0,
           weapon: {
             weaponType: "plasma",
             name: "Plasma Blaster",
@@ -299,11 +324,13 @@ export function createShowcaseDemoFleets(): ShipState[] {
     });
   }
 
-  // Team 1: RED STRIKE FORCE (Right Side, facing Left: heading = PI)
-  const redX = 450;
+  // ==========================================
+  // RED STRIKE FORCE (Right Side: 480, heading: PI)
+  // ==========================================
+  const redX = 480;
 
-  // 1. Red Dreadnought / Battleship (Center)
-  ships.push({
+  // 1. Red Dreadnought
+  const redBb: ShipState = {
     id: "red_bb",
     name: "Nemesis Battleship",
     team: 1,
@@ -312,8 +339,8 @@ export function createShowcaseDemoFleets(): ShipState[] {
     pos: [redX, 0],
     velocity: [0, 0],
     heading: Math.PI,
-    maxSpeed: 45,
-    turnRate: 0.45,
+    maxSpeed: 38,
+    turnRate: 0.35,
     size: 55,
     shieldMax: 1800,
     shieldCurrent: 1800,
@@ -328,43 +355,48 @@ export function createShowcaseDemoFleets(): ShipState[] {
     isAlive: true,
     turrets: [
       {
-        id: "red_bb_rg",
-        offset: [25, 0],
-        baseArc: [-Math.PI / 2, Math.PI / 2],
-        trackingSpeed: 0.6,
+        id: "red_bb_spinal",
+        offset: [28, 0],
+        baseArc: [-Math.PI / 30, Math.PI / 30],
+        trackingSpeed: 0.4,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 26,
+        baseRadius: 8,
+        isSpinalGimbal: true,
         weapon: {
           weaponType: "railgun",
-          name: "Spinal Railgun",
-          damage: 85,
-          cooldown: 2.5,
-          range: 950,
-          projectileSpeed: 1200,
-          trackingSpeed: 0.8,
+          name: "Spinal Heavy Railgun",
+          damage: 180,
+          cooldown: 3.5,
+          range: 980,
+          projectileSpeed: 1400,
+          trackingSpeed: 0.4,
           shieldMultiplier: 1.6,
           armorMultiplier: 0.75,
           hullMultiplier: 1.0,
-          cost: 320,
+          cost: 450,
         },
       },
       {
         id: "red_bb_port",
-        offset: [-10, -15],
-        baseArc: [-Math.PI + 0.2, -0.2],
-        trackingSpeed: 1.2,
-        currentLocalAngle: -Math.PI / 4,
+        offset: [-8, -16],
+        baseArc: [-Math.PI * 0.78, -Math.PI * 0.22],
+        trackingSpeed: 1.1,
+        currentLocalAngle: -Math.PI / 2,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 13,
+        baseRadius: 5,
         weapon: {
           weaponType: "beam_laser",
-          name: "Port Beam Battery",
-          damage: 45,
+          name: "Port Laser Battery",
+          damage: 50,
           cooldown: 1.2,
-          range: 600,
+          range: 580,
           projectileSpeed: 0,
-          trackingSpeed: 1.8,
+          trackingSpeed: 1.4,
           shieldMultiplier: 0.5,
           armorMultiplier: 1.6,
           hullMultiplier: 1.0,
@@ -373,20 +405,22 @@ export function createShowcaseDemoFleets(): ShipState[] {
       },
       {
         id: "red_bb_stbd",
-        offset: [-10, 15],
-        baseArc: [0.2, Math.PI - 0.2],
-        trackingSpeed: 1.2,
-        currentLocalAngle: Math.PI / 4,
+        offset: [-8, 16],
+        baseArc: [Math.PI * 0.22, Math.PI * 0.78],
+        trackingSpeed: 1.1,
+        currentLocalAngle: Math.PI / 2,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 13,
+        baseRadius: 5,
         weapon: {
           weaponType: "beam_laser",
-          name: "Starboard Beam Battery",
-          damage: 45,
+          name: "Starboard Laser Battery",
+          damage: 50,
           cooldown: 1.2,
-          range: 600,
+          range: 580,
           projectileSpeed: 0,
-          trackingSpeed: 1.8,
+          trackingSpeed: 1.4,
           shieldMultiplier: 0.5,
           armorMultiplier: 1.6,
           hullMultiplier: 1.0,
@@ -394,20 +428,21 @@ export function createShowcaseDemoFleets(): ShipState[] {
         },
       },
     ],
-  });
+  };
+  ships.push(redBb);
 
-  // 2. Red Cruiser (Upper Flank)
+  // 2. Red Cruiser
   ships.push({
     id: "red_cr",
     name: "Warlord Cruiser",
     team: 1,
     groupId: 1,
     hullClass: "cruiser",
-    pos: [redX - 60, -160],
+    pos: [redX - 40, -180],
     velocity: [0, 0],
     heading: Math.PI,
-    maxSpeed: 90,
-    turnRate: 1.2,
+    maxSpeed: 85,
+    turnRate: 1.0,
     size: 34,
     shieldMax: 600,
     shieldCurrent: 600,
@@ -422,21 +457,23 @@ export function createShowcaseDemoFleets(): ShipState[] {
     isAlive: true,
     turrets: [
       {
-        id: "red_cr_beam",
-        offset: [10, 0],
-        baseArc: [-Math.PI, Math.PI],
-        trackingSpeed: 1.8,
+        id: "red_cr_laser",
+        offset: [8, 0],
+        baseArc: [-Math.PI * 0.7, Math.PI * 0.7],
+        trackingSpeed: 1.6,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 12,
+        baseRadius: 4.5,
         weapon: {
           weaponType: "beam_laser",
-          name: "Heavy Beam Laser",
+          name: "Heavy Beam Turret",
           damage: 45,
           cooldown: 1.2,
-          range: 600,
+          range: 580,
           projectileSpeed: 0,
-          trackingSpeed: 1.8,
+          trackingSpeed: 1.6,
           shieldMultiplier: 0.5,
           armorMultiplier: 1.6,
           hullMultiplier: 1.0,
@@ -445,12 +482,14 @@ export function createShowcaseDemoFleets(): ShipState[] {
       },
       {
         id: "red_cr_torp",
-        offset: [18, 0],
-        baseArc: [-Math.PI / 3, Math.PI / 3],
-        trackingSpeed: 2.0,
+        offset: [16, 0],
+        baseArc: [-Math.PI / 6, Math.PI / 6],
+        trackingSpeed: 1.5,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 8,
+        baseRadius: 3.5,
         weapon: {
           weaponType: "missile",
           name: "Heavy Torpedo Tube",
@@ -458,7 +497,7 @@ export function createShowcaseDemoFleets(): ShipState[] {
           cooldown: 4.5,
           range: 1100,
           projectileSpeed: 320,
-          trackingSpeed: 2.5,
+          trackingSpeed: 1.5,
           shieldMultiplier: 1.0,
           armorMultiplier: 1.8,
           hullMultiplier: 1.8,
@@ -468,18 +507,18 @@ export function createShowcaseDemoFleets(): ShipState[] {
     ],
   });
 
-  // 3. Red Point Defense Corvette (Lower Flank)
+  // 3. Red Point Defense Corvette (Assigned Escort to Red Flagship)
   ships.push({
     id: "red_cv",
     name: "Sentinel Corvette",
     team: 1,
     groupId: 2,
     hullClass: "corvette",
-    pos: [redX - 60, 160],
+    pos: [redX + 50, 90],
     velocity: [0, 0],
     heading: Math.PI,
-    maxSpeed: 150,
-    turnRate: 2.2,
+    maxSpeed: 140,
+    turnRate: 2.0,
     size: 20,
     shieldMax: 180,
     shieldCurrent: 180,
@@ -492,18 +531,22 @@ export function createShowcaseDemoFleets(): ShipState[] {
     hullCurrent: 220,
     cost: 350,
     isAlive: true,
+    flagshipId: "red_bb",
+    formationOffset: [-30, 85],
     turrets: [
       {
         id: "red_cv_pd1",
-        offset: [-3, -4],
+        offset: [-4, -4],
         baseArc: [-Math.PI, Math.PI],
         trackingSpeed: 6.28,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 6,
+        baseRadius: 2.2,
         weapon: {
           weaponType: "point_defense",
-          name: "Flak PD Alpha",
+          name: "Rapid Flak Alpha",
           damage: 12,
           cooldown: 0.15,
           range: 350,
@@ -517,15 +560,17 @@ export function createShowcaseDemoFleets(): ShipState[] {
       },
       {
         id: "red_cv_pd2",
-        offset: [-3, 4],
+        offset: [-4, 4],
         baseArc: [-Math.PI, Math.PI],
         trackingSpeed: 6.28,
         currentLocalAngle: 0,
         cooldownTimer: 0,
         currentTargetId: null,
+        barrelLength: 6,
+        baseRadius: 2.2,
         weapon: {
           weaponType: "point_defense",
-          name: "Flak PD Beta",
+          name: "Rapid Flak Beta",
           damage: 12,
           cooldown: 0.15,
           range: 350,
@@ -540,20 +585,20 @@ export function createShowcaseDemoFleets(): ShipState[] {
     ],
   });
 
-  // 4. Red Strike Craft (Forward Vanguard)
+  // 4. Red Raiders
   for (let i = 0; i < 4; i++) {
-    const yOff = (i - 1.5) * 45;
+    const yOff = (i - 1.5) * 50;
     ships.push({
       id: `red_sc_${i}`,
       name: `Raider R-${i + 1}`,
       team: 1,
       groupId: 3,
       hullClass: "strike_craft",
-      pos: [redX - 160, yOff],
+      pos: [redX - 180, yOff],
       velocity: [0, 0],
       heading: Math.PI,
-      maxSpeed: 240,
-      turnRate: 3.5,
+      maxSpeed: 230,
+      turnRate: 3.2,
       size: 11,
       shieldMax: 60,
       shieldCurrent: 60,
@@ -570,11 +615,13 @@ export function createShowcaseDemoFleets(): ShipState[] {
         {
           id: `red_sc_gun_${i}`,
           offset: [6, 0],
-          baseArc: [-Math.PI / 4, Math.PI / 4],
-          trackingSpeed: 4.0,
+          baseArc: [-Math.PI / 5, Math.PI / 5],
+          trackingSpeed: 3.5,
           currentLocalAngle: 0,
           cooldownTimer: 0,
           currentTargetId: null,
+          barrelLength: 6,
+          baseRadius: 2.0,
           weapon: {
             weaponType: "plasma",
             name: "Plasma Blaster",

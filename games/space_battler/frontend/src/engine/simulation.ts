@@ -1,10 +1,11 @@
-// Deterministic client combat simulation runner matching Python engine
+// Deterministic client combat simulation runner with anti-drift physics, separation, and formation anchors
 
 import type {
   GroupOrder,
   ProjectileState,
   ShipState,
   TurretMountState,
+  Vector2,
   WeaponDefinition,
 } from "../types/combat";
 import {
@@ -14,6 +15,7 @@ import {
   vecAdd,
   vecDistance,
   vecDistanceSq,
+  vecDot,
   vecNormalize,
   vecScale,
   vecSub,
@@ -47,7 +49,7 @@ export class ClientCombatSimulation {
       }
     }
 
-    // 2. Movement & Target AI
+    // 2. Tactical Movement & Targeting AI
     const aliveShips = this.ships.filter((s) => s.isAlive);
     for (const ship of aliveShips) {
       const order = this.orders.get(ship.groupId) ?? {
@@ -56,7 +58,7 @@ export class ClientCombatSimulation {
         stance: "optimal_range",
       };
       const target = this.findTargetForShip(ship, order, aliveShips);
-      this.updateShipMovement(ship, target, order, dt);
+      this.updateShipMovement(ship, target, order, aliveShips, dt);
 
       // Turrets aim & fire
       for (const turret of ship.turrets) {
@@ -124,39 +126,111 @@ export class ClientCombatSimulation {
     ship: ShipState,
     target: ShipState | null,
     order: GroupOrder,
+    aliveShips: ShipState[],
     dt: number,
   ): void {
-    if (!target) {
-      ship.velocity = vecScale(ship.velocity, Math.max(0, 1 - dt * 2));
-      ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
-      return;
+    // 1. Formation Anchor: If ship is an escort with a flagship, follow flagship position
+    let targetHeading = ship.heading;
+    let desiredSpeed = 0;
+
+    if (ship.flagshipId) {
+      const flagship = aliveShips.find((s) => s.id === ship.flagshipId);
+      if (flagship && ship.formationOffset) {
+        // Compute world position of formation slot
+        const slotOffset = rotatePoint(ship.formationOffset, flagship.heading);
+        const formationSlotPos = vecAdd(flagship.pos, slotOffset);
+
+        const toSlot = vecSub(formationSlotPos, ship.pos);
+        const distToSlot = vecDistance(ship.pos, formationSlotPos);
+
+        if (distToSlot > 30) {
+          targetHeading = Math.atan2(toSlot[1], toSlot[0]);
+          desiredSpeed = clamp(distToSlot * 1.5, 0, ship.maxSpeed);
+        } else {
+          // Match flagship heading when in slot
+          targetHeading = flagship.heading;
+          desiredSpeed = vecDistance([0, 0], flagship.velocity);
+        }
+      }
+    } else if (target) {
+      // Free combat movement (flagship, independent cruisers, or strike craft)
+      const toTarget = vecSub(target.pos, ship.pos);
+      const dist = vecDistance(ship.pos, target.pos);
+      const desiredDist = order.stance === "max_range" ? 550 : 220;
+
+      let targetAngle = Math.atan2(toTarget[1], toTarget[0]);
+
+      if (ship.hullClass === "battleship") {
+        // Dreadnought: align nose for spinal railgun if far, broadside if close
+        if (dist < desiredDist * 1.4) {
+          targetAngle += Math.PI / 2; // Broadside
+        }
+        desiredSpeed =
+          dist > desiredDist ? ship.maxSpeed : dist < desiredDist * 0.7 ? -ship.maxSpeed * 0.4 : 0;
+      } else if (ship.hullClass === "strike_craft") {
+        // Fighters: strafe runs with evasion
+        if (dist < 120) {
+          targetAngle += Math.PI / 3; // Break off on strafe exit
+          desiredSpeed = ship.maxSpeed;
+        } else {
+          desiredSpeed = ship.maxSpeed;
+        }
+      } else {
+        // Cruiser / Escort
+        desiredSpeed =
+          dist > desiredDist
+            ? ship.maxSpeed * 0.8
+            : dist < desiredDist * 0.7
+              ? -ship.maxSpeed * 0.3
+              : 0;
+      }
+
+      targetHeading = targetAngle;
     }
 
-    const toTarget = vecSub(target.pos, ship.pos);
-    const dist = vecDistance(ship.pos, target.pos);
-    const desiredDist = order.stance === "max_range" ? 600 : 250;
-
-    let desiredAngle = Math.atan2(toTarget[1], toTarget[0]);
-    if (ship.hullClass === "battleship" && dist < desiredDist * 1.5) {
-      // Broadside turn
-      desiredAngle += Math.PI / 2;
-    }
-
-    const angleDiff = normalizeAngle(desiredAngle - ship.heading);
+    // 2. Smooth Angular Alignment (No instant snap)
+    const angleDiff = normalizeAngle(targetHeading - ship.heading);
     const turnStep = clamp(angleDiff, -ship.turnRate * dt, ship.turnRate * dt);
     ship.heading = normalizeAngle(ship.heading + turnStep);
 
-    const forwardDir: [number, number] = [Math.cos(ship.heading), Math.sin(ship.heading)];
-    const thrust = dist > desiredDist ? 1.0 : dist < desiredDist * 0.7 ? -0.5 : 0.0;
+    // 3. Thrust Vector & Anti-Drift Physics (Damp lateral slip, thrust strictly along heading)
+    const forwardVector: Vector2 = [Math.cos(ship.heading), Math.sin(ship.heading)];
+    const rightVector: Vector2 = [-Math.sin(ship.heading), Math.cos(ship.heading)];
 
-    const accel = vecScale(forwardDir, thrust * ship.maxSpeed * 1.5);
-    ship.velocity = vecAdd(ship.velocity, vecScale(accel, dt));
+    // Decompose current velocity into forward and lateral components
+    const currentForwardSpeed = vecDot(ship.velocity, forwardVector);
+    const currentLateralSpeed = vecDot(ship.velocity, rightVector);
 
-    const speed = vecDistance([0, 0], ship.velocity);
-    if (speed > ship.maxSpeed) {
-      ship.velocity = vecScale(vecNormalize(ship.velocity), ship.maxSpeed);
+    // Damp lateral slip (RCS thrusters kill drift)
+    const newLateralSpeed = currentLateralSpeed * Math.max(0, 1 - dt * 6.0);
+
+    // Accelerate toward desired forward speed
+    const forwardAccel = 120.0;
+    const speedError = desiredSpeed - currentForwardSpeed;
+    const forwardStep = clamp(speedError, -forwardAccel * dt, forwardAccel * dt);
+    const newForwardSpeed = currentForwardSpeed + forwardStep;
+
+    // Reconstruct velocity
+    let newVelocity = vecAdd(
+      vecScale(forwardVector, newForwardSpeed),
+      vecScale(rightVector, newLateralSpeed),
+    );
+
+    // 4. Separation & Avoidance (Keep ships from merging into single point)
+    let separationForce: Vector2 = [0, 0];
+    for (const other of aliveShips) {
+      if (other.id === ship.id) continue;
+      const d = vecDistance(ship.pos, other.pos);
+      const minSafeDist = ship.size + other.size + 15;
+      if (d < minSafeDist && d > 0.001) {
+        const pushDir = vecNormalize(vecSub(ship.pos, other.pos));
+        const pushMag = (minSafeDist - d) * 3.5;
+        separationForce = vecAdd(separationForce, vecScale(pushDir, pushMag));
+      }
     }
+    newVelocity = vecAdd(newVelocity, vecScale(separationForce, dt));
 
+    ship.velocity = newVelocity;
     ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
   }
 
@@ -187,7 +261,8 @@ export class ClientCombatSimulation {
     turret.currentLocalAngle = normalizeAngle(turret.currentLocalAngle + step);
 
     const isInArc = desiredLocal >= minArc && desiredLocal <= maxArc;
-    const isAligned = Math.abs(diff) < 0.05;
+    const alignTolerance = turret.isSpinalGimbal ? 0.03 : 0.08;
+    const isAligned = Math.abs(diff) < alignTolerance;
     return isInArc && isAligned;
   }
 
@@ -250,7 +325,6 @@ export class ClientCombatSimulation {
       for (const ship of aliveShips) {
         if (ship.team === p.ownerTeam) continue;
         if (vecDistance(p.pos, ship.pos) <= ship.size) {
-          // Approximate hit damage
           const weaponDef: WeaponDefinition = {
             weaponType: p.weaponType,
             name: p.weaponType,

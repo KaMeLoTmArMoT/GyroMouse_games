@@ -1,4 +1,4 @@
-// Procedural vector renderer for 2.5D ship hulls, shields, and rotatable turrets
+// Procedural vector renderer for 2.5D ship hulls, directional shields, and calibrated turrets
 
 import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState } from "../types/combat";
@@ -34,7 +34,7 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
 
   ctx.restore();
 
-  // 2. Render Independent Turrets
+  // 2. Render Independent Turrets (proportional calibers & barrels)
   for (const turret of ship.turrets) {
     renderTurret(ctx, ship, turret, primaryColor);
   }
@@ -42,10 +42,10 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
   // 3. Render Shield Arc / Bubble
   if (ship.shieldCurrent > 0) {
     const shieldRatio = ship.shieldCurrent / ship.shieldMax;
-    ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 + shieldRatio * 0.35})`;
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 + shieldRatio * 0.4})`;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.arc(0, 0, ship.size * 1.15, 0, Math.PI * 2);
+    ctx.arc(0, 0, ship.size * 1.18, 0, Math.PI * 2);
     ctx.stroke();
   }
 
@@ -101,8 +101,9 @@ function drawHullSilhouette(
       ctx.lineTo(s * 0.6, s * 0.45);
       ctx.closePath();
       break;
+
     default:
-      // Heavy dreadnought wedge with armored prow
+      // Heavy battleship wedge with armored prow
       ctx.moveTo(s * 1.4, 0);
       ctx.lineTo(s * 0.8, -s * 0.4);
       ctx.lineTo(s * 0.2, -s * 0.6);
@@ -142,20 +143,27 @@ function renderTurret(
   ctx.translate(tx, ty);
   ctx.rotate(turretWorldAngle);
 
-  // Turret Mount Base (circle)
-  ctx.fillStyle = "#1e293b"; // slate-800
+  // Proportional calibers: heavy railguns get massive barbettes, PD gets tiny mounts
+  const baseRadius = turret.baseRadius ?? (turret.isSpinalGimbal ? 6 : 4);
+  const barrelLen = turret.barrelLength ?? (turret.weapon.weaponType === "railgun" ? 18 : 10);
+  const barrelWidth = turret.isSpinalGimbal
+    ? 3.5
+    : turret.weapon.weaponType === "point_defense"
+      ? 1.4
+      : 2.4;
+
+  // Turret Mount Base (circle / barbette)
+  ctx.fillStyle = turret.isSpinalGimbal ? "#0f172a" : "#1e293b";
   ctx.strokeStyle = primaryColor;
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.arc(0, 0, 4, 0, Math.PI * 2);
+  ctx.arc(0, 0, baseRadius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 
-  // Turret Cannon Barrel (length oriented forward)
-  const barrelLen = turret.weapon.weaponType === "railgun" ? 14 : 9;
-  ctx.strokeStyle = "#f1f5f9";
-  ctx.lineWidth = turret.weapon.weaponType === "point_defense" ? 1.5 : 2.5;
-
+  // Cannon Barrel
+  ctx.strokeStyle = "#f8fafc";
+  ctx.lineWidth = barrelWidth;
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(barrelLen, 0);

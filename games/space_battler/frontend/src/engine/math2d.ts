@@ -14,6 +14,10 @@ export function vecScale(v: Vector2, s: number): Vector2 {
   return [v[0] * s, v[1] * s];
 }
 
+export function vecDot(a: Vector2, b: Vector2): number {
+  return a[0] * b[0] + a[1] * b[1];
+}
+
 export function vecLengthSq(v: Vector2): number {
   return v[0] * v[0] + v[1] * v[1];
 }
