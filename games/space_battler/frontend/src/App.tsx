@@ -1,14 +1,14 @@
 import { RotateCcw, Shield, SkipForward, Swords } from "lucide-react";
 import { useState } from "react";
 import { TacticalCanvas } from "./canvas/TacticalCanvas";
+import { createShowcaseDemoFleets } from "./engine/showcaseDemo";
 import { ClientCombatSimulation } from "./engine/simulation";
-import { createClientTestFleets } from "./engine/testFleets";
 
 export default function App() {
-  const [speed, setSpeed] = useState<number>(1);
+  const [speed, setSpeed] = useState<number>(0); // Start in PAUSE to inspect lineup
   const [sim, setSim] = useState<ClientCombatSimulation>(() => {
     const s = new ClientCombatSimulation();
-    for (const ship of createClientTestFleets()) {
+    for (const ship of createShowcaseDemoFleets()) {
       s.addShip(ship);
     }
     return s;
@@ -17,7 +17,7 @@ export default function App() {
 
   const resetBattle = () => {
     const s = new ClientCombatSimulation();
-    for (const ship of createClientTestFleets()) {
+    for (const ship of createShowcaseDemoFleets()) {
       s.addShip(ship);
     }
     setSim(s);
