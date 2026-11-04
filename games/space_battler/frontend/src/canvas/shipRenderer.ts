@@ -166,7 +166,8 @@ function drawAlienHull(
   hullDarkColor: string,
   accentColor: string,
 ): void {
-  // Calibrated scale: 100% fits strictly within the 1.40x shield bubble (<= 5% area delta vs Terran)
+  // Lateral coordinates calibrated against Terran filled areas by backend/tests/test_hull_geometry.py.
+  // Endpoints and Bezier controls remain inside the 1.40x shield envelope.
   const s = ship.size;
 
   ctx.fillStyle = hullDarkColor;
@@ -177,41 +178,41 @@ function drawAlienHull(
   switch (ship.hullClass) {
     case "strike_craft":
       // Cylon Raider / Bio-Crescent: curved swept-forward wings
-      ctx.moveTo(s * 0.85, -s * 0.55);
-      ctx.quadraticCurveTo(s * 0.15, -s * 0.1, -s * 0.65, -s * 0.28);
+      ctx.moveTo(s * 0.85, -s * 0.6884);
+      ctx.quadraticCurveTo(s * 0.15, -s * 0.1252, -s * 0.65, -s * 0.3505);
       ctx.lineTo(-s * 0.35, 0);
-      ctx.lineTo(-s * 0.65, s * 0.28);
-      ctx.quadraticCurveTo(s * 0.15, s * 0.1, s * 0.85, s * 0.55);
-      ctx.quadraticCurveTo(s * 0.55, 0, s * 0.85, -s * 0.55);
+      ctx.lineTo(-s * 0.65, s * 0.3505);
+      ctx.quadraticCurveTo(s * 0.15, s * 0.1252, s * 0.85, s * 0.6884);
+      ctx.quadraticCurveTo(s * 0.55, 0, s * 0.85, -s * 0.6884);
       ctx.closePath();
       break;
 
     case "corvette":
       // Alien Sentinel: predatory stingray / manta silhouette
       ctx.moveTo(s * 1.15, 0);
-      ctx.quadraticCurveTo(s * 0.25, -s * 0.65, -s * 0.75, -s * 0.45);
-      ctx.quadraticCurveTo(-s * 0.45, 0, -s * 0.75, s * 0.45);
-      ctx.quadraticCurveTo(s * 0.25, s * 0.65, s * 1.15, 0);
+      ctx.quadraticCurveTo(s * 0.25, -s * 0.7916, -s * 0.75, -s * 0.548);
+      ctx.quadraticCurveTo(-s * 0.45, 0, -s * 0.75, s * 0.548);
+      ctx.quadraticCurveTo(s * 0.25, s * 0.7916, s * 1.15, 0);
       ctx.closePath();
       break;
 
     case "cruiser":
       // Alien Warship: serpentine curved war-hull with biomorphic mandible prow
-      ctx.moveTo(s * 1.22, -s * 0.22);
+      ctx.moveTo(s * 1.22, -s * 0.2411);
       ctx.lineTo(s * 0.9, 0);
-      ctx.lineTo(s * 1.22, s * 0.22);
-      ctx.quadraticCurveTo(s * 0.35, s * 0.5, -s * 0.85, s * 0.36);
-      ctx.quadraticCurveTo(-s * 1.1, 0, -s * 0.85, -s * 0.36);
-      ctx.quadraticCurveTo(s * 0.35, -s * 0.5, s * 1.22, -s * 0.22);
+      ctx.lineTo(s * 1.22, s * 0.2411);
+      ctx.quadraticCurveTo(s * 0.35, s * 0.5479, -s * 0.85, s * 0.3945);
+      ctx.quadraticCurveTo(-s * 1.1, 0, -s * 0.85, -s * 0.3945);
+      ctx.quadraticCurveTo(s * 0.35, -s * 0.5479, s * 1.22, -s * 0.2411);
       ctx.closePath();
       break;
 
     default:
       // Alien Dreadnought: massive curved crescent basestar with central energy eye
       ctx.moveTo(s * 1.28, 0);
-      ctx.quadraticCurveTo(s * 0.5, -s * 0.68, -s * 1.15, -s * 0.5);
-      ctx.quadraticCurveTo(-s * 0.4, 0, -s * 1.15, s * 0.5);
-      ctx.quadraticCurveTo(s * 0.5, s * 0.68, s * 1.28, 0);
+      ctx.quadraticCurveTo(s * 0.5, -s * 0.892, -s * 1.15, -s * 0.6559);
+      ctx.quadraticCurveTo(-s * 0.4, 0, -s * 1.15, s * 0.6559);
+      ctx.quadraticCurveTo(s * 0.5, s * 0.892, s * 1.28, 0);
       ctx.closePath();
       break;
   }
