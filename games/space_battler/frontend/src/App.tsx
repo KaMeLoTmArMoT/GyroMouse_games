@@ -22,9 +22,12 @@ import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
 import { FLEET_PRESETS } from "./engine/fleetPresets";
 import { ClientCombatSimulation } from "./engine/simulation";
 
+const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<"builder" | "battle">("battle");
   const [speed, setSpeed] = useState<number>(0);
+  const [lastActiveSpeed, setLastActiveSpeed] = useState<number>(1);
   const [muted, setMuted] = useState(() => spaceAudio.isMuted());
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
   const [sidebarTab, setSidebarTab] = useState<"vessel" | "telemetry" | "log">("vessel");
@@ -68,6 +71,81 @@ export default function App() {
     return assembleSimulation(userSlots, enemyPresetId);
   });
   const [selectedShipId, setSelectedShipId] = useState<string | null>("blue_bb_0");
+
+  // Keyboard Shortcuts: Space (Play/Pause), 1-5 (Groups), < / > or , / . (Speed down/up)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.tagName === "SELECT" ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        setSpeed((cur) => {
+          if (cur > 0) {
+            setLastActiveSpeed(cur);
+            return 0;
+          }
+          return lastActiveSpeed > 0 ? lastActiveSpeed : 1;
+        });
+        return;
+      }
+
+      if (e.key === "<" || e.key === "," || e.key === "[") {
+        e.preventDefault();
+        setSpeed((cur) => {
+          const idx = SPEED_LEVELS.indexOf(cur);
+          if (idx > 0) return SPEED_LEVELS[idx - 1];
+          if (idx === -1) {
+            const prev = [...SPEED_LEVELS].reverse().find((s) => s < cur);
+            return prev !== undefined ? prev : 0;
+          }
+          return SPEED_LEVELS[0];
+        });
+        return;
+      }
+
+      if (e.key === ">" || e.key === "." || e.key === "]") {
+        e.preventDefault();
+        setSpeed((cur) => {
+          const idx = SPEED_LEVELS.indexOf(cur);
+          if (idx !== -1 && idx < SPEED_LEVELS.length - 1) return SPEED_LEVELS[idx + 1];
+          if (idx === -1) {
+            const next = SPEED_LEVELS.find((s) => s > cur);
+            return next !== undefined ? next : SPEED_LEVELS[SPEED_LEVELS.length - 1];
+          }
+          return SPEED_LEVELS[SPEED_LEVELS.length - 1];
+        });
+        return;
+      }
+
+      if (e.key >= "1" && e.key <= "5") {
+        const groupNum = parseInt(e.key, 10);
+        const groupShips = sim.ships.filter(
+          (s) => s.team === 0 && s.isAlive && s.groupId === groupNum,
+        );
+        if (groupShips.length > 0) {
+          e.preventDefault();
+          setSelectedShipId((curId) => {
+            const curIdx = groupShips.findIndex((s) => s.id === curId);
+            if (curIdx === -1) return groupShips[0].id;
+            return groupShips[(curIdx + 1) % groupShips.length].id;
+          });
+          setSidebarTab("vessel");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sim, lastActiveSpeed]);
 
   function assembleSimulation(blueSlots: FleetSlot[], redPresetId: string): ClientCombatSimulation {
     const s = new ClientCombatSimulation();
@@ -221,12 +299,16 @@ export default function App() {
               <SkipForward className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-              {[0, 0.5, 1, 2, 5].map((s) => (
+            <div
+              className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1"
+              title="Hotkeys: Space (Play/Pause), < / > (Speed down/up), 1-5 (Groups)"
+            >
+              {SPEED_LEVELS.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setSpeed(s)}
+                  title={s === 0 ? "Pause (Space)" : `Speed ${s}x (< / >)`}
                   className={`px-2.5 py-1 text-xs rounded font-mono transition-colors cursor-pointer ${
                     speed === s
                       ? "bg-cyan-500 text-zinc-950 font-medium"

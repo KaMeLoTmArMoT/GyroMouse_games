@@ -107,6 +107,13 @@ export const GROUP_THEMES: Record<
   },
 };
 
+const HULL_SIZE_ORDER: Record<HullClass, number> = {
+  battleship: 1,
+  cruiser: 2,
+  corvette: 3,
+  strike_craft: 4,
+};
+
 const HULL_SPECS: Record<HullClass, HullSpecData> = {
   battleship: {
     name: "Leviathan Battleship",
@@ -389,6 +396,7 @@ export function FleetBuilder({
             const canAfford = remainingBudget >= spec.cost;
             const counts = hullCounts[hull];
             const isInspecting = inspectedHull === hull;
+            const activeTheme = GROUP_THEMES[selectedGroup] || GROUP_THEMES[1];
 
             return (
               <div
@@ -416,19 +424,28 @@ export function FleetBuilder({
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end">
                       <span className="text-xs font-mono font-bold text-zinc-200 block select-all">
                         {spec.cost} CR
                       </span>
-                      <span className="text-[10px] font-mono text-zinc-400">
-                        {counts.total > 0 ? (
-                          <span className="text-cyan-400">
-                            {counts.total} in fleet (G{selectedGroup}: {counts.group})
-                          </span>
-                        ) : (
-                          "0 in fleet"
-                        )}
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span
+                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded border font-bold transition-colors ${
+                            counts.group > 0
+                              ? `${activeTheme.bg} ${activeTheme.border} ${activeTheme.text}`
+                              : "bg-zinc-950/60 border-zinc-800 text-zinc-500"
+                          }`}
+                          title={`Assigned to Group ${selectedGroup}`}
+                        >
+                          GRP {selectedGroup}: {counts.group}
+                        </span>
+                        <span
+                          className="text-[10px] font-mono text-zinc-400"
+                          title="Total across all groups"
+                        >
+                          ({counts.total} total)
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -564,45 +581,68 @@ export function FleetBuilder({
                 Fleet is currently empty. Enlist vessels from the hangar.
               </div>
             ) : (
-              slots.map((s) => {
-                const theme = GROUP_THEMES[s.groupId] || GROUP_THEMES[1];
-                return (
-                  <div
-                    key={s.id}
-                    className={`p-2.5 rounded-lg bg-zinc-900 border ${theme.border} text-xs flex items-center justify-between select-text hover:bg-zinc-800/60 transition-colors`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0">
-                        <ShipSilhouette hullClass={s.hullClass} className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-md font-mono font-bold tracking-wide border ${theme.bg} ${theme.border} ${theme.text} select-all`}
+              (() => {
+                const sortedSlots = [...slots].sort((a, b) => {
+                  if (a.groupId !== b.groupId) {
+                    return a.groupId - b.groupId;
+                  }
+                  return HULL_SIZE_ORDER[a.hullClass] - HULL_SIZE_ORDER[b.hullClass];
+                });
+
+                return sortedSlots.map((s, idx) => {
+                  const theme = GROUP_THEMES[s.groupId] || GROUP_THEMES[1];
+                  const isFirstOfGroup = idx === 0 || sortedSlots[idx - 1].groupId !== s.groupId;
+
+                  return (
+                    <div key={s.id} className="space-y-1">
+                      {isFirstOfGroup && (
+                        <div className="flex items-center justify-between pt-1 pb-0.5 px-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider">
+                          <span className={theme.text}>
+                            Group {s.groupId} ({theme.name})
+                          </span>
+                          <span className="text-zinc-500">
+                            {groupCounts[s.groupId]}{" "}
+                            {groupCounts[s.groupId] === 1 ? "vessel" : "vessels"}
+                          </span>
+                        </div>
+                      )}
+                      <div
+                        className={`p-2.5 rounded-lg bg-zinc-900 border ${theme.border} text-xs flex items-center justify-between select-text hover:bg-zinc-800/60 transition-colors`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0">
+                            <ShipSilhouette hullClass={s.hullClass} className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-[11px] px-2 py-0.5 rounded-md font-mono font-bold tracking-wide border ${theme.bg} ${theme.border} ${theme.text} select-all`}
+                              >
+                                G{s.groupId}
+                              </span>
+                              <span className="font-semibold text-zinc-100 select-all text-xs">
+                                {HULL_SPECS[s.hullClass].name}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-mono text-xs font-semibold text-zinc-300 select-all">
+                            {HULL_SPECS[s.hullClass].cost} CR
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeSlot(s.id)}
+                            className="text-zinc-500 hover:text-red-400 p-1.5 rounded-md hover:bg-zinc-800 transition-colors cursor-pointer"
                           >
-                            G{s.groupId}
-                          </span>
-                          <span className="font-semibold text-zinc-100 select-all text-xs">
-                            {HULL_SPECS[s.hullClass].name}
-                          </span>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-mono text-xs font-semibold text-zinc-300 select-all">
-                        {HULL_SPECS[s.hullClass].cost} CR
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeSlot(s.id)}
-                        className="text-zinc-500 hover:text-red-400 p-1.5 rounded-md hover:bg-zinc-800 transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                });
+              })()
             )}
           </div>
         </div>
