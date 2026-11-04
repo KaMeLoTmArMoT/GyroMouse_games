@@ -37,6 +37,7 @@ __pycache__/
 .ruff_cache/
 .venv/
 
-# Space battler scratch
+# Scratch files
+scratch/
 games/space_battler/scratch/
 *.pyc

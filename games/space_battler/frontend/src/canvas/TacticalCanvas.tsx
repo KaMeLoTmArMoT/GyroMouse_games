@@ -1,6 +1,7 @@
 // React 2.5D Tactical Canvas Component with click/hover ship selection, pan/zoom, and live range cones
 
 import { useEffect, useRef } from "react";
+import { spaceAudio } from "../engine/audioEngine";
 import type { ClientCombatSimulation } from "../engine/simulation";
 import { VisualEffectsManager } from "./effects";
 import { renderProjectile } from "./projectileRenderer";
@@ -23,13 +24,19 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
   const hasDraggedRef = useRef(false);
 
   useEffect(() => {
-    // Hook visual beam effects to combat simulation events
+    // Keep sound and visual effects on the same combat events.
     sim.onBeamFire = (from, to, color, width) => {
       effectsRef.current.addBeam(from, to, color, width, 0.16);
+      spaceAudio.playWeapon("beam_laser");
     };
     sim.onFlakBurst = (pos) => {
       effectsRef.current.addFlakBurst(pos, 60);
+      spaceAudio.playWeapon("point_defense");
     };
+    sim.onProjectileFire = (type) => spaceAudio.playWeapon(type);
+    sim.onShieldHit = (_pos, intensity) => spaceAudio.playShieldHit(intensity);
+    sim.onShipDestroyed = (ship) => spaceAudio.playExplosion(ship);
+    sim.onVictory = (winnerTeam) => spaceAudio.playVictory(winnerTeam);
 
     let animId: number;
     let lastTime = performance.now();
@@ -116,7 +123,15 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
     };
 
     animId = requestAnimationFrame(renderLoop);
-    return () => cancelAnimationFrame(animId);
+    return () => {
+      cancelAnimationFrame(animId);
+      sim.onBeamFire = null;
+      sim.onFlakBurst = null;
+      sim.onProjectileFire = undefined;
+      sim.onShieldHit = undefined;
+      sim.onShipDestroyed = undefined;
+      sim.onVictory = undefined;
+    };
   }, [sim, speed, selectedShipId]);
 
   useEffect(() => {

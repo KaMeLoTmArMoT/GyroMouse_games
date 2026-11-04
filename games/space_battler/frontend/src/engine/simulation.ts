@@ -10,6 +10,7 @@ import type {
   TurretMountState,
   Vector2,
   WeaponDefinition,
+  WeaponType,
 } from "../types/combat";
 import {
   clamp,
@@ -79,6 +80,10 @@ export class ClientCombatSimulation {
   private nextWingLaunch = new Map<number, number>();
   onBeamFire: BeamFireCallback | null = null;
   onFlakBurst: FlakBurstCallback | null = null;
+  onProjectileFire?: (type: WeaponType, pos: Vector2) => void;
+  onShieldHit?: (pos: Vector2, intensity: number) => void;
+  onShipDestroyed?: (ship: ShipState) => void;
+  onVictory?: (winnerTeam: number) => void;
 
   stats: Record<number, TeamBattleStats> = {
     0: {
@@ -259,6 +264,7 @@ export class ClientCombatSimulation {
         this.winnerDeclaredTime = this.timeElapsed;
         this.addCombatLog("Terran fleet achieved complete tactical victory!", 0, "critical");
       }
+      if (this.winner !== null) this.onVictory?.(this.winner);
     }
   }
 
@@ -1158,6 +1164,7 @@ export class ClientCombatSimulation {
       targetId: targetShip ? targetShip.id : null,
       hp: 25.0,
     });
+    this.onProjectileFire?.(turret.weapon.weaponType, [...spawnPos]);
   }
 
   private updateProjectiles(dt: number, aliveShips: ShipState[]): void {
@@ -1288,6 +1295,10 @@ export class ClientCombatSimulation {
 
     if (ship.shieldCurrent > 0) {
       const shieldDmg = remaining * weapon.shieldMultiplier;
+      const shieldAbsorbed = Math.min(ship.shieldCurrent, shieldDmg);
+      if (shieldAbsorbed > 0) {
+        this.onShieldHit?.([...ship.pos], Math.min(1, shieldAbsorbed / 100));
+      }
       if (ship.shieldCurrent >= shieldDmg) {
         ship.shieldCurrent -= shieldDmg;
         this.stats[ship.team].shieldDamageAbsorbed += Math.round(shieldDmg);
@@ -1324,6 +1335,7 @@ export class ClientCombatSimulation {
       if (ship.hullCurrent <= 0) {
         ship.isAlive = false;
         this.stats[ship.team].shipsLost += 1;
+        this.onShipDestroyed?.(ship);
         const killerName = attackerTeam === 0 ? "Terran fleet" : "Alien swarm";
         this.addCombatLog(
           `${ship.name} eliminated by ${killerName}!`,

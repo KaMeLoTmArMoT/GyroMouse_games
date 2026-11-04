@@ -9,12 +9,15 @@ import {
   Swords,
   Target,
   Trophy,
+  Volume2,
+  VolumeX,
   Wrench,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { FleetBuilder } from "./components/FleetBuilder";
+import { spaceAudio } from "./engine/audioEngine";
 import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
 import { FLEET_PRESETS } from "./engine/fleetPresets";
 import { ClientCombatSimulation } from "./engine/simulation";
@@ -22,10 +25,21 @@ import { ClientCombatSimulation } from "./engine/simulation";
 export default function App() {
   const [activeTab, setActiveTab] = useState<"builder" | "battle">("battle");
   const [speed, setSpeed] = useState<number>(0);
+  const [muted, setMuted] = useState(() => spaceAudio.isMuted());
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
   const [sidebarTab, setSidebarTab] = useState<"vessel" | "telemetry" | "log">("vessel");
   const [showVictoryModal, setShowVictoryModal] = useState<boolean>(true);
   const [, setTick] = useState<number>(0);
+
+  useEffect(() => {
+    const unlockAudio = () => spaceAudio.unlock();
+    document.addEventListener("pointerdown", unlockAudio);
+    document.addEventListener("keydown", unlockAudio);
+    return () => {
+      document.removeEventListener("pointerdown", unlockAudio);
+      document.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
 
   // 10Hz live update for HUD telemetry and killfeed during combat playback
   useEffect(() => {
@@ -179,6 +193,16 @@ export default function App() {
         {/* Speed Controls */}
         {activeTab === "battle" ? (
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMuted(spaceAudio.toggleMute())}
+              title={muted ? "Unmute sound" : "Mute sound"}
+              aria-label={muted ? "Unmute sound" : "Mute sound"}
+              aria-pressed={!muted}
+              className={`p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer ${muted ? "text-zinc-400 hover:text-zinc-200" : "text-cyan-400"}`}
+            >
+              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
             <button
               type="button"
               onClick={resetBattle}
