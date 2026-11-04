@@ -129,12 +129,14 @@ export class ClientCombatSimulation {
             targetPos = missile.pos;
             turretTarget = null;
           } else {
-            // Find nearest enemy in 360-degree range
+            // Strike craft take priority over other hulls, regardless of distance.
             const enemiesInRange = aliveShips.filter(
               (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) <= maxPDRange,
             );
             if (enemiesInRange.length > 0) {
-              const nearestEnemy = enemiesInRange.reduce((prev, curr) =>
+              const strikeCraft = enemiesInRange.filter((e) => e.hullClass === "strike_craft");
+              const candidates = strikeCraft.length > 0 ? strikeCraft : enemiesInRange;
+              const nearestEnemy = candidates.reduce((prev, curr) =>
                 vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
               );
               targetPos = nearestEnemy.pos;
@@ -411,9 +413,54 @@ export class ClientCombatSimulation {
     let targetHeading = ship.heading;
     let desiredSpeed = 0;
     let cruiserVelocity: Vector2 | null = null;
+    let corvetteVelocity: Vector2 | null = null;
+    const flagship = aliveShips.find((s) => s.id === ship.flagshipId && s.team === ship.team);
 
     // 1. Independent Escorts (Corvettes with or without flagship)
-    if (ship.flagshipId && aliveShips.some((s) => s.id === ship.flagshipId)) {
+    if (ship.hullClass === "corvette" && flagship) {
+      const escorts = aliveShips.filter(
+        (s) => s.team === ship.team && s.hullClass === "corvette" && s.flagshipId === flagship.id,
+      );
+      const index = escorts.findIndex((s) => s.id === ship.id);
+      const slotAngle = flagship.heading + (index - (escorts.length - 1) / 2) * 0.45;
+      const slot: Vector2 = [
+        flagship.pos[0] + 260 * Math.cos(slotAngle),
+        flagship.pos[1] + 260 * Math.sin(slotAngle),
+      ];
+      const toSlot = vecSub(slot, ship.pos);
+      corvetteVelocity = vecAdd(flagship.velocity, vecScale(toSlot, 0.6));
+      const speed = vecDistance([0, 0], corvetteVelocity);
+      if (speed > ship.maxSpeed) {
+        corvetteVelocity = vecScale(corvetteVelocity, ship.maxSpeed / speed);
+      }
+
+      const missile = this.findMissileTarget(ship, 360);
+      const strikeCraft = aliveShips.filter(
+        (s) =>
+          s.team !== ship.team &&
+          s.hullClass === "strike_craft" &&
+          vecDistance(ship.pos, s.pos) <= 360,
+      );
+      const threat =
+        missile ??
+        (strikeCraft.length > 0
+          ? strikeCraft.reduce((prev, curr) =>
+              vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
+            )
+          : null);
+      targetHeading = slotAngle;
+      if (vecDistance(ship.pos, flagship.pos) > 360) {
+        // Regain the screen before turning outward to engage threats.
+        targetHeading = Math.atan2(toSlot[1], toSlot[0]);
+      } else if (threat) {
+        const toThreat = vecSub(threat.pos, ship.pos);
+        targetHeading = Math.atan2(toThreat[1], toThreat[0]);
+      }
+    } else if (
+      ship.hullClass !== "corvette" &&
+      ship.flagshipId &&
+      aliveShips.some((s) => s.id === ship.flagshipId)
+    ) {
       const flagship = aliveShips.find((s) => s.id === ship.flagshipId);
       if (flagship) {
         const toFlagship = vecSub(ship.pos, flagship.pos);
@@ -514,9 +561,28 @@ export class ClientCombatSimulation {
         }
         targetHeading = angleToTarget;
       } else if (ship.hullClass === "corvette") {
-        // Aggressive wolf-pack escort: circle targets at 260u and fire flak continuously
-        targetHeading = angleToTarget + Math.PI * 0.4;
+        const peers = aliveShips.filter(
+          (s) =>
+            s.team === ship.team &&
+            s.hullClass === "corvette" &&
+            !aliveShips.some((leader) => leader.id === s.flagshipId && leader.team === s.team),
+        );
+        const index = peers.findIndex((s) => s.id === ship.id);
+        targetHeading = angleToTarget + Math.PI * 0.4 + (index - (peers.length - 1) / 2) * 0.42;
         desiredSpeed = ship.maxSpeed * 0.75;
+        let direction: Vector2 = [Math.cos(targetHeading), Math.sin(targetHeading)];
+        for (const peer of aliveShips) {
+          if (peer.id === ship.id || peer.team !== ship.team || peer.hullClass !== "corvette")
+            continue;
+          const distance = vecDistance(ship.pos, peer.pos);
+          if (distance >= 65) continue;
+          const away: Vector2 =
+            distance > 1e-6
+              ? vecScale(vecSub(ship.pos, peer.pos), 1 / distance)
+              : [ship.id < peer.id ? 1 : -1, 0];
+          direction = vecAdd(direction, vecScale(away, 2 * (1 - distance / 65)));
+        }
+        targetHeading = Math.atan2(direction[1], direction[0]);
       } else if (ship.hullClass === "strike_craft") {
         // Staggered staged attack runs: staging -> attack -> egress -> rejoin
         const maneuver = this.updateFighterCycle(ship, target, angleToTarget, dist, dt, aliveShips);
@@ -531,8 +597,9 @@ export class ClientCombatSimulation {
     // Friendly ship spatial avoidance (breaks up conga lines & collisions between teammates)
     const nearbyFriendly = aliveShips.find((other) => {
       // Cruiser thrusters and physical clearance handle avoidance without changing bow aim.
-      if (cruiserVelocity) return false;
+      if (cruiserVelocity || corvetteVelocity) return false;
       if (other.id === ship.id || other.team !== ship.team) return false;
+      if (ship.hullClass === "corvette" && other.hullClass === "corvette" && target) return false;
       // Fighter peers already use all-neighbor separation during non-attack maneuvers.
       if (
         ship.hullClass === "strike_craft" &&
@@ -578,10 +645,12 @@ export class ClientCombatSimulation {
       desiredSpeed = vecDot(cruiserVelocity, forwardVector);
     }
 
+    if (corvetteVelocity) desiredSpeed = vecDot(corvetteVelocity, forwardVector);
+    const thrusterVelocity = corvetteVelocity ?? cruiserVelocity;
     const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
-    const newLateralSpeed = cruiserVelocity
+    const newLateralSpeed = thrusterVelocity
       ? currentLateralSpeed +
-        clamp(vecDot(cruiserVelocity, rightVector) - currentLateralSpeed, -110 * dt, 110 * dt)
+        clamp(vecDot(thrusterVelocity, rightVector) - currentLateralSpeed, -110 * dt, 110 * dt)
       : currentLateralSpeed * Math.max(0, 1 - dt * lateralDamping);
 
     const forwardAccel = ship.hullClass === "strike_craft" ? 240.0 : 110.0;
