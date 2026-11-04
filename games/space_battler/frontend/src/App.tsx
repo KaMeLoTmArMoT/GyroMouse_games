@@ -150,11 +150,11 @@ export default function App() {
   function assembleSimulation(blueSlots: FleetSlot[], redPresetId: string): ClientCombatSimulation {
     const s = new ClientCombatSimulation();
 
-    // 1. Build Blue Force (Spawn at -580u with wide tactical stance)
-    const blueShips = buildFleetFromSlots(blueSlots, 0, -580, 0);
+    // 1. Build Blue Force (Spawn at -800u with wide tactical stance)
+    const blueShips = buildFleetFromSlots(blueSlots, 0, -800, 0);
     for (const ship of blueShips) s.addShip(ship);
 
-    // 2. Build Red Force from Preset (Spawn at +580u)
+    // 2. Build Red Force from Preset (Spawn at +800u)
     const redPreset = FLEET_PRESETS.find((p) => p.id === redPresetId) ?? FLEET_PRESETS[0];
     const redSlots: FleetSlot[] = [];
     for (const comp of redPreset.composition) {
@@ -166,7 +166,7 @@ export default function App() {
         });
       }
     }
-    const redShips = buildFleetFromSlots(redSlots, 1, 580, Math.PI);
+    const redShips = buildFleetFromSlots(redSlots, 1, 800, Math.PI);
     for (const ship of redShips) s.addShip(ship);
 
     return s;

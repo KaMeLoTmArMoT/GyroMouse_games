@@ -33,6 +33,8 @@ export function createClientTestFleets(): ShipState[] {
     turrets: [
       {
         id: "bb_rg",
+        barrelLength: 26,
+        baseRadius: 8,
         offset: [25, 0],
         baseArc: [-Math.PI / 2, Math.PI / 2],
         trackingSpeed: 0.6,
@@ -55,6 +57,8 @@ export function createClientTestFleets(): ShipState[] {
       },
       {
         id: "bb_bs_port",
+        barrelLength: 13,
+        baseRadius: 5,
         offset: [-10, -15],
         baseArc: [-Math.PI + 0.2, -0.2],
         trackingSpeed: 1.2,
@@ -77,6 +81,8 @@ export function createClientTestFleets(): ShipState[] {
       },
       {
         id: "bb_bs_stbd",
+        barrelLength: 13,
+        baseRadius: 5,
         offset: [-10, 15],
         baseArc: [0.2, Math.PI - 0.2],
         trackingSpeed: 1.2,
@@ -129,6 +135,8 @@ export function createClientTestFleets(): ShipState[] {
       turrets: [
         {
           id: `cv_${i}_pd`,
+          barrelLength: 6,
+          baseRadius: 2.2,
           offset: [0, 0],
           baseArc: [-Math.PI, Math.PI],
           trackingSpeed: 6.28,
@@ -182,6 +190,8 @@ export function createClientTestFleets(): ShipState[] {
       turrets: [
         {
           id: `sc_${i}_gun`,
+          barrelLength: 6,
+          baseRadius: 2,
           offset: [6, 0],
           baseArc: [-Math.PI / 4, Math.PI / 4],
           trackingSpeed: 4.0,

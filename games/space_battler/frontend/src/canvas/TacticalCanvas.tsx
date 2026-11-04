@@ -29,8 +29,8 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
       effectsRef.current.addBeam(from, to, color, width, 0.16);
       spaceAudio.playWeapon("beam_laser");
     };
-    sim.onFlakBurst = (pos) => {
-      effectsRef.current.addFlakBurst(pos, 60);
+    sim.onFlakBurst = (pos, radius) => {
+      effectsRef.current.addFlakBurst(pos, radius);
       spaceAudio.playWeapon("point_defense");
     };
     sim.onProjectileFire = (type) => spaceAudio.playWeapon(type);
@@ -44,7 +44,7 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
     const renderLoop = (now: number) => {
       const rawDt = (now - lastTime) / 1000;
       lastTime = now;
-      const dt = Math.min(rawDt, 0.1);
+      const dt = rawDt;
 
       if (speed > 0) {
         sim.update(dt * speed);

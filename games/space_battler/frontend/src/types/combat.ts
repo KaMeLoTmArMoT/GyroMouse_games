@@ -4,7 +4,8 @@ export type WeaponType = "beam_laser" | "railgun" | "plasma" | "missile" | "poin
 export type HullClass = "strike_craft" | "corvette" | "cruiser" | "battleship";
 export type TargetPriority = "capitals" | "screen_and_defend" | "strike_craft" | "nearest";
 export type EngagementStance = "max_range" | "optimal_range" | "brawl";
-export type FighterPhase = "staging" | "attack" | "egress" | "rejoin";
+export type WingPhase = "staging" | "attack" | "egress" | "rejoin";
+export type FighterPhase = WingPhase | "intercept" | "recover";
 
 export type Vector2 = [number, number];
 
@@ -20,6 +21,7 @@ export interface WeaponDefinition {
   armorMultiplier: number;
   hullMultiplier: number;
   cost: number;
+  flak?: { lifetime: number; triggerRadius: number; blastRadius: number; missileDamage: number };
 }
 
 export interface TurretMountState {
@@ -31,6 +33,7 @@ export interface TurretMountState {
   currentLocalAngle: number;
   cooldownTimer: number;
   currentTargetId: string | null;
+  currentTargetKind?: "ship" | "missile";
   barrelLength: number;
   baseRadius: number;
   isSpinalGimbal?: boolean;
@@ -81,6 +84,18 @@ export interface ShipState {
   lastSelectedSector?: number;
   deadlockTimer?: number;
   deadlockBypassAngle?: number;
+  dogfightTargetId?: string;
+  lastThreatTime?: number;
+  recoveryStarted?: number;
+  nextRecoveryAt?: number;
+  recoveredHull?: number;
+  lastMissionShotTime?: number;
+  capitalManeuver?: "bow_acquire" | "broadside_hold" | "bow_reacquire";
+  maneuverTargetId?: string;
+  broadsideSide?: number;
+  lastManeuverShot?: number;
+  escapeSide?: number;
+  escapeUntil?: number;
 }
 
 export interface ProjectileState {
@@ -95,6 +110,7 @@ export interface ProjectileState {
   targetId: string | null;
   hp: number;
   isFlakBurst?: boolean; // Proximity splash munition
+  weapon: WeaponDefinition; // Shot-time profile; impacts must preserve configured multipliers.
 }
 
 export interface GroupOrder {

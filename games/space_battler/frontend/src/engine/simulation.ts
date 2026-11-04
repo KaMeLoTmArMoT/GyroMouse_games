@@ -1,8 +1,7 @@
-// Deterministic client combat simulation runner with point defense ship bombardment, cruiser forward torpedo tracking, and shield bounce physics
+// Fixed-step combat simulation with independent mount acquisition and coordinated fleet maneuvers.
 
 import type {
   CombatLogEvent,
-  FighterPhase,
   GroupOrder,
   ProjectileState,
   ShipState,
@@ -11,7 +10,18 @@ import type {
   Vector2,
   WeaponDefinition,
   WeaponType,
+  WingPhase,
 } from "../types/combat";
+import { acquireMountTarget, fullCircle, inMountArc, mountPosition, sweptHit } from "./fireControl";
+import {
+  capitalIntent,
+  dogfightTarget,
+  escortVelocity,
+  limitVelocity,
+  safeRally,
+  separation,
+  spinalEscape,
+} from "./flightControl";
 import {
   clamp,
   normalizeAngle,
@@ -26,9 +36,9 @@ import {
 } from "./math2d";
 
 export type BeamFireCallback = (from: Vector2, to: Vector2, color: string, width: number) => void;
-export type FlakBurstCallback = (pos: Vector2) => void;
+export type FlakBurstCallback = (pos: Vector2, radius: number) => void;
 
-const FIGHTER_STANDOFF = 385;
+const FIGHTER_STANDOFF = 520;
 const FIGHTER_CLEARANCE = 45;
 const FIGHTER_EGRESS_DISTANCE = 200;
 const WING_SIZE = 5;
@@ -39,36 +49,17 @@ interface FighterWing {
   team: number;
   index: number;
   members: string[];
-  phase: FighterPhase;
+  phase: WingPhase;
   phaseStarted: number;
   launchAt: number;
   targetId: string | null;
   heading: number;
   rally: Vector2;
+  assembledAt?: number;
 }
-const CRUISER_STANDOFF = 480;
 const CRUISER_CLEARANCE = 100;
-const CRUISER_BOW_LIMIT = (12 * Math.PI) / 180;
 
-const FLAK_PROJECTILE_SPEED = 1500;
-const FLAK_PROJECTILE_LIFETIME = 0.35;
-const FLAK_PROXIMITY_RADIUS = 28;
-const FLAK_BLAST_RADIUS = 60;
-const FLAK_BLAST_DAMAGE = 18;
-
-const FLAK_BLAST_WEAPON: WeaponDefinition = {
-  weaponType: "point_defense",
-  name: "Flak Burst",
-  damage: FLAK_BLAST_DAMAGE,
-  cooldown: 1,
-  range: FLAK_BLAST_RADIUS,
-  projectileSpeed: FLAK_PROJECTILE_SPEED,
-  trackingSpeed: 0,
-  shieldMultiplier: 0.15, // Heavily deflected by capital shields
-  armorMultiplier: 0.1, // Absorbed by heavy armor plating
-  hullMultiplier: 0.15,
-  cost: 0,
-};
+const FIXED_STEP = 1 / 60;
 
 export class ClientCombatSimulation {
   ships: ShipState[] = [];
@@ -78,6 +69,9 @@ export class ClientCombatSimulation {
   private projectileCounter = 0;
   private fighterWings: FighterWing[] = [];
   private nextWingLaunch = new Map<number, number>();
+  private accumulator = 0;
+  private contacts = new Set<string>();
+  private previousPositions = new Map<string, Vector2>();
   onBeamFire: BeamFireCallback | null = null;
   onFlakBurst: FlakBurstCallback | null = null;
   onProjectileFire?: (type: WeaponType, pos: Vector2) => void;
@@ -137,11 +131,24 @@ export class ClientCombatSimulation {
   }
 
   update(dt: number): void {
+    if (!Number.isFinite(dt) || dt <= 0) return;
+    this.accumulator += dt;
+    // Bound catch-up work after a suspended render; retain the remaining combat time.
+    let steps = 0;
+    while (this.accumulator + 1e-9 >= FIXED_STEP && steps++ < 240) {
+      this.accumulator = Math.max(0, this.accumulator - FIXED_STEP);
+      this.tick(FIXED_STEP);
+    }
+  }
+
+  private tick(dt: number): void {
     this.timeElapsed += dt;
 
     // 1. Defenses & Shield Regeneration
     for (const ship of this.ships) {
       if (!ship.isAlive) continue;
+      for (const turret of ship.turrets)
+        turret.cooldownTimer = Math.max(0, turret.cooldownTimer - dt);
       if (ship.shieldDelayTimer > 0) {
         ship.shieldDelayTimer = Math.max(0, ship.shieldDelayTimer - dt);
       } else if (ship.shieldCurrent < ship.shieldMax) {
@@ -151,8 +158,11 @@ export class ClientCombatSimulation {
 
     // 2. Tactical Movement & Targeting AI
     const aliveShips = this.ships.filter((s) => s.isAlive);
+    this.previousPositions = new Map(aliveShips.map((ship) => [ship.id, [...ship.pos] as Vector2]));
     this.ensureFighterWings(aliveShips);
     this.updateFighterWings(aliveShips);
+    const navigationTargets = new Map<string, ShipState | null>();
+    const movements = new Map<string, { pos: Vector2; velocity: Vector2; heading: number }>();
     for (const ship of aliveShips) {
       const order = this.orders.get(ship.groupId) ?? {
         groupId: ship.groupId,
@@ -160,86 +170,37 @@ export class ClientCombatSimulation {
         stance: "optimal_range",
       };
       const target = this.findTargetForShip(ship, order, aliveShips);
+      navigationTargets.set(ship.id, target);
+      const previous = { pos: ship.pos, velocity: ship.velocity, heading: ship.heading };
       this.updateShipMovement(ship, target, aliveShips, dt);
-
-      // Turrets aim & fire (strike craft only fire during their attack dive)
-      const canFire = ship.hullClass !== "strike_craft" || ship.fighterPhase === "attack";
-      for (const turret of ship.turrets) {
-        let turretTarget = target;
-
-        // Spinal guns and torpedoes ignore strike crafts if capitals exist
-        if (turret.isSpinalGimbal || turret.weapon.range > 800) {
-          const capitalEnemies = aliveShips.filter(
-            (e) =>
-              e.team !== ship.team && (e.hullClass === "cruiser" || e.hullClass === "battleship"),
-          );
-          if (capitalEnemies.length > 0) {
-            turretTarget = capitalEnemies.reduce((prev, curr) =>
-              vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
-            );
-          } else {
-            turretTarget = target;
-          }
-        }
-
-        let targetPos = turretTarget ? turretTarget.pos : null;
-
-        // POINT DEFENSE (CORVETTES):
-        // 1. Prioritize hostile incoming missiles in range (+10% buffer)
-        // 2. If NO missiles exist, prioritize enemy strike crafts / nearest ships in range
-        // 3. If NO enemies in range, remain idle (no blind fire at infinite range!)
-        if (turret.weapon.weaponType === "point_defense") {
-          const maxPDRange = turret.weapon.range * 1.1;
-          const missile = this.findMissileTarget(ship, maxPDRange);
-          if (missile) {
-            targetPos = missile.pos;
-            turretTarget = null;
-          } else {
-            // Strike craft take priority over other hulls, regardless of distance.
-            const enemiesInRange = aliveShips.filter(
-              (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) <= maxPDRange,
-            );
-            if (enemiesInRange.length > 0) {
-              const strikeCraft = enemiesInRange.filter((e) => e.hullClass === "strike_craft");
-              const candidates = strikeCraft.length > 0 ? strikeCraft : enemiesInRange;
-              const nearestEnemy = candidates.reduce((prev, curr) =>
-                vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
-              );
-              targetPos = nearestEnemy.pos;
-              turretTarget = nearestEnemy;
-            } else {
-              // Out of range: keep guns ready but do not engage
-              targetPos = null;
-              turretTarget = null;
-            }
-          }
-        }
-
-        let aimPos = targetPos;
-        // Lead targeting for ballistic/projectile weapons
-        if (turretTarget && targetPos && turret.weapon.projectileSpeed > 0) {
-          const targetSpeedSq = vecDot(turretTarget.velocity, turretTarget.velocity);
-          if (targetSpeedSq > 25) {
-            const dist = vecDistance(ship.pos, targetPos);
-            const leadTime = dist / turret.weapon.projectileSpeed;
-            aimPos = vecAdd(targetPos, vecScale(turretTarget.velocity, leadTime));
-          }
-        }
-
-        const isAimed = this.updateTurretAim(turret, dt, ship, aimPos);
-        const maxEngagementRange = turret.weapon.range * 1.1;
-        const inEngagementRange = Boolean(
-          targetPos && vecDistance(ship.pos, targetPos) <= maxEngagementRange,
-        );
-        if (canFire && isAimed && inEngagementRange && turret.cooldownTimer <= 0 && aimPos) {
-          this.fireWeapon(ship, turret, aimPos, turretTarget);
-        }
-      }
+      movements.set(ship.id, { pos: ship.pos, velocity: ship.velocity, heading: ship.heading });
+      Object.assign(ship, previous);
     }
-
-    // 3. Resolve Shield-to-Shield Physical Repulsion (Zero shield clipping between capitals!)
+    for (const ship of aliveShips) Object.assign(ship, movements.get(ship.id));
     this.resolveShipCollisions(aliveShips, dt);
     this.resolveCruiserClearance(aliveShips);
+
+    // All mounts decide at one common firing instant, before simultaneous shots resolve.
+    const shots: Array<() => void> = [];
+    for (const ship of aliveShips) {
+      if (!ship.isAlive) continue;
+      for (const turret of ship.turrets) {
+        const solution = acquireMountTarget(
+          ship,
+          turret,
+          navigationTargets.get(ship.id) ?? null,
+          aliveShips,
+          this.projectiles,
+        );
+        turret.currentTargetId = solution?.target.id ?? null;
+        turret.currentTargetKind = solution?.kind;
+        const aimed = this.updateTurretAim(turret, dt, ship, solution?.aim ?? null);
+        if (!solution || !aimed || turret.cooldownTimer > 0) continue;
+        const targetShip = solution.kind === "ship" ? (solution.target as ShipState) : null;
+        shots.push(() => this.fireWeapon(ship, turret, solution.aim, targetShip));
+      }
+    }
+    for (const fire of shots) fire();
 
     // 4. Projectiles & Collision Resolution
     this.updateProjectiles(dt, aliveShips);
@@ -273,7 +234,7 @@ export class ClientCombatSimulation {
     order: GroupOrder,
     aliveShips: ShipState[],
   ): ShipState | null {
-    let enemies = aliveShips.filter((s) => s.team !== ship.team);
+    let enemies = aliveShips.filter((s) => s.isAlive && s.team !== ship.team);
     if (enemies.length === 0) return null;
 
     if (ship.hullClass === "strike_craft") {
@@ -284,11 +245,33 @@ export class ClientCombatSimulation {
       if (wingTarget) return wingTarget;
     }
 
-    if (ship.hullClass === "battleship" || order.priority === "capitals") {
+    if (
+      ship.hullClass === "battleship" ||
+      ship.hullClass === "cruiser" ||
+      order.priority === "capitals"
+    ) {
       const capitals = enemies.filter(
         (s) => s.hullClass === "cruiser" || s.hullClass === "battleship",
       );
       if (capitals.length > 0) enemies = capitals;
+      const mainGun = ship.turrets.find(
+        (t) => t.isSpinalGimbal || t.weapon.weaponType === "missile",
+      );
+      const firedTarget = enemies.find((e) => e.id === mainGun?.currentTargetId);
+      if (
+        firedTarget &&
+        mainGun?.lastFiredTime !== undefined &&
+        mainGun.lastFiredTime !== ship.lastManeuverShot
+      )
+        return firedTarget;
+      // Losing the spinal lock during a broadside turn must not reset the navigation objective.
+      const objective = enemies.find((e) => e.id === ship.maneuverTargetId);
+      if (objective) return objective;
+    } else if (order.priority === "screen_and_defend") {
+      const anchor = aliveShips.find((s) => s.id === ship.flagshipId && s.isAlive) ?? ship;
+      return enemies.reduce((a, b) =>
+        vecDistanceSq(anchor.pos, a.pos) < vecDistanceSq(anchor.pos, b.pos) ? a : b,
+      );
     } else if (order.priority === "strike_craft") {
       const crafts = enemies.filter(
         (s) => s.hullClass === "strike_craft" || s.hullClass === "corvette",
@@ -303,20 +286,6 @@ export class ClientCombatSimulation {
     }
 
     return enemies.reduce((prev, curr) =>
-      vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
-    );
-  }
-
-  private findMissileTarget(ship: ShipState, maxRange: number): ProjectileState | null {
-    const hostileMissiles = this.projectiles.filter(
-      (p) =>
-        p.ownerTeam !== ship.team &&
-        p.weaponType === "missile" &&
-        vecDistance(ship.pos, p.pos) <= maxRange,
-    );
-    if (hostileMissiles.length === 0) return null;
-
-    return hostileMissiles.reduce((prev, curr) =>
       vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
     );
   }
@@ -366,15 +335,35 @@ export class ClientCombatSimulation {
   }
 
   private fighterNeedsCover(ship: ShipState): boolean {
-    return ship.hullCurrent < ship.hullMax * 0.4 || (ship.shieldMax > 0 && ship.shieldCurrent < 10);
+    return ship.recoveryStarted !== undefined;
   }
 
   private fighterRallySlot(wing: FighterWing, ship: ShipState): Vector2 {
     const slot = ship.wingSlot ?? 0;
-    return vecAdd(wing.rally, rotatePoint([-Math.abs(slot) * 22, slot * 28], wing.heading));
+    return vecAdd(wing.rally, rotatePoint([-Math.abs(slot) * 30, slot * 50], wing.heading));
   }
 
   private updateFighterWings(aliveShips: ShipState[]): void {
+    for (const ship of aliveShips) {
+      if (ship.hullClass !== "strike_craft") continue;
+      dogfightTarget(ship, aliveShips, this.timeElapsed);
+      const hullRetreat =
+        ship.hullCurrent < ship.hullMax * 0.4 &&
+        ship.hullCurrent < (ship.recoveredHull ?? Infinity);
+      if (
+        ship.recoveryStarted === undefined &&
+        this.timeElapsed >= (ship.nextRecoveryAt ?? 0) &&
+        (hullRetreat || ship.shieldCurrent < 10)
+      )
+        ship.recoveryStarted = this.timeElapsed;
+      if (ship.recoveryStarted !== undefined && this.timeElapsed - ship.recoveryStarted >= 4) {
+        ship.recoveredHull = ship.hullCurrent;
+        ship.recoveryStarted = undefined;
+        ship.nextRecoveryAt = this.timeElapsed + 4;
+      } else if (ship.recoveryStarted !== undefined && !hullRetreat && ship.shieldCurrent > 30) {
+        ship.recoveryStarted = undefined;
+      }
+    }
     for (const wing of this.fighterWings) {
       const members = aliveShips.filter((ship) => wing.members.includes(ship.id));
       if (members.length === 0) continue;
@@ -394,7 +383,7 @@ export class ClientCombatSimulation {
         wing.targetId = target?.id ?? null;
         wing.phase = "staging";
         wing.phaseStarted = this.timeElapsed;
-        for (const ship of members) ship.fighterPhase = "staging";
+        wing.assembledAt = undefined;
         if (!target) continue;
         const anchor = aliveShips.find(
           (ship) =>
@@ -407,22 +396,23 @@ export class ClientCombatSimulation {
           Math.atan2(approach[1], approach[0]) +
           (wing.index % 2 === 0 ? 1 : -1) * (0.15 + Math.floor(wing.index / 2) * 0.18);
       }
-      wing.rally = vecAdd(target.pos, rotatePoint([-FIGHTER_STANDOFF, 0], wing.heading));
-      const healthy = members.filter((ship) => !this.fighterNeedsCover(ship));
-      const assembled =
-        healthy.length > 0 &&
-        healthy.every(
-          (ship) =>
-            vecDistance(ship.pos, this.fighterRallySlot(wing, ship)) <= WING_RALLY_TOLERANCE,
-        );
+      wing.rally = safeRally(target, wing.heading, members, aliveShips, FIGHTER_STANDOFF);
+      const healthy = members.filter(
+        (ship) => !this.fighterNeedsCover(ship) && !ship.dogfightTargetId,
+      );
+      const ready = healthy.filter(
+        (ship) => vecDistance(ship.pos, this.fighterRallySlot(wing, ship)) <= WING_RALLY_TOLERANCE,
+      );
+      if (ready.length > 0 && wing.assembledAt === undefined) wing.assembledAt = this.timeElapsed;
+      const assembled = healthy.length > 0 && ready.length / healthy.length >= 0.6;
       const elapsed = this.timeElapsed - wing.phaseStarted;
       let phase = wing.phase;
       if (
         phase === "staging" &&
-        assembled &&
+        healthy.length > 0 &&
+        (assembled || this.timeElapsed - (wing.assembledAt ?? wing.phaseStarted) >= 2.5) &&
         this.timeElapsed >= wing.launchAt &&
-        this.timeElapsed >= (this.nextWingLaunch.get(wing.team) ?? 0) &&
-        healthy.every((ship) => ship.turrets.every((turret) => turret.cooldownTimer <= 0.2))
+        this.timeElapsed >= (this.nextWingLaunch.get(wing.team) ?? 0)
       ) {
         phase = "attack";
         this.nextWingLaunch.set(wing.team, this.timeElapsed + WING_WAVE_DELAY);
@@ -431,28 +421,26 @@ export class ClientCombatSimulation {
         (healthy.length === 0 ||
           elapsed >= 6 ||
           healthy.some((ship) => vecDistance(ship.pos, target.pos) <= FIGHTER_EGRESS_DISTANCE) ||
-          healthy.every(
-            (ship) =>
-              ship.turrets.length > 0 &&
-              ship.turrets.every(
-                (turret) => (turret.lastFiredTime ?? -Infinity) >= wing.phaseStarted,
-              ),
-          ))
+          healthy.every((ship) => (ship.lastMissionShotTime ?? -Infinity) >= wing.phaseStarted))
       ) {
         phase = "egress";
       } else if (phase === "egress" && elapsed >= 1.4) {
         phase = "rejoin";
-      } else if (phase === "rejoin" && assembled) {
+      } else if (phase === "rejoin" && (assembled || elapsed >= 2.5)) {
         phase = "staging";
         wing.launchAt = this.timeElapsed + WING_WAVE_DELAY;
       }
       if (phase !== wing.phase) {
         wing.phase = phase;
         wing.phaseStarted = this.timeElapsed;
-        for (const ship of members) {
-          ship.fighterPhase = this.fighterNeedsCover(ship) ? "egress" : phase;
-        }
+        wing.assembledAt = undefined;
       }
+      for (const ship of members)
+        ship.fighterPhase = this.fighterNeedsCover(ship)
+          ? "recover"
+          : ship.dogfightTargetId
+            ? "intercept"
+            : wing.phase;
     }
   }
 
@@ -505,15 +493,7 @@ export class ClientCombatSimulation {
     const isDamaged = this.fighterNeedsCover(ship);
     const wing = this.fighterWings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
     if (!wing) return { heading: ship.heading, speed: 0 };
-    let phase = ship.fighterPhase ?? "staging";
-
-    // Emergency cover overrides formation intent in every phase.
-    if (isDamaged) {
-      phase = "egress";
-    } else if (phase === "egress" && wing.phase !== "egress") {
-      phase = "rejoin";
-    }
-    ship.fighterPhase = phase;
+    const phase = ship.fighterPhase ?? wing.phase;
 
     // 2. Shared corridor intent; local steering remains free to break formation.
     let intentTarget: Vector2;
@@ -521,6 +501,23 @@ export class ClientCombatSimulation {
     const rallySlot = this.fighterRallySlot(wing, ship);
 
     switch (phase) {
+      case "intercept": {
+        const opponent = aliveShips.find((s) => s.id === ship.dogfightTargetId) ?? target;
+        const distance = vecDistance(ship.pos, opponent.pos);
+        const n = vecNormalize(vecSub(opponent.pos, ship.pos));
+        const pursuit = vecAdd(
+          opponent.pos,
+          vecScale(opponent.velocity, Math.min(0.8, distance / ship.maxSpeed)),
+        );
+        intentTarget =
+          distance < 160
+            ? vecAdd(
+                ship.pos,
+                vecAdd(vecScale(n, distance < 70 ? -100 : 50), vecScale([-n[1], n[0]], 180)),
+              )
+            : pursuit;
+        break;
+      }
       case "staging":
       case "rejoin": {
         intentTarget = rallySlot;
@@ -528,11 +525,12 @@ export class ClientCombatSimulation {
       }
 
       case "attack": {
-        intentTarget = vecAdd(target.pos, rotatePoint([target.size + 35, slot * 28], wing.heading));
+        intentTarget = vecAdd(target.pos, rotatePoint([target.size + 35, slot * 50], wing.heading));
         break;
       }
 
-      case "egress": {
+      case "egress":
+      case "recover": {
         const peelSign = wing.index % 2 === 0 ? 1 : -1;
         intentTarget = safeHaven
           ? vecAdd(safeHaven.pos, rotatePoint([-safeHaven.size - 55, slot * 28], wing.heading))
@@ -542,9 +540,11 @@ export class ClientCombatSimulation {
     }
 
     const toIntent = vecSub(intentTarget, ship.pos);
-    const intentDir = vecNormalize(toIntent);
+    const laneAvoidance = spinalEscape(ship, aliveShips, this.projectiles, this.timeElapsed);
+    const avoid = vecAdd(laneAvoidance, separation(ship, aliveShips));
+    const intentDir = vecNormalize(vecAdd(vecScale(vecNormalize(toIntent), ship.maxSpeed), avoid));
 
-    // 3. 16-Sector Reachable Context Steering (Interest vs Danger maps)
+    // Score reachable trajectories rather than hypothetical instant maximum-speed turns.
     const SECTORS = 16;
     let bestSector = ship.lastSelectedSector ?? 0;
     let maxScore = -Infinity;
@@ -552,7 +552,18 @@ export class ClientCombatSimulation {
 
     for (let k = 0; k < SECTORS; k++) {
       const sectorAngle = (k * 2 * Math.PI) / SECTORS;
-      const candidateDir: Vector2 = [Math.cos(sectorAngle), Math.sin(sectorAngle)];
+      const reachable =
+        ship.heading +
+        clamp(
+          normalizeAngle(sectorAngle - ship.heading),
+          -ship.turnRate * 0.5,
+          ship.turnRate * 0.5,
+        );
+      const candidateDir: Vector2 = [Math.cos(reachable), Math.sin(reachable)];
+      const candidateVel = vecScale(
+        candidateDir,
+        Math.min(ship.maxSpeed, vecDistance([0, 0], ship.velocity) + 120),
+      );
 
       // A. Interest score: progress towards intent goal
       const interestScore = vecDot(candidateDir, intentDir);
@@ -560,13 +571,18 @@ export class ClientCombatSimulation {
       // B. Threat & missile danger: predict closest approach of incoming missiles
       let dangerScore = 0;
       for (const p of this.projectiles) {
-        if (p.ownerTeam === ship.team || p.weaponType !== "missile") continue;
+        if (
+          p.ownerTeam === ship.team ||
+          (p.weaponType !== "missile" && p.weaponType !== "railgun") ||
+          p.hp <= 0 ||
+          p.lifetime <= 0
+        )
+          continue;
         const r = vecSub(ship.pos, p.pos);
         const distToMissile = vecDistance([0, 0], r);
         if (distToMissile > 240) continue;
 
         // Relative velocity if ship takes this candidate heading
-        const candidateVel = vecScale(candidateDir, ship.maxSpeed);
         const u = vecSub(candidateVel, p.velocity);
         const uSq = vecDot(u, u) + 1e-4;
         const tStar = clamp(-vecDot(r, u) / uSq, 0, 1.4);
@@ -577,6 +593,32 @@ export class ClientCombatSimulation {
         if (tStar > 0.04 && dStar < 75) {
           const missileDanger = ((75 - dStar) / 75) * (1 - tStar / 1.4) * 4.5;
           dangerScore += missileDanger;
+        }
+      }
+
+      for (const obstacle of aliveShips) {
+        if (obstacle.id === ship.id) continue;
+        const relative = vecSub(obstacle.pos, ship.pos);
+        const velocity = vecSub(obstacle.velocity, candidateVel);
+        const t = clamp(
+          -vecDot(relative, velocity) / Math.max(1, vecDot(velocity, velocity)),
+          0,
+          1,
+        );
+        const distance = vecDistance([0, 0], vecAdd(relative, vecScale(velocity, t)));
+        const clearance = (ship.size + obstacle.size) * 1.4 + 40;
+        if (distance < clearance) dangerScore += 6 * (1 - distance / clearance);
+        if (
+          obstacle.team !== ship.team &&
+          (phase === "staging" || phase === "rejoin" || phase === "recover")
+        ) {
+          const pdRange = Math.max(
+            0,
+            ...obstacle.turrets
+              .filter((turret) => turret.weapon.weaponType === "point_defense")
+              .map((turret) => turret.weapon.range + 80),
+          );
+          if (distance < pdRange) dangerScore += 3 * (1 - distance / pdRange);
         }
       }
 
@@ -626,7 +668,12 @@ export class ClientCombatSimulation {
     ship.lastSelectedSector = bestSector;
     const finalHeading = (bestSector * 2 * Math.PI) / SECTORS;
     const speed =
-      maxDangerObserved > 0.4 || phase === "attack" || phase === "egress"
+      maxDangerObserved > 0.4 ||
+      vecDistance([0, 0], avoid) > 1 ||
+      phase === "attack" ||
+      phase === "egress" ||
+      phase === "intercept" ||
+      phase === "recover"
         ? ship.maxSpeed
         : Math.min(ship.maxSpeed * 0.7, vecDistance(ship.pos, intentTarget) * 1.5);
 
@@ -641,270 +688,31 @@ export class ClientCombatSimulation {
   ): void {
     let targetHeading = ship.heading;
     let desiredSpeed = 0;
-    let cruiserVelocity: Vector2 | null = null;
-    let corvetteVelocity: Vector2 | null = null;
-    const flagship = aliveShips.find((s) => s.id === ship.flagshipId && s.team === ship.team);
-
-    // 1. Independent Escorts (Corvettes with or without flagship)
-    if (ship.hullClass === "corvette" && flagship) {
-      const escorts = aliveShips.filter(
-        (s) => s.team === ship.team && s.hullClass === "corvette" && s.flagshipId === flagship.id,
+    let thrusterVelocity: Vector2 | null = null;
+    if (ship.hullClass === "corvette") {
+      const orbit = escortVelocity(ship, target, aliveShips);
+      const avoid = vecAdd(
+        separation(ship, aliveShips),
+        spinalEscape(ship, aliveShips, this.projectiles, this.timeElapsed),
       );
-      const index = escorts.findIndex((s) => s.id === ship.id);
-      const slotAngle = flagship.heading + (index - (escorts.length - 1) / 2) * 0.45;
-      const slot: Vector2 = [
-        flagship.pos[0] + 260 * Math.cos(slotAngle),
-        flagship.pos[1] + 260 * Math.sin(slotAngle),
-      ];
-      const toSlot = vecSub(slot, ship.pos);
-      corvetteVelocity = vecAdd(flagship.velocity, vecScale(toSlot, 0.6));
-      const speed = vecDistance([0, 0], corvetteVelocity);
-      if (speed > ship.maxSpeed) {
-        corvetteVelocity = vecScale(corvetteVelocity, ship.maxSpeed / speed);
-      }
-
-      const missile = this.findMissileTarget(ship, 360);
-      const strikeCraft = aliveShips.filter(
-        (s) =>
-          s.team !== ship.team &&
-          s.hullClass === "strike_craft" &&
-          vecDistance(ship.pos, s.pos) <= 360,
-      );
-      const threat =
-        missile ??
-        (strikeCraft.length > 0
-          ? strikeCraft.reduce((prev, curr) =>
-              vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
-            )
-          : null);
-      targetHeading = slotAngle;
-      if (vecDistance(ship.pos, flagship.pos) > 360) {
-        // Regain the screen before turning outward to engage threats.
-        targetHeading = Math.atan2(toSlot[1], toSlot[0]);
-      } else if (threat) {
-        const toThreat = vecSub(threat.pos, ship.pos);
-        targetHeading = Math.atan2(toThreat[1], toThreat[0]);
-      }
-    } else if (
-      ship.hullClass !== "corvette" &&
-      ship.hullClass !== "strike_craft" &&
-      ship.flagshipId &&
-      aliveShips.some((s) => s.id === ship.flagshipId)
-    ) {
-      const flagship = aliveShips.find((s) => s.id === ship.flagshipId);
-      if (flagship) {
-        const toFlagship = vecSub(ship.pos, flagship.pos);
-        const distFromFlagship = vecDistance(ship.pos, flagship.pos);
-
-        const nearbyThreat = aliveShips.find(
-          (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) < 320,
-        );
-
-        if (nearbyThreat && distFromFlagship < 280) {
-          const toThreat = vecSub(nearbyThreat.pos, ship.pos);
-          targetHeading = Math.atan2(toThreat[1], toThreat[0]);
-          desiredSpeed = ship.maxSpeed * 0.8;
-        } else if (distFromFlagship > 250) {
-          targetHeading = Math.atan2(-toFlagship[1], -toFlagship[0]);
-          desiredSpeed = ship.maxSpeed;
-        } else if (distFromFlagship < 130) {
-          targetHeading = Math.atan2(toFlagship[1], toFlagship[0]);
-          desiredSpeed = ship.maxSpeed * 0.5;
-        } else {
-          targetHeading = flagship.heading + Math.sin(this.timeElapsed * 0.8) * 0.25;
-          desiredSpeed = Math.max(ship.maxSpeed * 0.4, vecDistance([0, 0], flagship.velocity));
-        }
-      }
+      thrusterVelocity = limitVelocity(vecAdd(orbit, avoid), ship.maxSpeed);
+      targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
+    } else if (target && ship.hullClass === "strike_craft") {
+      const maneuver = this.updateFighterCycle(ship, target, dt, aliveShips);
+      targetHeading = maneuver.heading;
+      desiredSpeed = maneuver.speed;
     } else if (target) {
-      // 2. Active Combat Maneuvers
-      const toTarget = vecSub(target.pos, ship.pos);
-      const dist = vecDistance(ship.pos, target.pos);
-      const angleToTarget = Math.atan2(toTarget[1], toTarget[0]);
-
-      if (ship.hullClass === "battleship") {
-        const spinalTurret = ship.turrets.find((t) => t.isSpinalGimbal);
-        const spinalReady = spinalTurret && spinalTurret.cooldownTimer <= 0.8;
-        const optimalCombatDist = 600;
-
-        const friendlyBattleships = aliveShips.filter(
-          (s) => s.team === ship.team && s.hullClass === "battleship",
-        );
-        const bsIndex = friendlyBattleships.findIndex((s) => s.id === ship.id);
-        const totalBs = Math.max(1, friendlyBattleships.length);
-        const bsSpread = totalBs > 1 ? (bsIndex - (totalBs - 1) / 2) * 0.22 : 0;
-
-        if (dist < optimalCombatDist * 0.75) {
-          // Reverse thrust to keep stand-off distance
-          targetHeading = angleToTarget;
-          desiredSpeed = -ship.maxSpeed * 0.5;
-        } else if (spinalReady || dist > optimalCombatDist * 1.2) {
-          targetHeading = normalizeAngle(angleToTarget + bsSpread);
-          desiredSpeed = dist > optimalCombatDist ? ship.maxSpeed * 0.6 : 0;
-        } else {
-          const relAngle = normalizeAngle(angleToTarget - ship.heading);
-          const chosenBroadside = relAngle < 0 ? -Math.PI * 0.48 : Math.PI * 0.48;
-          targetHeading = normalizeAngle(angleToTarget + chosenBroadside);
-          desiredSpeed = ship.maxSpeed * 0.35;
-        }
-
-        // Mutual repulsion between friendly battleships to prevent clumping
-        if (friendlyBattleships.length > 1) {
-          for (const peer of friendlyBattleships) {
-            if (peer.id === ship.id) continue;
-            const bsDist = vecDistance(ship.pos, peer.pos);
-            const BS_CLEARANCE = 150;
-            if (bsDist < BS_CLEARANCE) {
-              const pushAway: Vector2 =
-                bsDist > 1e-4
-                  ? vecScale(vecSub(ship.pos, peer.pos), 1 / bsDist)
-                  : [ship.id < peer.id ? 1 : -1, 0];
-              const pushAngle = Math.atan2(pushAway[1], pushAway[0]);
-              targetHeading = normalizeAngle(targetHeading * 0.7 + pushAngle * 0.3);
-            }
-          }
-        }
-      } else if (ship.hullClass === "cruiser") {
-        // Navigate geometric arc slots with lateral thrusters while keeping the prow aimed.
-        const friendlyCruisers = aliveShips
-          .filter((s) => s.team === ship.team && s.hullClass === "cruiser")
-          .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-        const cruiserIndex = friendlyCruisers.findIndex((s) => s.id === ship.id);
-        const slotAngle = angleToTarget + (cruiserIndex - (friendlyCruisers.length - 1) / 2) * 0.38;
-        const slot: Vector2 = [
-          target.pos[0] - CRUISER_STANDOFF * Math.cos(slotAngle),
-          target.pos[1] - CRUISER_STANDOFF * Math.sin(slotAngle),
-        ];
-        cruiserVelocity = vecScale(vecSub(slot, ship.pos), 0.6);
-
-        for (const peer of friendlyCruisers) {
-          if (peer.id === ship.id) continue;
-          const distance = vecDistance(ship.pos, peer.pos);
-          if (distance >= CRUISER_CLEARANCE) continue;
-          const away: Vector2 =
-            distance > 1e-6
-              ? vecScale(vecSub(ship.pos, peer.pos), 1 / distance)
-              : [ship.id < peer.id ? 1 : -1, 0];
-          cruiserVelocity = vecAdd(
-            cruiserVelocity,
-            vecScale(away, ship.maxSpeed * (1 - distance / CRUISER_CLEARANCE)),
-          );
-        }
-
-        // Continuous radial arrival avoids a thrust sign switch at the 360u reverse threshold.
-        const toward: Vector2 = [Math.cos(angleToTarget), Math.sin(angleToTarget)];
-        const radialSpeed = vecDot(cruiserVelocity, toward);
-        const standoffSpeed = clamp(
-          (dist - CRUISER_STANDOFF) * 0.6,
-          -ship.maxSpeed * 0.5,
-          ship.maxSpeed * 0.85,
-        );
-        cruiserVelocity = vecAdd(
-          cruiserVelocity,
-          vecScale(toward, Math.min(radialSpeed, standoffSpeed) - radialSpeed),
-        );
-        const speed = vecDistance([0, 0], cruiserVelocity);
-        if (speed > ship.maxSpeed * 0.85) {
-          cruiserVelocity = vecScale(cruiserVelocity, (ship.maxSpeed * 0.85) / speed);
-        }
-        targetHeading = angleToTarget;
-      } else if (ship.hullClass === "corvette") {
-        const peers = aliveShips.filter(
-          (s) =>
-            s.team === ship.team &&
-            s.hullClass === "corvette" &&
-            !aliveShips.some((leader) => leader.id === s.flagshipId && leader.team === s.team),
-        );
-        const index = peers.findIndex((s) => s.id === ship.id);
-        targetHeading = angleToTarget + Math.PI * 0.4 + (index - (peers.length - 1) / 2) * 0.42;
-        desiredSpeed = ship.maxSpeed * 0.75;
-        let direction: Vector2 = [Math.cos(targetHeading), Math.sin(targetHeading)];
-        for (const peer of aliveShips) {
-          if (peer.id === ship.id || peer.team !== ship.team || peer.hullClass !== "corvette")
-            continue;
-          const distance = vecDistance(ship.pos, peer.pos);
-          if (distance >= 65) continue;
-          const away: Vector2 =
-            distance > 1e-6
-              ? vecScale(vecSub(ship.pos, peer.pos), 1 / distance)
-              : [ship.id < peer.id ? 1 : -1, 0];
-          direction = vecAdd(direction, vecScale(away, 2 * (1 - distance / 65)));
-        }
-        targetHeading = Math.atan2(direction[1], direction[0]);
-      } else if (ship.hullClass === "strike_craft") {
-        // Staggered staged attack runs: staging -> attack -> egress -> rejoin
-        const maneuver = this.updateFighterCycle(ship, target, dt, aliveShips);
-        targetHeading = maneuver.heading;
-        desiredSpeed = maneuver.speed;
-      } else {
-        targetHeading = angleToTarget;
-        desiredSpeed = ship.maxSpeed * 0.6;
-      }
+      const order = this.orders.get(ship.groupId) ?? {
+        groupId: ship.groupId,
+        priority: "nearest",
+        stance: "optimal_range",
+      };
+      const intent = capitalIntent(ship, target, aliveShips, order);
+      targetHeading = intent.heading;
+      thrusterVelocity = intent.velocity;
     }
 
-    // Friendly ship spatial avoidance (breaks up conga lines & collisions between teammates)
-    const nearbyFriendly = aliveShips.find((other) => {
-      // Cruiser thrusters and physical clearance handle avoidance without changing bow aim.
-      if (cruiserVelocity || corvetteVelocity) return false;
-      if (other.id === ship.id || other.team !== ship.team) return false;
-      if (ship.hullClass === "corvette" && other.hullClass === "corvette" && target) return false;
-      // Fighter peers already use all-neighbor separation during non-attack maneuvers.
-      if (
-        ship.hullClass === "strike_craft" &&
-        other.hullClass === "strike_craft" &&
-        target &&
-        ship.fighterPhase !== "attack"
-      ) {
-        return false;
-      }
-      const d = vecDistance(ship.pos, other.pos);
-      return d < (ship.size + other.size) * 1.35;
-    });
-    if (nearbyFriendly) {
-      const avoidVec = vecSub(ship.pos, nearbyFriendly.pos);
-      const pushAngle = Math.atan2(avoidVec[1], avoidVec[0]);
-      targetHeading = normalizeAngle(targetHeading * 0.65 + pushAngle * 0.35);
-      desiredSpeed = Math.max(desiredSpeed * 0.5, ship.maxSpeed * 0.2);
-    }
-
-    // Deadlock detection & resolution: break up head-on jams, parallel lines & "triangles of fools"
-    const isCapital = ship.hullClass === "battleship" || ship.hullClass === "cruiser";
-    if (isCapital) {
-      const collidingCapital = aliveShips.find(
-        (other) =>
-          other.id !== ship.id &&
-          (other.hullClass === "battleship" || other.hullClass === "cruiser") &&
-          vecDistance(ship.pos, other.pos) < (ship.size + other.size) * 1.35,
-      );
-
-      const forwardSpeed = vecDot(ship.velocity, [Math.cos(ship.heading), Math.sin(ship.heading)]);
-      const isStuck = collidingCapital && Math.abs(forwardSpeed) < 15.0;
-
-      if (isStuck) {
-        ship.deadlockTimer = (ship.deadlockTimer ?? 0) + dt;
-        if (ship.deadlockTimer > 0.8) {
-          if (ship.deadlockBypassAngle === undefined) {
-            const side = ship.id < collidingCapital.id ? 1 : -1;
-            ship.deadlockBypassAngle = side * Math.PI * 0.6;
-          }
-          const bypassAngle = normalizeAngle(ship.heading + ship.deadlockBypassAngle);
-          const bypassDir: Vector2 = [Math.cos(bypassAngle), Math.sin(bypassAngle)];
-          if (cruiserVelocity) {
-            cruiserVelocity = vecAdd(cruiserVelocity, vecScale(bypassDir, ship.maxSpeed * 0.9));
-          } else {
-            targetHeading = bypassAngle;
-            desiredSpeed = ship.maxSpeed * 0.7;
-          }
-        }
-      } else {
-        ship.deadlockTimer = Math.max(0, (ship.deadlockTimer ?? 0) - dt * 2);
-        if (ship.deadlockTimer <= 0) {
-          ship.deadlockBypassAngle = undefined;
-        }
-      }
-    }
-
-    // 3. Smooth Turn
-    const turnRate = ship.hullClass === "battleship" ? 0.75 : ship.turnRate;
+    const turnRate = ship.turnRate;
     const angleDiff = normalizeAngle(targetHeading - ship.heading);
     const turnStep = clamp(angleDiff, -turnRate * dt, turnRate * dt);
     ship.heading = normalizeAngle(ship.heading + turnStep);
@@ -916,21 +724,7 @@ export class ClientCombatSimulation {
     const currentForwardSpeed = vecDot(ship.velocity, forwardVector);
     const currentLateralSpeed = vecDot(ship.velocity, rightVector);
 
-    if (cruiserVelocity && target) {
-      const toTarget = vecSub(target.pos, ship.pos);
-      const bowError = normalizeAngle(Math.atan2(toTarget[1], toTarget[0]) - ship.heading);
-      // Brake during initial acquisition instead of reversing in the wrong direction.
-      const alignment = clamp(
-        1 - Math.max(0, Math.abs(bowError) - CRUISER_BOW_LIMIT) / CRUISER_BOW_LIMIT,
-        0,
-        1,
-      );
-      cruiserVelocity = vecScale(cruiserVelocity, alignment);
-      desiredSpeed = vecDot(cruiserVelocity, forwardVector);
-    }
-
-    if (corvetteVelocity) desiredSpeed = vecDot(corvetteVelocity, forwardVector);
-    const thrusterVelocity = corvetteVelocity ?? cruiserVelocity;
+    if (thrusterVelocity) desiredSpeed = vecDot(thrusterVelocity, forwardVector);
     const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
     const newLateralSpeed = thrusterVelocity
       ? currentLateralSpeed +
@@ -947,11 +741,12 @@ export class ClientCombatSimulation {
       vecScale(rightVector, newLateralSpeed),
     );
 
-    ship.velocity = newVelocity;
+    ship.velocity = limitVelocity(newVelocity, ship.maxSpeed);
     ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
   }
 
   private resolveShipCollisions(aliveShips: ShipState[], dt: number): void {
+    const contacts = new Set<string>();
     const getShipMass = (hull: string): number => {
       switch (hull) {
         case "battleship":
@@ -969,6 +764,7 @@ export class ClientCombatSimulation {
       for (let j = i + 1; j < aliveShips.length; j++) {
         const a = aliveShips[i];
         const b = aliveShips[j];
+        if (!a.isAlive || !b.isAlive) continue;
         if (a.team === b.team && a.hullClass === "cruiser" && b.hullClass === "cruiser") continue;
         const d = vecDistance(a.pos, b.pos);
 
@@ -977,9 +773,12 @@ export class ClientCombatSimulation {
         const shieldB = b.size * (b.shieldCurrent > 0 ? 1.4 : 1.0);
         const minBubbleDist = shieldA + shieldB;
         const repulsorZone = minBubbleDist + 20;
+        const pair = [a.id, b.id].sort().join(":");
+        if (d < repulsorZone + 5 && this.contacts.has(pair)) contacts.add(pair);
 
-        if (d < repulsorZone && d > 0.001) {
-          const normal = vecNormalize(vecSub(a.pos, b.pos));
+        if (d < repulsorZone) {
+          const normal: Vector2 =
+            d > 0.001 ? vecNormalize(vecSub(a.pos, b.pos)) : [0, a.id < b.id ? -1 : 1];
 
           const massA = getShipMass(a.hullClass);
           const massB = getShipMass(b.hullClass);
@@ -997,14 +796,15 @@ export class ClientCombatSimulation {
           }
 
           // Strong repulsor prevents capitals from overlapping bubbles
-          const repulsorForce = (repulsorZone - d) * 120;
-          a.pos = vecAdd(a.pos, vecScale(normal, repulsorForce * pushRatioA * dt));
-          b.pos = vecSub(b.pos, vecScale(normal, repulsorForce * pushRatioB * dt));
+          const correction = repulsorZone - d;
+          a.pos = vecAdd(a.pos, vecScale(normal, correction * pushRatioA));
+          b.pos = vecSub(b.pos, vecScale(normal, correction * pushRatioB));
 
           // Physical shield clash & ramming (hostile ships only!)
           if (d <= minBubbleDist && a.team !== b.team) {
-            const relSpeed = vecDistance(a.velocity, b.velocity);
-            const ramDamage = Math.max(30, relSpeed * 1.2);
+            const ramDamage =
+              (this.contacts.has(pair) ? 0 : Math.max(0, -closingSpeed) * 0.25) + 5 * dt;
+            contacts.add(pair);
 
             if (a.shieldCurrent > 0) a.shieldCurrent = Math.max(0, a.shieldCurrent - ramDamage);
             else a.hullCurrent = Math.max(0, a.hullCurrent - ramDamage * 1.5);
@@ -1017,26 +817,25 @@ export class ClientCombatSimulation {
               (b.hullClass === "battleship" || b.hullClass === "cruiser")
             ) {
               a.hullCurrent = 0;
-              a.isAlive = false;
             } else if (
               b.hullClass === "strike_craft" &&
               (a.hullClass === "battleship" || a.hullClass === "cruiser")
             ) {
               b.hullCurrent = 0;
-              b.isAlive = false;
             }
 
-            if (a.hullCurrent <= 0) a.isAlive = false;
-            if (b.hullCurrent <= 0) b.isAlive = false;
+            if (a.hullCurrent <= 0) this.destroyShip(a, b.team);
+            if (b.hullCurrent <= 0) this.destroyShip(b, a.team);
           }
         }
       }
     }
+    this.contacts = contacts;
   }
 
   private resolveCruiserClearance(aliveShips: ShipState[]): void {
     const cruisers = aliveShips
-      .filter((ship) => ship.hullClass === "cruiser")
+      .filter((ship) => ship.isAlive && ship.hullClass === "cruiser")
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
     // Revisit crowded chains because resolving one pair can compress a previous pair.
@@ -1074,9 +873,6 @@ export class ClientCombatSimulation {
     ship: ShipState,
     targetPos: [number, number] | null,
   ): boolean {
-    if (turret.cooldownTimer > 0) {
-      turret.cooldownTimer = Math.max(0, turret.cooldownTimer - dt);
-    }
     if (!targetPos) return false;
 
     const rotatedOffset = rotatePoint(turret.offset, ship.heading);
@@ -1089,14 +885,19 @@ export class ClientCombatSimulation {
     const [minArc, maxArc] = turret.baseArc;
     const clampedLocal = clamp(desiredLocal, minArc, maxArc);
 
-    const diff = normalizeAngle(clampedLocal - turret.currentLocalAngle);
+    const diff = fullCircle(turret)
+      ? normalizeAngle(clampedLocal - turret.currentLocalAngle)
+      : clampedLocal - turret.currentLocalAngle;
     const maxStep = turret.trackingSpeed * dt;
     const step = clamp(diff, -maxStep, maxStep);
-    turret.currentLocalAngle = normalizeAngle(turret.currentLocalAngle + step);
+    turret.currentLocalAngle = fullCircle(turret)
+      ? normalizeAngle(turret.currentLocalAngle + step)
+      : clamp(turret.currentLocalAngle + step, minArc, maxArc);
 
-    const isInArc = desiredLocal >= minArc && desiredLocal <= maxArc;
+    const isInArc = inMountArc(ship, turret, targetPos);
     const alignTolerance = turret.isSpinalGimbal ? 0.08 : 0.15;
-    const isAligned = Math.abs(diff) < alignTolerance;
+    const isAligned =
+      Math.abs(normalizeAngle(desiredLocal - turret.currentLocalAngle)) < alignTolerance;
     return isInArc && isAligned;
   }
 
@@ -1106,42 +907,31 @@ export class ClientCombatSimulation {
     targetPos: [number, number],
     targetShip: ShipState | null,
   ): void {
+    const spawnPos = mountPosition(ship, turret);
+    const isBeam = turret.weapon.projectileSpeed <= 0;
+    if (
+      isBeam &&
+      (!targetShip ||
+        vecDistance(spawnPos, targetShip.pos) > turret.weapon.range ||
+        !inMountArc(ship, turret, targetShip.pos))
+    )
+      return;
     turret.cooldownTimer = turret.weapon.cooldown;
     turret.lastFiredTime = this.timeElapsed; // Track fired time for UI cooldown bars!
-
-    const rotatedOffset = rotatePoint(turret.offset, ship.heading);
-    const spawnPos = vecAdd(ship.pos, rotatedOffset);
-
-    // Physical proximity-fused flak shell (Point Defense)
-    if (turret.weapon.weaponType === "point_defense") {
-      this.projectileCounter += 1;
-      const toTarget = vecNormalize(vecSub(targetPos, spawnPos));
-
-      this.projectiles.push({
-        id: `proj_${this.projectileCounter}`,
-        weaponType: "point_defense",
-        damage: FLAK_BLAST_DAMAGE,
-        ownerId: ship.id,
-        ownerTeam: ship.team,
-        pos: spawnPos,
-        velocity: vecScale(toTarget, FLAK_PROJECTILE_SPEED),
-        lifetime: FLAK_PROJECTILE_LIFETIME,
-        targetId: targetShip ? targetShip.id : null,
-        hp: 25.0,
-        isFlakBurst: true,
-      });
-      return;
+    if (ship.hullClass === "strike_craft" && ship.fighterPhase === "attack") {
+      const wing = this.fighterWings.find(
+        (w) => w.team === ship.team && w.index === ship.wingIndex,
+      );
+      if (targetShip?.id === wing?.targetId && targetShip?.hullClass !== "strike_craft")
+        ship.lastMissionShotTime = this.timeElapsed;
     }
 
     // Hitscan (Beam Laser)
-    if (turret.weapon.projectileSpeed <= 0) {
-      if (targetShip?.isAlive) {
-        const dist = vecDistance(spawnPos, targetShip.pos);
-        if (dist <= turret.weapon.range) {
-          const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
-          this.applyDamage(targetShip, turret.weapon.damage, turret.weapon, ship.team);
-          if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 3.2);
-        }
+    if (isBeam) {
+      if (targetShip) {
+        const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
+        this.applyDamage(targetShip, turret.weapon.damage, turret.weapon, ship.team);
+        if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 3.2);
       }
       return;
     }
@@ -1150,114 +940,133 @@ export class ClientCombatSimulation {
     this.projectileCounter += 1;
     const toTarget = vecNormalize(vecSub(targetPos, spawnPos));
     const velocity = vecScale(toTarget, turret.weapon.projectileSpeed);
-    const lifetime = (turret.weapon.range / turret.weapon.projectileSpeed) * 1.25;
+    const lifetime =
+      turret.weapon.flak?.lifetime ?? (turret.weapon.range / turret.weapon.projectileSpeed) * 1.25;
 
     this.projectiles.push({
       id: `proj_${this.projectileCounter}`,
       weaponType: turret.weapon.weaponType,
+      weapon: {
+        ...turret.weapon,
+        flak: turret.weapon.flak ? { ...turret.weapon.flak } : undefined,
+      },
       damage: turret.weapon.damage,
       ownerId: ship.id,
       ownerTeam: ship.team,
       pos: spawnPos,
       velocity,
       lifetime,
-      targetId: targetShip ? targetShip.id : null,
+      targetId: turret.currentTargetId,
       hp: 25.0,
+      isFlakBurst: Boolean(turret.weapon.flak),
     });
     this.onProjectileFire?.(turret.weapon.weaponType, [...spawnPos]);
   }
 
   private updateProjectiles(dt: number, aliveShips: ShipState[]): void {
     const active: ProjectileState[] = [];
-
+    const starts = new Map(this.projectiles.map((p) => [p.id, p.pos]));
     for (const p of this.projectiles) {
-      const isFlak = p.isFlakBurst === true;
-      p.lifetime -= dt;
-
-      if (p.hp <= 0) continue;
-      if (p.lifetime <= 0) {
-        if (isFlak) this.detonateFlak(p, aliveShips);
-        continue;
-      }
-
-      p.pos = vecAdd(p.pos, vecScale(p.velocity, dt));
-
-      if (isFlak) {
-        if (this.shouldDetonateFlak(p, aliveShips)) {
-          this.detonateFlak(p, aliveShips);
-        } else {
-          active.push(p);
-        }
-        continue;
-      }
-
-      let hit = false;
+      if (p.hp <= 0 || p.lifetime <= 0) continue;
+      const step = Math.min(dt, p.lifetime);
+      const start = starts.get(p.id) ?? p.pos;
+      const end = vecAdd(start, vecScale(p.velocity, step));
+      const flak = p.weapon.flak;
+      let first = Infinity;
+      let victim: ShipState | null = null;
       for (const ship of aliveShips) {
-        if (ship.team === p.ownerTeam) continue;
-        if (vecDistance(p.pos, ship.pos) <= ship.size) {
-          const weaponDef: WeaponDefinition = {
-            weaponType: p.weaponType,
-            name: p.weaponType,
-            damage: p.damage,
-            cooldown: 1,
-            range: 1000,
-            projectileSpeed: 500,
-            trackingSpeed: 2,
-            shieldMultiplier: p.weaponType === "railgun" ? 1.6 : 1.0,
-            armorMultiplier: p.weaponType === "missile" ? 1.8 : 0.75,
-            hullMultiplier: p.weaponType === "plasma" ? 1.5 : 1.0,
-            cost: 100,
-          };
-          this.applyDamage(ship, p.damage, weaponDef, p.ownerTeam);
-          hit = true;
-          break;
+        if (!ship.isAlive || ship.team === p.ownerTeam) continue;
+        const old = this.previousPositions.get(ship.id) ?? ship.pos;
+        const finish = vecAdd(old, vecScale(vecSub(ship.pos, old), step / dt));
+        const t = sweptHit(
+          vecSub(start, old),
+          vecSub(end, finish),
+          ship.size + (flak?.triggerRadius ?? 0),
+        );
+        if (t !== null && t < first) {
+          first = t;
+          victim = ship;
         }
       }
-
-      if (!hit) {
+      if (flak) {
+        for (const missile of this.projectiles) {
+          if (
+            missile.weaponType !== "missile" ||
+            missile.ownerTeam === p.ownerTeam ||
+            missile.hp <= 0 ||
+            missile.lifetime <= 0
+          )
+            continue;
+          const old = starts.get(missile.id) ?? missile.pos;
+          const finish = vecAdd(old, vecScale(missile.velocity, Math.min(step, missile.lifetime)));
+          const t = sweptHit(vecSub(start, old), vecSub(end, finish), flak.triggerRadius);
+          if (t !== null && t < first) {
+            first = t;
+            victim = null;
+          }
+        }
+      }
+      p.lifetime -= step;
+      p.pos = vecAdd(start, vecScale(vecSub(end, start), Math.min(first, 1)));
+      if (flak && (Number.isFinite(first) || p.lifetime <= 1e-9)) {
+        const elapsed = step * Math.min(first, 1);
+        const positions = new Map<string, Vector2>();
+        for (const ship of aliveShips) {
+          const old = this.previousPositions.get(ship.id) ?? ship.pos;
+          positions.set(ship.id, vecAdd(old, vecScale(vecSub(ship.pos, old), elapsed / dt)));
+        }
+        for (const missile of this.projectiles)
+          positions.set(
+            missile.id,
+            vecAdd(starts.get(missile.id) ?? missile.pos, vecScale(missile.velocity, elapsed)),
+          );
+        this.detonateFlak(p, aliveShips, positions);
+      } else if (victim) {
+        this.applyDamage(victim, p.damage, p.weapon, p.ownerTeam);
+        p.hp = 0;
+      } else if (p.lifetime > 1e-9) {
         active.push(p);
       }
     }
-
-    this.projectiles = active;
+    this.projectiles = active.filter((p) => p.hp > 0);
   }
 
-  private shouldDetonateFlak(flak: ProjectileState, aliveShips: ShipState[]): boolean {
+  private detonateFlak(
+    flak: ProjectileState,
+    aliveShips: ShipState[],
+    positions: Map<string, Vector2>,
+  ): void {
+    const profile = flak.weapon.flak;
+    if (!profile) return;
     for (const ship of aliveShips) {
-      if (ship.team === flak.ownerTeam) continue;
-      if (vecDistance(flak.pos, ship.pos) <= ship.size + FLAK_PROXIMITY_RADIUS) return true;
+      if (!ship.isAlive || ship.team === flak.ownerTeam) continue;
+      const surface = Math.max(
+        0,
+        vecDistance(flak.pos, positions.get(ship.id) ?? ship.pos) - ship.size,
+      );
+      const falloff = clamp(
+        (profile.blastRadius - surface) / (profile.blastRadius - profile.triggerRadius),
+        0,
+        1,
+      );
+      if (falloff <= 0) continue;
+      const weapon =
+        ship.hullClass === "strike_craft"
+          ? { ...flak.weapon, shieldMultiplier: 1, armorMultiplier: 1, hullMultiplier: 1 }
+          : flak.weapon;
+      this.applyDamage(ship, flak.damage * falloff, weapon, flak.ownerTeam);
     }
 
     for (const other of this.projectiles) {
-      if (other.weaponType !== "missile" || other.ownerTeam === flak.ownerTeam) continue;
-      if (vecDistance(flak.pos, other.pos) <= FLAK_PROXIMITY_RADIUS) return true;
-    }
-
-    return false;
-  }
-
-  private detonateFlak(flak: ProjectileState, aliveShips: ShipState[]): void {
-    for (const ship of aliveShips) {
-      if (ship.team === flak.ownerTeam) continue;
-      if (vecDistance(flak.pos, ship.pos) <= FLAK_BLAST_RADIUS + ship.size) {
-        if (ship.hullClass === "strike_craft") {
-          const swarmWeapon: WeaponDefinition = {
-            ...FLAK_BLAST_WEAPON,
-            shieldMultiplier: 1.0,
-            armorMultiplier: 1.0,
-            hullMultiplier: 1.0,
-          };
-          this.applyDamage(ship, FLAK_BLAST_DAMAGE, swarmWeapon, flak.ownerTeam);
-        } else {
-          this.applyDamage(ship, FLAK_BLAST_DAMAGE, FLAK_BLAST_WEAPON, flak.ownerTeam);
-        }
-      }
-    }
-
-    for (const other of this.projectiles) {
-      if (other.weaponType !== "missile" || other.ownerTeam === flak.ownerTeam) continue;
-      if (vecDistance(flak.pos, other.pos) <= FLAK_BLAST_RADIUS) {
-        other.hp -= FLAK_BLAST_DAMAGE;
+      if (
+        other.weaponType !== "missile" ||
+        other.ownerTeam === flak.ownerTeam ||
+        other.hp <= 0 ||
+        other.lifetime <= 0
+      )
+        continue;
+      if (vecDistance(flak.pos, positions.get(other.id) ?? other.pos) <= profile.blastRadius) {
+        other.hp -= profile.missileDamage;
         if (other.hp <= 0) {
           this.stats[flak.ownerTeam].missilesIntercepted += 1;
           this.addCombatLog(
@@ -1269,7 +1078,7 @@ export class ClientCombatSimulation {
       }
     }
 
-    if (this.onFlakBurst) this.onFlakBurst([...flak.pos]);
+    if (this.onFlakBurst) this.onFlakBurst([...flak.pos], profile.blastRadius);
   }
 
   private applyDamage(
@@ -1283,7 +1092,7 @@ export class ClientCombatSimulation {
     const delay =
       ship.shieldRechargeDelay ??
       (ship.hullClass === "battleship"
-        ? 0.0
+        ? 1.5
         : ship.hullClass === "cruiser"
           ? 1.2
           : ship.hullClass === "corvette"
@@ -1333,19 +1142,24 @@ export class ClientCombatSimulation {
       totalAbsorbedOrDealt += Math.min(ship.hullCurrent, hullDmg);
       ship.hullCurrent = Math.max(0, ship.hullCurrent - hullDmg);
       if (ship.hullCurrent <= 0) {
-        ship.isAlive = false;
-        this.stats[ship.team].shipsLost += 1;
-        this.onShipDestroyed?.(ship);
-        const killerName = attackerTeam === 0 ? "Terran fleet" : "Alien swarm";
-        this.addCombatLog(
-          `${ship.name} eliminated by ${killerName}!`,
-          attackerTeam ?? (ship.team === 0 ? 1 : 0),
-          "kill",
-        );
+        this.destroyShip(ship, attackerTeam);
       }
     }
 
     this.recordAttackerDamage(attackerTeam, totalAbsorbedOrDealt);
+  }
+
+  private destroyShip(ship: ShipState, attackerTeam?: number): void {
+    if (!ship.isAlive) return;
+    ship.isAlive = false;
+    this.stats[ship.team].shipsLost += 1;
+    this.onShipDestroyed?.(ship);
+    const killerName = attackerTeam === 0 ? "Terran fleet" : "Alien swarm";
+    this.addCombatLog(
+      `${ship.name} eliminated by ${killerName}!`,
+      attackerTeam ?? (ship.team === 0 ? 1 : 0),
+      "kill",
+    );
   }
 
   private recordAttackerDamage(attackerTeam: number | undefined, amount: number): void {
