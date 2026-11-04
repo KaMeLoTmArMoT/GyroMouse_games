@@ -1,14 +1,18 @@
 import {
+  Activity,
   Compass,
   Copy,
   RotateCcw,
+  ScrollText,
   Shield,
   SkipForward,
   Swords,
   Target,
+  Trophy,
   Wrench,
+  Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { FleetBuilder } from "./components/FleetBuilder";
 import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
@@ -19,6 +23,18 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"builder" | "battle">("battle");
   const [speed, setSpeed] = useState<number>(0);
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
+  const [sidebarTab, setSidebarTab] = useState<"vessel" | "telemetry" | "log">("vessel");
+  const [showVictoryModal, setShowVictoryModal] = useState<boolean>(true);
+  const [, setTick] = useState<number>(0);
+
+  // 10Hz live update for HUD telemetry and killfeed during combat playback
+  useEffect(() => {
+    if (speed <= 0) return;
+    const interval = setInterval(() => {
+      setTick((t) => (t + 1) % 10000);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [speed]);
 
   // User Fleet Construction State (Blue Task Force)
   const [userSlots, setUserSlots] = useState<FleetSlot[]>([
@@ -68,12 +84,14 @@ export default function App() {
     const s = assembleSimulation(userSlots, enemyPresetId);
     setSim(s);
     setSelectedShipId(s.ships[0]?.id ?? null);
+    setShowVictoryModal(true);
   };
 
   const handleStartFromBuilder = () => {
     resetBattle();
     setActiveTab("battle");
     setSpeed(1);
+    setShowVictoryModal(true);
   };
 
   const stepForward = () => {
@@ -220,199 +238,516 @@ export default function App() {
               selectedShipId={selectedShipId}
               onSelectShip={setSelectedShipId}
             />
+
+            {/* Victory / Defeat Modal Overlay */}
+            {sim.winner !== null && showVictoryModal && (
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-30">
+                <div
+                  className={`max-w-md w-full rounded-2xl border p-6 shadow-2xl bg-zinc-950/95 flex flex-col items-center text-center ${
+                    sim.winner === 0
+                      ? "border-cyan-500/50 shadow-cyan-950/50"
+                      : "border-red-500/50 shadow-red-950/50"
+                  }`}
+                >
+                  <div
+                    className={`p-4 rounded-2xl mb-4 border ${
+                      sim.winner === 0
+                        ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
+                        : "bg-red-500/10 border-red-500/30 text-red-400"
+                    }`}
+                  >
+                    {sim.winner === 0 ? (
+                      <Trophy className="w-10 h-10" />
+                    ) : (
+                      <Swords className="w-10 h-10" />
+                    )}
+                  </div>
+
+                  <h2
+                    className={`text-xl font-bold tracking-wide uppercase ${
+                      sim.winner === 0 ? "text-cyan-400" : "text-red-400"
+                    }`}
+                  >
+                    {sim.winner === 0 ? "Terran Tactical Victory" : "Alien Swarm Victory"}
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-1 font-mono">
+                    Engagement resolved in {(sim.winnerDeclaredTime ?? sim.timeElapsed).toFixed(1)}s
+                  </p>
+
+                  {/* Summary Comparison Cards */}
+                  <div className="grid grid-cols-2 gap-3 w-full my-5 text-left text-xs">
+                    <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-800/30">
+                      <div className="text-[10px] uppercase font-bold text-cyan-400 mb-1">
+                        Terran Fleet
+                      </div>
+                      <div className="text-zinc-200">
+                        Survivors:{" "}
+                        <span className="font-bold text-white">
+                          {sim.ships.filter((s) => s.team === 0 && s.isAlive).length}
+                        </span>{" "}
+                        / {sim.ships.filter((s) => s.team === 0).length}
+                      </div>
+                      <div className="text-zinc-400 text-[11px] mt-0.5">
+                        Damage Dealt:{" "}
+                        <span className="font-mono text-zinc-200">{sim.stats[0].damageDealt}</span>
+                      </div>
+                      <div className="text-zinc-400 text-[11px]">
+                        Intercepts:{" "}
+                        <span className="font-mono text-zinc-200">
+                          {sim.stats[0].missilesIntercepted}
+                        </span>
+                      </div>
+                      <div className="text-zinc-400 text-[11px]">
+                        Shield Absorbed:{" "}
+                        <span className="font-mono text-zinc-200">
+                          {sim.stats[0].shieldDamageAbsorbed}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-red-950/20 border border-red-800/30">
+                      <div className="text-[10px] uppercase font-bold text-red-400 mb-1">
+                        Alien Swarm
+                      </div>
+                      <div className="text-zinc-200">
+                        Survivors:{" "}
+                        <span className="font-bold text-white">
+                          {sim.ships.filter((s) => s.team === 1 && s.isAlive).length}
+                        </span>{" "}
+                        / {sim.ships.filter((s) => s.team === 1).length}
+                      </div>
+                      <div className="text-zinc-400 text-[11px] mt-0.5">
+                        Damage Dealt:{" "}
+                        <span className="font-mono text-zinc-200">{sim.stats[1].damageDealt}</span>
+                      </div>
+                      <div className="text-zinc-400 text-[11px]">
+                        Intercepts:{" "}
+                        <span className="font-mono text-zinc-200">
+                          {sim.stats[1].missilesIntercepted}
+                        </span>
+                      </div>
+                      <div className="text-zinc-400 text-[11px]">
+                        Shield Absorbed:{" "}
+                        <span className="font-mono text-zinc-200">
+                          {sim.stats[1].shieldDamageAbsorbed}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2 w-full">
+                    <button
+                      type="button"
+                      onClick={resetBattle}
+                      className="flex-1 py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Rematch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("builder")}
+                      className="flex-1 py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Wrench className="w-3.5 h-3.5" /> Refit Fleet
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowVictoryModal(false)}
+                      className="py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 text-xs transition-colors cursor-pointer"
+                      title="Inspect Battle Grid"
+                    >
+                      Inspect
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Right Sidebar - Selectable & Copyable Telemetry with Live Cooldowns */}
-          <aside className="w-84 border-l border-zinc-800/80 bg-zinc-900/40 p-4 flex flex-col gap-4 backdrop-blur-sm select-text">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5 select-text">
-                <Shield className="w-3.5 h-3.5 text-cyan-400" /> Tactical Monitor
-              </span>
-              <span className="text-xs font-mono text-zinc-500">Live Telemetry</span>
+          {/* Right Sidebar - Selectable Telemetry, Live DPS & Combat Log */}
+          <aside className="w-88 border-l border-zinc-800/80 bg-zinc-900/40 p-4 flex flex-col gap-3 backdrop-blur-sm select-text">
+            {/* Sidebar Tabs */}
+            <div className="grid grid-cols-3 gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setSidebarTab("vessel")}
+                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${
+                  sidebarTab === "vessel"
+                    ? "bg-zinc-800 text-cyan-400 font-semibold shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Target className="w-3.5 h-3.5" />
+                <span>Vessel</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab("telemetry")}
+                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${
+                  sidebarTab === "telemetry"
+                    ? "bg-zinc-800 text-cyan-400 font-semibold shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span>Telemetry</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab("log")}
+                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${
+                  sidebarTab === "log"
+                    ? "bg-zinc-800 text-cyan-400 font-semibold shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <ScrollText className="w-3.5 h-3.5" />
+                <span>Log ({sim.combatLog.length})</span>
+              </button>
             </div>
 
-            {/* Fleet Status Summary */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            {/* Fleet Status Summary Header */}
+            <div className="grid grid-cols-2 gap-2 text-xs shrink-0">
               <div className="p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40 select-text">
-                <div className="text-[10px] text-cyan-400 font-semibold uppercase">Terran Blue</div>
+                <div className="flex items-center justify-between text-[10px] text-cyan-400 font-semibold uppercase">
+                  <span>Terran</span>
+                  <span className="font-mono">{sim.getRollingDPS(0)} DPS</span>
+                </div>
                 <div className="text-base font-bold text-zinc-100 mt-0.5 select-all">
                   {sim.ships.filter((s) => s.team === 0 && s.isAlive).length}{" "}
-                  <span className="text-xs font-normal text-zinc-500">active</span>
+                  <span className="text-xs font-normal text-zinc-500">
+                    / {sim.ships.filter((s) => s.team === 0).length} active
+                  </span>
                 </div>
               </div>
 
               <div className="p-2.5 rounded-lg bg-red-950/20 border border-red-800/40 select-text">
-                <div className="text-[10px] text-red-400 font-semibold uppercase">Alien Red</div>
+                <div className="flex items-center justify-between text-[10px] text-red-400 font-semibold uppercase">
+                  <span>Alien</span>
+                  <span className="font-mono">{sim.getRollingDPS(1)} DPS</span>
+                </div>
                 <div className="text-base font-bold text-zinc-100 mt-0.5 select-all">
                   {sim.ships.filter((s) => s.team === 1 && s.isAlive).length}{" "}
-                  <span className="text-xs font-normal text-zinc-500">active</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Dynamic Clicked Ship Telemetry */}
-            <div className="flex-1 border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/50 flex flex-col overflow-y-auto select-text">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5 select-text">
-                  <Target className="w-3.5 h-3.5 text-cyan-400" /> Inspected Vessel
-                </span>
-                <div className="flex items-center gap-1.5">
-                  {selectedShip && (
-                    <button
-                      type="button"
-                      onClick={copyTelemetry}
-                      title="Copy Vessel Telemetry as JSON"
-                      className="p-1 rounded bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-                    >
-                      <Copy className="w-3 h-3" />
-                    </button>
-                  )}
-                  {selectedShip && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${selectedShip.team === 0 ? "bg-cyan-950 text-cyan-400 border border-cyan-800" : "bg-red-950 text-red-400 border border-red-800"}`}
-                    >
-                      {selectedShip.team === 0 ? "TERRAN" : "ALIEN"}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {copiedNotification && (
-                <div className="text-[10px] text-emerald-400 font-mono mb-2 bg-emerald-950/30 p-1 rounded border border-emerald-800 text-center">
-                  Telemetry copied to clipboard!
-                </div>
-              )}
-
-              {selectedShip ? (
-                <div className="space-y-3 text-xs select-text">
-                  <div>
-                    <div className="font-semibold text-zinc-200 select-all">
-                      {selectedShip.name}
-                    </div>
-                    <div className="text-[10px] text-zinc-500 font-mono flex items-center justify-between mt-0.5">
-                      <span>
-                        Class:{" "}
-                        <span className="uppercase text-zinc-300 select-all">
-                          {selectedShip.hullClass}
-                        </span>
-                      </span>
-                      <span className="select-all">
-                        Heading: {(selectedShip.heading * (180 / Math.PI)).toFixed(0)}°
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Defense Bars */}
-                  <div className="space-y-1.5 text-[10px] font-mono select-text">
-                    <div>
-                      <div className="flex justify-between text-zinc-400 mb-0.5">
-                        <span>Shields</span>
-                        <span className="select-all">
-                          {Math.round(selectedShip.shieldCurrent)} / {selectedShip.shieldMax}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-cyan-400 transition-all"
-                          style={{
-                            width: `${Math.max(0, (selectedShip.shieldCurrent / selectedShip.shieldMax) * 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between text-zinc-400 mb-0.5">
-                        <span>Armor</span>
-                        <span className="select-all">
-                          {Math.round(selectedShip.armorCurrent)} / {selectedShip.armorMax}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-amber-400 transition-all"
-                          style={{
-                            width: `${Math.max(0, (selectedShip.armorCurrent / selectedShip.armorMax) * 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between text-zinc-400 mb-0.5">
-                        <span>Hull</span>
-                        <span className="select-all">
-                          {Math.round(selectedShip.hullCurrent)} / {selectedShip.hullMax}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-400 transition-all"
-                          style={{
-                            width: `${Math.max(0, (selectedShip.hullCurrent / selectedShip.hullMax) * 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Active Hardpoints with Live Cooldown Indicators */}
-                  <div className="pt-2 border-t border-zinc-800/80 select-text">
-                    <div className="text-[10px] uppercase font-semibold text-zinc-400 mb-1.5">
-                      Hardpoints & Live Cooldowns
-                    </div>
-                    <div className="space-y-1.5">
-                      {selectedShip.turrets.map((t) => {
-                        const minDeg = Math.round(t.baseArc[0] * (180 / Math.PI));
-                        const maxDeg = Math.round(t.baseArc[1] * (180 / Math.PI));
-                        const curDeg = Math.round(t.currentLocalAngle * (180 / Math.PI));
-                        const isCoolingDown = t.cooldownTimer > 0;
-                        const cdProgress = isCoolingDown
-                          ? (t.cooldownTimer / t.weapon.cooldown) * 100
-                          : 0;
-
-                        return (
-                          <div
-                            key={t.id}
-                            className="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] font-mono select-text"
-                          >
-                            <div className="flex items-center justify-between text-zinc-200 font-medium">
-                              <span className="select-all">{t.weapon.name}</span>
-                              <span
-                                className={
-                                  isCoolingDown ? "text-amber-400" : "text-emerald-400 font-bold"
-                                }
-                              >
-                                {isCoolingDown ? `${t.cooldownTimer.toFixed(1)}s` : "READY"}
-                              </span>
-                            </div>
-                            {/* Live Cooldown Bar */}
-                            <div className="h-1 bg-zinc-800 rounded-full overflow-hidden my-1">
-                              <div
-                                className="h-full bg-amber-500 transition-all"
-                                style={{ width: `${cdProgress}%` }}
-                              />
-                            </div>
-                            <div className="text-[9px] text-zinc-500 flex justify-between select-all">
-                              <span>
-                                Arc: [{minDeg}° .. {maxDeg}°] (at {curDeg}°)
-                              </span>
-                              <span>Range: {t.weapon.range}u</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-center p-4">
-                  <span className="text-xs text-zinc-500">
-                    Click any vessel on the battlefield to inspect hardpoints and sectors
+                  <span className="text-xs font-normal text-zinc-500">
+                    / {sim.ships.filter((s) => s.team === 1).length} active
                   </span>
                 </div>
-              )}
+              </div>
             </div>
+
+            {/* TAB 1: Inspected Vessel Details */}
+            {sidebarTab === "vessel" && (
+              <div className="flex-1 border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/50 flex flex-col overflow-y-auto select-text">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5 select-text">
+                    <Target className="w-3.5 h-3.5 text-cyan-400" /> Inspected Vessel
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {selectedShip && (
+                      <button
+                        type="button"
+                        onClick={copyTelemetry}
+                        title="Copy Vessel Telemetry as JSON"
+                        className="p-1 rounded bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    )}
+                    {selectedShip && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                          selectedShip.team === 0
+                            ? "bg-cyan-950 text-cyan-400 border border-cyan-800"
+                            : "bg-red-950 text-red-400 border border-red-800"
+                        }`}
+                      >
+                        {selectedShip.team === 0 ? "TERRAN" : "ALIEN"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {copiedNotification && (
+                  <div className="text-[10px] text-emerald-400 font-mono mb-2 bg-emerald-950/30 p-1 rounded border border-emerald-800 text-center">
+                    Telemetry copied to clipboard!
+                  </div>
+                )}
+
+                {selectedShip ? (
+                  <div className="space-y-3 text-xs select-text">
+                    <div>
+                      <div className="font-semibold text-zinc-200 select-all">
+                        {selectedShip.name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-mono flex items-center justify-between mt-0.5">
+                        <span>
+                          Class:{" "}
+                          <span className="uppercase text-zinc-300 select-all">
+                            {selectedShip.hullClass}
+                          </span>
+                        </span>
+                        <span className="select-all">
+                          Heading: {(selectedShip.heading * (180 / Math.PI)).toFixed(0)}°
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Defense Bars */}
+                    <div className="space-y-1.5 text-[10px] font-mono select-text">
+                      <div>
+                        <div className="flex justify-between text-zinc-400 mb-0.5">
+                          <span>Shields</span>
+                          <span className="select-all">
+                            {Math.round(selectedShip.shieldCurrent)} / {selectedShip.shieldMax}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-cyan-400 transition-all"
+                            style={{
+                              width: `${Math.max(0, (selectedShip.shieldCurrent / selectedShip.shieldMax) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-zinc-400 mb-0.5">
+                          <span>Armor</span>
+                          <span className="select-all">
+                            {Math.round(selectedShip.armorCurrent)} / {selectedShip.armorMax}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-amber-400 transition-all"
+                            style={{
+                              width: `${Math.max(0, (selectedShip.armorCurrent / selectedShip.armorMax) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-zinc-400 mb-0.5">
+                          <span>Hull</span>
+                          <span className="select-all">
+                            {Math.round(selectedShip.hullCurrent)} / {selectedShip.hullMax}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-400 transition-all"
+                            style={{
+                              width: `${Math.max(0, (selectedShip.hullCurrent / selectedShip.hullMax) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Active Hardpoints with Live Cooldown Indicators */}
+                    <div className="pt-2 border-t border-zinc-800/80 select-text">
+                      <div className="text-[10px] uppercase font-semibold text-zinc-400 mb-1.5">
+                        Hardpoints & Live Cooldowns
+                      </div>
+                      <div className="space-y-1.5">
+                        {selectedShip.turrets.map((t) => {
+                          const minDeg = Math.round(t.baseArc[0] * (180 / Math.PI));
+                          const maxDeg = Math.round(t.baseArc[1] * (180 / Math.PI));
+                          const curDeg = Math.round(t.currentLocalAngle * (180 / Math.PI));
+                          const isCoolingDown = t.cooldownTimer > 0;
+                          const cdProgress = isCoolingDown
+                            ? (t.cooldownTimer / t.weapon.cooldown) * 100
+                            : 0;
+
+                          return (
+                            <div
+                              key={t.id}
+                              className="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] font-mono select-text"
+                            >
+                              <div className="flex items-center justify-between text-zinc-200 font-medium">
+                                <span className="select-all">{t.weapon.name}</span>
+                                <span
+                                  className={
+                                    isCoolingDown ? "text-amber-400" : "text-emerald-400 font-bold"
+                                  }
+                                >
+                                  {isCoolingDown ? `${t.cooldownTimer.toFixed(1)}s` : "READY"}
+                                </span>
+                              </div>
+                              {/* Live Cooldown Bar */}
+                              <div className="h-1 bg-zinc-800 rounded-full overflow-hidden my-1">
+                                <div
+                                  className="h-full bg-amber-500 transition-all"
+                                  style={{ width: `${cdProgress}%` }}
+                                />
+                              </div>
+                              <div className="text-[9px] text-zinc-500 flex justify-between select-all">
+                                <span>
+                                  Arc: [{minDeg}° .. {maxDeg}°] (at {curDeg}°)
+                                </span>
+                                <span>Range: {t.weapon.range}u</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-center p-4">
+                    <span className="text-xs text-zinc-500">
+                      Click any vessel on the battlefield to inspect hardpoints and sectors
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: Fleet Battle Telemetry & Real-Time Metrics */}
+            {sidebarTab === "telemetry" && (
+              <div className="flex-1 border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/50 flex flex-col gap-3 overflow-y-auto text-xs font-mono select-text">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-cyan-400" /> Combat Telemetry
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-normal">
+                    {sim.timeElapsed.toFixed(1)}s elapsed
+                  </span>
+                </div>
+
+                {/* Rolling DPS Comparison Bar */}
+                <div className="p-2.5 rounded-lg bg-zinc-900/80 border border-zinc-800 space-y-1.5">
+                  <div className="flex justify-between text-[11px] font-semibold">
+                    <span className="text-cyan-400">Terran: {sim.getRollingDPS(0)} DPS</span>
+                    <span className="text-red-400">Alien: {sim.getRollingDPS(1)} DPS</span>
+                  </div>
+                  {(() => {
+                    const totalDPS = sim.getRollingDPS(0) + sim.getRollingDPS(1);
+                    const blueShare = totalDPS > 0 ? (sim.getRollingDPS(0) / totalDPS) * 100 : 50;
+                    return (
+                      <div className="h-2 rounded-full overflow-hidden bg-zinc-800 flex">
+                        <div
+                          className="bg-cyan-500 transition-all duration-300"
+                          style={{ width: `${blueShare}%` }}
+                        />
+                        <div
+                          className="bg-red-500 transition-all duration-300"
+                          style={{ width: `${100 - blueShare}%` }}
+                        />
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Metric Comparisons */}
+                <div className="space-y-2">
+                  <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/80">
+                    <div className="text-[10px] text-zinc-400 uppercase font-sans mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-amber-400" /> Total Damage Inflicted
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="text-cyan-400 font-bold">{sim.stats[0].damageDealt} dmg</div>
+                      <div className="text-red-400 font-bold text-right">
+                        {sim.stats[1].damageDealt} dmg
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/80">
+                    <div className="text-[10px] text-zinc-400 uppercase font-sans mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Target className="w-3 h-3 text-emerald-400" /> Torpedoes Intercepted (PD)
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="text-cyan-400 font-bold">
+                        {sim.stats[0].missilesIntercepted} destroyed
+                      </div>
+                      <div className="text-red-400 font-bold text-right">
+                        {sim.stats[1].missilesIntercepted} destroyed
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/80">
+                    <div className="text-[10px] text-zinc-400 uppercase font-sans mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-cyan-400" /> Shield Damage Absorbed
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="text-cyan-400 font-bold">
+                        {sim.stats[0].shieldDamageAbsorbed} absorbed
+                      </div>
+                      <div className="text-red-400 font-bold text-right">
+                        {sim.stats[1].shieldDamageAbsorbed} absorbed
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/80">
+                    <div className="text-[10px] text-zinc-400 uppercase font-sans mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Swords className="w-3 h-3 text-purple-400" /> Hulls Lost in Action
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="text-cyan-400 font-bold">
+                        {sim.stats[0].shipsLost} casualties
+                      </div>
+                      <div className="text-red-400 font-bold text-right">
+                        {sim.stats[1].shipsLost} casualties
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: Live Combat Killfeed & Event Log */}
+            {sidebarTab === "log" && (
+              <div className="flex-1 border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/50 flex flex-col overflow-y-auto text-xs font-mono select-text">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center justify-between mb-2 pb-1 border-b border-zinc-800">
+                  <span className="flex items-center gap-1.5">
+                    <ScrollText className="w-3.5 h-3.5 text-cyan-400" /> Tactical Event Log
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-normal">
+                    {sim.combatLog.length} events
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 flex-1 overflow-y-auto pr-1">
+                  {sim.combatLog.length === 0 ? (
+                    <div className="text-center text-zinc-600 text-xs py-8">
+                      No combat events recorded yet. Battle in progress...
+                    </div>
+                  ) : (
+                    sim.combatLog.map((event) => {
+                      const isTerran = event.team === 0;
+                      return (
+                        <div
+                          key={event.id}
+                          className={`p-2 rounded border text-[11px] leading-relaxed ${
+                            event.type === "critical"
+                              ? "bg-amber-950/30 border-amber-800/50 text-amber-300 font-semibold"
+                              : isTerran
+                                ? "bg-cyan-950/20 border-cyan-800/30 text-cyan-200"
+                                : "bg-red-950/20 border-red-800/30 text-red-200"
+                          }`}
+                        >
+                          {event.text}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </aside>
         </main>
       )}

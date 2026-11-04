@@ -1,10 +1,12 @@
 // Deterministic client combat simulation runner with point defense ship bombardment, cruiser forward torpedo tracking, and shield bounce physics
 
 import type {
+  CombatLogEvent,
   FighterPhase,
   GroupOrder,
   ProjectileState,
   ShipState,
+  TeamBattleStats,
   TurretMountState,
   Vector2,
   WeaponDefinition,
@@ -77,6 +79,49 @@ export class ClientCombatSimulation {
   private nextWingLaunch = new Map<number, number>();
   onBeamFire: BeamFireCallback | null = null;
   onFlakBurst: FlakBurstCallback | null = null;
+
+  stats: Record<number, TeamBattleStats> = {
+    0: {
+      damageDealt: 0,
+      shieldDamageAbsorbed: 0,
+      missilesIntercepted: 0,
+      shipsLost: 0,
+      recentDamageWindow: [],
+    },
+    1: {
+      damageDealt: 0,
+      shieldDamageAbsorbed: 0,
+      missilesIntercepted: 0,
+      shipsLost: 0,
+      recentDamageWindow: [],
+    },
+  };
+  combatLog: CombatLogEvent[] = [];
+  winner: number | null = null;
+  winnerDeclaredTime: number | null = null;
+
+  getRollingDPS(team: number): number {
+    const window = this.stats[team]?.recentDamageWindow ?? [];
+    if (window.length === 0) return 0;
+    const totalDmg = window.reduce((sum, w) => sum + w.damage, 0);
+    return Math.round(totalDmg / 2.5);
+  }
+
+  addCombatLog(text: string, team: number, type: "kill" | "intercept" | "critical" = "kill"): void {
+    const mins = Math.floor(this.timeElapsed / 60);
+    const secs = Math.floor(this.timeElapsed % 60);
+    const timeStr = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    this.combatLog.unshift({
+      id: `log_${this.combatLog.length}_${Math.random().toString(36).substring(2, 6)}`,
+      time: this.timeElapsed,
+      text: `[${timeStr}] ${text}`,
+      team,
+      type,
+    });
+    if (this.combatLog.length > 30) {
+      this.combatLog.pop();
+    }
+  }
 
   addShip(ship: ShipState): void {
     this.ships.push(ship);
@@ -193,6 +238,28 @@ export class ClientCombatSimulation {
 
     // 4. Projectiles & Collision Resolution
     this.updateProjectiles(dt, aliveShips);
+
+    // 5. Victory Assessment & Window Pruning
+    const cutoff = this.timeElapsed - 2.5;
+    for (const team of [0, 1]) {
+      this.stats[team].recentDamageWindow = this.stats[team].recentDamageWindow.filter(
+        (w) => w.time > cutoff,
+      );
+    }
+
+    if (this.winner === null && this.timeElapsed > 1.0) {
+      const blueAlive = this.ships.some((s) => s.team === 0 && s.isAlive);
+      const redAlive = this.ships.some((s) => s.team === 1 && s.isAlive);
+      if (!blueAlive && redAlive) {
+        this.winner = 1;
+        this.winnerDeclaredTime = this.timeElapsed;
+        this.addCombatLog("Alien fleet destroyed all Terran vessels!", 1, "critical");
+      } else if (!redAlive && blueAlive) {
+        this.winner = 0;
+        this.winnerDeclaredTime = this.timeElapsed;
+        this.addCombatLog("Terran fleet achieved complete tactical victory!", 0, "critical");
+      }
+    }
   }
 
   private findTargetForShip(
@@ -1066,7 +1133,7 @@ export class ClientCombatSimulation {
         const dist = vecDistance(spawnPos, targetShip.pos);
         if (dist <= turret.weapon.range) {
           const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
-          this.applyDamage(targetShip, turret.weapon.damage, turret.weapon);
+          this.applyDamage(targetShip, turret.weapon.damage, turret.weapon, ship.team);
           if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 3.2);
         }
       }
@@ -1134,7 +1201,7 @@ export class ClientCombatSimulation {
             hullMultiplier: p.weaponType === "plasma" ? 1.5 : 1.0,
             cost: 100,
           };
-          this.applyDamage(ship, p.damage, weaponDef);
+          this.applyDamage(ship, p.damage, weaponDef, p.ownerTeam);
           hit = true;
           break;
         }
@@ -1173,9 +1240,9 @@ export class ClientCombatSimulation {
             armorMultiplier: 1.0,
             hullMultiplier: 1.0,
           };
-          this.applyDamage(ship, FLAK_BLAST_DAMAGE, swarmWeapon);
+          this.applyDamage(ship, FLAK_BLAST_DAMAGE, swarmWeapon, flak.ownerTeam);
         } else {
-          this.applyDamage(ship, FLAK_BLAST_DAMAGE, FLAK_BLAST_WEAPON);
+          this.applyDamage(ship, FLAK_BLAST_DAMAGE, FLAK_BLAST_WEAPON, flak.ownerTeam);
         }
       }
     }
@@ -1184,17 +1251,28 @@ export class ClientCombatSimulation {
       if (other.weaponType !== "missile" || other.ownerTeam === flak.ownerTeam) continue;
       if (vecDistance(flak.pos, other.pos) <= FLAK_BLAST_RADIUS) {
         other.hp -= FLAK_BLAST_DAMAGE;
+        if (other.hp <= 0) {
+          this.stats[flak.ownerTeam].missilesIntercepted += 1;
+          this.addCombatLog(
+            "Hostile torpedo intercepted by flak burst!",
+            flak.ownerTeam,
+            "intercept",
+          );
+        }
       }
     }
 
     if (this.onFlakBurst) this.onFlakBurst([...flak.pos]);
   }
 
-  private applyDamage(ship: ShipState, rawDamage: number, weapon: WeaponDefinition): void {
+  private applyDamage(
+    ship: ShipState,
+    rawDamage: number,
+    weapon: WeaponDefinition,
+    attackerTeam?: number,
+  ): void {
     if (!ship.isAlive) return;
 
-    // Asymmetric shield recharge delay: Capitals have massive continuous generators (0s delay),
-    // cruisers have high-capacity cells (1.2s delay), light escorts have 2.5s-3.5s delay
     const delay =
       ship.shieldRechargeDelay ??
       (ship.hullClass === "battleship"
@@ -1206,14 +1284,21 @@ export class ClientCombatSimulation {
             : 3.5);
     ship.shieldDelayTimer = delay;
     let remaining = rawDamage;
+    let totalAbsorbedOrDealt = 0;
 
     if (ship.shieldCurrent > 0) {
       const shieldDmg = remaining * weapon.shieldMultiplier;
       if (ship.shieldCurrent >= shieldDmg) {
         ship.shieldCurrent -= shieldDmg;
+        this.stats[ship.team].shieldDamageAbsorbed += Math.round(shieldDmg);
+        totalAbsorbedOrDealt += shieldDmg;
+        this.recordAttackerDamage(attackerTeam, totalAbsorbedOrDealt);
         return;
       }
-      remaining -= ship.shieldCurrent / weapon.shieldMultiplier;
+      const absorbed = ship.shieldCurrent;
+      this.stats[ship.team].shieldDamageAbsorbed += Math.round(absorbed);
+      totalAbsorbedOrDealt += absorbed;
+      remaining -= absorbed / weapon.shieldMultiplier;
       ship.shieldCurrent = 0;
     }
 
@@ -1223,18 +1308,39 @@ export class ClientCombatSimulation {
       const mitigated = armorDmg * mitigation;
       if (ship.armorCurrent >= mitigated) {
         ship.armorCurrent -= mitigated;
+        totalAbsorbedOrDealt += mitigated;
+        this.recordAttackerDamage(attackerTeam, totalAbsorbedOrDealt);
         return;
       }
+      totalAbsorbedOrDealt += ship.armorCurrent;
       remaining -= ship.armorCurrent / (weapon.armorMultiplier * mitigation);
       ship.armorCurrent = 0;
     }
 
     if (remaining > 0) {
       const hullDmg = remaining * weapon.hullMultiplier;
+      totalAbsorbedOrDealt += Math.min(ship.hullCurrent, hullDmg);
       ship.hullCurrent = Math.max(0, ship.hullCurrent - hullDmg);
       if (ship.hullCurrent <= 0) {
         ship.isAlive = false;
+        this.stats[ship.team].shipsLost += 1;
+        const killerName = attackerTeam === 0 ? "Terran fleet" : "Alien swarm";
+        this.addCombatLog(
+          `${ship.name} eliminated by ${killerName}!`,
+          attackerTeam ?? (ship.team === 0 ? 1 : 0),
+          "kill",
+        );
       }
     }
+
+    this.recordAttackerDamage(attackerTeam, totalAbsorbedOrDealt);
+  }
+
+  private recordAttackerDamage(attackerTeam: number | undefined, amount: number): void {
+    if (attackerTeam === undefined || amount <= 0) return;
+    const teamStats = this.stats[attackerTeam];
+    if (!teamStats) return;
+    teamStats.damageDealt += Math.round(amount);
+    teamStats.recentDamageWindow.push({ time: this.timeElapsed, damage: amount });
   }
 }

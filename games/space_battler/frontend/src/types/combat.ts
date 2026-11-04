@@ -102,3 +102,19 @@ export interface GroupOrder {
   priority: TargetPriority;
   stance: EngagementStance;
 }
+
+export interface CombatLogEvent {
+  id: string;
+  time: number;
+  text: string;
+  team: number;
+  type: "kill" | "intercept" | "critical";
+}
+
+export interface TeamBattleStats {
+  damageDealt: number;
+  shieldDamageAbsorbed: number;
+  missilesIntercepted: number;
+  shipsLost: number;
+  recentDamageWindow: Array<{ time: number; damage: number }>;
+}
