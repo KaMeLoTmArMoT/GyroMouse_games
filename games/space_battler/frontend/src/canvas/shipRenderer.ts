@@ -1,4 +1,4 @@
-// Procedural vector renderer for 2.5D ship hulls, directional shields, and calibrated turrets
+// Procedural vector renderer for 2.5D ship hulls, directional arcs, turrets, and tactical HUD
 
 import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState } from "../types/combat";
@@ -15,18 +15,24 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
   ctx.save();
   ctx.translate(x, y);
 
-  // Selection / Target Ring
+  // 1. Selection & Range / Fire Arc Overlay (When selected)
   if (selected) {
+    // Selection pulse ring
     ctx.strokeStyle = primaryColor;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.arc(0, 0, ship.size * 1.35, 0, Math.PI * 2);
+    ctx.arc(0, 0, ship.size * 1.45, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // Draw Turret Firing Cones (visualize true weapon dead zones!)
+    for (const turret of ship.turrets) {
+      drawTurretArcCone(ctx, ship, turret, primaryColor);
+    }
   }
 
-  // 1. Render Hull (rotated by ship heading)
+  // 2. Render Hull (rotated by ship heading)
   ctx.save();
   ctx.rotate(ship.heading);
 
@@ -34,12 +40,12 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
 
   ctx.restore();
 
-  // 2. Render Independent Turrets (proportional calibers & barrels)
+  // 3. Render Independent Turrets
   for (const turret of ship.turrets) {
     renderTurret(ctx, ship, turret, primaryColor);
   }
 
-  // 3. Render Shield Arc / Bubble
+  // 4. Render Shield Arc / Bubble
   if (ship.shieldCurrent > 0) {
     const shieldRatio = ship.shieldCurrent / ship.shieldMax;
     ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 + shieldRatio * 0.4})`;
@@ -49,8 +55,41 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
     ctx.stroke();
   }
 
-  // 4. Compact Status HUD Bar
+  // 5. Compact Status HUD Bar
   renderHealthHUD(ctx, ship);
+
+  ctx.restore();
+}
+
+function drawTurretArcCone(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  turret: TurretMountState,
+  _color: string,
+): void {
+  const [tx, ty] = rotatePoint(turret.offset, ship.heading);
+  const [minArc, maxArc] = turret.baseArc;
+  const range = Math.min(turret.weapon.range, 350); // visual cone radius
+
+  ctx.save();
+  ctx.translate(tx, ty);
+
+  // Draw Sector of Fire
+  const startAngle = ship.heading + minArc;
+  const endAngle = ship.heading + maxArc;
+
+  ctx.fillStyle = turret.isSpinalGimbal
+    ? "rgba(234, 179, 8, 0.08)" // Yellow narrow cone
+    : "rgba(56, 189, 248, 0.05)";
+  ctx.strokeStyle = turret.isSpinalGimbal ? "rgba(234, 179, 8, 0.35)" : "rgba(56, 189, 248, 0.25)";
+  ctx.lineWidth = 1;
+
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, range, startAngle, endAngle);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
 
   ctx.restore();
 }
@@ -71,7 +110,6 @@ function drawHullSilhouette(
   ctx.beginPath();
   switch (ship.hullClass) {
     case "strike_craft":
-      // Fast dart fighter
       ctx.moveTo(s, 0);
       ctx.lineTo(-s * 0.8, -s * 0.6);
       ctx.lineTo(-s * 0.4, 0);
@@ -80,7 +118,6 @@ function drawHullSilhouette(
       break;
 
     case "corvette":
-      // Sleek triangular escort
       ctx.moveTo(s * 1.1, 0);
       ctx.lineTo(-s * 0.3, -s * 0.7);
       ctx.lineTo(-s, -s * 0.5);
@@ -91,7 +128,6 @@ function drawHullSilhouette(
       break;
 
     case "cruiser":
-      // Elongated warship with bridge spine
       ctx.moveTo(s * 1.3, 0);
       ctx.lineTo(s * 0.6, -s * 0.45);
       ctx.lineTo(-s * 0.8, -s * 0.5);
@@ -103,7 +139,6 @@ function drawHullSilhouette(
       break;
 
     default:
-      // Heavy battleship wedge with armored prow
       ctx.moveTo(s * 1.4, 0);
       ctx.lineTo(s * 0.8, -s * 0.4);
       ctx.lineTo(s * 0.2, -s * 0.6);
@@ -135,7 +170,6 @@ function renderTurret(
   turret: TurretMountState,
   primaryColor: string,
 ): void {
-  // World turret position relative to ship center
   const [tx, ty] = rotatePoint(turret.offset, ship.heading);
   const turretWorldAngle = ship.heading + turret.currentLocalAngle;
 
@@ -143,7 +177,6 @@ function renderTurret(
   ctx.translate(tx, ty);
   ctx.rotate(turretWorldAngle);
 
-  // Proportional calibers: heavy railguns get massive barbettes, PD gets tiny mounts
   const baseRadius = turret.baseRadius ?? (turret.isSpinalGimbal ? 6 : 4);
   const barrelLen = turret.barrelLength ?? (turret.weapon.weaponType === "railgun" ? 18 : 10);
   const barrelWidth = turret.isSpinalGimbal
@@ -152,7 +185,7 @@ function renderTurret(
       ? 1.4
       : 2.4;
 
-  // Turret Mount Base (circle / barbette)
+  // Turret Barbette
   ctx.fillStyle = turret.isSpinalGimbal ? "#0f172a" : "#1e293b";
   ctx.strokeStyle = primaryColor;
   ctx.lineWidth = 1.2;
@@ -161,7 +194,7 @@ function renderTurret(
   ctx.fill();
   ctx.stroke();
 
-  // Cannon Barrel
+  // Barrel
   ctx.strokeStyle = "#f8fafc";
   ctx.lineWidth = barrelWidth;
   ctx.beginPath();

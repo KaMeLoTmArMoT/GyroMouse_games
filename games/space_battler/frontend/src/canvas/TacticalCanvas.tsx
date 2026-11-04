@@ -1,4 +1,4 @@
-// React 2.5D Tactical Canvas Component with pan/zoom, time-scale execution, and rendering loop
+// React 2.5D Tactical Canvas Component with click/hover ship selection, pan/zoom, and live range cones
 
 import { useEffect, useRef } from "react";
 import type { ClientCombatSimulation } from "../engine/simulation";
@@ -9,19 +9,18 @@ import { renderShip } from "./shipRenderer";
 interface TacticalCanvasProps {
   sim: ClientCombatSimulation;
   speed: number;
-  onStepRequest?: () => void;
   selectedShipId?: string | null;
   onSelectShip?: (shipId: string | null) => void;
 }
 
-export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasProps) {
+export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: TacticalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const effectsRef = useRef<VisualEffectsManager>(new VisualEffectsManager());
 
-  // Camera Pan & Zoom state
-  const cameraRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.9 });
+  const cameraRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.85 });
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const hasDraggedRef = useRef(false);
 
   useEffect(() => {
     let animId: number;
@@ -30,15 +29,13 @@ export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasPro
     const renderLoop = (now: number) => {
       const rawDt = (now - lastTime) / 1000;
       lastTime = now;
-      const dt = Math.min(rawDt, 0.1); // Clamp against huge lag spikes
+      const dt = Math.min(rawDt, 0.1);
 
-      // 1. Advance simulation if not paused
       if (speed > 0) {
         sim.update(dt * speed);
         effectsRef.current.update(dt * speed);
       }
 
-      // 2. Clear & Draw Canvas
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext("2d");
@@ -46,21 +43,19 @@ export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasPro
           ctx.save();
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-          // Deep Space Dark Background
           ctx.fillStyle = "#05070f";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-          // Camera Transformation (Center origin + Pan + Zoom)
+          // Camera Transformation
           ctx.translate(
             canvas.width / 2 + cameraRef.current.x,
             canvas.height / 2 + cameraRef.current.y,
           );
           ctx.scale(cameraRef.current.zoom, cameraRef.current.zoom);
 
-          // Draw Tactical Grid
           drawTacticalGrid(ctx);
 
-          // Draw Laser Beams
+          // Draw Active Beams
           for (const beam of effectsRef.current.beams) {
             ctx.strokeStyle = beam.color;
             ctx.lineWidth = beam.width;
@@ -70,7 +65,7 @@ export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasPro
             ctx.stroke();
           }
 
-          // Draw Explosions / Particles
+          // Draw Particles
           for (const p of effectsRef.current.particles) {
             ctx.fillStyle = p.color;
             ctx.beginPath();
@@ -78,12 +73,12 @@ export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasPro
             ctx.fill();
           }
 
-          // Draw Active Projectiles
+          // Draw Projectiles
           for (const proj of sim.projectiles) {
             renderProjectile(ctx, proj);
           }
 
-          // Draw Ships & Rotating Turrets
+          // Draw Ships
           for (const ship of sim.ships) {
             renderShip(ctx, ship, ship.id === selectedShipId);
           }
@@ -99,7 +94,6 @@ export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasPro
     return () => cancelAnimationFrame(animId);
   }, [sim, speed, selectedShipId]);
 
-  // Handle Resize
   useEffect(() => {
     const handleResize = () => {
       const canvas = canvasRef.current;
@@ -113,11 +107,10 @@ export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasPro
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Pan & Zoom Event Listeners
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0) {
-      // Left click drag
       isDraggingRef.current = true;
+      hasDraggedRef.current = false;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
     }
   };
@@ -126,14 +119,47 @@ export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasPro
     if (isDraggingRef.current) {
       const dx = e.clientX - dragStartRef.current.x;
       const dy = e.clientY - dragStartRef.current.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasDraggedRef.current = true;
+      }
       cameraRef.current.x += dx;
       cameraRef.current.y += dy;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
     }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
     isDraggingRef.current = false;
+
+    // Click selection (if not a pan drag)
+    if (!hasDraggedRef.current && onSelectShip && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      // Convert Screen Coords -> World Coords
+      const worldX =
+        (clickX - canvasRef.current.width / 2 - cameraRef.current.x) / cameraRef.current.zoom;
+      const worldY =
+        (clickY - canvasRef.current.height / 2 - cameraRef.current.y) / cameraRef.current.zoom;
+
+      // Find nearest clicked ship
+      let clickedShip: string | null = null;
+      let minD = 50; // max click radius
+
+      for (const ship of sim.ships) {
+        if (!ship.isAlive) continue;
+        const dx = ship.pos[0] - worldX;
+        const dy = ship.pos[1] - worldY;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < Math.max(ship.size * 1.5, minD)) {
+          minD = d;
+          clickedShip = ship.id;
+        }
+      }
+
+      onSelectShip(clickedShip);
+    }
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -166,7 +192,9 @@ export function TacticalCanvas({ sim, speed, selectedShipId }: TacticalCanvasPro
           SHIPS: {sim.ships.filter((s) => s.team === 0 && s.isAlive).length} Blue /{" "}
           {sim.ships.filter((s) => s.team === 1 && s.isAlive).length} Red
         </div>
-        <div className="text-[10px] text-zinc-600 mt-1">Drag: Pan | Scroll: Zoom</div>
+        <div className="text-[10px] text-zinc-600 mt-1">
+          Click ship to view telemetry | Drag to Pan
+        </div>
       </div>
     </div>
   );
@@ -176,7 +204,7 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D): void {
   const gridSize = 100;
   const radius = 1800;
 
-  ctx.strokeStyle = "rgba(30, 41, 59, 0.4)"; // slate-800
+  ctx.strokeStyle = "rgba(30, 41, 59, 0.4)";
   ctx.lineWidth = 1;
 
   ctx.beginPath();
@@ -190,7 +218,6 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D): void {
   }
   ctx.stroke();
 
-  // Outer coordinate boundary circle
   ctx.strokeStyle = "rgba(56, 189, 248, 0.15)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
