@@ -74,6 +74,11 @@ export interface ShipState {
   fighterLaneAngle?: number;
   fighterLaneIndex?: number;
   fighterPhaseTimer?: number;
+  safeHavenId?: string | null;
+  safeHavenTimer?: number;
+  lastSelectedSector?: number;
+  deadlockTimer?: number;
+  deadlockBypassAngle?: number;
 }
 
 export interface ProjectileState {

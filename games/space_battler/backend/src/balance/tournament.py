@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from src.engine.ship_factory import (
     create_battleship,
     create_corvette_pd,
+    create_cruiser,
     create_strike_craft,
 )
 from src.engine.simulation import CombatSimulation
@@ -85,10 +86,20 @@ def fleet_corvette_escort(team: int, offset_x: float) -> list:
     return ships
 
 
+def fleet_cruisers(team: int, offset_x: float) -> list:
+    """Squadron of 3 Vanguard Cruisers (~3300 credits)."""
+    ships = []
+    for i in range(3):
+        y_pos = (i - 1) * 80.0
+        ships.append(create_cruiser(f"cr_{team}_{i}", team, 1, (offset_x, y_pos)))
+    return ships
+
+
 def run_balance_tournament(rounds_per_matchup: int = 10) -> dict[str, float]:
     """Run cross-archetype matchup tournament to compute win rates."""
     archetypes = {
         "Battleship": fleet_battleships,
+        "Cruisers": fleet_cruisers,
         "StrikeSwarm": fleet_strike_swarm,
         "CorvetteEscort": fleet_corvette_escort,
     }

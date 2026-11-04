@@ -64,6 +64,13 @@ class CombatSimulation:
                     missile_target = self._find_missile_target(ship, turret.weapon.range)
                     if missile_target:
                         target_pos = missile_target.pos
+                elif target and turret.weapon.projectile_speed > 0:
+                    dist = vec_distance(ship.pos, target.pos)
+                    flight_time = dist / turret.weapon.projectile_speed
+                    target_pos = (
+                        target.pos[0] + target.velocity[0] * flight_time,
+                        target.pos[1] + target.velocity[1] * flight_time,
+                    )
 
                 is_aimed = turret.update_aim(dt, ship.pos, ship.heading, target_pos)
 
@@ -166,10 +173,22 @@ class CombatSimulation:
                 missile = self._find_missile_target(ship, turret.weapon.range)
                 if missile:
                     missile.hp -= turret.weapon.damage * 6.0  # 6x multiplier against missiles
-            elif target_ship and target_ship.is_alive:
+                    return
+            if target_ship and target_ship.is_alive:
                 dist = vec_distance(spawn_pos, target_ship.pos)
                 if dist <= turret.weapon.range:
-                    target_ship.take_damage(turret.weapon.damage, turret.weapon)
+                    if target_ship.hull_class == "strike_craft":
+                        # Full damage against unarmored strike craft
+                        import dataclasses
+                        swarm_w = dataclasses.replace(
+                            turret.weapon,
+                            shield_multiplier=1.0,
+                            armor_multiplier=1.0,
+                            hull_multiplier=1.0,
+                        )
+                        target_ship.take_damage(turret.weapon.damage, swarm_w)
+                    else:
+                        target_ship.take_damage(turret.weapon.damage, turret.weapon)
             return
 
         # 2. Physical Projectile (Railgun, Plasma, Missile)
@@ -200,16 +219,18 @@ class CombatSimulation:
             if p.lifetime <= 0.0 or p.hp <= 0.0:
                 continue
 
-            # Move projectile
-            p.pos = vec_add(p.pos, vec_scale(p.velocity, dt))
+            # Move projectile with continuous ray sweep collision
+            old_pos = p.pos
+            p.pos = vec_add(old_pos, vec_scale(p.velocity, dt))
 
             # Test collision against enemy ships
             hit = False
             for ship in alive_ships:
                 if ship.team == p.owner_team:
                     continue
-                dist = vec_distance(p.pos, ship.pos)
-                if dist <= ship.size:
+                from src.engine.math2d import dist_to_segment
+
+                if dist_to_segment(ship.pos, old_pos, p.pos) <= ship.size:
                     from src.engine.constants import WEAPON_DEFINITIONS
 
                     weapon = WEAPON_DEFINITIONS[p.weapon_type]

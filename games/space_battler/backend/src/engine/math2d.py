@@ -58,3 +58,15 @@ def rotate_point(point: Vector2, angle: float) -> Vector2:
 
 def clamp(val: float, min_val: float, max_val: float) -> float:
     return max(min_val, min(max_val, val))
+
+
+def dist_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
+    """Distance from point p to line segment [a, b]."""
+    ab = vec_sub(b, a)
+    ab_len_sq = vec_length_sq(ab)
+    if ab_len_sq < 1e-6:
+        return vec_distance(p, a)
+    ap = vec_sub(p, a)
+    t = clamp((ap[0] * ab[0] + ap[1] * ab[1]) / ab_len_sq, 0.0, 1.0)
+    proj = (a[0] + ab[0] * t, a[1] + ab[1] * t)
+    return vec_distance(p, proj)

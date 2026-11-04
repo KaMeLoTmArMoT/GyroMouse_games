@@ -25,11 +25,8 @@ export type BeamFireCallback = (from: Vector2, to: Vector2, color: string, width
 export type FlakBurstCallback = (pos: Vector2) => void;
 
 const FIGHTER_STANDOFF = 385;
-const FIGHTER_SHELL_SPACING = 55;
 const FIGHTER_CLEARANCE = 45;
-const FIGHTER_SEPARATION_WEIGHT = 0.45;
 const FIGHTER_EGRESS_DISTANCE = 200;
-const FIGHTER_ORBIT_RATE = 0.25;
 const CRUISER_STANDOFF = 480;
 const CRUISER_CLEARANCE = 100;
 const CRUISER_BOW_LIMIT = (12 * Math.PI) / 180;
@@ -254,53 +251,82 @@ export class ClientCombatSimulation {
     dt: number,
     aliveShips: ShipState[],
   ): { heading: number; speed: number } {
-    // Evasive maneuver: detect incoming heavy torpedoes and perform rapid jink!
-    const nearbyMissile = this.projectiles.find(
-      (p) =>
-        p.ownerTeam !== ship.team &&
-        p.weaponType === "missile" &&
-        vecDistance(ship.pos, p.pos) < 180,
+    // 1. Safe Haven Management: Damaged craft or craft seeking cover lock onto friendly capital
+    const friendlyAnchors = aliveShips.filter(
+      (s) =>
+        s.team === ship.team &&
+        s.isAlive &&
+        (s.hullClass === "battleship" || s.hullClass === "cruiser" || s.hullClass === "corvette"),
     );
-    if (nearbyMissile) {
-      const toMissile = vecSub(ship.pos, nearbyMissile.pos);
-      const escapeHeading = Math.atan2(toMissile[1], toMissile[0]);
-      return { heading: escapeHeading, speed: ship.maxSpeed * 1.25 };
+
+    if (
+      ship.safeHavenTimer === undefined ||
+      ship.safeHavenTimer <= 0 ||
+      !friendlyAnchors.some((a) => a.id === ship.safeHavenId)
+    ) {
+      if (friendlyAnchors.length > 0) {
+        // Evaluate havens based on shield health, distance, and current occupancy (max 3 per anchor)
+        let bestAnchor = friendlyAnchors[0];
+        let bestScore = -Infinity;
+        for (const anchor of friendlyAnchors) {
+          const occupancy = aliveShips.filter(
+            (s) => s.team === ship.team && s.isAlive && s.safeHavenId === anchor.id,
+          ).length;
+          const shieldRatio = anchor.shieldMax > 0 ? anchor.shieldCurrent / anchor.shieldMax : 0;
+          const distToAnchor = vecDistance(ship.pos, anchor.pos);
+          const score = shieldRatio * 80 - distToAnchor * 0.15 - occupancy * 50;
+          if (score > bestScore) {
+            bestScore = score;
+            bestAnchor = anchor;
+          }
+        }
+        ship.safeHavenId = bestAnchor.id;
+        ship.safeHavenTimer = 2.0;
+      } else {
+        ship.safeHavenId = null;
+        ship.safeHavenTimer = 1.0;
+      }
+    } else {
+      ship.safeHavenTimer = (ship.safeHavenTimer ?? 0) - dt;
     }
 
-    const laneAngle = ship.fighterLaneAngle ?? 0;
+    const safeHaven = friendlyAnchors.find((a) => a.id === ship.safeHavenId) ?? null;
+    const isDamaged = ship.hullCurrent < ship.hullMax * 0.4 || ship.shieldCurrent < 10;
     const laneIndex = ship.fighterLaneIndex ?? 0;
-    const stagingRadius = FIGHTER_STANDOFF + ((laneIndex % 3) - 1) * FIGHTER_SHELL_SPACING;
-    const phase = ship.fighterPhase ?? "staging";
-    const orbitAngle = laneAngle + this.timeElapsed * FIGHTER_ORBIT_RATE;
+    let phase = ship.fighterPhase ?? "staging";
 
-    const bearing = Math.atan2(ship.pos[1] - target.pos[1], ship.pos[0] - target.pos[0]);
-    const bearingDiff = normalizeAngle(orbitAngle - bearing);
-    const radialError = dist - stagingRadius;
+    // Emergency egress if badly damaged
+    if (isDamaged && phase === "attack") {
+      phase = "egress";
+      ship.fighterPhase = "egress";
+      ship.fighterPhaseTimer = 2.0;
+    }
 
-    let heading = ship.heading;
-    let speed = 0;
+    // 2. High-level intent / phase progression
+    let intentTarget: Vector2;
+    const attackOffset = target.size + 35;
+    const flankSign = laneIndex % 2 === 0 ? 1 : -1;
+    const attackPoint: Vector2 = [
+      target.pos[0] + Math.cos(angleToTarget + flankSign * 0.4) * attackOffset,
+      target.pos[1] + Math.sin(angleToTarget + flankSign * 0.4) * attackOffset,
+    ];
 
     switch (phase) {
       case "staging": {
-        if (dist > stagingRadius + 70) {
-          // Close to the standoff perimeter first, then orbit to the assigned lane
-          heading = angleToTarget;
-          speed = ship.maxSpeed * 0.8;
-        } else {
-          heading = this.computeOrbitHeading(bearing, bearingDiff, radialError);
-          speed = ship.maxSpeed * 0.5;
-        }
+        // Assemble in loose formation on the friendly side of the target
+        const stagingDist = FIGHTER_STANDOFF + ((laneIndex % 3) - 1) * 40;
+        const stagingAngle = safeHaven
+          ? Math.atan2(safeHaven.pos[1] - target.pos[1], safeHaven.pos[0] - target.pos[0])
+          : angleToTarget + Math.PI;
+        intentTarget = [
+          target.pos[0] + Math.cos(stagingAngle + flankSign * 0.3) * stagingDist,
+          target.pos[1] + Math.sin(stagingAngle + flankSign * 0.3) * stagingDist,
+        ];
 
+        ship.fighterPhaseTimer = (ship.fighterPhaseTimer ?? 0) - dt;
         const gun = ship.turrets[0];
         const gunReady = !gun || gun.cooldownTimer <= 0.2;
-        const onLane = Math.abs(bearingDiff) < 0.25;
-        const onRadius = Math.abs(radialError) < 90;
-
-        if (onLane && onRadius) {
-          ship.fighterPhaseTimer = (ship.fighterPhaseTimer ?? 0) - dt;
-        }
-
-        if (onLane && onRadius && (ship.fighterPhaseTimer ?? 0) <= 0 && gunReady) {
+        if ((ship.fighterPhaseTimer ?? 0) <= 0 && gunReady && !isDamaged) {
           ship.fighterPhase = "attack";
           ship.fighterPhaseTimer = 0;
         }
@@ -308,30 +334,27 @@ export class ClientCombatSimulation {
       }
 
       case "attack": {
-        // Each wing member dives down its own radial lane instead of a shared point
-        const laneOffset = target.size + 30;
-        const attackPoint: Vector2 = [
-          target.pos[0] + Math.cos(laneAngle) * laneOffset,
-          target.pos[1] + Math.sin(laneAngle) * laneOffset,
-        ];
-        const toAttackPoint = vecSub(attackPoint, ship.pos);
-        heading = Math.atan2(toAttackPoint[1], toAttackPoint[0]);
-        speed = ship.maxSpeed;
-
+        intentTarget = attackPoint;
         if (dist <= FIGHTER_EGRESS_DISTANCE) {
           ship.fighterPhase = "egress";
-          ship.fighterPhaseTimer = 1.2;
+          ship.fighterPhaseTimer = 1.4;
         }
         break;
       }
 
       case "egress": {
-        const peelSide = laneIndex % 2 === 0 ? 1 : -1;
-        heading = normalizeAngle(angleToTarget + peelSide * Math.PI * 0.66);
-        speed = ship.maxSpeed;
+        // Peel towards safe haven if present, or away at sharp angle
+        if (safeHaven) {
+          intentTarget = safeHaven.pos;
+        } else {
+          intentTarget = [
+            ship.pos[0] + Math.cos(angleToTarget + flankSign * Math.PI * 0.7) * 300,
+            ship.pos[1] + Math.sin(angleToTarget + flankSign * Math.PI * 0.7) * 300,
+          ];
+        }
 
         ship.fighterPhaseTimer = (ship.fighterPhaseTimer ?? 0) - dt;
-        if ((ship.fighterPhaseTimer ?? 0) <= 0 || dist > 360) {
+        if ((ship.fighterPhaseTimer ?? 0) <= 0 || dist > 380) {
           ship.fighterPhase = "rejoin";
           ship.fighterPhaseTimer = 0;
         }
@@ -339,69 +362,107 @@ export class ClientCombatSimulation {
       }
 
       case "rejoin": {
-        if (dist < stagingRadius - 40) {
-          // Boost radially back out to the staging perimeter
-          heading = bearing;
-          speed = ship.maxSpeed;
+        if (safeHaven && vecDistance(ship.pos, safeHaven.pos) > 180) {
+          intentTarget = safeHaven.pos;
         } else {
           ship.fighterPhase = "staging";
-          ship.fighterPhaseTimer = 0.4 + ((laneIndex * 1.3) % 3.0);
-          heading = this.computeOrbitHeading(bearing, bearingDiff, radialError);
-          speed = ship.maxSpeed * 0.5;
+          ship.fighterPhaseTimer = 0.5 + ((laneIndex * 0.9) % 2.5);
+          intentTarget = target.pos;
         }
         break;
       }
     }
 
-    if (phase === "staging" || phase === "egress" || phase === "rejoin") {
-      let separationX = 0;
-      let separationY = 0;
+    const toIntent = vecSub(intentTarget, ship.pos);
+    const intentDir = vecNormalize(toIntent);
+
+    // 3. 16-Sector Reachable Context Steering (Interest vs Danger maps)
+    const SECTORS = 16;
+    let bestSector = ship.lastSelectedSector ?? 0;
+    let maxScore = -Infinity;
+    let maxDangerObserved = 0;
+
+    for (let k = 0; k < SECTORS; k++) {
+      const sectorAngle = (k * 2 * Math.PI) / SECTORS;
+      const candidateDir: Vector2 = [Math.cos(sectorAngle), Math.sin(sectorAngle)];
+
+      // A. Interest score: progress towards intent goal
+      const interestScore = vecDot(candidateDir, intentDir);
+
+      // B. Threat & missile danger: predict closest approach of incoming missiles
+      let dangerScore = 0;
+      for (const p of this.projectiles) {
+        if (p.ownerTeam === ship.team || p.weaponType !== "missile") continue;
+        const r = vecSub(ship.pos, p.pos);
+        const distToMissile = vecDistance([0, 0], r);
+        if (distToMissile > 240) continue;
+
+        // Relative velocity if ship takes this candidate heading
+        const candidateVel = vecScale(candidateDir, ship.maxSpeed);
+        const u = vecSub(candidateVel, p.velocity);
+        const uSq = vecDot(u, u) + 1e-4;
+        const tStar = clamp(-vecDot(r, u) / uSq, 0, 1.4);
+        const rStar = vecAdd(r, vecScale(u, tStar));
+        const dStar = vecDistance([0, 0], rStar);
+
+        // Danger if time to closest approach is in near future and distance is lethal
+        if (tStar > 0.04 && dStar < 75) {
+          const missileDanger = ((75 - dStar) / 75) * (1 - tStar / 1.4) * 4.5;
+          dangerScore += missileDanger;
+        }
+      }
+
+      if (dangerScore > maxDangerObserved) {
+        maxDangerObserved = dangerScore;
+      }
+
+      // C. Congestion & Friendly Fighter Separation
+      let congestionScore = 0;
       for (const peer of aliveShips) {
         if (peer.id === ship.id || peer.team !== ship.team || peer.hullClass !== "strike_craft") {
           continue;
         }
-        const dx = ship.pos[0] - peer.pos[0];
-        const dy = ship.pos[1] - peer.pos[1];
-        const distanceSq = dx * dx + dy * dy;
-        if (distanceSq >= FIGHTER_CLEARANCE * FIGHTER_CLEARANCE) continue;
-
-        if (distanceSq < 1e-6) {
-          // Give coincident peers opposite, deterministic escape directions.
-          separationX += ship.id < peer.id ? 1 : -1;
-        } else {
-          separationX += dx / distanceSq;
-          separationY += dy / distanceSq;
+        const toPeer = vecSub(peer.pos, ship.pos);
+        const peerDist = vecDistance([0, 0], toPeer);
+        if (peerDist < FIGHTER_CLEARANCE) {
+          const headingTowardPeer = vecDot(candidateDir, vecNormalize(toPeer));
+          if (headingTowardPeer > 0) {
+            congestionScore += headingTowardPeer * (1 - peerDist / FIGHTER_CLEARANCE) * 1.8;
+          }
         }
       }
 
-      // Scale inverse-distance forces to the unit heading; existing turn limits smooth steering.
-      const weight = FIGHTER_CLEARANCE * FIGHTER_SEPARATION_WEIGHT;
-      const desiredX = Math.cos(heading) + separationX * weight;
-      const desiredY = Math.sin(heading) + separationY * weight;
-      if (Math.abs(desiredX) + Math.abs(desiredY) > 1e-6) {
-        heading = Math.atan2(desiredY, desiredX);
+      // D. Hysteresis / Anti-flicker: penalty for large changes from previous selected heading
+      let flickerPenalty = 0;
+      if (ship.lastSelectedSector !== undefined) {
+        const prevAngle = (ship.lastSelectedSector * 2 * Math.PI) / SECTORS;
+        const angleDiff = normalizeAngle(sectorAngle - prevAngle);
+        flickerPenalty = 0.35 * (1 - Math.cos(angleDiff));
+      }
+
+      // E. Total utility evaluation
+      const interestWeight = isDamaged ? 0.6 : 1.2;
+      const dangerWeight = isDamaged ? 3.5 : 2.2;
+      const score =
+        interestScore * interestWeight -
+        dangerScore * dangerWeight -
+        congestionScore -
+        flickerPenalty;
+
+      if (score > maxScore) {
+        maxScore = score;
+        bestSector = k;
       }
     }
 
-    return { heading, speed };
-  }
+    ship.lastSelectedSector = bestSector;
+    const finalHeading = (bestSector * 2 * Math.PI) / SECTORS;
+    const speed =
+      maxDangerObserved > 0.4 || phase === "attack" || phase === "egress"
+        ? ship.maxSpeed
+        : ship.maxSpeed * 0.7;
 
-  private computeOrbitHeading(bearing: number, bearingDiff: number, radialError: number): number {
-    const orbitDirection = bearingDiff >= 0 ? 1 : -1;
-    const tangentHeading = bearing + orbitDirection * (Math.PI / 2);
-    const radialHeading = radialError > 0 ? bearing + Math.PI : bearing;
-    const radialWeight = clamp(Math.abs(radialError) / 120, 0, 1);
-
-    const tangentX = Math.cos(tangentHeading);
-    const tangentY = Math.sin(tangentHeading);
-    const radialX = Math.cos(radialHeading);
-    const radialY = Math.sin(radialHeading);
-
-    const dirX = tangentX * (1 - radialWeight) + radialX * radialWeight;
-    const dirY = tangentY * (1 - radialWeight) + radialY * radialWeight;
-
-    if (Math.abs(dirX) + Math.abs(dirY) < 1e-6) return tangentHeading;
-    return Math.atan2(dirY, dirX);
+    return { heading: finalHeading, speed };
   }
 
   private updateShipMovement(
@@ -516,6 +577,23 @@ export class ClientCombatSimulation {
           targetHeading = normalizeAngle(angleToTarget + chosenBroadside);
           desiredSpeed = ship.maxSpeed * 0.35;
         }
+
+        // Mutual repulsion between friendly battleships to prevent clumping
+        if (friendlyBattleships.length > 1) {
+          for (const peer of friendlyBattleships) {
+            if (peer.id === ship.id) continue;
+            const bsDist = vecDistance(ship.pos, peer.pos);
+            const BS_CLEARANCE = 150;
+            if (bsDist < BS_CLEARANCE) {
+              const pushAway: Vector2 =
+                bsDist > 1e-4
+                  ? vecScale(vecSub(ship.pos, peer.pos), 1 / bsDist)
+                  : [ship.id < peer.id ? 1 : -1, 0];
+              const pushAngle = Math.atan2(pushAway[1], pushAway[0]);
+              targetHeading = normalizeAngle(targetHeading * 0.7 + pushAngle * 0.3);
+            }
+          }
+        }
       } else if (ship.hullClass === "cruiser") {
         // Navigate geometric arc slots with lateral thrusters while keeping the prow aimed.
         const friendlyCruisers = aliveShips
@@ -617,6 +695,43 @@ export class ClientCombatSimulation {
       const pushAngle = Math.atan2(avoidVec[1], avoidVec[0]);
       targetHeading = normalizeAngle(targetHeading * 0.65 + pushAngle * 0.35);
       desiredSpeed = Math.max(desiredSpeed * 0.5, ship.maxSpeed * 0.2);
+    }
+
+    // Deadlock detection & resolution: break up head-on jams, parallel lines & "triangles of fools"
+    const isCapital = ship.hullClass === "battleship" || ship.hullClass === "cruiser";
+    if (isCapital) {
+      const collidingCapital = aliveShips.find(
+        (other) =>
+          other.id !== ship.id &&
+          (other.hullClass === "battleship" || other.hullClass === "cruiser") &&
+          vecDistance(ship.pos, other.pos) < (ship.size + other.size) * 1.35,
+      );
+
+      const forwardSpeed = vecDot(ship.velocity, [Math.cos(ship.heading), Math.sin(ship.heading)]);
+      const isStuck = collidingCapital && Math.abs(forwardSpeed) < 15.0;
+
+      if (isStuck) {
+        ship.deadlockTimer = (ship.deadlockTimer ?? 0) + dt;
+        if (ship.deadlockTimer > 0.8) {
+          if (ship.deadlockBypassAngle === undefined) {
+            const side = ship.id < collidingCapital.id ? 1 : -1;
+            ship.deadlockBypassAngle = side * Math.PI * 0.6;
+          }
+          const bypassAngle = normalizeAngle(ship.heading + ship.deadlockBypassAngle);
+          const bypassDir: Vector2 = [Math.cos(bypassAngle), Math.sin(bypassAngle)];
+          if (cruiserVelocity) {
+            cruiserVelocity = vecAdd(cruiserVelocity, vecScale(bypassDir, ship.maxSpeed * 0.9));
+          } else {
+            targetHeading = bypassAngle;
+            desiredSpeed = ship.maxSpeed * 0.7;
+          }
+        }
+      } else {
+        ship.deadlockTimer = Math.max(0, (ship.deadlockTimer ?? 0) - dt * 2);
+        if (ship.deadlockTimer <= 0) {
+          ship.deadlockBypassAngle = undefined;
+        }
+      }
     }
 
     // 3. Smooth Turn
