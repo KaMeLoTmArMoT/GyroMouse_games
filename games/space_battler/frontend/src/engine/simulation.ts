@@ -30,6 +30,9 @@ const FIGHTER_CLEARANCE = 45;
 const FIGHTER_SEPARATION_WEIGHT = 0.45;
 const FIGHTER_EGRESS_DISTANCE = 200;
 const FIGHTER_ORBIT_RATE = 0.25;
+const CRUISER_STANDOFF = 480;
+const CRUISER_CLEARANCE = 100;
+const CRUISER_BOW_LIMIT = (12 * Math.PI) / 180;
 
 const FLAK_PROJECTILE_SPEED = 1500;
 const FLAK_PROJECTILE_LIFETIME = 0.35;
@@ -168,6 +171,7 @@ export class ClientCombatSimulation {
 
     // 3. Resolve Shield-to-Shield Physical Repulsion (Zero shield clipping between capitals!)
     this.resolveShipCollisions(aliveShips, dt);
+    this.resolveCruiserClearance(aliveShips);
 
     // 4. Projectiles & Collision Resolution
     this.updateProjectiles(dt, aliveShips);
@@ -406,6 +410,7 @@ export class ClientCombatSimulation {
   ): void {
     let targetHeading = ship.heading;
     let desiredSpeed = 0;
+    let cruiserVelocity: Vector2 | null = null;
 
     // 1. Independent Escorts (Corvettes with or without flagship)
     if (ship.flagshipId && aliveShips.some((s) => s.id === ship.flagshipId)) {
@@ -465,27 +470,49 @@ export class ClientCombatSimulation {
           desiredSpeed = ship.maxSpeed * 0.35;
         }
       } else if (ship.hullClass === "cruiser") {
-        // Cruisers: form a concave firing fan facing the target
-        // Keep fixed prow heavy torpedoes and dorsal beams bearing at all times!
-        const friendlyCruisers = aliveShips.filter(
-          (s) => s.team === ship.team && s.hullClass === "cruiser",
-        );
+        // Navigate geometric arc slots with lateral thrusters while keeping the prow aimed.
+        const friendlyCruisers = aliveShips
+          .filter((s) => s.team === ship.team && s.hullClass === "cruiser")
+          .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
         const cruiserIndex = friendlyCruisers.findIndex((s) => s.id === ship.id);
-        const totalCruisers = Math.max(1, friendlyCruisers.length);
-        const spreadOffset =
-          totalCruisers > 1 ? (cruiserIndex - (totalCruisers - 1) / 2) * 0.35 : 0;
+        const slotAngle = angleToTarget + (cruiserIndex - (friendlyCruisers.length - 1) / 2) * 0.38;
+        const slot: Vector2 = [
+          target.pos[0] - CRUISER_STANDOFF * Math.cos(slotAngle),
+          target.pos[1] - CRUISER_STANDOFF * Math.sin(slotAngle),
+        ];
+        cruiserVelocity = vecScale(vecSub(slot, ship.pos), 0.6);
 
-        const optimalCombatDist = 480;
-        targetHeading = normalizeAngle(angleToTarget + spreadOffset * 0.45);
-
-        if (dist < optimalCombatDist * 0.75) {
-          // Reverse thrust to prevent collision & maintain torpedo standoff!
-          desiredSpeed = -ship.maxSpeed * 0.5;
-        } else if (dist > optimalCombatDist * 1.2) {
-          desiredSpeed = ship.maxSpeed * 0.85;
-        } else {
-          desiredSpeed = ship.maxSpeed * 0.25;
+        for (const peer of friendlyCruisers) {
+          if (peer.id === ship.id) continue;
+          const distance = vecDistance(ship.pos, peer.pos);
+          if (distance >= CRUISER_CLEARANCE) continue;
+          const away: Vector2 =
+            distance > 1e-6
+              ? vecScale(vecSub(ship.pos, peer.pos), 1 / distance)
+              : [ship.id < peer.id ? 1 : -1, 0];
+          cruiserVelocity = vecAdd(
+            cruiserVelocity,
+            vecScale(away, ship.maxSpeed * (1 - distance / CRUISER_CLEARANCE)),
+          );
         }
+
+        // Continuous radial arrival avoids a thrust sign switch at the 360u reverse threshold.
+        const toward: Vector2 = [Math.cos(angleToTarget), Math.sin(angleToTarget)];
+        const radialSpeed = vecDot(cruiserVelocity, toward);
+        const standoffSpeed = clamp(
+          (dist - CRUISER_STANDOFF) * 0.6,
+          -ship.maxSpeed * 0.5,
+          ship.maxSpeed * 0.85,
+        );
+        cruiserVelocity = vecAdd(
+          cruiserVelocity,
+          vecScale(toward, Math.min(radialSpeed, standoffSpeed) - radialSpeed),
+        );
+        const speed = vecDistance([0, 0], cruiserVelocity);
+        if (speed > ship.maxSpeed * 0.85) {
+          cruiserVelocity = vecScale(cruiserVelocity, (ship.maxSpeed * 0.85) / speed);
+        }
+        targetHeading = angleToTarget;
       } else if (ship.hullClass === "corvette") {
         // Aggressive wolf-pack escort: circle targets at 260u and fire flak continuously
         targetHeading = angleToTarget + Math.PI * 0.4;
@@ -503,6 +530,8 @@ export class ClientCombatSimulation {
 
     // Friendly ship spatial avoidance (breaks up conga lines & collisions between teammates)
     const nearbyFriendly = aliveShips.find((other) => {
+      // Cruiser thrusters and physical clearance handle avoidance without changing bow aim.
+      if (cruiserVelocity) return false;
       if (other.id === ship.id || other.team !== ship.team) return false;
       // Fighter peers already use all-neighbor separation during non-attack maneuvers.
       if (
@@ -536,8 +565,24 @@ export class ClientCombatSimulation {
     const currentForwardSpeed = vecDot(ship.velocity, forwardVector);
     const currentLateralSpeed = vecDot(ship.velocity, rightVector);
 
+    if (cruiserVelocity && target) {
+      const toTarget = vecSub(target.pos, ship.pos);
+      const bowError = normalizeAngle(Math.atan2(toTarget[1], toTarget[0]) - ship.heading);
+      // Brake during initial acquisition instead of reversing in the wrong direction.
+      const alignment = clamp(
+        1 - Math.max(0, Math.abs(bowError) - CRUISER_BOW_LIMIT) / CRUISER_BOW_LIMIT,
+        0,
+        1,
+      );
+      cruiserVelocity = vecScale(cruiserVelocity, alignment);
+      desiredSpeed = vecDot(cruiserVelocity, forwardVector);
+    }
+
     const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
-    const newLateralSpeed = currentLateralSpeed * Math.max(0, 1 - dt * lateralDamping);
+    const newLateralSpeed = cruiserVelocity
+      ? currentLateralSpeed +
+        clamp(vecDot(cruiserVelocity, rightVector) - currentLateralSpeed, -110 * dt, 110 * dt)
+      : currentLateralSpeed * Math.max(0, 1 - dt * lateralDamping);
 
     const forwardAccel = ship.hullClass === "strike_craft" ? 240.0 : 110.0;
     const speedError = desiredSpeed - currentForwardSpeed;
@@ -571,6 +616,7 @@ export class ClientCombatSimulation {
       for (let j = i + 1; j < aliveShips.length; j++) {
         const a = aliveShips[i];
         const b = aliveShips[j];
+        if (a.team === b.team && a.hullClass === "cruiser" && b.hullClass === "cruiser") continue;
         const d = vecDistance(a.pos, b.pos);
 
         // Effective Shield Perimeter: calibrated 1.40x shield bubble
@@ -632,6 +678,40 @@ export class ClientCombatSimulation {
           }
         }
       }
+    }
+  }
+
+  private resolveCruiserClearance(aliveShips: ShipState[]): void {
+    const cruisers = aliveShips
+      .filter((ship) => ship.hullClass === "cruiser")
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+    // Revisit crowded chains because resolving one pair can compress a previous pair.
+    for (let pass = 0; pass < Math.max(32, cruisers.length * 8); pass++) {
+      let corrected = false;
+      for (let i = 0; i < cruisers.length; i++) {
+        for (let j = i + 1; j < cruisers.length; j++) {
+          const a = cruisers[i];
+          const b = cruisers[j];
+          if (a.team !== b.team) continue;
+          const clearance = Math.max(
+            CRUISER_CLEARANCE,
+            a.size * (a.shieldCurrent > 0 ? 1.4 : 1) + b.size * (b.shieldCurrent > 0 ? 1.4 : 1),
+          );
+          const distance = vecDistance(a.pos, b.pos);
+          if (distance >= clearance) continue;
+          const normal: Vector2 =
+            distance > 1e-6 ? vecScale(vecSub(a.pos, b.pos), 1 / distance) : [-1, 0];
+          const correction = vecScale(normal, (clearance - distance + 1e-6) * 0.5);
+          a.pos = vecAdd(a.pos, correction);
+          b.pos = vecSub(b.pos, correction);
+          const closingSpeed = Math.min(0, vecDot(vecSub(a.velocity, b.velocity), normal));
+          a.velocity = vecSub(a.velocity, vecScale(normal, closingSpeed * 0.5));
+          b.velocity = vecAdd(b.velocity, vecScale(normal, closingSpeed * 0.5));
+          corrected = true;
+        }
+      }
+      if (!corrected) break;
     }
   }
 
