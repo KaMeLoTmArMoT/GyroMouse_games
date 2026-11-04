@@ -54,6 +54,7 @@ export interface ShipState {
   shieldCurrent: number;
   shieldRegen: number;
   shieldDelayTimer: number;
+  shieldRechargeDelay?: number; // Delay in seconds before shield regeneration begins
 
   armorMax: number;
   armorCurrent: number;

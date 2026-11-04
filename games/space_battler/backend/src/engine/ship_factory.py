@@ -137,10 +137,11 @@ def create_battleship(id: str, team: int, group_id: int, pos: tuple[float, float
         pos=pos,
         max_speed=45.0,
         turn_rate=0.45,
-        size=60.0,
+        size=55.0,
         shield_max=1800.0,
         shield_current=1800.0,
         shield_regen=40.0,
+        shield_recharge_delay=0.0,  # Zero delay for capital dreadnought!
         armor_max=1600.0,
         armor_current=1600.0,
         armor_rating=75.0,

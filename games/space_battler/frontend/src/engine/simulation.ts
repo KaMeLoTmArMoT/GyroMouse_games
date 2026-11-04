@@ -789,7 +789,18 @@ export class ClientCombatSimulation {
   private applyDamage(ship: ShipState, rawDamage: number, weapon: WeaponDefinition): void {
     if (!ship.isAlive) return;
 
-    ship.shieldDelayTimer = 3.0;
+    // Asymmetric shield recharge delay: Capitals have massive continuous generators (0s delay),
+    // cruisers have high-capacity cells (1.2s delay), light escorts have 2.5s-3.5s delay
+    const delay =
+      ship.shieldRechargeDelay ??
+      (ship.hullClass === "battleship"
+        ? 0.0
+        : ship.hullClass === "cruiser"
+          ? 1.2
+          : ship.hullClass === "corvette"
+            ? 2.5
+            : 3.5);
+    ship.shieldDelayTimer = delay;
     let remaining = rawDamage;
 
     if (ship.shieldCurrent > 0) {

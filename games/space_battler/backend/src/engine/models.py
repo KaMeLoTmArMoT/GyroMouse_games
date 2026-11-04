@@ -98,7 +98,7 @@ class Ship:
     shield_max: float = 300.0
     shield_current: float = 300.0
     shield_regen: float = 15.0  # per second
-    shield_recharge_delay: float = 3.0  # delay after taking damage
+    shield_recharge_delay: float = 1.5  # delay after taking damage (0.0 for Battleship, 1.2 for Cruiser)
     shield_delay_timer: float = 0.0
 
     armor_max: float = 400.0
