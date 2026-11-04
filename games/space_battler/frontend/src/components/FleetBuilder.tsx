@@ -36,6 +36,77 @@ interface HullSpecData {
   weapons: HullWeaponSpec[];
 }
 
+export const GROUP_THEMES: Record<
+  number,
+  {
+    name: string;
+    border: string;
+    bg: string;
+    text: string;
+    badgeBg: string;
+    badgeText: string;
+    activeBg: string;
+    activeText: string;
+    glow: string;
+  }
+> = {
+  1: {
+    name: "Alpha",
+    border: "border-cyan-500/40",
+    bg: "bg-cyan-500/10",
+    text: "text-cyan-400",
+    badgeBg: "bg-cyan-500/20",
+    badgeText: "text-cyan-300",
+    activeBg: "bg-cyan-500",
+    activeText: "text-zinc-950",
+    glow: "shadow-cyan-500/25",
+  },
+  2: {
+    name: "Bravo",
+    border: "border-emerald-500/40",
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-400",
+    badgeBg: "bg-emerald-500/20",
+    badgeText: "text-emerald-300",
+    activeBg: "bg-emerald-500",
+    activeText: "text-zinc-950",
+    glow: "shadow-emerald-500/25",
+  },
+  3: {
+    name: "Charlie",
+    border: "border-amber-500/40",
+    bg: "bg-amber-500/10",
+    text: "text-amber-400",
+    badgeBg: "bg-amber-500/20",
+    badgeText: "text-amber-300",
+    activeBg: "bg-amber-500",
+    activeText: "text-zinc-950",
+    glow: "shadow-amber-500/25",
+  },
+  4: {
+    name: "Delta",
+    border: "border-purple-500/40",
+    bg: "bg-purple-500/10",
+    text: "text-purple-400",
+    badgeBg: "bg-purple-500/20",
+    badgeText: "text-purple-300",
+    activeBg: "bg-purple-500",
+    activeText: "text-zinc-950",
+    glow: "shadow-purple-500/25",
+  },
+  5: {
+    name: "Echo",
+    border: "border-rose-500/40",
+    bg: "bg-rose-500/10",
+    text: "text-rose-400",
+    badgeBg: "bg-rose-500/20",
+    badgeText: "text-rose-300",
+    activeBg: "bg-rose-500",
+    activeText: "text-zinc-950",
+    glow: "shadow-rose-500/25",
+  },
+};
+
 const HULL_SPECS: Record<HullClass, HullSpecData> = {
   battleship: {
     name: "Leviathan Battleship",
@@ -272,25 +343,35 @@ export function FleetBuilder({
             {[1, 2, 3, 4, 5].map((g) => {
               const count = groupCounts[g] || 0;
               const isSelected = selectedGroup === g;
+              const theme = GROUP_THEMES[g] || GROUP_THEMES[1];
               return (
                 <button
                   key={g}
                   type="button"
                   onClick={() => setSelectedGroup(g)}
-                  className={`px-3 py-1.5 rounded text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer flex items-center gap-2 border ${
                     isSelected
-                      ? "bg-cyan-500 text-zinc-950 font-semibold shadow-sm shadow-cyan-500/20"
-                      : "bg-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700"
+                      ? `${theme.activeBg} ${theme.activeText} font-bold ${theme.glow} shadow-md border-transparent`
+                      : count > 0
+                        ? `${theme.bg} ${theme.border} ${theme.text} hover:bg-zinc-800`
+                        : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
                   }`}
                 >
-                  <span>GRP {g}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        isSelected ? "bg-zinc-950" : count > 0 ? theme.activeBg : "bg-zinc-700"
+                      }`}
+                    />
+                    GRP {g}
+                  </span>
                   <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    className={`px-1.5 py-0.2 rounded text-[11px] font-bold ${
                       isSelected
                         ? "bg-zinc-950/30 text-zinc-950"
                         : count > 0
-                          ? "bg-cyan-500/20 text-cyan-400"
-                          : "bg-zinc-800 text-zinc-500"
+                          ? `${theme.badgeBg} ${theme.badgeText}`
+                          : "bg-zinc-800 text-zinc-600"
                     }`}
                   >
                     {count}
@@ -449,12 +530,21 @@ export function FleetBuilder({
                 Active Roster ({slots.length} hulls)
               </span>
               {slots.length > 0 && (
-                <span className="text-[10px] font-mono text-zinc-500">
+                <div className="flex flex-wrap gap-1.5 mt-1">
                   {[1, 2, 3, 4, 5]
                     .filter((g) => groupCounts[g] && groupCounts[g] > 0)
-                    .map((g) => `G${g}: ${groupCounts[g]}`)
-                    .join(" • ")}
-                </span>
+                    .map((g) => {
+                      const theme = GROUP_THEMES[g];
+                      return (
+                        <span
+                          key={g}
+                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${theme.bg} ${theme.border} ${theme.text} font-bold`}
+                        >
+                          G{g}: {groupCounts[g]}
+                        </span>
+                      );
+                    })}
+                </div>
               )}
             </div>
             {slots.length > 0 && (
@@ -474,40 +564,45 @@ export function FleetBuilder({
                 Fleet is currently empty. Enlist vessels from the hangar.
               </div>
             ) : (
-              slots.map((s) => (
-                <div
-                  key={s.id}
-                  className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex items-center justify-between select-text hover:border-zinc-700 transition-colors"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-6 h-6 rounded bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0">
-                      <ShipSilhouette hullClass={s.hullClass} className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-zinc-800 text-cyan-400 select-all font-semibold">
-                          G{s.groupId}
-                        </span>
-                        <span className="font-medium text-zinc-200 select-all">
-                          {HULL_SPECS[s.hullClass].name}
-                        </span>
+              slots.map((s) => {
+                const theme = GROUP_THEMES[s.groupId] || GROUP_THEMES[1];
+                return (
+                  <div
+                    key={s.id}
+                    className={`p-2.5 rounded-lg bg-zinc-900 border ${theme.border} text-xs flex items-center justify-between select-text hover:bg-zinc-800/60 transition-colors`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0">
+                        <ShipSilhouette hullClass={s.hullClass} className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[11px] px-2 py-0.5 rounded-md font-mono font-bold tracking-wide border ${theme.bg} ${theme.border} ${theme.text} select-all`}
+                          >
+                            G{s.groupId}
+                          </span>
+                          <span className="font-semibold text-zinc-100 select-all text-xs">
+                            {HULL_SPECS[s.hullClass].name}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-mono text-xs font-semibold text-zinc-300 select-all">
+                        {HULL_SPECS[s.hullClass].cost} CR
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeSlot(s.id)}
+                        className="text-zinc-500 hover:text-red-400 p-1.5 rounded-md hover:bg-zinc-800 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] text-zinc-400 select-all">
-                      {HULL_SPECS[s.hullClass].cost} CR
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeSlot(s.id)}
-                      className="text-zinc-500 hover:text-red-400 p-1 rounded hover:bg-zinc-800 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
