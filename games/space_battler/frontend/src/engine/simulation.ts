@@ -25,6 +25,9 @@ export type BeamFireCallback = (from: Vector2, to: Vector2, color: string, width
 export type FlakBurstCallback = (pos: Vector2) => void;
 
 const FIGHTER_STANDOFF = 385;
+const FIGHTER_SHELL_SPACING = 55;
+const FIGHTER_CLEARANCE = 45;
+const FIGHTER_SEPARATION_WEIGHT = 0.45;
 const FIGHTER_EGRESS_DISTANCE = 200;
 const FIGHTER_ORBIT_RATE = 0.25;
 
@@ -243,6 +246,7 @@ export class ClientCombatSimulation {
     angleToTarget: number,
     dist: number,
     dt: number,
+    aliveShips: ShipState[],
   ): { heading: number; speed: number } {
     // Evasive maneuver: detect incoming heavy torpedoes and perform rapid jink!
     const nearbyMissile = this.projectiles.find(
@@ -259,19 +263,20 @@ export class ClientCombatSimulation {
 
     const laneAngle = ship.fighterLaneAngle ?? 0;
     const laneIndex = ship.fighterLaneIndex ?? 0;
+    const stagingRadius = FIGHTER_STANDOFF + ((laneIndex % 3) - 1) * FIGHTER_SHELL_SPACING;
     const phase = ship.fighterPhase ?? "staging";
     const orbitAngle = laneAngle + this.timeElapsed * FIGHTER_ORBIT_RATE;
 
     const bearing = Math.atan2(ship.pos[1] - target.pos[1], ship.pos[0] - target.pos[0]);
     const bearingDiff = normalizeAngle(orbitAngle - bearing);
-    const radialError = dist - FIGHTER_STANDOFF;
+    const radialError = dist - stagingRadius;
 
     let heading = ship.heading;
     let speed = 0;
 
     switch (phase) {
       case "staging": {
-        if (dist > FIGHTER_STANDOFF + 70) {
+        if (dist > stagingRadius + 70) {
           // Close to the standoff perimeter first, then orbit to the assigned lane
           heading = angleToTarget;
           speed = ship.maxSpeed * 0.8;
@@ -328,9 +333,9 @@ export class ClientCombatSimulation {
       }
 
       case "rejoin": {
-        if (dist < FIGHTER_STANDOFF - 40) {
+        if (dist < stagingRadius - 40) {
           // Boost radially back out to the staging perimeter
-          heading = normalizeAngle(bearing + Math.PI);
+          heading = bearing;
           speed = ship.maxSpeed;
         } else {
           ship.fighterPhase = "staging";
@@ -339,6 +344,36 @@ export class ClientCombatSimulation {
           speed = ship.maxSpeed * 0.5;
         }
         break;
+      }
+    }
+
+    if (phase === "staging" || phase === "egress" || phase === "rejoin") {
+      let separationX = 0;
+      let separationY = 0;
+      for (const peer of aliveShips) {
+        if (peer.id === ship.id || peer.team !== ship.team || peer.hullClass !== "strike_craft") {
+          continue;
+        }
+        const dx = ship.pos[0] - peer.pos[0];
+        const dy = ship.pos[1] - peer.pos[1];
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq >= FIGHTER_CLEARANCE * FIGHTER_CLEARANCE) continue;
+
+        if (distanceSq < 1e-6) {
+          // Give coincident peers opposite, deterministic escape directions.
+          separationX += ship.id < peer.id ? 1 : -1;
+        } else {
+          separationX += dx / distanceSq;
+          separationY += dy / distanceSq;
+        }
+      }
+
+      // Scale inverse-distance forces to the unit heading; existing turn limits smooth steering.
+      const weight = FIGHTER_CLEARANCE * FIGHTER_SEPARATION_WEIGHT;
+      const desiredX = Math.cos(heading) + separationX * weight;
+      const desiredY = Math.sin(heading) + separationY * weight;
+      if (Math.abs(desiredX) + Math.abs(desiredY) > 1e-6) {
+        heading = Math.atan2(desiredY, desiredX);
       }
     }
 
@@ -457,7 +492,7 @@ export class ClientCombatSimulation {
         desiredSpeed = ship.maxSpeed * 0.75;
       } else if (ship.hullClass === "strike_craft") {
         // Staggered staged attack runs: staging -> attack -> egress -> rejoin
-        const maneuver = this.updateFighterCycle(ship, target, angleToTarget, dist, dt);
+        const maneuver = this.updateFighterCycle(ship, target, angleToTarget, dist, dt, aliveShips);
         targetHeading = maneuver.heading;
         desiredSpeed = maneuver.speed;
       } else {
@@ -469,6 +504,15 @@ export class ClientCombatSimulation {
     // Friendly ship spatial avoidance (breaks up conga lines & collisions between teammates)
     const nearbyFriendly = aliveShips.find((other) => {
       if (other.id === ship.id || other.team !== ship.team) return false;
+      // Fighter peers already use all-neighbor separation during non-attack maneuvers.
+      if (
+        ship.hullClass === "strike_craft" &&
+        other.hullClass === "strike_craft" &&
+        target &&
+        ship.fighterPhase !== "attack"
+      ) {
+        return false;
+      }
       const d = vecDistance(ship.pos, other.pos);
       return d < (ship.size + other.size) * 1.35;
     });
