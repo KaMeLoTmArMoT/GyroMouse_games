@@ -22,6 +22,31 @@ import {
 } from "./math2d";
 
 export type BeamFireCallback = (from: Vector2, to: Vector2, color: string, width: number) => void;
+export type FlakBurstCallback = (pos: Vector2) => void;
+
+const FIGHTER_STANDOFF = 385;
+const FIGHTER_EGRESS_DISTANCE = 200;
+const FIGHTER_ORBIT_RATE = 0.25;
+
+const FLAK_PROJECTILE_SPEED = 1500;
+const FLAK_PROJECTILE_LIFETIME = 0.35;
+const FLAK_PROXIMITY_RADIUS = 28;
+const FLAK_BLAST_RADIUS = 60;
+const FLAK_BLAST_DAMAGE = 18;
+
+const FLAK_BLAST_WEAPON: WeaponDefinition = {
+  weaponType: "point_defense",
+  name: "Flak Burst",
+  damage: FLAK_BLAST_DAMAGE,
+  cooldown: 1,
+  range: FLAK_BLAST_RADIUS,
+  projectileSpeed: FLAK_PROJECTILE_SPEED,
+  trackingSpeed: 0,
+  shieldMultiplier: 1.0,
+  armorMultiplier: 1.0,
+  hullMultiplier: 1.0,
+  cost: 0,
+};
 
 export class ClientCombatSimulation {
   ships: ShipState[] = [];
@@ -30,6 +55,7 @@ export class ClientCombatSimulation {
   timeElapsed = 0;
   private projectileCounter = 0;
   onBeamFire: BeamFireCallback | null = null;
+  onFlakBurst: FlakBurstCallback | null = null;
 
   addShip(ship: ShipState): void {
     this.ships.push(ship);
@@ -54,6 +80,7 @@ export class ClientCombatSimulation {
 
     // 2. Tactical Movement & Targeting AI
     const aliveShips = this.ships.filter((s) => s.isAlive);
+    this.ensureFighterLanes(aliveShips);
     for (const ship of aliveShips) {
       const order = this.orders.get(ship.groupId) ?? {
         groupId: ship.groupId,
@@ -63,7 +90,8 @@ export class ClientCombatSimulation {
       const target = this.findTargetForShip(ship, order, aliveShips);
       this.updateShipMovement(ship, target, aliveShips, dt);
 
-      // Turrets aim & fire
+      // Turrets aim & fire (strike craft only fire during their attack dive)
+      const canFire = ship.hullClass !== "strike_craft" || ship.fighterPhase === "attack";
       for (const turret of ship.turrets) {
         let turretTarget = target;
 
@@ -108,7 +136,7 @@ export class ClientCombatSimulation {
         }
 
         const isAimed = this.updateTurretAim(turret, dt, ship, targetPos);
-        if (isAimed && turret.cooldownTimer <= 0 && targetPos) {
+        if (canFire && isAimed && turret.cooldownTimer <= 0 && targetPos) {
           this.fireWeapon(ship, turret, targetPos, turretTarget);
         }
       }
@@ -139,6 +167,12 @@ export class ClientCombatSimulation {
         (s) => s.hullClass === "strike_craft" || s.hullClass === "corvette",
       );
       if (crafts.length > 0) enemies = crafts;
+    } else if (ship.hullClass === "strike_craft") {
+      // Fighter wings default to attack runs against capital hulls
+      const capitals = enemies.filter(
+        (s) => s.hullClass === "cruiser" || s.hullClass === "battleship",
+      );
+      if (capitals.length > 0) enemies = capitals;
     }
 
     return enemies.reduce((prev, curr) =>
@@ -158,6 +192,141 @@ export class ClientCombatSimulation {
     return hostileMissiles.reduce((prev, curr) =>
       vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
     );
+  }
+
+  private ensureFighterLanes(aliveShips: ShipState[]): void {
+    const fightersByTeam = new Map<number, ShipState[]>();
+
+    for (const ship of aliveShips) {
+      if (ship.hullClass !== "strike_craft") continue;
+      const wing = fightersByTeam.get(ship.team) ?? [];
+      wing.push(ship);
+      fightersByTeam.set(ship.team, wing);
+    }
+
+    for (const wing of fightersByTeam.values()) {
+      wing.forEach((ship, index) => {
+        if (ship.fighterLaneAngle !== undefined) return;
+
+        ship.fighterLaneAngle = (index * 2 * Math.PI) / wing.length;
+        ship.fighterLaneIndex = index;
+        ship.fighterPhase = "staging";
+        ship.fighterPhaseTimer = (index * 1.7) % 5.0;
+      });
+    }
+  }
+
+  private updateFighterCycle(
+    ship: ShipState,
+    target: ShipState,
+    angleToTarget: number,
+    dist: number,
+    dt: number,
+  ): { heading: number; speed: number } {
+    const laneAngle = ship.fighterLaneAngle ?? 0;
+    const laneIndex = ship.fighterLaneIndex ?? 0;
+    const phase = ship.fighterPhase ?? "staging";
+    const orbitAngle = laneAngle + this.timeElapsed * FIGHTER_ORBIT_RATE;
+
+    const bearing = Math.atan2(ship.pos[1] - target.pos[1], ship.pos[0] - target.pos[0]);
+    const bearingDiff = normalizeAngle(orbitAngle - bearing);
+    const radialError = dist - FIGHTER_STANDOFF;
+
+    let heading = ship.heading;
+    let speed = 0;
+
+    switch (phase) {
+      case "staging": {
+        if (dist > FIGHTER_STANDOFF + 70) {
+          // Close to the standoff perimeter first, then orbit to the assigned lane
+          heading = angleToTarget;
+          speed = ship.maxSpeed * 0.8;
+        } else {
+          heading = this.computeOrbitHeading(bearing, bearingDiff, radialError);
+          speed = ship.maxSpeed * 0.5;
+        }
+
+        const gun = ship.turrets[0];
+        const gunReady = !gun || gun.cooldownTimer <= 0.2;
+        const onLane = Math.abs(bearingDiff) < 0.25;
+        const onRadius = Math.abs(radialError) < 90;
+
+        if (onLane && onRadius) {
+          ship.fighterPhaseTimer = (ship.fighterPhaseTimer ?? 0) - dt;
+        }
+
+        if (onLane && onRadius && (ship.fighterPhaseTimer ?? 0) <= 0 && gunReady) {
+          ship.fighterPhase = "attack";
+          ship.fighterPhaseTimer = 0;
+        }
+        break;
+      }
+
+      case "attack": {
+        // Each wing member dives down its own radial lane instead of a shared point
+        const laneOffset = target.size + 30;
+        const attackPoint: Vector2 = [
+          target.pos[0] + Math.cos(laneAngle) * laneOffset,
+          target.pos[1] + Math.sin(laneAngle) * laneOffset,
+        ];
+        const toAttackPoint = vecSub(attackPoint, ship.pos);
+        heading = Math.atan2(toAttackPoint[1], toAttackPoint[0]);
+        speed = ship.maxSpeed;
+
+        if (dist <= FIGHTER_EGRESS_DISTANCE) {
+          ship.fighterPhase = "egress";
+          ship.fighterPhaseTimer = 1.2;
+        }
+        break;
+      }
+
+      case "egress": {
+        const peelSide = laneIndex % 2 === 0 ? 1 : -1;
+        heading = normalizeAngle(angleToTarget + peelSide * Math.PI * 0.66);
+        speed = ship.maxSpeed;
+
+        ship.fighterPhaseTimer = (ship.fighterPhaseTimer ?? 0) - dt;
+        if ((ship.fighterPhaseTimer ?? 0) <= 0 || dist > 360) {
+          ship.fighterPhase = "rejoin";
+          ship.fighterPhaseTimer = 0;
+        }
+        break;
+      }
+
+      case "rejoin": {
+        if (dist < FIGHTER_STANDOFF - 40) {
+          // Boost radially back out to the staging perimeter
+          heading = normalizeAngle(bearing + Math.PI);
+          speed = ship.maxSpeed;
+        } else {
+          ship.fighterPhase = "staging";
+          ship.fighterPhaseTimer = 0.4 + ((laneIndex * 1.3) % 3.0);
+          heading = this.computeOrbitHeading(bearing, bearingDiff, radialError);
+          speed = ship.maxSpeed * 0.5;
+        }
+        break;
+      }
+    }
+
+    return { heading, speed };
+  }
+
+  private computeOrbitHeading(bearing: number, bearingDiff: number, radialError: number): number {
+    const orbitDirection = bearingDiff >= 0 ? 1 : -1;
+    const tangentHeading = bearing + orbitDirection * (Math.PI / 2);
+    const radialHeading = radialError > 0 ? bearing + Math.PI : bearing;
+    const radialWeight = clamp(Math.abs(radialError) / 120, 0, 1);
+
+    const tangentX = Math.cos(tangentHeading);
+    const tangentY = Math.sin(tangentHeading);
+    const radialX = Math.cos(radialHeading);
+    const radialY = Math.sin(radialHeading);
+
+    const dirX = tangentX * (1 - radialWeight) + radialX * radialWeight;
+    const dirY = tangentY * (1 - radialWeight) + radialY * radialWeight;
+
+    if (Math.abs(dirX) + Math.abs(dirY) < 1e-6) return tangentHeading;
+    return Math.atan2(dirY, dirX);
   }
 
   private updateShipMovement(
@@ -238,14 +407,10 @@ export class ClientCombatSimulation {
         targetHeading = angleToTarget + Math.PI * 0.4;
         desiredSpeed = ship.maxSpeed * 0.75;
       } else if (ship.hullClass === "strike_craft") {
-        // Swarm hit-and-run
-        if (dist < 130) {
-          targetHeading = angleToTarget + Math.PI * 0.7;
-          desiredSpeed = ship.maxSpeed;
-        } else {
-          targetHeading = angleToTarget;
-          desiredSpeed = ship.maxSpeed;
-        }
+        // Staggered staged attack runs: staging -> attack -> egress -> rejoin
+        const maneuver = this.updateFighterCycle(ship, target, angleToTarget, dist, dt);
+        targetHeading = maneuver.heading;
+        desiredSpeed = maneuver.speed;
       } else {
         targetHeading = angleToTarget;
         desiredSpeed = ship.maxSpeed * 0.6;
@@ -318,6 +483,14 @@ export class ClientCombatSimulation {
           const pushRatioA = massB / totalMass;
           const pushRatioB = massA / totalMass;
 
+          // Cancel only closing normal velocity so hulls slide tangentially past each other
+          const relVel = vecSub(a.velocity, b.velocity);
+          const closingSpeed = vecDot(relVel, normal);
+          if (closingSpeed < 0) {
+            a.velocity = vecSub(a.velocity, vecScale(normal, closingSpeed * pushRatioA));
+            b.velocity = vecAdd(b.velocity, vecScale(normal, closingSpeed * pushRatioB));
+          }
+
           // Strong repulsor prevents capitals from overlapping bubbles
           const repulsorForce = (repulsorZone - d) * 120;
           a.pos = vecAdd(a.pos, vecScale(normal, repulsorForce * pushRatioA * dt));
@@ -325,8 +498,8 @@ export class ClientCombatSimulation {
 
           // Physical shield clash & ramming
           if (d <= minBubbleDist) {
-            const relVel = vecDistance(a.velocity, b.velocity);
-            const ramDamage = Math.max(30, relVel * 1.2);
+            const relSpeed = vecDistance(a.velocity, b.velocity);
+            const ramDamage = Math.max(30, relSpeed * 1.2);
 
             if (a.shieldCurrent > 0) a.shieldCurrent = Math.max(0, a.shieldCurrent - ramDamage);
             else a.hullCurrent = Math.max(0, a.hullCurrent - ramDamage * 1.5);
@@ -400,19 +573,30 @@ export class ClientCombatSimulation {
     const rotatedOffset = rotatePoint(turret.offset, ship.heading);
     const spawnPos = vecAdd(ship.pos, rotatedOffset);
 
-    // Hitscan (Beam Laser or Flak Point Defense)
+    // Physical proximity-fused flak shell (Point Defense)
+    if (turret.weapon.weaponType === "point_defense") {
+      this.projectileCounter += 1;
+      const toTarget = vecNormalize(vecSub(targetPos, spawnPos));
+
+      this.projectiles.push({
+        id: `proj_${this.projectileCounter}`,
+        weaponType: "point_defense",
+        damage: FLAK_BLAST_DAMAGE,
+        ownerId: ship.id,
+        ownerTeam: ship.team,
+        pos: spawnPos,
+        velocity: vecScale(toTarget, FLAK_PROJECTILE_SPEED),
+        lifetime: FLAK_PROJECTILE_LIFETIME,
+        targetId: targetShip ? targetShip.id : null,
+        hp: 25.0,
+        isFlakBurst: true,
+      });
+      return;
+    }
+
+    // Hitscan (Beam Laser)
     if (turret.weapon.projectileSpeed <= 0) {
-      if (turret.weapon.weaponType === "point_defense") {
-        const missile = this.findMissileTarget(ship, turret.weapon.range);
-        if (missile) {
-          missile.hp -= turret.weapon.damage * 6.0;
-          if (this.onBeamFire) this.onBeamFire(spawnPos, missile.pos, "#facc15", 2.0);
-        } else if (targetShip?.isAlive) {
-          // Corvettes actively barrage enemy hulls with flak!
-          this.applyDamage(targetShip, turret.weapon.damage, turret.weapon);
-          if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, "#facc15", 1.8);
-        }
-      } else if (targetShip?.isAlive) {
+      if (targetShip?.isAlive) {
         const dist = vecDistance(spawnPos, targetShip.pos);
         if (dist <= turret.weapon.range) {
           const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
@@ -447,10 +631,25 @@ export class ClientCombatSimulation {
     const active: ProjectileState[] = [];
 
     for (const p of this.projectiles) {
+      const isFlak = p.isFlakBurst === true;
       p.lifetime -= dt;
-      if (p.lifetime <= 0 || p.hp <= 0) continue;
+
+      if (p.hp <= 0) continue;
+      if (p.lifetime <= 0) {
+        if (isFlak) this.detonateFlak(p, aliveShips);
+        continue;
+      }
 
       p.pos = vecAdd(p.pos, vecScale(p.velocity, dt));
+
+      if (isFlak) {
+        if (this.shouldDetonateFlak(p, aliveShips)) {
+          this.detonateFlak(p, aliveShips);
+        } else {
+          active.push(p);
+        }
+        continue;
+      }
 
       let hit = false;
       for (const ship of aliveShips) {
@@ -481,6 +680,38 @@ export class ClientCombatSimulation {
     }
 
     this.projectiles = active;
+  }
+
+  private shouldDetonateFlak(flak: ProjectileState, aliveShips: ShipState[]): boolean {
+    for (const ship of aliveShips) {
+      if (ship.team === flak.ownerTeam) continue;
+      if (vecDistance(flak.pos, ship.pos) <= ship.size + FLAK_PROXIMITY_RADIUS) return true;
+    }
+
+    for (const other of this.projectiles) {
+      if (other.weaponType !== "missile" || other.ownerTeam === flak.ownerTeam) continue;
+      if (vecDistance(flak.pos, other.pos) <= FLAK_PROXIMITY_RADIUS) return true;
+    }
+
+    return false;
+  }
+
+  private detonateFlak(flak: ProjectileState, aliveShips: ShipState[]): void {
+    for (const ship of aliveShips) {
+      if (ship.team === flak.ownerTeam) continue;
+      if (vecDistance(flak.pos, ship.pos) <= FLAK_BLAST_RADIUS + ship.size) {
+        this.applyDamage(ship, FLAK_BLAST_DAMAGE, FLAK_BLAST_WEAPON);
+      }
+    }
+
+    for (const other of this.projectiles) {
+      if (other.weaponType !== "missile" || other.ownerTeam === flak.ownerTeam) continue;
+      if (vecDistance(flak.pos, other.pos) <= FLAK_BLAST_RADIUS) {
+        other.hp -= FLAK_BLAST_DAMAGE;
+      }
+    }
+
+    if (this.onFlakBurst) this.onFlakBurst([...flak.pos]);
   }
 
   private applyDamage(ship: ShipState, rawDamage: number, weapon: WeaponDefinition): void {

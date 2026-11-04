@@ -30,10 +30,19 @@ export interface ParticleEffect {
   maxDuration: number;
 }
 
+export interface FlakBurstEffect {
+  pos: Vector2;
+  radius: number;
+  maxRadius: number;
+  remainingDuration: number;
+  maxDuration: number;
+}
+
 export class VisualEffectsManager {
   beams: LaserBeamEffect[] = [];
   shieldImpacts: ShieldImpactEffect[] = [];
   particles: ParticleEffect[] = [];
+  flakBursts: FlakBurstEffect[] = [];
 
   addBeam(from: Vector2, to: Vector2, color = "#38bdf8", width = 2.5, duration = 0.12): void {
     this.beams.push({
@@ -56,6 +65,30 @@ export class VisualEffectsManager {
       impactAngle,
       remainingDuration: 0.25,
     });
+  }
+
+  addFlakBurst(pos: Vector2, maxRadius = 60): void {
+    this.flakBursts.push({
+      pos: [...pos],
+      radius: 4,
+      maxRadius,
+      remainingDuration: 0.35,
+      maxDuration: 0.35,
+    });
+
+    const shrapnelCount = 12;
+    for (let i = 0; i < shrapnelCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 90 + Math.random() * 170;
+      this.particles.push({
+        pos: [pos[0], pos[1]],
+        velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
+        color: Math.random() > 0.45 ? "#fb923c" : "#facc15",
+        radius: 1.2 + Math.random() * 2.0,
+        remainingDuration: 0.25 + Math.random() * 0.3,
+        maxDuration: 0.55,
+      });
+    }
   }
 
   addExplosion(pos: Vector2, count = 18, color = "#f97316"): void {
@@ -84,6 +117,14 @@ export class VisualEffectsManager {
     this.shieldImpacts = this.shieldImpacts.filter((s) => {
       s.remainingDuration -= dt;
       return s.remainingDuration > 0;
+    });
+
+    // Flak bursts expand outward & decay
+    this.flakBursts = this.flakBursts.filter((f) => {
+      f.remainingDuration -= dt;
+      const progress = 1 - Math.max(0, f.remainingDuration) / f.maxDuration;
+      f.radius = 4 + (f.maxRadius - 4) * progress;
+      return f.remainingDuration > 0;
     });
 
     // Particles update & decay

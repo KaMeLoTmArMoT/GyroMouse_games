@@ -53,6 +53,25 @@ export function renderProjectile(ctx: CanvasRenderingContext2D, p: ProjectileSta
       break;
     }
 
+    case "point_defense": {
+      // Proximity-fused flak shell with hot orange tracer
+      const angle = Math.atan2(p.velocity[1], p.velocity[0]);
+      ctx.rotate(angle);
+
+      ctx.strokeStyle = "rgba(251, 146, 60, 0.75)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-10, 0);
+      ctx.lineTo(7, 0);
+      ctx.stroke();
+
+      ctx.fillStyle = "#fde047";
+      ctx.beginPath();
+      ctx.arc(5, 0, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
     case "missile": {
       // Guided torpedo with animated engine trail
       const angle = Math.atan2(p.velocity[1], p.velocity[0]);

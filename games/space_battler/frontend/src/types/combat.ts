@@ -4,6 +4,7 @@ export type WeaponType = "beam_laser" | "railgun" | "plasma" | "missile" | "poin
 export type HullClass = "strike_craft" | "corvette" | "cruiser" | "battleship";
 export type TargetPriority = "capitals" | "screen_and_defend" | "strike_craft" | "nearest";
 export type EngagementStance = "max_range" | "optimal_range" | "brawl";
+export type FighterPhase = "staging" | "attack" | "egress" | "rejoin";
 
 export type Vector2 = [number, number];
 
@@ -67,6 +68,11 @@ export interface ShipState {
 
   formationOffset?: Vector2;
   flagshipId?: string;
+
+  fighterPhase?: FighterPhase;
+  fighterLaneAngle?: number;
+  fighterLaneIndex?: number;
+  fighterPhaseTimer?: number;
 }
 
 export interface ProjectileState {

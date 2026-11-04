@@ -27,6 +27,9 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
     sim.onBeamFire = (from, to, color, width) => {
       effectsRef.current.addBeam(from, to, color, width, 0.16);
     };
+    sim.onFlakBurst = (pos) => {
+      effectsRef.current.addFlakBurst(pos, 60);
+    };
 
     let animId: number;
     let lastTime = performance.now();
@@ -76,6 +79,23 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
             ctx.beginPath();
             ctx.arc(p.pos[0], p.pos[1], p.radius, 0, Math.PI * 2);
             ctx.fill();
+          }
+
+          // Draw Expanding Flak Burst Shockwaves
+          for (const burst of effectsRef.current.flakBursts) {
+            const alpha = Math.max(0, burst.remainingDuration / burst.maxDuration);
+
+            ctx.strokeStyle = `rgba(251, 146, 60, ${0.85 * alpha})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(burst.pos[0], burst.pos[1], burst.radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(250, 204, 21, ${0.5 * alpha})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(burst.pos[0], burst.pos[1], burst.radius * 0.65, 0, Math.PI * 2);
+            ctx.stroke();
           }
 
           // Draw Projectiles
