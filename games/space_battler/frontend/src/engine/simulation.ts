@@ -113,17 +113,19 @@ export class ClientCombatSimulation {
         let targetPos = turretTarget ? turretTarget.pos : null;
 
         // POINT DEFENSE (CORVETTES):
-        // 1. Prioritize hostile incoming missiles in range
-        // 2. If NO missiles exist, prioritize enemy strike crafts / nearest ships!
-        // (Aegis Corvettes NEVER sit idle, they hose down enemy ships with flak!)
+        // 1. Prioritize hostile incoming missiles in range (+10% buffer)
+        // 2. If NO missiles exist, prioritize enemy strike crafts / nearest ships in range
+        // 3. If NO enemies in range, remain idle (no blind fire at infinite range!)
         if (turret.weapon.weaponType === "point_defense") {
-          const missile = this.findMissileTarget(ship, turret.weapon.range);
+          const maxPDRange = turret.weapon.range * 1.1;
+          const missile = this.findMissileTarget(ship, maxPDRange);
           if (missile) {
             targetPos = missile.pos;
+            turretTarget = null;
           } else {
             // Find nearest enemy in 360-degree range
             const enemiesInRange = aliveShips.filter(
-              (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) <= turret.weapon.range,
+              (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) <= maxPDRange,
             );
             if (enemiesInRange.length > 0) {
               const nearestEnemy = enemiesInRange.reduce((prev, curr) =>
@@ -131,12 +133,20 @@ export class ClientCombatSimulation {
               );
               targetPos = nearestEnemy.pos;
               turretTarget = nearestEnemy;
+            } else {
+              // Out of range: keep guns ready but do not engage
+              targetPos = null;
+              turretTarget = null;
             }
           }
         }
 
         const isAimed = this.updateTurretAim(turret, dt, ship, targetPos);
-        if (canFire && isAimed && turret.cooldownTimer <= 0 && targetPos) {
+        const maxEngagementRange = turret.weapon.range * 1.1;
+        const inEngagementRange = Boolean(
+          targetPos && vecDistance(ship.pos, targetPos) <= maxEngagementRange,
+        );
+        if (canFire && isAimed && inEngagementRange && turret.cooldownTimer <= 0 && targetPos) {
           this.fireWeapon(ship, turret, targetPos, turretTarget);
         }
       }
