@@ -17,16 +17,17 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
 
   // 1. Selection & Range / Fire Arc Overlay (When selected)
   if (selected) {
-    // Selection pulse ring
+    // Selection pulse ring outside shield
+    const selRadius = Math.max(ship.size * 1.6, 28);
     ctx.strokeStyle = primaryColor;
     ctx.lineWidth = 1.8;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.arc(0, 0, ship.size * 1.45, 0, Math.PI * 2);
+    ctx.arc(0, 0, selRadius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw Turret Firing Cones (visualize true weapon dead zones!)
+    // Draw Turret Firing Cones
     for (const turret of ship.turrets) {
       drawTurretArcCone(ctx, ship, turret, primaryColor);
     }
@@ -45,14 +46,20 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
     renderTurret(ctx, ship, turret, primaryColor);
   }
 
-  // 4. Render Shield Arc / Bubble
+  // 4. Render Generous Shield Bubble (Shield envelope comfortably covers elongated prow & engines)
   if (ship.shieldCurrent > 0) {
     const shieldRatio = ship.shieldCurrent / ship.shieldMax;
-    ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 + shieldRatio * 0.4})`;
-    ctx.lineWidth = 1.8;
+    const shieldBubbleRadius = ship.size * 1.5; // Scaled up so prow never pokes through!
+
+    ctx.strokeStyle = `rgba(56, 189, 248, ${0.18 + shieldRatio * 0.42})`;
+    ctx.lineWidth = 2.0;
     ctx.beginPath();
-    ctx.arc(0, 0, ship.size * 1.18, 0, Math.PI * 2);
+    ctx.arc(0, 0, shieldBubbleRadius, 0, Math.PI * 2);
     ctx.stroke();
+
+    // Subtle energy field gradient fill
+    ctx.fillStyle = `rgba(56, 189, 248, ${0.03 + shieldRatio * 0.05})`;
+    ctx.fill();
   }
 
   // 5. Compact Status HUD Bar
@@ -69,18 +76,15 @@ function drawTurretArcCone(
 ): void {
   const [tx, ty] = rotatePoint(turret.offset, ship.heading);
   const [minArc, maxArc] = turret.baseArc;
-  const range = Math.min(turret.weapon.range, 350); // visual cone radius
+  const range = Math.min(turret.weapon.range, 350);
 
   ctx.save();
   ctx.translate(tx, ty);
 
-  // Draw Sector of Fire
   const startAngle = ship.heading + minArc;
   const endAngle = ship.heading + maxArc;
 
-  ctx.fillStyle = turret.isSpinalGimbal
-    ? "rgba(234, 179, 8, 0.08)" // Yellow narrow cone
-    : "rgba(56, 189, 248, 0.05)";
+  ctx.fillStyle = turret.isSpinalGimbal ? "rgba(234, 179, 8, 0.08)" : "rgba(56, 189, 248, 0.05)";
   ctx.strokeStyle = turret.isSpinalGimbal ? "rgba(234, 179, 8, 0.35)" : "rgba(56, 189, 248, 0.25)";
   ctx.lineWidth = 1;
 
@@ -139,6 +143,7 @@ function drawHullSilhouette(
       break;
 
     default:
+      // Battleship wedge
       ctx.moveTo(s * 1.4, 0);
       ctx.lineTo(s * 0.8, -s * 0.4);
       ctx.lineTo(s * 0.2, -s * 0.6);
@@ -185,7 +190,6 @@ function renderTurret(
       ? 1.4
       : 2.4;
 
-  // Turret Barbette
   ctx.fillStyle = turret.isSpinalGimbal ? "#0f172a" : "#1e293b";
   ctx.strokeStyle = primaryColor;
   ctx.lineWidth = 1.2;
@@ -194,7 +198,6 @@ function renderTurret(
   ctx.fill();
   ctx.stroke();
 
-  // Barrel
   ctx.strokeStyle = "#f8fafc";
   ctx.lineWidth = barrelWidth;
   ctx.beginPath();
@@ -206,10 +209,10 @@ function renderTurret(
 }
 
 function renderHealthHUD(ctx: CanvasRenderingContext2D, ship: ShipState): void {
-  const barWidth = ship.size * 1.5;
+  const barWidth = Math.max(ship.size * 1.6, 26);
   const barHeight = 2.5;
   const startX = -barWidth / 2;
-  const startY = ship.size + 8;
+  const startY = ship.size * 1.5 + 4; // Positioned cleanly below the shield bubble
 
   // Background track
   ctx.fillStyle = "rgba(15, 23, 42, 0.7)";
