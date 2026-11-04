@@ -62,6 +62,18 @@ export interface FireSolution {
   score: number;
 }
 
+export function damagedTargetPriority(target: ShipState): number {
+  return (
+    1.5 * clamp(1 - target.shieldCurrent / Math.max(1, target.shieldMax), 0, 1) +
+    2 * clamp(1 - target.armorCurrent / Math.max(1, target.armorMax), 0, 1) +
+    4 * clamp(1 - target.hullCurrent / Math.max(1, target.hullMax), 0, 1)
+  );
+}
+
+export function squadFocusPriority(assignments: number): number {
+  return assignments < 3 ? assignments * 0.6 : 1.2 - (assignments - 2) * 4;
+}
+
 export function acquireMountTarget(
   ship: ShipState,
   turret: TurretMountState,
@@ -105,18 +117,20 @@ export function acquireMountTarget(
     )
       continue;
     const capital = enemy.hullClass === "battleship" || enemy.hullClass === "cruiser";
-    let role = enemy.id === primary?.id ? 0.3 : 0;
+    let role = enemy.id === primary?.id ? 2 : 0;
     if ((turret.isSpinalGimbal || weapon.weaponType === "missile") && capital) role += 3;
     if (
       (weapon.weaponType === "point_defense" || ship.hullClass === "strike_craft") &&
       enemy.hullClass === "strike_craft"
     )
       role += 3;
-    role += clamp(1 - enemy.hullCurrent / enemy.hullMax, 0, 1) * 0.5;
+    role += damagedTargetPriority(enemy);
     evaluate(enemy, "ship", role);
   }
 
-  if (weapon.weaponType === "point_defense") {
+  const defensiveBeam =
+    ship.hullClass === "battleship" && weapon.weaponType === "beam_laser" && solutions.length === 0;
+  if (weapon.weaponType === "point_defense" || defensiveBeam) {
     const anchor = ships.find((s) => s.isAlive && s.id === ship.flagshipId);
     for (const missile of projectiles) {
       if (

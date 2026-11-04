@@ -12,8 +12,19 @@ import type {
   WeaponType,
   WingPhase,
 } from "../types/combat";
-import { acquireMountTarget, fullCircle, inMountArc, mountPosition, sweptHit } from "./fireControl";
 import {
+  acquireMountTarget,
+  damagedTargetPriority,
+  fullCircle,
+  inMountArc,
+  mountPosition,
+  squadFocusPriority,
+  sweptHit,
+} from "./fireControl";
+import {
+  ARENA_HARD_PULL_RADIUS,
+  ARENA_RADIUS,
+  arenaVelocity,
   capitalIntent,
   dogfightTarget,
   escortVelocity,
@@ -28,7 +39,6 @@ import {
   rotatePoint,
   vecAdd,
   vecDistance,
-  vecDistanceSq,
   vecDot,
   vecNormalize,
   vecScale,
@@ -56,6 +66,7 @@ interface FighterWing {
   heading: number;
   rally: Vector2;
   assembledAt?: number;
+  egressRequestedAt?: number;
 }
 const CRUISER_CLEARANCE = 100;
 
@@ -163,14 +174,21 @@ export class ClientCombatSimulation {
     this.updateFighterWings(aliveShips);
     const navigationTargets = new Map<string, ShipState | null>();
     const movements = new Map<string, { pos: Vector2; velocity: Vector2; heading: number }>();
-    for (const ship of aliveShips) {
+    // Allocate small focus squads in stable order, independent of the render/storage order.
+    const previousTargets = new Map(aliveShips.map((ship) => [ship.id, ship.navigationTargetId]));
+    for (const ship of aliveShips) ship.navigationTargetId = undefined;
+    for (const ship of [...aliveShips].sort((a, b) => a.id.localeCompare(b.id))) {
       const order = this.orders.get(ship.groupId) ?? {
         groupId: ship.groupId,
         priority: "nearest",
         stance: "optimal_range",
       };
-      const target = this.findTargetForShip(ship, order, aliveShips);
+      const target = this.findTargetForShip(ship, order, aliveShips, previousTargets.get(ship.id));
+      ship.navigationTargetId = target?.id;
       navigationTargets.set(ship.id, target);
+    }
+    for (const ship of aliveShips) {
+      const target = navigationTargets.get(ship.id) ?? null;
       const previous = { pos: ship.pos, velocity: ship.velocity, heading: ship.heading };
       this.updateShipMovement(ship, target, aliveShips, dt);
       movements.set(ship.id, { pos: ship.pos, velocity: ship.velocity, heading: ship.heading });
@@ -197,7 +215,9 @@ export class ClientCombatSimulation {
         const aimed = this.updateTurretAim(turret, dt, ship, solution?.aim ?? null);
         if (!solution || !aimed || turret.cooldownTimer > 0) continue;
         const targetShip = solution.kind === "ship" ? (solution.target as ShipState) : null;
-        shots.push(() => this.fireWeapon(ship, turret, solution.aim, targetShip));
+        const targetMissile =
+          solution.kind === "missile" ? (solution.target as ProjectileState) : null;
+        shots.push(() => this.fireWeapon(ship, turret, solution.aim, targetShip, targetMissile));
       }
     }
     for (const fire of shots) fire();
@@ -233,6 +253,7 @@ export class ClientCombatSimulation {
     ship: ShipState,
     order: GroupOrder,
     aliveShips: ShipState[],
+    previousTargetId?: string,
   ): ShipState | null {
     let enemies = aliveShips.filter((s) => s.isAlive && s.team !== ship.team);
     if (enemies.length === 0) return null;
@@ -264,14 +285,6 @@ export class ClientCombatSimulation {
         mainGun.lastFiredTime !== ship.lastManeuverShot
       )
         return firedTarget;
-      // Losing the spinal lock during a broadside turn must not reset the navigation objective.
-      const objective = enemies.find((e) => e.id === ship.maneuverTargetId);
-      if (objective) return objective;
-    } else if (order.priority === "screen_and_defend") {
-      const anchor = aliveShips.find((s) => s.id === ship.flagshipId && s.isAlive) ?? ship;
-      return enemies.reduce((a, b) =>
-        vecDistanceSq(anchor.pos, a.pos) < vecDistanceSq(anchor.pos, b.pos) ? a : b,
-      );
     } else if (order.priority === "strike_craft") {
       const crafts = enemies.filter(
         (s) => s.hullClass === "strike_craft" || s.hullClass === "corvette",
@@ -285,9 +298,29 @@ export class ClientCombatSimulation {
       if (capitals.length > 0) enemies = capitals;
     }
 
-    return enemies.reduce((prev, curr) =>
-      vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
-    );
+    const anchor =
+      order.priority === "screen_and_defend"
+        ? (aliveShips.find((s) => s.id === ship.flagshipId && s.isAlive) ?? ship)
+        : ship;
+    const range = Math.max(360, ...ship.turrets.map((turret) => turret.weapon.range));
+    const score = (enemy: ShipState): number => {
+      const distance = vecDistance(anchor.pos, enemy.pos);
+      const nearby = clamp(2 - distance / range, 0, 1);
+      const assignments = aliveShips.filter(
+        (peer) =>
+          peer.id !== ship.id &&
+          peer.team === ship.team &&
+          peer.groupId === ship.groupId &&
+          peer.navigationTargetId === enemy.id,
+      ).length;
+      return (
+        (-distance / range) * 2 +
+        nearby * damagedTargetPriority(enemy) +
+        squadFocusPriority(assignments) +
+        (enemy.id === (previousTargetId ?? ship.maneuverTargetId) ? 0.45 : 0)
+      );
+    };
+    return enemies.reduce((best, enemy) => (score(enemy) > score(best) ? enemy : best));
   }
 
   private ensureFighterWings(aliveShips: ShipState[]): void {
@@ -356,11 +389,16 @@ export class ClientCombatSimulation {
         (hullRetreat || ship.shieldCurrent < 10)
       )
         ship.recoveryStarted = this.timeElapsed;
-      if (ship.recoveryStarted !== undefined && this.timeElapsed - ship.recoveryStarted >= 4) {
+      const shieldsReady = ship.shieldCurrent >= ship.shieldMax * 0.75;
+      if (
+        ship.recoveryStarted !== undefined &&
+        shieldsReady &&
+        this.timeElapsed - ship.recoveryStarted >= 4
+      ) {
         ship.recoveredHull = ship.hullCurrent;
         ship.recoveryStarted = undefined;
         ship.nextRecoveryAt = this.timeElapsed + 4;
-      } else if (ship.recoveryStarted !== undefined && !hullRetreat && ship.shieldCurrent > 30) {
+      } else if (ship.recoveryStarted !== undefined && !hullRetreat && shieldsReady) {
         ship.recoveryStarted = undefined;
       }
     }
@@ -408,6 +446,13 @@ export class ClientCombatSimulation {
       const elapsed = this.timeElapsed - wing.phaseStarted;
       let phase = wing.phase;
       if (
+        phase === "attack" &&
+        (elapsed >= 6 ||
+          healthy.some((ship) => vecDistance(ship.pos, target.pos) <= FIGHTER_EGRESS_DISTANCE)) &&
+        wing.egressRequestedAt === undefined
+      )
+        wing.egressRequestedAt = this.timeElapsed;
+      if (
         phase === "staging" &&
         healthy.length > 0 &&
         (assembled || this.timeElapsed - (wing.assembledAt ?? wing.phaseStarted) >= 2.5) &&
@@ -419,8 +464,8 @@ export class ClientCombatSimulation {
       } else if (
         phase === "attack" &&
         (healthy.length === 0 ||
-          elapsed >= 6 ||
-          healthy.some((ship) => vecDistance(ship.pos, target.pos) <= FIGHTER_EGRESS_DISTANCE) ||
+          (wing.egressRequestedAt !== undefined &&
+            this.timeElapsed - wing.egressRequestedAt >= 0.85) ||
           healthy.every((ship) => (ship.lastMissionShotTime ?? -Infinity) >= wing.phaseStarted))
       ) {
         phase = "egress";
@@ -434,6 +479,7 @@ export class ClientCombatSimulation {
         wing.phase = phase;
         wing.phaseStarted = this.timeElapsed;
         wing.assembledAt = undefined;
+        wing.egressRequestedAt = undefined;
       }
       for (const ship of members)
         ship.fighterPhase = this.fighterNeedsCover(ship)
@@ -580,18 +626,19 @@ export class ClientCombatSimulation {
           continue;
         const r = vecSub(ship.pos, p.pos);
         const distToMissile = vecDistance([0, 0], r);
-        if (distToMissile > 240) continue;
+        if (distToMissile > 650) continue;
 
         // Relative velocity if ship takes this candidate heading
         const u = vecSub(candidateVel, p.velocity);
         const uSq = vecDot(u, u) + 1e-4;
-        const tStar = clamp(-vecDot(r, u) / uSq, 0, 1.4);
+        const horizon = Math.min(2, p.lifetime);
+        const tStar = clamp(-vecDot(r, u) / uSq, 0, horizon);
         const rStar = vecAdd(r, vecScale(u, tStar));
         const dStar = vecDistance([0, 0], rStar);
 
         // Danger if time to closest approach is in near future and distance is lethal
         if (tStar > 0.04 && dStar < 75) {
-          const missileDanger = ((75 - dStar) / 75) * (1 - tStar / 1.4) * 4.5;
+          const missileDanger = ((75 - dStar) / 75) * (1 - tStar / horizon) * 4.5;
           dangerScore += missileDanger;
         }
       }
@@ -707,9 +754,27 @@ export class ClientCombatSimulation {
         priority: "nearest",
         stance: "optimal_range",
       };
-      const intent = capitalIntent(ship, target, aliveShips, order);
+      const intent = capitalIntent(
+        ship,
+        target,
+        aliveShips,
+        order,
+        this.timeElapsed,
+        this.projectiles,
+      );
       targetHeading = intent.heading;
       thrusterVelocity = intent.velocity;
+    }
+
+    if (thrusterVelocity) {
+      thrusterVelocity = arenaVelocity(ship, thrusterVelocity);
+    } else if (vecDistance([0, 0], ship.pos) > ARENA_RADIUS) {
+      const inward = arenaVelocity(ship, [
+        Math.cos(targetHeading) * desiredSpeed,
+        Math.sin(targetHeading) * desiredSpeed,
+      ]);
+      targetHeading = Math.atan2(inward[1], inward[0]);
+      desiredSpeed = vecDistance([0, 0], inward);
     }
 
     const turnRate = ship.turnRate;
@@ -741,7 +806,12 @@ export class ClientCombatSimulation {
       vecScale(rightVector, newLateralSpeed),
     );
 
-    ship.velocity = limitVelocity(newVelocity, ship.maxSpeed);
+    // Emergency acceleration beyond the soft band; no teleporting or position clamping.
+    const containedVelocity =
+      vecDistance([0, 0], ship.pos) > ARENA_HARD_PULL_RADIUS
+        ? vecSub(newVelocity, vecScale(vecNormalize(ship.pos), 600 * dt))
+        : newVelocity;
+    ship.velocity = limitVelocity(containedVelocity, ship.maxSpeed);
     ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
   }
 
@@ -906,14 +976,17 @@ export class ClientCombatSimulation {
     turret: TurretMountState,
     targetPos: [number, number],
     targetShip: ShipState | null,
+    targetMissile: ProjectileState | null = null,
   ): void {
     const spawnPos = mountPosition(ship, turret);
     const isBeam = turret.weapon.projectileSpeed <= 0;
+    const beamTarget = targetShip ?? targetMissile;
     if (
       isBeam &&
-      (!targetShip ||
-        vecDistance(spawnPos, targetShip.pos) > turret.weapon.range ||
-        !inMountArc(ship, turret, targetShip.pos))
+      (!beamTarget ||
+        (targetMissile && (targetMissile.hp <= 0 || targetMissile.lifetime <= 0)) ||
+        vecDistance(spawnPos, beamTarget.pos) > turret.weapon.range ||
+        !inMountArc(ship, turret, beamTarget.pos))
     )
       return;
     turret.cooldownTimer = turret.weapon.cooldown;
@@ -932,6 +1005,18 @@ export class ClientCombatSimulation {
         const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
         this.applyDamage(targetShip, turret.weapon.damage, turret.weapon, ship.team);
         if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 3.2);
+      } else if (targetMissile) {
+        targetMissile.hp -= turret.weapon.damage;
+        if (targetMissile.hp <= 0) {
+          this.stats[ship.team].missilesIntercepted += 1;
+          this.addCombatLog("Hostile torpedo intercepted by beam battery!", ship.team, "intercept");
+        }
+        this.onBeamFire?.(
+          spawnPos,
+          targetMissile.pos,
+          ship.team === 0 ? "#38bdf8" : "#f87171",
+          3.2,
+        );
       }
       return;
     }
@@ -1091,13 +1176,7 @@ export class ClientCombatSimulation {
 
     const delay =
       ship.shieldRechargeDelay ??
-      (ship.hullClass === "battleship"
-        ? 1.5
-        : ship.hullClass === "cruiser"
-          ? 1.2
-          : ship.hullClass === "corvette"
-            ? 2.5
-            : 3.5);
+      (ship.hullClass === "battleship" ? 1.5 : ship.hullClass === "cruiser" ? 1.2 : 3.5);
     ship.shieldDelayTimer = delay;
     let remaining = rawDamage;
     let totalAbsorbedOrDealt = 0;

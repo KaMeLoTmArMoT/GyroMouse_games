@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { acquireMountTarget, inMountArc, mountPosition, sweptHit } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import {
+  ARENA_HARD_PULL_RADIUS,
+  ARENA_RADIUS,
+  arenaVelocity,
   capitalIntent,
   escortVelocity,
   orbitVelocity,
@@ -418,6 +421,11 @@ describe("tactical maneuvers", () => {
     }
     expect(rails).toBeGreaterThanOrEqual(5);
     expect(beams).toBeGreaterThanOrEqual(4);
+    expect(
+      bb.turrets
+        .filter((t) => t.weapon.weaponType === "beam_laser")
+        .every((t) => t.lastFiredTime !== undefined),
+    ).toBe(true);
     expect(maxOffset).toBeLessThan((51 * Math.PI) / 180);
     expect(maxOffset).toBeGreaterThan((44 * Math.PI) / 180);
     expect(Math.max(...railTimes.slice(1).map((t, i) => t - railTimes[i]))).toBeLessThan(3.7);
@@ -471,7 +479,19 @@ describe("tactical maneuvers", () => {
             })),
           }),
         ).toBe(true);
+        if (hull === "battleship")
+          expect(
+            s.turrets
+              .filter((t) => t.weapon.weaponType === "beam_laser")
+              .every((t) => fired.has(t.id)),
+          ).toBe(true);
         expect(s.pos.every(Number.isFinite)).toBe(true);
+      }
+      if (hull === "battleship") {
+        const line = ships.filter((s) => s.team === 0);
+        expect(
+          Math.max(...line.map((s) => s.pos[0])) - Math.min(...line.map((s) => s.pos[0])),
+        ).toBeGreaterThan(15);
       }
     },
   );
@@ -512,6 +532,219 @@ describe("tactical maneuvers", () => {
     expect(vecDot(brawl.velocity, [1, 0])).toBeGreaterThan(0);
     expect(vecDot(max.velocity, [1, 0])).toBeLessThan(0);
     expect(inMountArc(bb, bb.turrets[0], target.pos)).toBe(true);
+  });
+});
+
+describe("arena containment and matchup rebalance", () => {
+  it("smoothly bends outward thrust inward and preserves tangential travel", () => {
+    const cruiser = ship("cruiser", 0, [ARENA_RADIUS, 0]);
+    expect(arenaVelocity(cruiser, [50, 25])).toEqual([50, 25]);
+    cruiser.pos[0] += 100;
+    const soft = arenaVelocity(cruiser, [50, 25]);
+    expect(soft[0]).toBeLessThan(0);
+    expect(soft[1]).toBe(25);
+    cruiser.pos[0] = ARENA_HARD_PULL_RADIUS;
+    expect(arenaVelocity(cruiser, [50, 25])[0]).toBeLessThan(soft[0]);
+  });
+
+  it.each(["strike_craft", "corvette", "cruiser", "battleship"] as const)(
+    "returns an outward-moving %s from beyond the hard pull radius without teleporting",
+    (hull) => {
+      const s = ship(hull, 0, [1560, 0]);
+      s.velocity = [s.maxSpeed, 0];
+      const sim = simulate([s]);
+      sim.update(1 / 60);
+      expect(vecDistance(s.pos, [1560, 0])).toBeLessThanOrEqual(s.maxSpeed / 60 + 1e-6);
+      advance(sim, 12);
+      expect(vecDistance(s.pos, [0, 0])).toBeLessThan(ARENA_HARD_PULL_RADIUS);
+    },
+  );
+
+  it.each([
+    [12, 12],
+    [3, 20],
+  ])("contains the %i vs %i fleet playtest", (blue, red) => {
+    const ships = [
+      ...fleet(Array<HullClass>(blue).fill(blue === 3 ? "cruiser" : "strike_craft"), 0, -800),
+      ...fleet(Array<HullClass>(red).fill("strike_craft"), 1, 800),
+    ];
+    const sim = simulate(ships);
+    let furthest = 0;
+    for (let i = 0; i < 60 * 120 && sim.winner === null; i++) {
+      sim.update(1 / 60);
+      for (const s of ships.filter((s) => s.isAlive))
+        furthest = Math.max(furthest, vecDistance(s.pos, [0, 0]));
+    }
+    expect(furthest).toBeLessThan(ARENA_HARD_PULL_RADIUS + 100);
+  });
+
+  it("finishes nearby damaged enemies, shares focus in threes, and ignores distant wounded bait", () => {
+    const allies = fleet(Array<HullClass>(6).fill("corvette"), 0, 0);
+    allies.forEach((s, i) => {
+      stationary(s);
+      s.pos = [0, (i - 2.5) * 78];
+    });
+    const enemies = fleet(Array<HullClass>(3).fill("corvette"), 1, 300);
+    enemies.forEach((s, i) => {
+      stationary(s);
+      s.pos = [300, (i - 1) * 100];
+      s.turrets = [];
+    });
+    enemies[1].shieldCurrent = 0;
+    enemies[2].pos = [2500, 0];
+    enemies[2].shieldCurrent = enemies[2].armorCurrent = 0;
+    enemies[2].hullCurrent = 1;
+    const sim = simulate([...allies, ...enemies]);
+    sim.update(1 / 60);
+    expect(allies.filter((s) => s.navigationTargetId === enemies[1].id)).toHaveLength(3);
+    expect(allies.filter((s) => s.navigationTargetId === enemies[0].id)).toHaveLength(3);
+    expect(allies.every((s) => s.navigationTargetId !== enemies[2].id)).toBe(true);
+    const shooter = allies[2];
+    enemies[1].armorCurrent = 0;
+    enemies[1].hullCurrent = 20;
+    expect(
+      acquireMountTarget(shooter, shooter.turrets[0], enemies[0], sim.ships, [])?.target.id,
+    ).toBe(enemies[1].id);
+  });
+
+  it("uses idle broadside beams to intercept live incoming torpedoes exactly once", () => {
+    const bb = stationary(ship("battleship", 0, [0, 0]));
+    const enemy = ship("cruiser", 1, [1400, 0]);
+    const missile = projectile(enemy, [0, -300], [0, 320], 1);
+    const sim = simulate([bb]);
+    sim.projectiles.push(missile);
+    advance(sim, 0.2);
+    expect(sim.stats[0].missilesIntercepted).toBe(1);
+    expect(sim.projectiles).toHaveLength(0);
+    expect(bb.shieldCurrent).toBe(bb.shieldMax);
+    const target = stationary(ship("cruiser", 1, [0, -500]));
+    missile.hp = 25;
+    expect(acquireMountTarget(bb, bb.turrets[1], target, [bb, target], [missile])?.kind).toBe(
+      "ship",
+    );
+  });
+
+  it("holds fighter recovery through the old timeout until shields reach 75 percent", () => {
+    const fighter = stationary(ship("strike_craft", 0, [0, 0]));
+    fighter.shieldCurrent = 5;
+    const enemy = stationary(ship("corvette", 1, [700, 0]));
+    enemy.turrets = [];
+    const sim = simulate([fighter, enemy]);
+    advance(sim, 5);
+    expect(fighter.fighterPhase).toBe("recover");
+    fighter.shieldCurrent = 44;
+    sim.update(1 / 60);
+    expect(fighter.fighterPhase).toBe("recover");
+    fighter.shieldCurrent = 45;
+    sim.update(1 / 60);
+    expect(fighter.fighterPhase).not.toBe("recover");
+  });
+
+  it("gives all three healthy fighters time to fire in their first pass", () => {
+    const fighters = fleet(Array<HullClass>(3).fill("strike_craft"), 0, -500);
+    const target = stationary(ship("corvette", 1, [500, 0]));
+    target.turrets = [];
+    const sim = simulate([...fighters, target]);
+    let enteredAttack = false;
+    for (let i = 0; i < 60 * 15; i++) {
+      sim.update(1 / 60);
+      enteredAttack ||= fighters.some((s) => s.fighterPhase === "attack");
+      if (enteredAttack && fighters.every((s) => s.fighterPhase === "egress")) break;
+    }
+    expect(enteredAttack).toBe(true);
+    expect(fighters.every((s) => s.lastMissionShotTime !== undefined)).toBe(true);
+  });
+
+  it("waits briefly for a wingmate's ready shot when the leader reaches egress distance", () => {
+    const fighters = fleet(Array<HullClass>(3).fill("strike_craft"), 0, -500);
+    fighters.forEach((s, i) => {
+      stationary(s);
+      s.pos = [
+        [-190, -50],
+        [-250, 0],
+        [-330, 70],
+      ][i] as Vector2;
+    });
+    fighters[2].turrets[0].cooldownTimer = 3.1;
+    const target = stationary(ship("corvette", 1, [0, 0]));
+    target.turrets = [];
+    const sim = simulate([...fighters, target]);
+    advance(sim, 2.8);
+    expect(fighters.every((s) => s.fighterPhase === "attack")).toBe(true);
+    expect(fighters[2].lastMissionShotTime).toBeUndefined();
+    advance(sim, 0.4);
+    expect(fighters.every((s) => s.lastMissionShotTime !== undefined)).toBe(true);
+    expect(fighters.every((s) => s.fighterPhase === "egress")).toBe(true);
+  });
+
+  it("jinks away from an opening inbound torpedo before it reaches close range", () => {
+    const fighter = ship("strike_craft", 0, [0, 0]);
+    const enemy = stationary(ship("cruiser", 1, [900, 0]));
+    enemy.turrets.forEach((t) => {
+      t.cooldownTimer = 10;
+    });
+    const sim = simulate([fighter, enemy]);
+    sim.projectiles.push(projectile(enemy, [500, 0], [-320, 0], 1));
+    advance(sim, 0.5);
+    expect(Math.abs(fighter.pos[1])).toBeGreaterThan(15);
+    advance(sim, 1.5);
+    expect(fighter.hullCurrent).toBe(fighter.hullMax);
+  });
+
+  it.each([1, 7, 29])("two flagships decisively beat three cruisers (seed %i)", (seed) => {
+    const ships = [
+      ...fleet(["battleship", "battleship"], 0, -800),
+      ...fleet(["cruiser", "cruiser", "cruiser"], 1, 800),
+    ];
+    let state = seed;
+    for (const s of ships) {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      s.pos[1] += (state / 2 ** 32 - 0.5) * 80;
+    }
+    const sim = simulate(ships);
+    for (let i = 0; i < 60 * 240 && sim.winner === null; i++) sim.update(1 / 60);
+    expect(sim.winner).toBe(0);
+    expect(ships.filter((s) => s.team === 0 && s.isAlive)).toHaveLength(2);
+    expect(ships.filter((s) => s.team === 0).every((s) => s.hullCurrent > s.hullMax * 0.5)).toBe(
+      true,
+    );
+  });
+
+  it("makes one flagship versus three cruisers a costly duel", () => {
+    const ships = [
+      ...fleet(["battleship"], 0, -800),
+      ...fleet(["cruiser", "cruiser", "cruiser"], 1, 800),
+    ];
+    const sim = simulate(ships);
+    for (let i = 0; i < 60 * 120 && sim.winner === null; i++) sim.update(1 / 60);
+    expect(sim.winner).not.toBeNull();
+    expect(sim.stats[1].shipsLost).toBeGreaterThanOrEqual(2);
+    const bb = ships[0];
+    expect(bb.shieldCurrent + bb.armorCurrent + bb.hullCurrent).toBeLessThan(
+      (bb.shieldMax + bb.armorMax + bb.hullMax) * 0.5,
+    );
+  });
+
+  it("lets a corvette wolfpack catch and damage an isolated cruiser's armor", () => {
+    const corvettes = fleet(["corvette", "corvette", "corvette"], 0, -800);
+    const cruiser = fleet(["cruiser"], 1, 800)[0];
+    const sim = simulate([...corvettes, cruiser]);
+    let closest = Infinity;
+    for (let i = 0; i < 60 * 60; i++) {
+      sim.update(1 / 60);
+      for (const s of corvettes.filter((s) => s.isAlive))
+        closest = Math.min(closest, vecDistance(s.pos, cruiser.pos));
+    }
+    expect(cruiser.armorCurrent).toBeLessThan(cruiser.armorMax * 0.8);
+    expect(closest).toBeLessThan(300);
+  });
+
+  it("resolves the three-corvette carousel instead of indefinitely regenerating", () => {
+    const hulls: HullClass[] = ["corvette", "corvette", "corvette"];
+    const sim = simulate([...fleet(hulls, 0, -800), ...fleet(hulls, 1, 800)]);
+    for (let i = 0; i < 60 * 150 && sim.winner === null; i++) sim.update(1 / 60);
+    expect(sim.winner).not.toBeNull();
+    expect(sim.stats[0].shipsLost + sim.stats[1].shipsLost).toBeGreaterThanOrEqual(4);
   });
 });
 

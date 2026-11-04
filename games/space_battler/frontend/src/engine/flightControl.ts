@@ -1,5 +1,10 @@
 import type { GroupOrder, ProjectileState, ShipState, Vector2 } from "../types/combat";
-import { interceptTime, mountPosition } from "./fireControl";
+import {
+  damagedTargetPriority,
+  interceptTime,
+  mountPosition,
+  squadFocusPriority,
+} from "./fireControl";
 import {
   clamp,
   normalizeAngle,
@@ -11,6 +16,23 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+
+export const ARENA_RADIUS = 1350;
+export const ARENA_HARD_PULL_RADIUS = 1550;
+
+// Preserve tangential motion while smoothly replacing outward thrust with inward steering.
+export function arenaVelocity(ship: ShipState, desired: Vector2): Vector2 {
+  const distance = vecDistance([0, 0], ship.pos);
+  if (distance <= ARENA_RADIUS) return desired;
+  const outward = vecScale(ship.pos, 1 / distance);
+  const t = clamp((distance - ARENA_RADIUS) / (ARENA_HARD_PULL_RADIUS - ARENA_RADIUS), 0, 1);
+  const blend = t * t * (3 - 2 * t);
+  const radial = vecDot(desired, outward);
+  return limitVelocity(
+    vecSub(desired, vecScale(outward, blend * (Math.max(0, radial) + ship.maxSpeed))),
+    ship.maxSpeed,
+  );
+}
 
 export function limitVelocity(velocity: Vector2, max: number): Vector2 {
   const speed = vecDistance([0, 0], velocity);
@@ -80,7 +102,10 @@ export function escortVelocity(
     anchor = capitals[0];
     ship.flagshipId = anchor?.id;
   }
-  if (!anchor) return target ? orbitVelocity(ship, target) : [0, 0];
+  if (!anchor)
+    return target
+      ? orbitVelocity(ship, target, target.hullClass === "cruiser" ? 230 : 300)
+      : [0, 0];
   const index = Number(ship.id.split("_").at(-1)) || 0;
   const side = index % 2 === 0 ? 1 : -1;
   const station = vecAdd(
@@ -151,7 +176,13 @@ export function spinalEscape(
     }
   }
   for (const p of projectiles) {
-    if (p.ownerTeam === ship.team || p.weaponType !== "railgun" || p.hp <= 0 || p.lifetime <= 0)
+    if (
+      p.ownerTeam === ship.team ||
+      (p.weaponType !== "railgun" &&
+        !(ship.hullClass === "strike_craft" && p.weaponType === "missile")) ||
+      p.hp <= 0 ||
+      p.lifetime <= 0
+    )
       continue;
     const relative = vecSub(ship.pos, p.pos);
     const v = vecSub(ship.velocity, p.velocity);
@@ -171,8 +202,11 @@ export function capitalIntent(
   target: ShipState,
   ships: ShipState[],
   order: GroupOrder,
+  time = 0,
+  projectiles: ProjectileState[] = [],
 ): { heading: number; velocity: Vector2 } {
   const battleship = ship.hullClass === "battleship";
+  const slot = Number(ship.id.split("_").at(-1)) || 0;
   const gun = ship.turrets.find((t) =>
     battleship ? t.isSpinalGimbal : t.weapon.weaponType === "missile",
   );
@@ -196,12 +230,13 @@ export function capitalIntent(
   if (ship.maneuverTargetId !== target.id) {
     ship.maneuverTargetId = target.id;
     ship.capitalManeuver = "bow_acquire";
-    ship.broadsideSide = normalizeAngle(bearing - ship.heading) < -0.05 ? -1 : 1;
+    ship.broadsideSide ??= slot % 2 === 0 ? 1 : -1;
     ship.lastManeuverShot = gun?.lastFiredTime;
   }
   if (newShot) {
     ship.lastManeuverShot = gun?.lastFiredTime;
     ship.capitalManeuver = "broadside_hold";
+    if (battleship) ship.broadsideSide = -(ship.broadsideSide ?? 1);
   }
   const returnTime =
     Math.abs(normalizeAngle(aimBearing - ship.heading)) / Math.max(ship.turnRate, 0.01);
@@ -234,12 +269,27 @@ export function capitalIntent(
     nominal +
     (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0);
   const error = distance - radius;
-  const radial = clamp(
+  let radial = clamp(
     0.35 * Math.sign(error) * Math.max(0, Math.abs(error) - 25),
     -ship.maxSpeed * 0.65,
     ship.maxSpeed * 0.85,
   );
-  const tangential = weaving ? ship.maxSpeed * 0.3 * side : 0;
+  const boundary = clamp((vecDistance([0, 0], ship.pos) - (ARENA_RADIUS - 200)) / 200, 0, 1);
+  if (!battleship && radial < 0) radial *= 1 - boundary;
+  const line =
+    battleship &&
+    ships.some(
+      (peer) =>
+        peer.isAlive &&
+        peer.team === ship.team &&
+        peer.id !== ship.id &&
+        peer.hullClass === "battleship",
+    );
+  const phase = time * 0.35 + slot * 2.1;
+  if (line) radial += ship.maxSpeed * 0.2 * Math.sin(phase);
+  const tangential =
+    (weaving ? ship.maxSpeed * 0.3 * side : 0) +
+    (line ? ship.maxSpeed * 0.25 * Math.cos(phase) : boundary * ship.maxSpeed * 0.6 * side);
   let velocity = vecAdd(vecScale(n, radial), vecScale([-n[1], n[0]], tangential));
   velocity = vecAdd(velocity, separation(ship, ships));
   const forward: Vector2 = [Math.cos(ship.heading), Math.sin(ship.heading)];
@@ -249,6 +299,28 @@ export function capitalIntent(
       vecScale(forward, vecDot(velocity, forward)),
       vecScale(right, clamp(vecDot(velocity, right), -ship.maxSpeed * 0.35, ship.maxSpeed * 0.35)),
     );
+  // Slow flagships bank early across a torpedo's course rather than trying to outrun it.
+  if (battleship) {
+    for (const missile of projectiles) {
+      if (
+        missile.ownerTeam === ship.team ||
+        missile.weaponType !== "missile" ||
+        missile.hp <= 0 ||
+        missile.lifetime <= 0
+      )
+        continue;
+      const relative = vecSub(ship.pos, missile.pos);
+      const closing = vecSub(ship.velocity, missile.velocity);
+      const arrival = -vecDot(relative, closing) / Math.max(1, vecDot(closing, closing));
+      if (arrival <= 0 || arrival > Math.min(1.5, missile.lifetime)) continue;
+      const closest = vecAdd(relative, vecScale(closing, arrival));
+      if (vecDistance([0, 0], closest) > ship.size + 25) continue;
+      const direction = vecNormalize(missile.velocity);
+      const lateral: Vector2 = [-direction[1], direction[0]];
+      const escapeSign = Math.sign(vecDot(relative, lateral)) || side;
+      velocity = vecAdd(velocity, vecScale(lateral, escapeSign * ship.maxSpeed * 2));
+    }
+  }
   return { heading, velocity: limitVelocity(velocity, ship.maxSpeed) };
 }
 
@@ -276,14 +348,19 @@ export function dogfightTarget(
     if (!threat && !retained) continue;
     const angle = Math.abs(normalizeAngle(Math.atan2(r[1], r[0]) - ship.heading));
     const assignments = ships.filter(
-      (s) => s.id !== ship.id && s.team === ship.team && s.dogfightTargetId === enemy.id,
+      (s) =>
+        s.isAlive &&
+        s.id !== ship.id &&
+        s.team === ship.team &&
+        s.groupId === ship.groupId &&
+        s.dogfightTargetId === enemy.id,
     ).length;
     const score =
       3 * clamp(1 - approach / 600, 0, 1) +
       2 * clamp(1 - angle / (Math.PI / 4), 0, 1) +
-      0.5 * (1 - enemy.hullCurrent / enemy.hullMax) -
-      distance / 600 -
-      0.75 * assignments;
+      damagedTargetPriority(enemy) +
+      squadFocusPriority(assignments) -
+      distance / 600;
     if (enemy.id === ship.dogfightTargetId) {
       current = enemy;
       currentScore = score;

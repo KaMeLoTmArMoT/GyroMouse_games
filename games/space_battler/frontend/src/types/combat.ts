@@ -92,6 +92,7 @@ export interface ShipState {
   lastMissionShotTime?: number;
   capitalManeuver?: "bow_acquire" | "broadside_hold" | "bow_reacquire";
   maneuverTargetId?: string;
+  navigationTargetId?: string;
   broadsideSide?: number;
   lastManeuverShot?: number;
   escapeSide?: number;
