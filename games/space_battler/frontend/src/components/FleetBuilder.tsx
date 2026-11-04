@@ -1,6 +1,6 @@
 // Tactical Fleet Builder Modal & Panel Component with full-height scroll, text selection, and clear roster
 
-import { Plus, Shield, Swords, Trash2, Zap } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Shield, Swords, Trash2, Zap } from "lucide-react";
 import { useState } from "react";
 import type { FleetSlot } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
@@ -304,20 +304,29 @@ export function FleetBuilder({
     },
   );
 
-  const addShip = (hullClass: HullClass) => {
+  const addShip = (hullClass: HullClass, targetGroup = selectedGroup) => {
     if (currentCost + HULL_SPECS[hullClass].cost > budgetLimit) return;
     onUpdateSlots([
       ...slots,
       {
         id: `${hullClass}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         hullClass,
-        groupId: selectedGroup,
+        groupId: targetGroup,
       },
     ]);
   };
 
-  const removeSlot = (id: string) => {
-    onUpdateSlots(slots.filter((s) => s.id !== id));
+  const decrementStack = (groupId: number, hullClass: HullClass) => {
+    for (let i = slots.length - 1; i >= 0; i--) {
+      if (slots[i].groupId === groupId && slots[i].hullClass === hullClass) {
+        onUpdateSlots([...slots.slice(0, i), ...slots.slice(i + 1)]);
+        return;
+      }
+    }
+  };
+
+  const removeStack = (groupId: number, hullClass: HullClass) => {
+    onUpdateSlots(slots.filter((s) => !(s.groupId === groupId && s.hullClass === hullClass)));
   };
 
   const clearAll = () => {
@@ -564,15 +573,19 @@ export function FleetBuilder({
                 </div>
               )}
             </div>
-            {slots.length > 0 && (
-              <button
-                type="button"
-                onClick={clearAll}
-                className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
-              >
-                Clear All
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={clearAll}
+              disabled={slots.length === 0}
+              title="Remove all vessels from the active roster"
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 border transition-colors ${
+                slots.length > 0
+                  ? "bg-red-950/30 border-red-800/50 text-red-400 hover:bg-red-900/40 hover:border-red-700 cursor-pointer"
+                  : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
+              }`}
+            >
+              <Trash2 className="w-3 h-3" /> Clear All
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 py-3 pr-1">
@@ -582,57 +595,118 @@ export function FleetBuilder({
               </div>
             ) : (
               (() => {
-                const sortedSlots = [...slots].sort((a, b) => {
+                const stackMap = new Map<
+                  string,
+                  { groupId: number; hullClass: HullClass; count: number }
+                >();
+                for (const s of slots) {
+                  const key = `${s.groupId}_${s.hullClass}`;
+                  const existing = stackMap.get(key);
+                  if (existing) {
+                    existing.count += 1;
+                  } else {
+                    stackMap.set(key, {
+                      groupId: s.groupId,
+                      hullClass: s.hullClass,
+                      count: 1,
+                    });
+                  }
+                }
+
+                const sortedStacks = [...stackMap.values()].sort((a, b) => {
                   if (a.groupId !== b.groupId) {
                     return a.groupId - b.groupId;
                   }
                   return HULL_SIZE_ORDER[a.hullClass] - HULL_SIZE_ORDER[b.hullClass];
                 });
 
-                return sortedSlots.map((s, idx) => {
-                  const theme = GROUP_THEMES[s.groupId] || GROUP_THEMES[1];
-                  const isFirstOfGroup = idx === 0 || sortedSlots[idx - 1].groupId !== s.groupId;
+                return sortedStacks.map((stack, idx) => {
+                  const theme = GROUP_THEMES[stack.groupId] || GROUP_THEMES[1];
+                  const isFirstOfGroup =
+                    idx === 0 || sortedStacks[idx - 1].groupId !== stack.groupId;
+                  const unitCost = HULL_SPECS[stack.hullClass].cost;
+                  const totalStackCost = stack.count * unitCost;
+                  const canAddOne = remainingBudget >= unitCost;
 
                   return (
-                    <div key={s.id} className="space-y-1">
+                    <div key={`${stack.groupId}_${stack.hullClass}`} className="space-y-1">
                       {isFirstOfGroup && (
                         <div className="flex items-center justify-between pt-1 pb-0.5 px-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider">
                           <span className={theme.text}>
-                            Group {s.groupId} ({theme.name})
+                            Group {stack.groupId} ({theme.name})
                           </span>
                           <span className="text-zinc-500">
-                            {groupCounts[s.groupId]}{" "}
-                            {groupCounts[s.groupId] === 1 ? "vessel" : "vessels"}
+                            {groupCounts[stack.groupId]}{" "}
+                            {groupCounts[stack.groupId] === 1 ? "vessel" : "vessels"}
                           </span>
                         </div>
                       )}
                       <div
-                        className={`p-2.5 rounded-lg bg-zinc-900 border ${theme.border} text-xs flex items-center justify-between select-text hover:bg-zinc-800/60 transition-colors`}
+                        className={`p-2.5 rounded-lg bg-zinc-900 border ${theme.border} text-xs flex items-center justify-between select-text hover:bg-zinc-800/60 transition-colors gap-2`}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0">
-                            <ShipSilhouette hullClass={s.hullClass} className="w-5 h-5" />
+                            <ShipSilhouette hullClass={stack.hullClass} className="w-5 h-5" />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
                               <span
-                                className={`text-[11px] px-2 py-0.5 rounded-md font-mono font-bold tracking-wide border ${theme.bg} ${theme.border} ${theme.text} select-all`}
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold tracking-wide border ${theme.bg} ${theme.border} ${theme.text} select-all shrink-0`}
                               >
-                                G{s.groupId}
+                                G{stack.groupId}
                               </span>
-                              <span className="font-semibold text-zinc-100 select-all text-xs">
-                                {HULL_SPECS[s.hullClass].name}
+                              <span className="font-semibold text-zinc-100 select-all text-xs truncate">
+                                {HULL_SPECS[stack.hullClass].name}
                               </span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-xs font-semibold text-zinc-300 select-all">
-                            {HULL_SPECS[s.hullClass].cost} CR
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Up/Down Quantity Stepper */}
+                          <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-md px-1.5 py-0.5">
+                            <span
+                              className={`font-mono text-xs font-bold min-w-[22px] text-center ${theme.text}`}
+                            >
+                              {stack.count}
+                            </span>
+                            <div className="flex flex-col -my-0.5">
+                              <button
+                                type="button"
+                                disabled={!canAddOne}
+                                onClick={() => addShip(stack.hullClass, stack.groupId)}
+                                title={
+                                  canAddOne
+                                    ? `Add 1 ${HULL_SPECS[stack.hullClass].name} to Group ${stack.groupId}`
+                                    : "Insufficient budget"
+                                }
+                                className={`p-0.5 rounded transition-colors ${
+                                  canAddOne
+                                    ? "text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 cursor-pointer"
+                                    : "text-zinc-700 cursor-not-allowed"
+                                }`}
+                              >
+                                <ChevronUp className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => decrementStack(stack.groupId, stack.hullClass)}
+                                title={`Remove 1 ${HULL_SPECS[stack.hullClass].name} from Group ${stack.groupId}`}
+                                className="p-0.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-colors cursor-pointer"
+                              >
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <span className="font-mono text-xs font-semibold text-zinc-200 select-all min-w-[58px] text-right">
+                            {totalStackCost} CR
                           </span>
+
                           <button
                             type="button"
-                            onClick={() => removeSlot(s.id)}
+                            onClick={() => removeStack(stack.groupId, stack.hullClass)}
+                            title="Remove entire group stack"
                             className="text-zinc-500 hover:text-red-400 p-1.5 rounded-md hover:bg-zinc-800 transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

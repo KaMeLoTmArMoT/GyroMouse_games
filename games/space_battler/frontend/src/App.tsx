@@ -24,8 +24,32 @@ import { ClientCombatSimulation } from "./engine/simulation";
 
 const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
 
+const STORAGE_KEYS = {
+  activeTab: "gyromouse_sb_active_tab",
+  userSlots: "gyromouse_sb_user_slots",
+  enemyPreset: "gyromouse_sb_enemy_preset",
+} as const;
+
+const DEFAULT_USER_SLOTS: FleetSlot[] = [
+  { id: "bb_1", hullClass: "battleship", groupId: 1 },
+  { id: "cv_1", hullClass: "corvette", groupId: 2 },
+  { id: "cv_2", hullClass: "corvette", groupId: 2 },
+  { id: "sc_1", hullClass: "strike_craft", groupId: 3 },
+  { id: "sc_2", hullClass: "strike_craft", groupId: 3 },
+  { id: "sc_3", hullClass: "strike_craft", groupId: 3 },
+  { id: "sc_4", hullClass: "strike_craft", groupId: 3 },
+];
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"builder" | "battle">("battle");
+  const [activeTab, setActiveTab] = useState<"builder" | "battle">(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.activeTab);
+      if (saved === "builder" || saved === "battle") return saved;
+    } catch {
+      // ignore storage errors
+    }
+    return "battle";
+  });
   const [speed, setSpeed] = useState<number>(0);
   const [lastActiveSpeed, setLastActiveSpeed] = useState<number>(1);
   const [muted, setMuted] = useState(() => spaceAudio.isMuted());
@@ -53,18 +77,53 @@ export default function App() {
     return () => clearInterval(interval);
   }, [speed]);
 
-  // User Fleet Construction State (Blue Task Force)
-  const [userSlots, setUserSlots] = useState<FleetSlot[]>([
-    { id: "bb_1", hullClass: "battleship", groupId: 1 },
-    { id: "cv_1", hullClass: "corvette", groupId: 2 },
-    { id: "cv_2", hullClass: "corvette", groupId: 2 },
-    { id: "sc_1", hullClass: "strike_craft", groupId: 3 },
-    { id: "sc_2", hullClass: "strike_craft", groupId: 3 },
-    { id: "sc_3", hullClass: "strike_craft", groupId: 3 },
-    { id: "sc_4", hullClass: "strike_craft", groupId: 3 },
-  ]);
+  // User Fleet Construction State (Blue Task Force) - Persisted across F5 reloads
+  const [userSlots, setUserSlots] = useState<FleetSlot[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.userSlots);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return DEFAULT_USER_SLOTS;
+  });
   const [budgetLimit] = useState<number>(10000);
-  const [enemyPresetId, setEnemyPresetId] = useState<string>("swarm");
+  const [enemyPresetId, setEnemyPresetId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.enemyPreset);
+      if (saved && FLEET_PRESETS.some((p) => p.id === saved)) return saved;
+    } catch {
+      // ignore storage errors
+    }
+    return "combined";
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.activeTab, activeTab);
+    } catch {
+      // ignore
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.userSlots, JSON.stringify(userSlots));
+    } catch {
+      // ignore
+    }
+  }, [userSlots]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.enemyPreset, enemyPresetId);
+    } catch {
+      // ignore
+    }
+  }, [enemyPresetId]);
 
   // Simulation State
   const [sim, setSim] = useState<ClientCombatSimulation>(() => {

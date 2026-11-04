@@ -241,7 +241,10 @@ function drawTurretArcCone(
 ): void {
   const [tx, ty] = rotatePoint(turret.offset, ship.heading);
   const [minArc, maxArc] = turret.baseArc;
-  const range = Math.min(turret.weapon.range, 350);
+  const range = turret.weapon.range;
+  const isFullCircle = maxArc - minArc >= Math.PI * 1.98;
+  const isHeavy = turret.isSpinalGimbal || turret.weapon.weaponType === "missile";
+  const isPD = turret.weapon.weaponType === "point_defense";
 
   ctx.save();
   ctx.translate(tx, ty);
@@ -249,16 +252,46 @@ function drawTurretArcCone(
   const startAngle = ship.heading + minArc;
   const endAngle = ship.heading + maxArc;
 
-  ctx.fillStyle = turret.isSpinalGimbal ? "rgba(234, 179, 8, 0.08)" : "rgba(56, 189, 248, 0.05)";
-  ctx.strokeStyle = turret.isSpinalGimbal ? "rgba(234, 179, 8, 0.35)" : "rgba(56, 189, 248, 0.25)";
-  ctx.lineWidth = 1;
+  const fillRgba = isHeavy
+    ? "rgba(234, 179, 8, 0.055)"
+    : isPD
+      ? "rgba(251, 146, 60, 0.035)"
+      : "rgba(56, 189, 248, 0.04)";
+  const strokeRgba = isHeavy
+    ? "rgba(234, 179, 8, 0.45)"
+    : isPD
+      ? "rgba(251, 146, 60, 0.32)"
+      : "rgba(56, 189, 248, 0.35)";
+
+  ctx.fillStyle = fillRgba;
+  ctx.strokeStyle = strokeRgba;
+  ctx.lineWidth = 1.2;
 
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.arc(0, 0, range, startAngle, endAngle);
-  ctx.closePath();
+  if (isFullCircle) {
+    ctx.arc(0, 0, range, 0, Math.PI * 2);
+  } else {
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, range, startAngle, endAngle);
+    ctx.closePath();
+  }
   ctx.fill();
+
+  ctx.setLineDash([6, 4]);
   ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Render actual max range label on the outer arc
+  const midAngle = isFullCircle ? ship.heading - Math.PI * 0.25 : (startAngle + endAngle) * 0.5;
+  const labelDist = Math.max(40, range - 18);
+  const lx = Math.cos(midAngle) * labelDist;
+  const ly = Math.sin(midAngle) * labelDist;
+
+  ctx.fillStyle = isHeavy ? "#facc15" : isPD ? "#fb923c" : "#38bdf8";
+  ctx.font = "10px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`${range}u`, lx, ly);
 
   ctx.restore();
 }
