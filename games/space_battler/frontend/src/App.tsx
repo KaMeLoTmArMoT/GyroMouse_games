@@ -22,13 +22,13 @@ export default function App() {
 
   // User Fleet Construction State (Blue Task Force)
   const [userSlots, setUserSlots] = useState<FleetSlot[]>([
-    { hullClass: "battleship", groupId: 1 },
-    { hullClass: "corvette", groupId: 2 },
-    { hullClass: "corvette", groupId: 2 },
-    { hullClass: "strike_craft", groupId: 3 },
-    { hullClass: "strike_craft", groupId: 3 },
-    { hullClass: "strike_craft", groupId: 3 },
-    { hullClass: "strike_craft", groupId: 3 },
+    { id: "bb_1", hullClass: "battleship", groupId: 1 },
+    { id: "cv_1", hullClass: "corvette", groupId: 2 },
+    { id: "cv_2", hullClass: "corvette", groupId: 2 },
+    { id: "sc_1", hullClass: "strike_craft", groupId: 3 },
+    { id: "sc_2", hullClass: "strike_craft", groupId: 3 },
+    { id: "sc_3", hullClass: "strike_craft", groupId: 3 },
+    { id: "sc_4", hullClass: "strike_craft", groupId: 3 },
   ]);
   const [budgetLimit] = useState<number>(10000);
   const [enemyPresetId, setEnemyPresetId] = useState<string>("swarm");
@@ -42,19 +42,23 @@ export default function App() {
   function assembleSimulation(blueSlots: FleetSlot[], redPresetId: string): ClientCombatSimulation {
     const s = new ClientCombatSimulation();
 
-    // 1. Build Blue Force
-    const blueShips = buildFleetFromSlots(blueSlots, 0, -480, 0);
+    // 1. Build Blue Force (Spawn at -580u with wide tactical stance)
+    const blueShips = buildFleetFromSlots(blueSlots, 0, -580, 0);
     for (const ship of blueShips) s.addShip(ship);
 
-    // 2. Build Red Force from Preset
+    // 2. Build Red Force from Preset (Spawn at +580u)
     const redPreset = FLEET_PRESETS.find((p) => p.id === redPresetId) ?? FLEET_PRESETS[0];
     const redSlots: FleetSlot[] = [];
     for (const comp of redPreset.composition) {
       for (let i = 0; i < comp.count; i++) {
-        redSlots.push({ hullClass: comp.hullClass, groupId: comp.groupId });
+        redSlots.push({
+          id: `red_${comp.hullClass}_${i}`,
+          hullClass: comp.hullClass,
+          groupId: comp.groupId,
+        });
       }
     }
-    const redShips = buildFleetFromSlots(redSlots, 1, 480, Math.PI);
+    const redShips = buildFleetFromSlots(redSlots, 1, 580, Math.PI);
     for (const ship of redShips) s.addShip(ship);
 
     return s;
@@ -69,7 +73,7 @@ export default function App() {
   const handleStartFromBuilder = () => {
     resetBattle();
     setActiveTab("battle");
-    setSpeed(1); // Auto-engage when launching from builder
+    setSpeed(1);
   };
 
   const stepForward = () => {
@@ -84,13 +88,14 @@ export default function App() {
       {
         id: selectedShip.id,
         name: selectedShip.name,
-        team: selectedShip.team === 0 ? "BLUE" : "RED",
+        team: selectedShip.team === 0 ? "BLUE_TERRAN" : "RED_ALIEN",
         class: selectedShip.hullClass,
         shield: `${Math.round(selectedShip.shieldCurrent)}/${selectedShip.shieldMax}`,
         armor: `${Math.round(selectedShip.armorCurrent)}/${selectedShip.armorMax}`,
         hull: `${Math.round(selectedShip.hullCurrent)}/${selectedShip.hullMax}`,
         turrets: selectedShip.turrets.map((t) => ({
           name: t.weapon.name,
+          cooldownRemaining: Number(t.cooldownTimer.toFixed(2)),
           angleDeg: Math.round(t.currentLocalAngle * (180 / Math.PI)),
           arcDeg: [
             Math.round(t.baseArc[0] * (180 / Math.PI)),
@@ -109,7 +114,7 @@ export default function App() {
   return (
     <div className="min-h-dvh flex flex-col bg-zinc-950 text-zinc-100 selection:bg-cyan-500/30">
       {/* Header Bar */}
-      <header className="h-14 border-b border-zinc-800/80 px-6 flex items-center justify-between bg-zinc-900/40 backdrop-blur-md">
+      <header className="h-14 border-b border-zinc-800/80 px-6 flex items-center justify-between bg-zinc-900/40 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
@@ -153,7 +158,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Speed & Sim Controls (Visible when on battle tab) */}
+        {/* Speed Controls */}
         {activeTab === "battle" ? (
           <div className="flex items-center gap-2">
             <button
@@ -217,10 +222,10 @@ export default function App() {
             />
           </div>
 
-          {/* Right Sidebar - Selectable & Copyable Telemetry */}
+          {/* Right Sidebar - Selectable & Copyable Telemetry with Live Cooldowns */}
           <aside className="w-84 border-l border-zinc-800/80 bg-zinc-900/40 p-4 flex flex-col gap-4 backdrop-blur-sm select-text">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5 select-text">
                 <Shield className="w-3.5 h-3.5 text-cyan-400" /> Tactical Monitor
               </span>
               <span className="text-xs font-mono text-zinc-500">Live Telemetry</span>
@@ -228,21 +233,17 @@ export default function App() {
 
             {/* Fleet Status Summary */}
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40">
-                <div className="text-[10px] text-cyan-400 font-semibold uppercase">
-                  Task Force Blue
-                </div>
-                <div className="text-base font-bold text-zinc-100 mt-0.5">
+              <div className="p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40 select-text">
+                <div className="text-[10px] text-cyan-400 font-semibold uppercase">Terran Blue</div>
+                <div className="text-base font-bold text-zinc-100 mt-0.5 select-all">
                   {sim.ships.filter((s) => s.team === 0 && s.isAlive).length}{" "}
                   <span className="text-xs font-normal text-zinc-500">active</span>
                 </div>
               </div>
 
-              <div className="p-2.5 rounded-lg bg-red-950/20 border border-red-800/40">
-                <div className="text-[10px] text-red-400 font-semibold uppercase">
-                  Strike Force Red
-                </div>
-                <div className="text-base font-bold text-zinc-100 mt-0.5">
+              <div className="p-2.5 rounded-lg bg-red-950/20 border border-red-800/40 select-text">
+                <div className="text-[10px] text-red-400 font-semibold uppercase">Alien Red</div>
+                <div className="text-base font-bold text-zinc-100 mt-0.5 select-all">
                   {sim.ships.filter((s) => s.team === 1 && s.isAlive).length}{" "}
                   <span className="text-xs font-normal text-zinc-500">active</span>
                 </div>
@@ -250,9 +251,9 @@ export default function App() {
             </div>
 
             {/* Dynamic Clicked Ship Telemetry */}
-            <div className="flex-1 border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/50 flex flex-col overflow-y-auto">
+            <div className="flex-1 border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/50 flex flex-col overflow-y-auto select-text">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5 select-text">
                   <Target className="w-3.5 h-3.5 text-cyan-400" /> Inspected Vessel
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -270,7 +271,7 @@ export default function App() {
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${selectedShip.team === 0 ? "bg-cyan-950 text-cyan-400 border border-cyan-800" : "bg-red-950 text-red-400 border border-red-800"}`}
                     >
-                      TEAM {selectedShip.team === 0 ? "BLUE" : "RED"}
+                      {selectedShip.team === 0 ? "TERRAN" : "ALIEN"}
                     </span>
                   )}
                 </div>
@@ -291,14 +292,18 @@ export default function App() {
                     <div className="text-[10px] text-zinc-500 font-mono flex items-center justify-between mt-0.5">
                       <span>
                         Class:{" "}
-                        <span className="uppercase text-zinc-300">{selectedShip.hullClass}</span>
+                        <span className="uppercase text-zinc-300 select-all">
+                          {selectedShip.hullClass}
+                        </span>
                       </span>
-                      <span>Heading: {(selectedShip.heading * (180 / Math.PI)).toFixed(0)}°</span>
+                      <span className="select-all">
+                        Heading: {(selectedShip.heading * (180 / Math.PI)).toFixed(0)}°
+                      </span>
                     </div>
                   </div>
 
                   {/* Defense Bars */}
-                  <div className="space-y-1.5 text-[10px] font-mono">
+                  <div className="space-y-1.5 text-[10px] font-mono select-text">
                     <div>
                       <div className="flex justify-between text-zinc-400 mb-0.5">
                         <span>Shields</span>
@@ -351,29 +356,46 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Active Hardpoints with Sector Angles */}
-                  <div className="pt-2 border-t border-zinc-800/80">
+                  {/* Active Hardpoints with Live Cooldown Indicators */}
+                  <div className="pt-2 border-t border-zinc-800/80 select-text">
                     <div className="text-[10px] uppercase font-semibold text-zinc-400 mb-1.5">
-                      Hardpoints & Fire Sectors
+                      Hardpoints & Live Cooldowns
                     </div>
                     <div className="space-y-1.5">
                       {selectedShip.turrets.map((t) => {
                         const minDeg = Math.round(t.baseArc[0] * (180 / Math.PI));
                         const maxDeg = Math.round(t.baseArc[1] * (180 / Math.PI));
                         const curDeg = Math.round(t.currentLocalAngle * (180 / Math.PI));
+                        const isCoolingDown = t.cooldownTimer > 0;
+                        const cdProgress = isCoolingDown
+                          ? (t.cooldownTimer / t.weapon.cooldown) * 100
+                          : 0;
 
                         return (
                           <div
                             key={t.id}
-                            className="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] font-mono"
+                            className="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] font-mono select-text"
                           >
                             <div className="flex items-center justify-between text-zinc-200 font-medium">
-                              <span>{t.weapon.name}</span>
-                              <span className="text-cyan-400">{curDeg}°</span>
+                              <span className="select-all">{t.weapon.name}</span>
+                              <span
+                                className={
+                                  isCoolingDown ? "text-amber-400" : "text-emerald-400 font-bold"
+                                }
+                              >
+                                {isCoolingDown ? `${t.cooldownTimer.toFixed(1)}s` : "READY"}
+                              </span>
                             </div>
-                            <div className="text-[9px] text-zinc-500 mt-1 flex justify-between select-all">
+                            {/* Live Cooldown Bar */}
+                            <div className="h-1 bg-zinc-800 rounded-full overflow-hidden my-1">
+                              <div
+                                className="h-full bg-amber-500 transition-all"
+                                style={{ width: `${cdProgress}%` }}
+                              />
+                            </div>
+                            <div className="text-[9px] text-zinc-500 flex justify-between select-all">
                               <span>
-                                Arc: [{minDeg}° .. {maxDeg}°]
+                                Arc: [{minDeg}° .. {maxDeg}°] (at {curDeg}°)
                               </span>
                               <span>Range: {t.weapon.range}u</span>
                             </div>

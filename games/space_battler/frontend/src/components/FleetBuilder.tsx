@@ -1,4 +1,4 @@
-// Tactical Fleet Builder Modal & Panel Component
+// Tactical Fleet Builder Modal & Panel Component with full-height scroll, text selection, and clear roster
 
 import { Plus, Shield, Swords, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -31,7 +31,7 @@ const HULL_SPECS: Record<HullClass, { name: string; cost: number; desc: string; 
   corvette: {
     name: "Aegis Corvette",
     cost: 350,
-    desc: "Dual rapid flak PD turrets (360°). Intercepts missiles and fighters.",
+    desc: "Dual rapid flak PD turrets (360°). Intercepts missiles, fighters, and fires at enemy ships.",
     role: "Escort Screen",
   },
   strike_craft: {
@@ -76,21 +76,21 @@ export function FleetBuilder({
   };
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row gap-6 p-6 overflow-y-auto bg-zinc-950 text-zinc-100">
+    <div className="flex-1 flex flex-col md:flex-row gap-6 p-6 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
       {/* Left: Ship Catalog & Group Selection */}
-      <div className="flex-1 space-y-6">
+      <div className="flex-1 space-y-6 overflow-y-auto pr-2">
         <div>
-          <h2 className="text-lg font-semibold tracking-wide flex items-center gap-2">
+          <h2 className="text-lg font-semibold tracking-wide flex items-center gap-2 select-text">
             <Shield className="w-5 h-5 text-cyan-400" /> Fleet Assembly Hangar
           </h2>
-          <p className="text-xs text-zinc-400 mt-1">
+          <p className="text-xs text-zinc-400 mt-1 select-text">
             Assemble your Task Force within the credit allocation. Assign ships to tactical groups.
           </p>
         </div>
 
         {/* Group Selector */}
         <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex justify-between">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex justify-between select-text">
             <span>Operational Group Assignment</span>
             <span className="text-cyan-400 font-mono">Active: Group {selectedGroup}</span>
           </div>
@@ -121,21 +121,25 @@ export function FleetBuilder({
             return (
               <div
                 key={hull}
-                className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 transition-all flex flex-col justify-between"
+                className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 transition-all flex flex-col justify-between select-text"
               >
                 <div>
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="font-semibold text-sm text-zinc-100">{spec.name}</div>
+                      <div className="font-semibold text-sm text-zinc-100 select-all">
+                        {spec.name}
+                      </div>
                       <span className="text-[10px] uppercase font-mono text-cyan-400">
                         {spec.role}
                       </span>
                     </div>
-                    <span className="text-xs font-mono font-bold text-zinc-200">
+                    <span className="text-xs font-mono font-bold text-zinc-200 select-all">
                       {spec.cost} CR
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-400 mt-2 leading-relaxed">{spec.desc}</p>
+                  <p className="text-xs text-zinc-400 mt-2 leading-relaxed select-text">
+                    {spec.desc}
+                  </p>
                 </div>
 
                 <button
@@ -156,10 +160,10 @@ export function FleetBuilder({
         </div>
       </div>
 
-      {/* Right: Roster & Enemy Preset Selector */}
-      <div className="w-full md:w-96 flex flex-col gap-4">
+      {/* Right: Full-Height Roster & Enemy Preset Selector */}
+      <div className="w-full md:w-96 flex flex-col gap-4 h-full">
         {/* Budget Bar */}
-        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
+        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 select-text">
           <div className="flex justify-between items-center text-xs font-mono">
             <span className="text-zinc-400">Budget Allocation</span>
             <span className={remainingBudget < 0 ? "text-red-400" : "text-cyan-400 font-bold"}>
@@ -174,10 +178,10 @@ export function FleetBuilder({
           </div>
         </div>
 
-        {/* Selected Fleet Roster */}
-        <div className="flex-1 border border-zinc-800 rounded-xl bg-zinc-900/40 p-4 flex flex-col">
-          <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+        {/* Selected Fleet Roster - Stretches to fill available height cleanly! */}
+        <div className="flex-1 border border-zinc-800 rounded-xl bg-zinc-900/40 p-4 flex flex-col min-h-0 select-text">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-800 shrink-0">
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 select-all">
               Active Roster ({slots.length} hulls)
             </span>
             {slots.length > 0 && (
@@ -191,27 +195,27 @@ export function FleetBuilder({
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2 py-3 max-h-60">
+          <div className="flex-1 overflow-y-auto space-y-2 py-3 pr-1">
             {slots.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-center p-6 text-xs text-zinc-600">
+              <div className="h-full flex items-center justify-center text-center p-6 text-xs text-zinc-600 select-text">
                 Fleet is currently empty. Enlist vessels from the hangar.
               </div>
             ) : (
               slots.map((s) => (
                 <div
                   key={s.id}
-                  className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex items-center justify-between"
+                  className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex items-center justify-between select-text hover:border-zinc-700 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-zinc-800 text-cyan-400">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-zinc-800 text-cyan-400 select-all">
                       G{s.groupId}
                     </span>
-                    <span className="font-medium text-zinc-200">
+                    <span className="font-medium text-zinc-200 select-all">
                       {HULL_SPECS[s.hullClass].name}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] text-zinc-400">
+                    <span className="font-mono text-[11px] text-zinc-400 select-all">
                       {HULL_SPECS[s.hullClass].cost} CR
                     </span>
                     <button
@@ -229,7 +233,7 @@ export function FleetBuilder({
         </div>
 
         {/* Adversary Preset Selector */}
-        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
+        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 shrink-0 select-text">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
             Select Opposing Red Force
           </div>
@@ -244,7 +248,7 @@ export function FleetBuilder({
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-zinc-500 italic mt-1">
+          <p className="text-[11px] text-zinc-500 italic mt-1 select-text">
             {FLEET_PRESETS.find((p) => p.id === enemyPresetId)?.description}
           </p>
         </div>
@@ -254,7 +258,7 @@ export function FleetBuilder({
           type="button"
           disabled={slots.length === 0}
           onClick={onStartBattle}
-          className={`w-full py-3.5 rounded-xl font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 transition-all ${
+          className={`w-full py-3.5 rounded-xl font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 transition-all shrink-0 ${
             slots.length > 0
               ? "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-500/20 cursor-pointer"
               : "bg-zinc-800 text-zinc-600 cursor-not-allowed"

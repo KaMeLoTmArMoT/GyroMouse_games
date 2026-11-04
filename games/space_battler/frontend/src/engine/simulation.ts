@@ -1,4 +1,4 @@
-// Deterministic client combat simulation runner with realistic mass ratios, stand-off reverse thrust, non-clumping strike craft, and intelligent broadsides
+// Deterministic client combat simulation runner with point defense ship bombardment, cruiser forward torpedo tracking, and shield bounce physics
 
 import type {
   GroupOrder,
@@ -67,7 +67,7 @@ export class ClientCombatSimulation {
       for (const turret of ship.turrets) {
         let turretTarget = target;
 
-        // Capital Spinal Railguns & Heavy Torpedoes IGNORE fast strike craft
+        // Spinal guns and torpedoes ignore strike crafts if capitals exist
         if (turret.isSpinalGimbal || turret.weapon.range > 800) {
           const capitalEnemies = aliveShips.filter(
             (e) =>
@@ -77,18 +77,33 @@ export class ClientCombatSimulation {
             turretTarget = capitalEnemies.reduce((prev, curr) =>
               vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
             );
-          } else if (target?.hullClass === "strike_craft") {
+          } else {
             turretTarget = target;
           }
         }
 
         let targetPos = turretTarget ? turretTarget.pos : null;
 
-        // Point Defense targeting against incoming missiles
+        // POINT DEFENSE (CORVETTES):
+        // 1. Prioritize hostile incoming missiles in range
+        // 2. If NO missiles exist, prioritize enemy strike crafts / nearest ships!
+        // (Aegis Corvettes NEVER sit idle, they hose down enemy ships with flak!)
         if (turret.weapon.weaponType === "point_defense") {
           const missile = this.findMissileTarget(ship, turret.weapon.range);
           if (missile) {
             targetPos = missile.pos;
+          } else {
+            // Find nearest enemy in 360-degree range
+            const enemiesInRange = aliveShips.filter(
+              (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) <= turret.weapon.range,
+            );
+            if (enemiesInRange.length > 0) {
+              const nearestEnemy = enemiesInRange.reduce((prev, curr) =>
+                vecDistanceSq(ship.pos, curr.pos) < vecDistanceSq(ship.pos, prev.pos) ? curr : prev,
+              );
+              targetPos = nearestEnemy.pos;
+              turretTarget = nearestEnemy;
+            }
           }
         }
 
@@ -99,7 +114,7 @@ export class ClientCombatSimulation {
       }
     }
 
-    // 3. Resolve Ship Collisions & Ramming with realistic MASS physics
+    // 3. Resolve Shield-to-Shield Physical Repulsion (Zero shield clipping between capitals!)
     this.resolveShipCollisions(aliveShips, dt);
 
     // 4. Projectiles & Collision Resolution
@@ -154,34 +169,34 @@ export class ClientCombatSimulation {
     let targetHeading = ship.heading;
     let desiredSpeed = 0;
 
-    // 1. Organic Escort Movement
-    if (ship.flagshipId) {
+    // 1. Independent Escorts (Corvettes with or without flagship)
+    if (ship.flagshipId && aliveShips.some((s) => s.id === ship.flagshipId)) {
       const flagship = aliveShips.find((s) => s.id === ship.flagshipId);
       if (flagship) {
         const toFlagship = vecSub(ship.pos, flagship.pos);
         const distFromFlagship = vecDistance(ship.pos, flagship.pos);
 
         const nearbyThreat = aliveShips.find(
-          (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) < 300,
+          (e) => e.team !== ship.team && vecDistance(ship.pos, e.pos) < 320,
         );
 
-        if (nearbyThreat && distFromFlagship < 260) {
+        if (nearbyThreat && distFromFlagship < 280) {
           const toThreat = vecSub(nearbyThreat.pos, ship.pos);
           targetHeading = Math.atan2(toThreat[1], toThreat[0]);
-          desiredSpeed = ship.maxSpeed * 0.75;
-        } else if (distFromFlagship > 230) {
+          desiredSpeed = ship.maxSpeed * 0.8;
+        } else if (distFromFlagship > 250) {
           targetHeading = Math.atan2(-toFlagship[1], -toFlagship[0]);
           desiredSpeed = ship.maxSpeed;
-        } else if (distFromFlagship < 95) {
+        } else if (distFromFlagship < 130) {
           targetHeading = Math.atan2(toFlagship[1], toFlagship[0]);
-          desiredSpeed = ship.maxSpeed * 0.4;
+          desiredSpeed = ship.maxSpeed * 0.5;
         } else {
-          targetHeading = flagship.heading + Math.sin(this.timeElapsed * 0.8) * 0.2;
-          desiredSpeed = Math.max(ship.maxSpeed * 0.35, vecDistance([0, 0], flagship.velocity));
+          targetHeading = flagship.heading + Math.sin(this.timeElapsed * 0.8) * 0.25;
+          desiredSpeed = Math.max(ship.maxSpeed * 0.4, vecDistance([0, 0], flagship.velocity));
         }
       }
     } else if (target) {
-      // 2. Active Battleship Stand-Off / Reverse Maneuver
+      // 2. Active Combat Maneuvers
       const toTarget = vecSub(target.pos, ship.pos);
       const dist = vecDistance(ship.pos, target.pos);
       const angleToTarget = Math.atan2(toTarget[1], toTarget[0]);
@@ -189,38 +204,43 @@ export class ClientCombatSimulation {
       if (ship.hullClass === "battleship") {
         const spinalTurret = ship.turrets.find((t) => t.isSpinalGimbal);
         const spinalReady = spinalTurret && spinalTurret.cooldownTimer <= 0.8;
-
-        // Battleship Standoff Range: wants to sit at ~500u and pound the enemy
-        const optimalCombatDist = 520;
+        const optimalCombatDist = 540;
 
         if (dist < optimalCombatDist * 0.75) {
-          // ENEMY IS TOO CLOSE! Back up with reverse thrust (keep nose pointed at target to fire!)
+          // Reverse thrust to keep stand-off distance
           targetHeading = angleToTarget;
-          desiredSpeed = -ship.maxSpeed * 0.45; // Reverse thrust!
+          desiredSpeed = -ship.maxSpeed * 0.45;
         } else if (spinalReady || dist > optimalCombatDist * 1.2) {
-          // Nose-in mode for spinal railgun
           targetHeading = angleToTarget;
           desiredSpeed = dist > optimalCombatDist ? ship.maxSpeed * 0.6 : 0;
         } else {
-          // Broadside mode: hold distance and bombard with lateral batteries
           const relAngle = normalizeAngle(angleToTarget - ship.heading);
           const chosenBroadside = relAngle < 0 ? -Math.PI * 0.48 : Math.PI * 0.48;
           targetHeading = normalizeAngle(angleToTarget + chosenBroadside);
           desiredSpeed = ship.maxSpeed * 0.35;
         }
       } else if (ship.hullClass === "cruiser") {
-        // Cruisers stand off at 380u
-        if (dist < 260) {
+        // Cruisers: align forward bow-on for prow heavy torpedo tube when ready, flank otherwise!
+        const torpTurret = ship.turrets.find((t) => t.weapon.weaponType === "missile");
+        const torpReady = torpTurret && torpTurret.cooldownTimer <= 0.5;
+
+        if (torpReady && dist <= 1000) {
+          // Direct nose attack to launch torpedoes!
           targetHeading = angleToTarget;
-          desiredSpeed = -ship.maxSpeed * 0.35;
+          desiredSpeed = dist > 400 ? ship.maxSpeed * 0.8 : -ship.maxSpeed * 0.3;
         } else {
+          // Flank with beam lasers
           targetHeading = angleToTarget + Math.PI * 0.35;
           desiredSpeed = ship.maxSpeed * 0.7;
         }
+      } else if (ship.hullClass === "corvette") {
+        // Aggressive wolf-pack escort: circle targets at 260u and fire flak continuously
+        targetHeading = angleToTarget + Math.PI * 0.4;
+        desiredSpeed = ship.maxSpeed * 0.75;
       } else if (ship.hullClass === "strike_craft") {
-        // Strike crafts maintain swarm dispersion & avoid clumping
+        // Swarm hit-and-run
         if (dist < 130) {
-          targetHeading = angleToTarget + Math.PI * 0.7; // sharp peel away
+          targetHeading = angleToTarget + Math.PI * 0.7;
           desiredSpeed = ship.maxSpeed;
         } else {
           targetHeading = angleToTarget;
@@ -232,7 +252,7 @@ export class ClientCombatSimulation {
       }
     }
 
-    // 3. Smooth Turn: responsive turning
+    // 3. Smooth Turn
     const turnRate = ship.hullClass === "battleship" ? 0.75 : ship.turnRate;
     const angleDiff = normalizeAngle(targetHeading - ship.heading);
     const turnStep = clamp(angleDiff, -turnRate * dt, turnRate * dt);
@@ -263,17 +283,16 @@ export class ClientCombatSimulation {
   }
 
   private resolveShipCollisions(aliveShips: ShipState[], dt: number): void {
-    // Realistic Mass Table: battleship (100) >> cruiser (20) >> corvette (6) >> fighter (1)
     const getShipMass = (hull: string): number => {
       switch (hull) {
         case "battleship":
-          return 120.0;
+          return 130.0;
         case "cruiser":
-          return 28.0;
+          return 30.0;
         case "corvette":
-          return 7.0;
+          return 8.0;
         default:
-          return 1.0; // strike craft
+          return 1.0;
       }
     };
 
@@ -282,10 +301,12 @@ export class ClientCombatSimulation {
         const a = aliveShips[i];
         const b = aliveShips[j];
         const d = vecDistance(a.pos, b.pos);
-        const contactDist = a.size + b.size;
-        // Fighter-to-fighter repulsor zone is wide (keeps swarm dispersed!)
-        const isFighterPair = a.hullClass === "strike_craft" && b.hullClass === "strike_craft";
-        const repulsorZone = contactDist + (isFighterPair ? 40 : 25);
+
+        // Effective Shield Perimeter: uses full 1.5x shield bubble radius so shields NEVER clip!
+        const shieldA = a.size * (a.shieldCurrent > 0 ? 1.5 : 1.0);
+        const shieldB = b.size * (b.shieldCurrent > 0 ? 1.5 : 1.0);
+        const minBubbleDist = shieldA + shieldB;
+        const repulsorZone = minBubbleDist + 20;
 
         if (d < repulsorZone && d > 0.001) {
           const normal = vecNormalize(vecSub(a.pos, b.pos));
@@ -294,33 +315,25 @@ export class ClientCombatSimulation {
           const massB = getShipMass(b.hullClass);
           const totalMass = massA + massB;
 
-          // Asymmetric push based on mass (heavy battleship doesn't budge from fighter bumps!)
-          const pushRatioA = massB / totalMass; // If B is small, pushRatioA is tiny!
-          const pushRatioB = massA / totalMass; // If A is giant, B gets 99% of the push!
+          const pushRatioA = massB / totalMass;
+          const pushRatioB = massA / totalMass;
 
-          const repulsorForce = (repulsorZone - d) * (isFighterPair ? 80 : 60);
+          // Strong repulsor prevents capitals from overlapping bubbles
+          const repulsorForce = (repulsorZone - d) * 120;
           a.pos = vecAdd(a.pos, vecScale(normal, repulsorForce * pushRatioA * dt));
           b.pos = vecSub(b.pos, vecScale(normal, repulsorForce * pushRatioB * dt));
 
-          if (d <= contactDist) {
+          // Physical shield clash & ramming
+          if (d <= minBubbleDist) {
             const relVel = vecDistance(a.velocity, b.velocity);
-            const ramDamage = Math.max(25, relVel * 0.9);
+            const ramDamage = Math.max(30, relVel * 1.2);
 
-            // Light fighters colliding with each other bounce off
-            if (isFighterPair) {
-              a.pos = vecAdd(a.pos, vecScale(normal, 8));
-              b.pos = vecSub(b.pos, vecScale(normal, 8));
-              continue;
-            }
-
-            // Shield drain
             if (a.shieldCurrent > 0) a.shieldCurrent = Math.max(0, a.shieldCurrent - ramDamage);
             else a.hullCurrent = Math.max(0, a.hullCurrent - ramDamage * 1.5);
 
             if (b.shieldCurrent > 0) b.shieldCurrent = Math.max(0, b.shieldCurrent - ramDamage);
             else b.hullCurrent = Math.max(0, b.hullCurrent - ramDamage * 1.5);
 
-            // Squash strike craft if hitting massive capital
             if (
               a.hullClass === "strike_craft" &&
               (b.hullClass === "battleship" || b.hullClass === "cruiser")
@@ -382,31 +395,35 @@ export class ClientCombatSimulation {
     targetShip: ShipState | null,
   ): void {
     turret.cooldownTimer = turret.weapon.cooldown;
+    turret.lastFiredTime = this.timeElapsed; // Track fired time for UI cooldown bars!
+
     const rotatedOffset = rotatePoint(turret.offset, ship.heading);
     const spawnPos = vecAdd(ship.pos, rotatedOffset);
 
-    // Hitscan (Laser / PD) -> Fire visual beam effect!
+    // Hitscan (Beam Laser or Flak Point Defense)
     if (turret.weapon.projectileSpeed <= 0) {
-      const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
-      const beamWidth = turret.weapon.weaponType === "point_defense" ? 1.5 : 3.0;
-
       if (turret.weapon.weaponType === "point_defense") {
         const missile = this.findMissileTarget(ship, turret.weapon.range);
         if (missile) {
           missile.hp -= turret.weapon.damage * 6.0;
-          if (this.onBeamFire) this.onBeamFire(spawnPos, missile.pos, "#facc15", 1.5);
+          if (this.onBeamFire) this.onBeamFire(spawnPos, missile.pos, "#facc15", 2.0);
+        } else if (targetShip?.isAlive) {
+          // Corvettes actively barrage enemy hulls with flak!
+          this.applyDamage(targetShip, turret.weapon.damage, turret.weapon);
+          if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, "#facc15", 1.8);
         }
       } else if (targetShip?.isAlive) {
         const dist = vecDistance(spawnPos, targetShip.pos);
         if (dist <= turret.weapon.range) {
+          const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
           this.applyDamage(targetShip, turret.weapon.damage, turret.weapon);
-          if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, beamWidth);
+          if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 3.2);
         }
       }
       return;
     }
 
-    // Physical projectile
+    // Physical projectile (Railgun, Plasma, Missile)
     this.projectileCounter += 1;
     const toTarget = vecNormalize(vecSub(targetPos, spawnPos));
     const velocity = vecScale(toTarget, turret.weapon.projectileSpeed);

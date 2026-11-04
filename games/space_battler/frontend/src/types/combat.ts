@@ -1,4 +1,4 @@
-// Combat simulation types matching deterministic backend contracts
+// Combat simulation types matching deterministic contracts
 
 export type WeaponType = "beam_laser" | "railgun" | "plasma" | "missile" | "point_defense";
 export type HullClass = "strike_craft" | "corvette" | "cruiser" | "battleship";
@@ -24,21 +24,22 @@ export interface WeaponDefinition {
 export interface TurretMountState {
   id: string;
   offset: Vector2;
-  baseArc: [number, number]; // [min, max] radians relative to ship forward
-  trackingSpeed: number; // rad/s (small for gimballed spinal guns, large for PD)
+  baseArc: [number, number];
+  trackingSpeed: number;
   weapon: WeaponDefinition;
   currentLocalAngle: number;
   cooldownTimer: number;
   currentTargetId: string | null;
-  barrelLength: number; // visual barrel length
-  baseRadius: number; // visual turret base radius
-  isSpinalGimbal?: boolean; // tight gimbal mount on ship axis
+  barrelLength: number;
+  baseRadius: number;
+  isSpinalGimbal?: boolean;
+  lastFiredTime?: number; // Visual cooldown tracking in UI!
 }
 
 export interface ShipState {
   id: string;
   name: string;
-  team: number; // 0: Blue, 1: Red
+  team: number; // 0: Blue (Terran), 1: Red (Alien)
   groupId: number; // 1..10
   hullClass: HullClass;
   pos: Vector2;
@@ -48,7 +49,6 @@ export interface ShipState {
   turnRate: number;
   size: number;
 
-  // Quad-Directional Shields (Fore, Aft, Port, Starboard)
   shieldMax: number;
   shieldCurrent: number;
   shieldRegen: number;
@@ -65,7 +65,6 @@ export interface ShipState {
   cost: number;
   isAlive: boolean;
 
-  // Formation Anchor (relative offset to flagship if escort)
   formationOffset?: Vector2;
   flagshipId?: string;
 }
@@ -81,6 +80,7 @@ export interface ProjectileState {
   lifetime: number;
   targetId: string | null;
   hp: number;
+  isFlakBurst?: boolean; // Proximity splash munition
 }
 
 export interface GroupOrder {
