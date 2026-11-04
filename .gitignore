@@ -39,3 +39,4 @@ __pycache__/
 
 # Space battler scratch
 games/space_battler/scratch/
+*.pyc
