@@ -36,3 +36,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+
+# Space battler scratch
+games/space_battler/scratch/
