@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { CombatTelemetry } from "../src/engine/combatTelemetry";
 import {
   assembleScenario,
@@ -11,17 +11,24 @@ import {
 import { ClientCombatSimulation } from "../src/engine/simulation";
 
 const STEP = 1 / 60;
+export const HARD_BATTLE_TIMEOUT = 300;
 
-function runScenario(scenario: ScenarioDefinition, seed?: number): ScenarioResult {
+export function runScenario(
+  scenario: ScenarioDefinition,
+  seed?: number,
+  createTelemetry = (ships: ReturnType<typeof assembleScenario>, _sim: ClientCombatSimulation) =>
+    new CombatTelemetry(ships),
+): ScenarioResult {
   const ships = assembleScenario(scenario, seed);
   const layout = structuredClone(ships);
   const sim = new ClientCombatSimulation();
   for (const ship of ships) sim.addShip(ship);
-  const telemetry = new CombatTelemetry(ships);
+  const telemetry = createTelemetry(ships, sim);
   sim.observer = telemetry;
   const start = performance.now();
   let outcome: ScenarioResult["outcome"] = "timeout";
-  for (let tick = 0; tick < scenario.durationLimit / STEP; tick++) {
+  const tickLimit = Math.floor(Math.min(scenario.durationLimit, HARD_BATTLE_TIMEOUT) / STEP);
+  for (let tick = 0; tick < tickLimit; tick++) {
     sim.update(STEP);
     const blue = ships.some((ship) => ship.team === 0 && ship.isAlive);
     const red = ships.some((ship) => ship.team === 1 && ship.isAlive);
@@ -65,6 +72,7 @@ function runScenario(scenario: ScenarioDefinition, seed?: number): ScenarioResul
     return initial ? (100 * remaining) / initial : 0;
   }) as [number, number];
   const alerts = [
+    outcome === "timeout" ? "TACTICAL STALEMATE / TIMEOUT" : "",
     report.ramProximityPairTicks > 0 ? "RAM" : "",
     report.hardPullEntries > 0 ? "OOB" : "",
     report.stalls.length > 0 ? "STALL" : "",
@@ -163,9 +171,18 @@ function main(): void {
   if (results.some((result) => result.outcome === "invalid")) process.exitCode = 1;
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    if (process.argv[2] === "--study") {
+      void import("./calibrate")
+        .then(({ calibrate }) => calibrate(process.argv.slice(3)))
+        .catch((error) => {
+          console.error(error instanceof Error ? error.message : error);
+          process.exitCode = 1;
+        });
+    } else main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
 }
