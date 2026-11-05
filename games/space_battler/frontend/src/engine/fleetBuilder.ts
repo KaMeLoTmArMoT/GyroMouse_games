@@ -300,11 +300,37 @@ export function buildFleetFromSlots(
     });
   });
 
-  // 4. Strike Crafts (Screen Vanguard)
-  fighters.forEach((slot, idx) => {
+  // 4. Grouped vanguard blocks. Keep shield repulsor zones clear on the first tick.
+  const fighterGroups = new Map<number, FleetSlot[]>();
+  for (const slot of fighters) {
+    const group = fighterGroups.get(slot.groupId) ?? [];
+    group.push(slot);
+    fighterGroups.set(slot.groupId, group);
+  }
+  const spacing = 56;
+  const maxRows = Math.max(
+    1,
+    Math.min(5, Math.floor((2 * 520 + spacing) / (fighterGroups.size * spacing))),
+  );
+  const totalRows = [...fighterGroups.values()].reduce(
+    (sum, group) => sum + Math.min(maxRows, group.length),
+    0,
+  );
+  const positionedFighters: { slot: FleetSlot; xOff: number; yOff: number }[] = [];
+  let rowOffset = 0;
+  for (const group of fighterGroups.values()) {
+    const rows = Math.min(maxRows, group.length);
+    group.forEach((slot, index) => {
+      positionedFighters.push({
+        slot,
+        xOff: (heading === 0 ? 1 : -1) * (180 + Math.floor(index / rows) * spacing),
+        yOff: (rowOffset + (index % rows) - (totalRows - 1) / 2) * spacing,
+      });
+    });
+    rowOffset += rows;
+  }
+  positionedFighters.forEach(({ slot, xOff, yOff }, idx) => {
     const id = `${team === 0 ? "blue" : "red"}_sc_${idx}`;
-    const xOff = (heading === 0 ? 1 : -1) * (180 + (idx % 3) * 45);
-    const yOff = (idx - (fighters.length - 1) / 2) * 45;
     ships.push({
       id,
       name: `Raider F-${idx + 1}`,

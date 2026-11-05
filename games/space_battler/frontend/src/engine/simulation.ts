@@ -50,13 +50,13 @@ export type FlakBurstCallback = (pos: Vector2, radius: number) => void;
 
 const FIGHTER_STANDOFF = 520;
 const FIGHTER_CLEARANCE = 45;
-const FIGHTER_EGRESS_DISTANCE = 200;
 const WING_SIZE = 5;
-const WING_WAVE_DELAY = 1.8;
+const WING_WAVE_DELAY = 0.25;
 const WING_RALLY_TOLERANCE = 65;
 
 interface FighterWing {
   team: number;
+  groupId: number;
   index: number;
   members: string[];
   phase: WingPhase;
@@ -66,7 +66,7 @@ interface FighterWing {
   heading: number;
   rally: Vector2;
   assembledAt?: number;
-  egressRequestedAt?: number;
+  hasLaunched?: boolean;
 }
 const CRUISER_CLEARANCE = 100;
 
@@ -79,7 +79,6 @@ export class ClientCombatSimulation {
   timeElapsed = 0;
   private projectileCounter = 0;
   private fighterWings: FighterWing[] = [];
-  private nextWingLaunch = new Map<number, number>();
   private accumulator = 0;
   private contacts = new Set<string>();
   private previousPositions = new Map<string, Vector2>();
@@ -324,17 +323,19 @@ export class ClientCombatSimulation {
   }
 
   private ensureFighterWings(aliveShips: ShipState[]): void {
-    const fightersByTeam = new Map<number, ShipState[]>();
+    const fighterGroups = new Map<string, ShipState[]>();
     const assigned = new Set(this.fighterWings.flatMap((wing) => wing.members));
     for (const ship of aliveShips) {
       if (ship.hullClass !== "strike_craft" || assigned.has(ship.id)) continue;
-      const wing = fightersByTeam.get(ship.team) ?? [];
+      const key = `${ship.team}:${ship.groupId}`;
+      const wing = fighterGroups.get(key) ?? [];
       wing.push(ship);
-      fightersByTeam.set(ship.team, wing);
+      fighterGroups.set(key, wing);
     }
 
-    for (const [team, fighters] of fightersByTeam) {
-      fighters.sort((a, b) => a.id.localeCompare(b.id));
+    for (const fighters of fighterGroups.values()) {
+      fighters.sort((a, b) => a.pos[1] - b.pos[1] || a.pos[0] - b.pos[0]);
+      const { team, groupId } = fighters[0];
       const count = Math.max(
         1,
         Math.ceil(fighters.length / 6),
@@ -348,11 +349,12 @@ export class ClientCombatSimulation {
         const index = firstIndex + i;
         this.fighterWings.push({
           team,
+          groupId,
           index,
           members: members.map((ship) => ship.id),
           phase: "staging",
           phaseStarted: this.timeElapsed,
-          launchAt: this.timeElapsed + i * WING_WAVE_DELAY,
+          launchAt: this.timeElapsed,
           targetId: null,
           heading: members[0].heading,
           rally: [...members[0].pos],
@@ -402,22 +404,29 @@ export class ClientCombatSimulation {
         ship.recoveryStarted = undefined;
       }
     }
+    const groupTargets = new Map<string, ShipState | undefined>();
     for (const wing of this.fighterWings) {
       const members = aliveShips.filter((ship) => wing.members.includes(ship.id));
       if (members.length === 0) continue;
       const leader = members[0];
-      let target = aliveShips.find((ship) => ship.id === wing.targetId);
-      if (!target) {
+      const groupKey = `${wing.team}:${wing.groupId}`;
+      let target = groupTargets.get(groupKey);
+      if (!groupTargets.has(groupKey)) {
         target =
+          aliveShips.find((ship) => ship.id === wing.targetId) ??
           this.findTargetForShip(
             leader,
-            {
+            this.orders.get(wing.groupId) ?? {
               groupId: leader.groupId,
               priority: "capitals",
               stance: "optimal_range",
             },
             aliveShips,
-          ) ?? undefined;
+          ) ??
+          undefined;
+        groupTargets.set(groupKey, target);
+      }
+      if (wing.targetId !== (target?.id ?? null)) {
         wing.targetId = target?.id ?? null;
         wing.phase = "staging";
         wing.phaseStarted = this.timeElapsed;
@@ -429,11 +438,16 @@ export class ClientCombatSimulation {
             (ship.hullClass === "battleship" || ship.hullClass === "cruiser"),
         );
         const approach = vecSub(target.pos, anchor?.pos ?? leader.pos);
+        const groupIndex = this.fighterWings
+          .filter((peer) => peer.team === wing.team && peer.groupId === wing.groupId)
+          .indexOf(wing);
         // Freeze each corridor's bearing for the pass, even while individual craft jink.
         wing.heading =
           Math.atan2(approach[1], approach[0]) +
-          (wing.index % 2 === 0 ? 1 : -1) * (0.15 + Math.floor(wing.index / 2) * 0.18);
+          (groupIndex % 2 === 0 ? 1 : -1) *
+            Math.min(0.42, 0.15 + Math.floor(groupIndex / 2) * 0.18);
       }
+      if (!target) continue;
       wing.rally = safeRally(target, wing.heading, members, aliveShips, FIGHTER_STANDOFF);
       const healthy = members.filter(
         (ship) => !this.fighterNeedsCover(ship) && !ship.dogfightTargetId,
@@ -445,28 +459,36 @@ export class ClientCombatSimulation {
       const assembled = healthy.length > 0 && ready.length / healthy.length >= 0.6;
       const elapsed = this.timeElapsed - wing.phaseStarted;
       let phase = wing.phase;
-      if (
-        phase === "attack" &&
-        (elapsed >= 6 ||
-          healthy.some((ship) => vecDistance(ship.pos, target.pos) <= FIGHTER_EGRESS_DISTANCE)) &&
-        wing.egressRequestedAt === undefined
-      )
-        wing.egressRequestedAt = this.timeElapsed;
+      const forward = rotatePoint([1, 0], wing.heading);
+      const rallyAhead = healthy.every(
+        (ship) => vecDot(vecSub(this.fighterRallySlot(wing, ship), ship.pos), forward) >= 0,
+      );
+      // Each pilot breaks independently; a spent leader must not cancel a wingmate's shot.
+      if (phase === "attack") {
+        for (const ship of healthy) {
+          if (
+            (ship.lastMissionShotTime ?? -Infinity) >= wing.phaseStarted ||
+            vecDistance(ship.pos, target.pos) <= target.size * 1.4 + 75
+          )
+            ship.fighterPhase = "egress";
+        }
+      }
       if (
         phase === "staging" &&
         healthy.length > 0 &&
-        (assembled || this.timeElapsed - (wing.assembledAt ?? wing.phaseStarted) >= 2.5) &&
-        this.timeElapsed >= wing.launchAt &&
-        this.timeElapsed >= (this.nextWingLaunch.get(wing.team) ?? 0)
+        (!wing.hasLaunched ||
+          rallyAhead ||
+          assembled ||
+          this.timeElapsed - (wing.assembledAt ?? wing.phaseStarted) >= 2.5) &&
+        this.timeElapsed >= wing.launchAt
       ) {
         phase = "attack";
-        this.nextWingLaunch.set(wing.team, this.timeElapsed + WING_WAVE_DELAY);
+        wing.hasLaunched = true;
       } else if (
         phase === "attack" &&
         (healthy.length === 0 ||
-          (wing.egressRequestedAt !== undefined &&
-            this.timeElapsed - wing.egressRequestedAt >= 0.85) ||
-          healthy.every((ship) => (ship.lastMissionShotTime ?? -Infinity) >= wing.phaseStarted))
+          elapsed >= 6 ||
+          healthy.every((ship) => ship.fighterPhase === "egress"))
       ) {
         phase = "egress";
       } else if (phase === "egress" && elapsed >= 1.4) {
@@ -479,14 +501,16 @@ export class ClientCombatSimulation {
         wing.phase = phase;
         wing.phaseStarted = this.timeElapsed;
         wing.assembledAt = undefined;
-        wing.egressRequestedAt = undefined;
+        if (phase === "attack") for (const ship of members) ship.fighterPhase = "attack";
       }
       for (const ship of members)
         ship.fighterPhase = this.fighterNeedsCover(ship)
           ? "recover"
           : ship.dogfightTargetId
             ? "intercept"
-            : wing.phase;
+            : wing.phase === "attack" && ship.fighterPhase === "egress"
+              ? "egress"
+              : wing.phase;
     }
   }
 
@@ -539,7 +563,11 @@ export class ClientCombatSimulation {
     const isDamaged = this.fighterNeedsCover(ship);
     const wing = this.fighterWings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
     if (!wing) return { heading: ship.heading, speed: 0 };
-    const phase = ship.fighterPhase ?? wing.phase;
+    let phase = ship.fighterPhase ?? wing.phase;
+    if (phase === "attack" && vecDistance(ship.pos, target.pos) <= target.size * 1.4 + 75) {
+      phase = "egress";
+      ship.fighterPhase = phase;
+    }
 
     // 2. Shared corridor intent; local steering remains free to break formation.
     let intentTarget: Vector2;
@@ -571,7 +599,8 @@ export class ClientCombatSimulation {
       }
 
       case "attack": {
-        intentTarget = vecAdd(target.pos, rotatePoint([target.size + 35, slot * 50], wing.heading));
+        const standoff = target.size * 1.4 + 95;
+        intentTarget = vecAdd(target.pos, rotatePoint([-standoff, slot * 35], wing.heading));
         break;
       }
 
@@ -645,6 +674,8 @@ export class ClientCombatSimulation {
 
       for (const obstacle of aliveShips) {
         if (obstacle.id === ship.id) continue;
+        // Wingmates use local flock separation below, not the capital-sized exclusion zone.
+        if (obstacle.team === ship.team && obstacle.hullClass === "strike_craft") continue;
         const relative = vecSub(obstacle.pos, ship.pos);
         const velocity = vecSub(obstacle.velocity, candidateVel);
         const t = clamp(
@@ -653,8 +684,9 @@ export class ClientCombatSimulation {
           1,
         );
         const distance = vecDistance([0, 0], vecAdd(relative, vecScale(velocity, t)));
-        const clearance = (ship.size + obstacle.size) * 1.4 + 40;
-        if (distance < clearance) dangerScore += 6 * (1 - distance / clearance);
+        const capital = obstacle.hullClass === "battleship" || obstacle.hullClass === "cruiser";
+        const clearance = (ship.size + obstacle.size) * 1.4 + (capital ? 95 : 40);
+        if (distance < clearance) dangerScore += (capital ? 14 : 6) * (1 - distance / clearance);
         if (
           obstacle.team !== ship.team &&
           (phase === "staging" || phase === "rejoin" || phase === "recover")
@@ -997,6 +1029,7 @@ export class ClientCombatSimulation {
       );
       if (targetShip?.id === wing?.targetId && targetShip?.hullClass !== "strike_craft")
         ship.lastMissionShotTime = this.timeElapsed;
+      ship.fighterPhase = "egress";
     }
 
     // Hitscan (Beam Laser)

@@ -49,10 +49,14 @@ export function separation(ship: ShipState, ships: ShipState[]): Vector2 {
         ? vecScale(vecSub(ship.pos, peer.pos), 1 / distance)
         : [0, ship.id < peer.id ? -1 : 1];
     const closing = Math.max(0, -vecDot(vecSub(ship.velocity, peer.velocity), away));
+    const wingmate =
+      ship.hullClass === "strike_craft" &&
+      peer.hullClass === "strike_craft" &&
+      ship.team === peer.team;
     const clearance =
       ship.size * (ship.shieldCurrent > 0 ? 1.4 : 1) +
       peer.size * (peer.shieldCurrent > 0 ? 1.4 : 1) +
-      30;
+      (wingmate ? 8 : 30);
     const margin = clearance + (closing * closing) / 440 + closing * 0.15;
     if (distance < margin)
       result = vecAdd(result, vecScale(away, ship.maxSpeed * 2 * (1 - distance / margin)));
