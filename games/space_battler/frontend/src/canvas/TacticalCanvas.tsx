@@ -22,6 +22,36 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const hasDraggedRef = useRef(false);
+  const followRef = useRef(Boolean(selectedShipId));
+
+  useEffect(() => {
+    followRef.current = Boolean(selectedShipId);
+  }, [selectedShipId]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target;
+      if (
+        e.key.toLowerCase() !== "f" ||
+        e.repeat ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))
+      ) {
+        return;
+      }
+      const ship = sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
+      if (ship) {
+        cameraRef.current.x = -ship.pos[0] * cameraRef.current.zoom;
+        cameraRef.current.y = -ship.pos[1] * cameraRef.current.zoom;
+        followRef.current = true;
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sim, selectedShipId]);
 
   useEffect(() => {
     // Keep sound and visual effects on the same combat events.
@@ -49,6 +79,14 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
       if (speed > 0) {
         sim.update(dt * speed);
         effectsRef.current.update(dt * speed);
+      }
+
+      const targetShip =
+        followRef.current && sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
+      if (targetShip) {
+        const camera = cameraRef.current;
+        camera.x += (-targetShip.pos[0] * camera.zoom - camera.x) * 0.08;
+        camera.y += (-targetShip.pos[1] * camera.zoom - camera.y) * 0.08;
       }
 
       const canvas = canvasRef.current;
@@ -159,6 +197,7 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
     if (isDraggingRef.current) {
       const dx = e.clientX - dragStartRef.current.x;
       const dy = e.clientY - dragStartRef.current.y;
+      if (dx !== 0 || dy !== 0) followRef.current = false;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
         hasDraggedRef.current = true;
       }
@@ -168,11 +207,8 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
     }
   };
 
-  const handleMouseUp = (e: React.MouseEvent) => {
-    isDraggingRef.current = false;
-
-    // Click selection (if not a pan drag)
-    if (!hasDraggedRef.current && onSelectShip && canvasRef.current) {
+  const shipAtPoint = (e: React.MouseEvent): string | null => {
+    if (canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const clickY = e.clientY - rect.top;
@@ -198,14 +234,45 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
         }
       }
 
+      return clickedShip;
+    }
+    return null;
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+
+    // Click selection (if not a pan drag)
+    if (!hasDraggedRef.current && onSelectShip) {
+      const clickedShip = shipAtPoint(e);
+      followRef.current = Boolean(clickedShip);
       onSelectShip(clickedShip);
+    }
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (!shipAtPoint(e)) {
+      followRef.current = false;
+      cameraRef.current.x = 0;
+      cameraRef.current.y = 0;
     }
   };
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) * canvas.width) / rect.width - canvas.width / 2;
+    const y = ((e.clientY - rect.top) * canvas.height) / rect.height - canvas.height / 2;
+    const camera = cameraRef.current;
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    cameraRef.current.zoom = Math.max(0.3, Math.min(2.5, cameraRef.current.zoom * zoomFactor));
+    const zoom = Math.max(0.3, Math.min(2.5, camera.zoom * zoomFactor));
+    const ratio = zoom / camera.zoom;
+    camera.x = x - (x - camera.x) * ratio;
+    camera.y = y - (y - camera.y) * ratio;
+    camera.zoom = zoom;
   };
 
   return (
@@ -215,6 +282,10 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onMouseLeave={() => {
+          isDraggingRef.current = false;
+        }}
+        onDoubleClick={handleDoubleClick}
         onWheel={handleWheel}
         className="w-full h-full block"
       />
