@@ -233,6 +233,25 @@ describe("mount eligibility and projectile contracts", () => {
     expect(acquireMountTarget(cv, cv.turrets[0], enemy, [cv, enemy], [inbound])).toBeNull();
   });
 
+  it("gently steers live torpedoes towards their target within the seeker cone", () => {
+    const owner = ship("cruiser", 0, [0, 0]);
+    const enemy = stationary(ship("battleship", 1, [300, 60]));
+    const missile = projectile(owner, [0, 0], [200, 0], 1);
+    missile.targetId = enemy.id;
+    const sim = simulate([owner, enemy]);
+    sim.projectiles = [missile];
+    sim.update(0.5);
+    expect(missile.velocity[1]).toBeGreaterThan(0);
+
+    // Should not turn backwards if target is behind the seeker cone
+    const behind = stationary(ship("battleship", 1, [-300, 0]));
+    behind.id = "behind";
+    missile.targetId = behind.id;
+    sim.ships.push(behind);
+    sim.update(0.1);
+    expect(missile.velocity[0]).toBeGreaterThan(0);
+  });
+
   it("sweeps rails through small targets and selects the first hit", () => {
     const owner = ship("battleship", 0, [-500, 0]);
     const near = stationary(ship("strike_craft", 1, [0, 0]));

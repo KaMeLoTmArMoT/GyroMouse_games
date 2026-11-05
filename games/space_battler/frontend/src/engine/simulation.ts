@@ -1120,6 +1120,30 @@ export class ClientCombatSimulation {
     for (const p of this.projectiles) {
       if (p.hp <= 0 || p.lifetime <= 0) continue;
       const step = Math.min(dt, p.lifetime);
+
+      // Torpedo slight homing (1-3% turn rate towards target within 60 deg seeker cone)
+      if (p.weaponType === "missile" && p.targetId) {
+        const target = aliveShips.find((s) => s.id === p.targetId && s.isAlive);
+        if (target) {
+          const toTarget = vecSub(target.pos, p.pos);
+          const distSq = toTarget[0] * toTarget[0] + toTarget[1] * toTarget[1];
+          if (distSq > 100) {
+            const curSpeed = Math.hypot(p.velocity[0], p.velocity[1]);
+            if (curSpeed > 1) {
+              const currentAngle = Math.atan2(p.velocity[1], p.velocity[0]);
+              const desiredAngle = Math.atan2(toTarget[1], toTarget[0]);
+              const angleDiff = normalizeAngle(desiredAngle - currentAngle);
+              if (Math.abs(angleDiff) < Math.PI / 3) {
+                const maxTurn = 0.4 * step;
+                const turn = clamp(angleDiff, -maxTurn, maxTurn);
+                const newAngle = currentAngle + turn;
+                p.velocity = [Math.cos(newAngle) * curSpeed, Math.sin(newAngle) * curSpeed];
+              }
+            }
+          }
+        }
+      }
+
       const start = starts.get(p.id) ?? p.pos;
       const end = vecAdd(start, vecScale(p.velocity, step));
       const flak = p.weapon.flak;

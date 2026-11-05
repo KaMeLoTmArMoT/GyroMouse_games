@@ -2,7 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import { spaceAudio } from "../engine/audioEngine";
+import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
 import type { ClientCombatSimulation } from "../engine/simulation";
+import type { ShipState } from "../types/combat";
 import { VisualEffectsManager } from "./effects";
 import { renderProjectile } from "./projectileRenderer";
 import { renderShip } from "./shipRenderer";
@@ -279,6 +281,14 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
             renderShip(ctx, ship, ship.id === selectedShipId);
           }
 
+          // Draw Selected Ship Billiards Trajectory & Tactical Intent HUD
+          if (selectedShipId) {
+            const selectedShip = sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
+            if (selectedShip) {
+              drawTacticalTrajectory(ctx, selectedShip, sim);
+            }
+          }
+
           ctx.save();
           for (const impact of effectsRef.current.shieldImpacts) {
             const ship = sim.ships.find((s) => s.id === impact.shipId && s.isAlive);
@@ -484,7 +494,7 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
 
 function drawTacticalGrid(ctx: CanvasRenderingContext2D): void {
   const gridSize = 100;
-  const radius = 1800;
+  const radius = ARENA_HARD_PULL_RADIUS;
 
   ctx.strokeStyle = "rgba(30, 41, 59, 0.4)";
   ctx.lineWidth = 1;
@@ -500,9 +510,208 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D): void {
   }
   ctx.stroke();
 
-  ctx.strokeStyle = "rgba(56, 189, 248, 0.15)";
+  // Arena soft boundary ring
+  ctx.strokeStyle = "rgba(56, 189, 248, 0.2)";
   ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 8]);
   ctx.beginPath();
-  ctx.arc(0, 0, 1000, 0, Math.PI * 2);
+  ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2);
   ctx.stroke();
+
+  // Arena hard pull perimeter
+  ctx.strokeStyle = "rgba(239, 68, 68, 0.25)";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.arc(0, 0, ARENA_HARD_PULL_RADIUS, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawTacticalTrajectory(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  sim: ClientCombatSimulation,
+): void {
+  const isBlue = ship.team === 0;
+  const primaryColor = isBlue ? "#38bdf8" : "#f87171";
+  const speed = Math.hypot(ship.velocity[0], ship.velocity[1]);
+
+  // 1. Target Lock & Engagement Line
+  const targetId =
+    ship.maneuverTargetId ??
+    ship.dogfightTargetId ??
+    ship.turrets.find((t) => t.currentTargetId)?.currentTargetId ??
+    null;
+  const target = targetId
+    ? sim.ships.find((s) => s.id === targetId && s.isAlive && s.team !== ship.team)
+    : null;
+
+  if (target) {
+    const dist = Math.hypot(target.pos[0] - ship.pos[0], target.pos[1] - ship.pos[1]);
+    ctx.save();
+    ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.moveTo(ship.pos[0], ship.pos[1]);
+    ctx.lineTo(target.pos[0], target.pos[1]);
+    ctx.stroke();
+
+    // Target Corner Brackets
+    const br = Math.max(target.size * 1.4, 20);
+    const bLen = Math.min(br * 0.4, 10);
+    ctx.strokeStyle = "#ef4444";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    const [tx, ty] = target.pos;
+
+    ctx.beginPath();
+    // Top-left
+    ctx.moveTo(tx - br, ty - br + bLen);
+    ctx.lineTo(tx - br, ty - br);
+    ctx.lineTo(tx - br + bLen, ty - br);
+    // Top-right
+    ctx.moveTo(tx + br - bLen, ty - br);
+    ctx.lineTo(tx + br, ty - br);
+    ctx.lineTo(tx + br, ty - br + bLen);
+    // Bottom-left
+    ctx.moveTo(tx - br, ty + br - bLen);
+    ctx.lineTo(tx - br, ty + br);
+    ctx.lineTo(tx - br + bLen, ty + br);
+    // Bottom-right
+    ctx.moveTo(tx + br - bLen, ty + br);
+    ctx.lineTo(tx + br, ty + br);
+    ctx.lineTo(tx + br, ty + br - bLen);
+    ctx.stroke();
+
+    // Target Label
+    ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(`LOCK: ${target.name} (${Math.round(dist)}u)`, tx, ty - br - 5);
+    ctx.restore();
+  }
+
+  // 2. Extrapolated Billiards-Style Trajectory Course Vector
+  if (speed > 3) {
+    const horizon = 2.5; // Look ahead 2.5 seconds
+    const predX = ship.pos[0] + ship.velocity[0] * horizon;
+    const predY = ship.pos[1] + ship.velocity[1] * horizon;
+
+    ctx.save();
+    ctx.strokeStyle = primaryColor;
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([6, 6]);
+    ctx.shadowColor = primaryColor;
+    ctx.shadowBlur = 6;
+
+    ctx.beginPath();
+    ctx.moveTo(ship.pos[0], ship.pos[1]);
+    ctx.lineTo(predX, predY);
+    ctx.stroke();
+
+    // End Waypoint Marker (Circle + Reticle)
+    ctx.shadowBlur = 0;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(predX, predY, 8, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = primaryColor;
+    ctx.beginPath();
+    ctx.arc(predX, predY, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Crosshair ticks
+    ctx.beginPath();
+    ctx.moveTo(predX - 12, predY);
+    ctx.lineTo(predX - 8, predY);
+    ctx.moveTo(predX + 8, predY);
+    ctx.lineTo(predX + 12, predY);
+    ctx.moveTo(predX, predY - 12);
+    ctx.lineTo(predX, predY - 8);
+    ctx.moveTo(predX, predY + 8);
+    ctx.lineTo(predX, predY + 12);
+    ctx.stroke();
+
+    // Time tag
+    ctx.font = "9px monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = primaryColor;
+    ctx.fillText(`+${horizon}s`, predX + 14, predY + 3);
+    ctx.restore();
+  }
+
+  // 3. Tactical Intent & State HUD Pill
+  let intent = "COMBAT PATROL";
+  if (ship.hullClass === "strike_craft") {
+    switch (ship.fighterPhase) {
+      case "attack":
+        intent = "STRIKE RUN";
+        break;
+      case "egress":
+        intent = "EGRESS / REPOSITION";
+        break;
+      case "staging":
+        intent = "STAGING FORMATION";
+        break;
+      case "rejoin":
+        intent = "REJOINING SQUAD";
+        break;
+      default:
+        intent = ship.dogfightTargetId ? "DOGFIGHT INTERCEPT" : "WING CRUISE";
+    }
+  } else if (ship.hullClass === "battleship" || ship.hullClass === "cruiser") {
+    if (ship.escapeUntil && ship.escapeUntil > sim.timeElapsed) {
+      intent = "EVADING SPINAL FIRE";
+    } else if (ship.capitalManeuver === "broadside_hold") {
+      intent = "BROADSIDE COMBAT";
+    } else if (ship.capitalManeuver === "bow_acquire") {
+      intent = "BOW PURSUIT";
+    } else if (target) {
+      intent = "ENGAGING CAPITAL";
+    } else {
+      intent = "LINE OF BATTLE";
+    }
+  } else if (ship.hullClass === "corvette") {
+    intent = target ? "SCREEN & FLAK FIRE" : "ESCORT FORMATION";
+  }
+
+  // Render Intent Tag below ship
+  const pillY = ship.pos[1] + ship.size + 18;
+  const pillX = ship.pos[0];
+  const line1 = `SPD: ${Math.round(speed)} u/s • ${intent}`;
+  const line2 = target
+    ? `TGT: ${target.name} [${Math.round(Math.hypot(target.pos[0] - ship.pos[0], target.pos[1] - ship.pos[1]))}u]`
+    : null;
+
+  ctx.save();
+  ctx.font = "10px monospace";
+  const w1 = ctx.measureText(line1).width;
+  const w2 = line2 ? ctx.measureText(line2).width : 0;
+  const boxW = Math.max(w1, w2) + 16;
+  const boxH = line2 ? 30 : 18;
+
+  ctx.fillStyle = "rgba(10, 15, 26, 0.85)";
+  ctx.strokeStyle = primaryColor;
+  ctx.lineWidth = 1;
+
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(pillX - boxW / 2, pillY - 4, boxW, boxH, 4);
+  } else {
+    ctx.rect(pillX - boxW / 2, pillY - 4, boxW, boxH);
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = primaryColor;
+  ctx.fillText(line1, pillX, pillY + 9);
+  if (line2) {
+    ctx.fillStyle = "rgba(244, 114, 182, 0.9)";
+    ctx.fillText(line2, pillX, pillY + 22);
+  }
+  ctx.restore();
 }

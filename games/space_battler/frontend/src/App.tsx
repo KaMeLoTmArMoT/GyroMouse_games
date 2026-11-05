@@ -90,7 +90,7 @@ export default function App() {
     }
     return DEFAULT_USER_SLOTS;
   });
-  const [budgetLimit] = useState<number>(10000);
+  const [budgetLimit] = useState<number>(20000);
   const [enemyPresetId, setEnemyPresetId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.enemyPreset);
@@ -305,22 +305,20 @@ export default function App() {
             <button
               type="button"
               onClick={() => setActiveTab("builder")}
-              className={`px-3 py-1 text-xs rounded font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
-                activeTab === "builder"
+              className={`px-3 py-1 text-xs rounded font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${activeTab === "builder"
                   ? "bg-cyan-500 text-zinc-950 font-semibold"
                   : "text-zinc-400 hover:text-zinc-200"
-              }`}
+                }`}
             >
               <Wrench className="w-3.5 h-3.5" /> Fleet Builder
             </button>
             <button
               type="button"
               onClick={() => setActiveTab("battle")}
-              className={`px-3 py-1 text-xs rounded font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
-                activeTab === "battle"
+              className={`px-3 py-1 text-xs rounded font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${activeTab === "battle"
                   ? "bg-cyan-500 text-zinc-950 font-semibold"
                   : "text-zinc-400 hover:text-zinc-200"
-              }`}
+                }`}
             >
               <Compass className="w-3.5 h-3.5" /> Tactical Grid
             </button>
@@ -368,11 +366,10 @@ export default function App() {
                   type="button"
                   onClick={() => setSpeed(s)}
                   title={s === 0 ? "Pause (Space)" : `Speed ${s}x (< / >)`}
-                  className={`px-2.5 py-1 text-xs rounded font-mono transition-colors cursor-pointer ${
-                    speed === s
+                  className={`px-2.5 py-1 text-xs rounded font-mono transition-colors cursor-pointer ${speed === s
                       ? "bg-cyan-500 text-zinc-950 font-medium"
                       : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-                  }`}
+                    }`}
                 >
                   {s === 0 ? "PAUSE" : `${s}x`}
                 </button>
@@ -408,18 +405,16 @@ export default function App() {
             {sim.winner !== null && showVictoryModal && (
               <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-30">
                 <div
-                  className={`max-w-md w-full rounded-2xl border p-6 shadow-2xl bg-zinc-950/95 flex flex-col items-center text-center ${
-                    sim.winner === 0
+                  className={`max-w-md w-full rounded-2xl border p-6 shadow-2xl bg-zinc-950/95 flex flex-col items-center text-center ${sim.winner === 0
                       ? "border-cyan-500/50 shadow-cyan-950/50"
                       : "border-red-500/50 shadow-red-950/50"
-                  }`}
+                    }`}
                 >
                   <div
-                    className={`p-4 rounded-2xl mb-4 border ${
-                      sim.winner === 0
+                    className={`p-4 rounded-2xl mb-4 border ${sim.winner === 0
                         ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
                         : "bg-red-500/10 border-red-500/30 text-red-400"
-                    }`}
+                      }`}
                   >
                     {sim.winner === 0 ? (
                       <Trophy className="w-10 h-10" />
@@ -429,9 +424,8 @@ export default function App() {
                   </div>
 
                   <h2
-                    className={`text-xl font-bold tracking-wide uppercase ${
-                      sim.winner === 0 ? "text-cyan-400" : "text-red-400"
-                    }`}
+                    className={`text-xl font-bold tracking-wide uppercase ${sim.winner === 0 ? "text-cyan-400" : "text-red-400"
+                      }`}
                   >
                     {sim.winner === 0 ? "Terran Tactical Victory" : "Alien Swarm Victory"}
                   </h2>
@@ -537,11 +531,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setSidebarTab("vessel")}
-                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${
-                  sidebarTab === "vessel"
+                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${sidebarTab === "vessel"
                     ? "bg-zinc-800 text-cyan-400 font-semibold shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200"
-                }`}
+                  }`}
               >
                 <Target className="w-3.5 h-3.5" />
                 <span>Vessel</span>
@@ -549,11 +542,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setSidebarTab("telemetry")}
-                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${
-                  sidebarTab === "telemetry"
+                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${sidebarTab === "telemetry"
                     ? "bg-zinc-800 text-cyan-400 font-semibold shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200"
-                }`}
+                  }`}
               >
                 <Activity className="w-3.5 h-3.5" />
                 <span>Telemetry</span>
@@ -561,11 +553,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setSidebarTab("log")}
-                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${
-                  sidebarTab === "log"
+                className={`py-1.5 px-2 rounded flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer ${sidebarTab === "log"
                     ? "bg-zinc-800 text-cyan-400 font-semibold shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200"
-                }`}
+                  }`}
               >
                 <ScrollText className="w-3.5 h-3.5" />
                 <span>Log ({sim.combatLog.length})</span>
@@ -621,11 +612,10 @@ export default function App() {
                     )}
                     {selectedShip && (
                       <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                          selectedShip.team === 0
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${selectedShip.team === 0
                             ? "bg-cyan-950 text-cyan-400 border border-cyan-800"
                             : "bg-red-950 text-red-400 border border-red-800"
-                        }`}
+                          }`}
                       >
                         {selectedShip.team === 0 ? "TERRAN" : "ALIEN"}
                       </span>
@@ -897,13 +887,12 @@ export default function App() {
                       return (
                         <div
                           key={event.id}
-                          className={`p-2 rounded border text-[11px] leading-relaxed ${
-                            event.type === "critical"
+                          className={`p-2 rounded border text-[11px] leading-relaxed ${event.type === "critical"
                               ? "bg-amber-950/30 border-amber-800/50 text-amber-300 font-semibold"
                               : isTerran
                                 ? "bg-cyan-950/20 border-cyan-800/30 text-cyan-200"
                                 : "bg-red-950/20 border-red-800/30 text-red-200"
-                          }`}
+                            }`}
                         >
                           {event.text}
                         </div>
