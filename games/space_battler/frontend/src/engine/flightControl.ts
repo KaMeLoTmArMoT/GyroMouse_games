@@ -112,18 +112,32 @@ export function escortVelocity(
       : [0, 0];
   const index = Number(ship.id.split("_").at(-1)) || 0;
   const side = index % 2 === 0 ? 1 : -1;
+  const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
+  const sortie = clamp((shieldRatio - 0.4) / 0.3, 0, 1);
+  const tether = 380 + sortie * 220;
+  const closeOffset: Vector2 = [
+    120 - Math.floor(index / 2) * 45,
+    side * (150 + Math.floor(index / 2) * 45),
+  ];
+  // Healthy pickets occupy a forward/lateral screen even when capitals fight at long range.
+  const screenOffset = vecScale(
+    vecNormalize([1, side * (0.5 + Math.floor(index / 2) * 0.15)]),
+    550,
+  );
   const station = vecAdd(
     anchor.pos,
     rotatePoint(
-      [120 - Math.floor(index / 2) * 45, side * (150 + Math.floor(index / 2) * 45)],
+      vecAdd(vecScale(closeOffset, 1 - sortie), vecScale(screenOffset, sortie)),
       anchor.heading,
     ),
   );
   const stationVelocity = vecAdd(anchor.velocity, vecScale(vecSub(station, ship.pos), 0.6));
   if (
     !target ||
-    vecDistance(target.pos, anchor.pos) > 600 ||
-    vecDistance(ship.pos, anchor.pos) > 380
+    shieldRatio <= 0.4 ||
+    vecDistance(target.pos, anchor.pos) > 600 + sortie * 600 ||
+    vecDistance(target.pos, ship.pos) > 600 ||
+    vecDistance(ship.pos, anchor.pos) > tether
   )
     return stationVelocity;
   return vecAdd(vecScale(stationVelocity, 0.65), vecScale(orbitVelocity(ship, target), 0.35));

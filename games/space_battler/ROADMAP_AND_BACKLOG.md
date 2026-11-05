@@ -1,17 +1,24 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 84 Vitest + 24 Pytest tests passing)
+Status: Grand Scale Production Baseline Active (All 88 Vitest + 24 Pytest tests passing)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
-- **Direct Numeric Input in Fleet Builder (`FleetBuilder.tsx`)**:
-  - Quantity steppers now feature an interactive, monospace number input allowing direct click, delete, and typing (e.g. typing `10` battleships or `120` fighters).
-  - Preserved `ChevronUp` and `ChevronDown` buttons with focus protection.
+- **Corvette Picket Sortie Doctrine & 90% Flak Interception Cap (B.8 & B.2)**:
+  - **Picket Sortie (Anti-Burrow)**: Corvettes with healthy shields ($\text{shieldRatio} > 0.70$) now deploy into an active 550u forward/lateral picket screen with a 600u operational tether, screening against torpedoes and engaging strike craft rather than idling 120u ahead of the flagship.
+  - When shields drop below 40%, corvettes smoothly fall back under the flagship's defensive flak umbrella.
+  - **90% Flak Reliability Cap**: Deterministic stable per-missile hash dispersion (`(dispersion >>> 0) / 0x100000000 >= 0.9`) allows ~10% of torpedoes in a salvo to punch through the screen to strike capitals. Overlapping flak bursts do not defeat the cap. Strike craft damage remains at 100% full strength.
+  - Verified by deterministic 1000-missile salvo tests in `simulation.test.ts`.
+
+- **Direct Numeric Input in Fleet Builder (`FleetBuilder.tsx`, B.1)**:
+  - Quantity steppers feature an interactive, monospace number input allowing direct click, delete, and typing (e.g. typing `10` battleships or `120` fighters).
+  - Focus protection: `initialCountRef` captures pre-focus value so pressing `Escape` cleanly restores the original roster count.
+  - Strict input rejection: non-digit characters (`-`, `.`, `e`, `+`) are blocked on `onKeyDown`.
   - Strict budget clamp: $\text{maxAffordable} = \text{stack.count} + \lfloor \text{remainingBudget} / \text{unitCost} \rfloor$.
-  - Rejects negative values, non-integers, and floats. Verified by 17 unit tests in `fleetBuilder.test.ts`.
+  - Verified by 19 unit tests in `fleetBuilder.test.ts`.
 
 - **Grand Scale Arena & Sizing Calibration**:
   - Arena radius expanded to $R = 1900\text{u}$ with hard-pull boundary $R_{\text{hard}} = 2200\text{u}$.
@@ -35,14 +42,6 @@ Status: Grand Scale Production Baseline Active (All 84 Vitest + 24 Pytest tests 
 ---
 
 ## 2. Priority Backlog (Next Implementation Sprints)
-
-### B.2: Corvette Flak Dispersion & Probabilistic Interception (~90% Cap)
-- **Goal**: Prevent corvettes from forming a 100% impervious anti-missile bubble.
-- **Problem**: Current flak trigger radius creates deterministic 100% missile destruction if any corvette is within firing arc, completely shutting down missile/torpedo cruisers.
-- **Solution**:
-  - Introduce slight aim dispersion or an interception reliability check (~90% success rate per intercept opportunity).
-  - Allows ~10% of well-timed torpedo salvos to punch through the escort screen to strike high-value capitals.
-  - **Constraint**: Must NOT weaken corvette damage or burst radius against strike craft / fighter swarms.
 
 ### B.3: Sustained Beam Lasers (Channeled Continuous Tick Damage)
 - **Goal**: Make beam weapons feel like true heavy energy beams instead of instant hitscan pulses.
@@ -83,17 +82,6 @@ Status: Grand Scale Production Baseline Active (All 84 Vitest + 24 Pytest tests 
 - Light Drone Carrier (autonomous micro-fighter swarms).
 - Heavy Torpedo Bomber (anti-capital strike wing).
 - Rocket Interceptor (fast swarm defense).
-
-### B.8: Corvette Active Picket & Dynamic Sortie Doctrine
-- **Problem (Burrow Syndrome)**:
-  - In `flightControl.ts:125`, corvettes execute strict flagship tethering (`stationVelocity`) whenever `vecDistance(target.pos, anchor.pos) > 600 || vecDistance(ship.pos, anchor.pos) > 380`.
-  - In Grand Scale ($R=1900\text{u}$, spawn $\pm 1100\text{u}$), enemy capitals engage at $1000-1600\text{u}$. Therefore, `distance > 600` is virtually always true.
-  - As a result, corvettes sit permanently in their slot ($120\text{u}$ ahead of the battleship) like passive puppies, even when they possess 100% shields and have high-priority fighter wings or vulnerable cruisers nearby.
-- **Solution**:
-  - Introduce dynamic Picket Sortie envelope:
-    - When `corvette.shieldRatio > 0.70`, extend the operational tether up to $500-600\text{u}$ forward/lateral from the flagship.
-    - Prioritize screening against approaching torpedoes, engaging strike craft, or harassing exposed secondary targets.
-    - If `corvette.shieldRatio < 0.40` or heavy spinal rail fire threatens the corridor, trigger a defensive fallback to the battleship's point-defense umbrella.
 
 ### B.9: Capital Ship Standoff & Range Harmony (Eliminating Legacy Hardcoded Margins)
 - **Problem (Excessive Ingress / Capital Cluster Brawls)**:

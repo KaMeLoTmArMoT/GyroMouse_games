@@ -310,6 +310,7 @@ describe("mount eligibility and projectile contracts", () => {
     const owner = ship("corvette", 0, [-500, 0]);
     const enemy = ship("cruiser", 1, [500, 0]);
     const missile = projectile(enemy, [0, 0], [0, 0], 1);
+    missile.id = "proj_1";
     const sim = simulate([]);
     const burst = (id: string) => ({ ...projectile(owner, [0, 0], [0, 0]), id });
     sim.projectiles = [missile, burst("a")];
@@ -318,6 +319,34 @@ describe("mount eligibility and projectile contracts", () => {
     sim.projectiles.push(burst("b"), burst("c"));
     sim.update(1 / 60);
     expect(sim.stats[0].missilesIntercepted).toBe(1);
+  });
+
+  it("lets about 10% of missiles survive repeated flak bursts deterministically", () => {
+    const owner = ship("corvette", 0, [-500, 0]);
+    const enemy = ship("cruiser", 1, [500, 0]);
+    const run = () => {
+      const sim = simulate([]);
+      const missiles = Array.from({ length: 1000 }, (_, i) => ({
+        ...projectile(enemy, [0, 0], [0, 0], 1),
+        id: `proj_${i + 1}`,
+      }));
+      const friendly = { ...projectile(owner, [0, 0], [0, 0]), weaponType: "missile" as const };
+      const outside = { ...missiles[0], id: "outside", pos: [100, 0] as Vector2 };
+      sim.projectiles = [...missiles, friendly, outside];
+      for (let i = 0; i < 5; i++) {
+        sim.projectiles.push({ ...projectile(owner, [0, 0], [0, 0]), id: `burst_${i}` });
+        sim.update(1 / 60);
+      }
+      const survivors = missiles.filter((missile) => missile.hp > 0);
+      expect(survivors.length).toBeGreaterThanOrEqual(70);
+      expect(survivors.length).toBeLessThanOrEqual(130);
+      expect(survivors.every((missile) => missile.hp === 25)).toBe(true);
+      expect(sim.stats[0].missilesIntercepted).toBe(1000 - survivors.length);
+      expect(friendly.hp).toBe(25);
+      expect(outside.hp).toBe(25);
+      return survivors.map((missile) => missile.id);
+    };
+    expect(run()).toEqual(run());
   });
 
   it("gives a fresh fighter a multi-second survival window against one corvette", () => {
@@ -496,6 +525,37 @@ describe("tactical maneuvers", () => {
     ships[0].isAlive = false;
     escortVelocity(escorts[0], null, ships);
     expect(escorts[0].flagshipId).toBe(ships[1].id);
+  });
+
+  it("sorties to a 550u screen at grand-scale range and falls back below 40% shields", () => {
+    const anchor = ship("battleship", 0, [0, 0]);
+    const cv = ship("corvette", 0, [0, 0]);
+    cv.flagshipId = anchor.id;
+    const enemy = ship("battleship", 1, [1600, 0]);
+    const ships = [anchor, cv, enemy];
+    const outward = escortVelocity(cv, enemy, ships);
+    const screen: Vector2 = [outward[0] / 0.6, outward[1] / 0.6];
+    expect(vecDistance([0, 0], screen)).toBeCloseTo(550);
+    expect(screen[0]).toBeGreaterThan(450);
+    expect(Math.abs(screen[1])).toBeGreaterThan(200);
+    cv.pos = screen;
+    expect(vecDistance([0, 0], escortVelocity(cv, enemy, ships))).toBeCloseTo(0);
+    const fighter = ship("strike_craft", 1, [850, screen[1]]);
+    const engagement = escortVelocity(cv, fighter, [...ships, fighter]);
+    expect(vecDistance([0, 0], engagement)).toBeGreaterThan(0);
+    cv.pos = [650, 0];
+    expect(escortVelocity(cv, fighter, [...ships, fighter])[0]).toBeLessThan(0);
+    cv.pos = screen;
+    cv.shieldCurrent = cv.shieldMax * 0.39;
+    const fallback = escortVelocity(cv, fighter, [...ships, fighter]);
+    expect(vecDot(fallback, screen)).toBeLessThan(0);
+    expect(fallback).toEqual(escortVelocity(cv, null, ships));
+    cv.shieldCurrent = cv.shieldMax * 0.55;
+    cv.pos = [0, 0];
+    const recovering = escortVelocity(cv, null, ships);
+    expect(vecDistance([0, 0], recovering)).toBeLessThan(vecDistance([0, 0], outward));
+    cv.shieldCurrent = cv.shieldMax * 0.71;
+    expect(escortVelocity(cv, null, ships)).toEqual(outward);
   });
 
   it("escapes ready spinal cones and in-flight rails during reload", () => {

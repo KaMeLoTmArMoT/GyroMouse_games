@@ -1249,6 +1249,16 @@ export class ClientCombatSimulation {
       )
         continue;
       if (vecDistance(flak.pos, positions.get(other.id) ?? other.pos) <= profile.blastRadius) {
+        // Stable dispersion per missile keeps overlapping bursts from defeating the 90% cap.
+        let dispersion = 2166136261;
+        for (let i = 0; i < other.id.length; i++)
+          dispersion = Math.imul(dispersion ^ other.id.charCodeAt(i), 16777619);
+        dispersion ^= dispersion >>> 16;
+        dispersion = Math.imul(dispersion, 0x85ebca6b);
+        dispersion ^= dispersion >>> 13;
+        dispersion = Math.imul(dispersion, 0xc2b2ae35);
+        dispersion ^= dispersion >>> 16;
+        if ((dispersion >>> 0) / 0x100000000 >= 0.9) continue;
         other.hp -= profile.missileDamage;
         if (other.hp <= 0) {
           this.stats[flak.ownerTeam].missilesIntercepted += 1;
