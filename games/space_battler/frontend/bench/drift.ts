@@ -105,7 +105,8 @@ export function runLayerA(): FixtureMetrics {
       advance(sim, 120);
       metrics.gunDps[mount.id] = (before - target.hullCurrent) / 120;
       const weapon = equipped[index].weapon;
-      const expected = (weapon.damage * weapon.hullMultiplier) / weapon.cooldown;
+      const cycle = weapon.cooldown + (weapon.weaponType === "beam_laser" ? 1.2 : 0);
+      const expected = (weapon.damage * weapon.hullMultiplier) / cycle;
       if (Math.abs(metrics.gunDps[mount.id] - expected) > expected * 0.03)
         throw new Error(
           `Layer A ${mount.id}: sustained DPS differs from the equipped profile by more than 3%`,

@@ -86,6 +86,7 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: 
   const s = ship.size;
   const time = performance.now();
   ctx.save();
+  const baseAlpha = ctx.globalAlpha;
 
   for (const [x, y] of decals) {
     ctx.fillStyle = "rgba(12, 8, 8, 0.85)";
@@ -112,7 +113,7 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: 
 
   if (burning) {
     const flicker = 0.75 + 0.25 * Math.sin(time / 85 + ship.pos[0]);
-    ctx.globalAlpha = flicker;
+    ctx.globalAlpha *= flicker;
     ctx.shadowColor = "#f97316";
     ctx.shadowBlur = Math.max(3, s * 0.18);
     for (const side of [-1, 1]) {
@@ -135,7 +136,7 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: 
       ship.team === 0
         ? { strike_craft: 0.53, corvette: 0.5, cruiser: -0.53, battleship: -0.36 }[ship.hullClass]
         : { strike_craft: 0.57, corvette: 0.3, cruiser: 0.25, battleship: -0.16 }[ship.hullClass];
-    ctx.globalAlpha = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(time / 100));
+    ctx.globalAlpha = baseAlpha * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(time / 100)));
     ctx.shadowColor = "#ff2020";
     ctx.shadowBlur = Math.max(5, s * 0.3);
     ctx.fillStyle = "#ff3030";

@@ -56,6 +56,7 @@ export default function App() {
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
   const [sidebarTab, setSidebarTab] = useState<"vessel" | "telemetry" | "log">("vessel");
   const [showVictoryModal, setShowVictoryModal] = useState<boolean>(true);
+  const [ingressRevision, setIngressRevision] = useState(0);
   const [, setTick] = useState<number>(0);
 
   useEffect(() => {
@@ -257,6 +258,7 @@ export default function App() {
   const continueBattle = () => {
     if (!canContinueWithRemnants) return;
     sim.continueBattleWithRemnants();
+    setIngressRevision((revision) => revision + 1);
     setSelectedShipId(sim.ships[0]?.id ?? null);
     setShowVictoryModal(true);
     setSpeed(lastActiveSpeed > 0 ? lastActiveSpeed : 1);
@@ -412,6 +414,7 @@ export default function App() {
             <TacticalCanvas
               sim={sim}
               speed={speed}
+              ingressRevision={ingressRevision}
               selectedShipId={selectedShipId}
               onSelectShip={setSelectedShipId}
             />

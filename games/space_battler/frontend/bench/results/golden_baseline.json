@@ -10,9 +10,9 @@
   "layerA": {
     "gunDps": {
       "blue_bb_0_spinal": 85,
-      "blue_bb_0_port": 61.666666666666664,
-      "blue_bb_0_stbd": 61.666666666666664,
-      "blue_cr_0_laser": 37,
+      "blue_bb_0_port": 31.25,
+      "blue_bb_0_stbd": 31.25,
+      "blue_cr_0_laser": 18.75,
       "blue_cr_0_torp": 72.6,
       "blue_sc_0_gun": 58.5
     },
@@ -36,10 +36,10 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 161.15000000002038,
+      "duration": 169.1833333333601,
       "residualHpPercent": [
         0,
-        10.21150525721184
+        2.257264259513862
       ]
     },
     {
@@ -47,7 +47,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 26.349999999999785,
+      "duration": 26.36666666666645,
       "residualHpPercent": [
         100,
         0
@@ -69,7 +69,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 20.750000000000103,
+      "duration": 10.150000000000084,
       "residualHpPercent": [
         100,
         0
@@ -80,7 +80,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 26.59999999999977,
+      "duration": 27.316666666666396,
       "residualHpPercent": [
         0,
         100
@@ -91,10 +91,10 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 46.23333333333199,
+      "duration": 55.683333333331454,
       "residualHpPercent": [
         0,
-        26.123274089306953
+        14.331191663470722
       ]
     },
     {
@@ -102,7 +102,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 30.29999999999956,
+      "duration": 33.76666666666603,
       "residualHpPercent": [
         100,
         0
@@ -113,7 +113,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 10.633333333333441,
+      "duration": 16.066666666667036,
       "residualHpPercent": [
         100,
         0
@@ -135,7 +135,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 20.433333333333454,
+      "duration": 36.51666666666588,
       "residualHpPercent": [
         0,
         100
@@ -157,9 +157,9 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 19.31666666666685,
+      "duration": 20.25000000000013,
       "residualHpPercent": [
-        83.7039312039312,
+        69.98771498771498,
         0
       ]
     },
@@ -168,7 +168,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 17.400000000000293,
+      "duration": 17.483333333333622,
       "residualHpPercent": [
         0,
         100
@@ -179,7 +179,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 10.583333333333439,
+      "duration": 15.733333333333695,
       "residualHpPercent": [
         0,
         100
@@ -190,21 +190,21 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 24.46666666666656,
+      "duration": 25.08333333333319,
       "residualHpPercent": [
         0,
-        95.24324324324324
+        100
       ]
     },
     {
       "id": "3sc-vs-3sc",
       "scenarioVersion": 1,
       "seed": 1,
-      "outcome": "red",
-      "duration": 32.84999999999942,
+      "outcome": "blue",
+      "duration": 33.08333333333274,
       "residualHpPercent": [
-        0,
-        45.17906336088154
+        78.51239669421487,
+        0
       ]
     },
     {
@@ -212,10 +212,10 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 161.15000000002038,
+      "duration": 169.1833333333601,
       "residualHpPercent": [
         0,
-        10.21150525721184
+        2.257264259513862
       ]
     },
     {
@@ -223,7 +223,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 26.349999999999785,
+      "duration": 26.36666666666645,
       "residualHpPercent": [
         100,
         0
@@ -234,7 +234,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 21.200000000000077,
+      "duration": 21.23333333333341,
       "residualHpPercent": [
         100,
         0
@@ -245,7 +245,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 28.049999999999688,
+      "duration": 10.133333333333416,
       "residualHpPercent": [
         100,
         0
@@ -256,7 +256,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 26.59999999999977,
+      "duration": 27.316666666666396,
       "residualHpPercent": [
         0,
         100
@@ -267,10 +267,10 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 46.23333333333199,
+      "duration": 55.683333333331454,
       "residualHpPercent": [
         0,
-        26.123274089306953
+        14.331191663470722
       ]
     },
     {
@@ -278,7 +278,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 30.29999999999956,
+      "duration": 31.383333333332832,
       "residualHpPercent": [
         100,
         0
@@ -289,7 +289,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 10.616666666666774,
+      "duration": 15.76666666666703,
       "residualHpPercent": [
         100,
         0
@@ -311,7 +311,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 20.433333333333454,
+      "duration": 36.49999999999921,
       "residualHpPercent": [
         0,
         100
@@ -333,9 +333,9 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 19.266666666666854,
+      "duration": 24.69999999999988,
       "residualHpPercent": [
-        83.7039312039312,
+        66.66666666666667,
         0
       ]
     },
@@ -344,7 +344,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 17.350000000000296,
+      "duration": 17.483333333333622,
       "residualHpPercent": [
         0,
         100
@@ -355,7 +355,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 8.166666666666652,
+      "duration": 11.333333333333476,
       "residualHpPercent": [
         0,
         100
@@ -366,10 +366,10 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 24.64999999999988,
+      "duration": 24.833333333333204,
       "residualHpPercent": [
         0,
-        95.24324324324324
+        100
       ]
     },
     {
@@ -388,10 +388,10 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 161.1333333333537,
+      "duration": 169.16666666669343,
       "residualHpPercent": [
         0,
-        10.21150525721184
+        2.257264259513862
       ]
     },
     {
@@ -399,7 +399,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 26.349999999999785,
+      "duration": 26.36666666666645,
       "residualHpPercent": [
         100,
         0
@@ -421,7 +421,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 24.69999999999988,
+      "duration": 13.36666666666691,
       "residualHpPercent": [
         100,
         0
@@ -443,10 +443,10 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 46.23333333333199,
+      "duration": 55.683333333331454,
       "residualHpPercent": [
         0,
-        26.123274089306953
+        14.331191663470722
       ]
     },
     {
@@ -454,7 +454,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 30.29999999999956,
+      "duration": 33.7833333333327,
       "residualHpPercent": [
         100,
         0
@@ -465,7 +465,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 10.633333333333441,
+      "duration": 15.733333333333695,
       "residualHpPercent": [
         100,
         0
@@ -487,7 +487,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 20.433333333333454,
+      "duration": 36.41666666666588,
       "residualHpPercent": [
         0,
         100
@@ -509,9 +509,9 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 19.350000000000183,
+      "duration": 23.99999999999992,
       "residualHpPercent": [
-        83.7039312039312,
+        66.66666666666667,
         0
       ]
     },
@@ -520,7 +520,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 17.350000000000296,
+      "duration": 21.200000000000077,
       "residualHpPercent": [
         0,
         100
@@ -531,7 +531,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 8.166666666666652,
+      "duration": 11.333333333333476,
       "residualHpPercent": [
         0,
         100
@@ -542,10 +542,10 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 25.216666666666516,
+      "duration": 24.11666666666658,
       "residualHpPercent": [
         0,
-        96.11808481485288
+        71.25640839146531
       ]
     },
     {
@@ -564,10 +564,10 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 161.1333333333537,
+      "duration": 169.16666666669343,
       "residualHpPercent": [
         0,
-        10.21150525721184
+        2.257264259513862
       ]
     },
     {
@@ -575,7 +575,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 26.349999999999785,
+      "duration": 26.36666666666645,
       "residualHpPercent": [
         100,
         0
@@ -597,7 +597,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 20.750000000000103,
+      "duration": 10.150000000000084,
       "residualHpPercent": [
         100,
         0
@@ -619,10 +619,10 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 46.23333333333199,
+      "duration": 55.683333333331454,
       "residualHpPercent": [
         0,
-        26.123274089306953
+        14.331191663470722
       ]
     },
     {
@@ -630,7 +630,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 30.349999999999557,
+      "duration": 33.74999999999937,
       "residualHpPercent": [
         100,
         0
@@ -641,7 +641,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 10.616666666666774,
+      "duration": 15.76666666666703,
       "residualHpPercent": [
         100,
         0
@@ -663,7 +663,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 20.433333333333454,
+      "duration": 36.41666666666588,
       "residualHpPercent": [
         0,
         100
@@ -685,9 +685,9 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 19.350000000000183,
+      "duration": 24.683333333333213,
       "residualHpPercent": [
-        83.7039312039312,
+        66.66666666666667,
         0
       ]
     },
@@ -696,7 +696,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 20.88333333333343,
+      "duration": 21.200000000000077,
       "residualHpPercent": [
         0,
         100
@@ -707,7 +707,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 9.350000000000044,
+      "duration": 13.450000000000248,
       "residualHpPercent": [
         0,
         100
@@ -718,10 +718,10 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 24.633333333333216,
+      "duration": 23.233333333333295,
       "residualHpPercent": [
         0,
-        100
+        95.88275913275913
       ]
     },
     {

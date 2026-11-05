@@ -12,13 +12,21 @@ import { renderShip } from "./shipRenderer";
 interface TacticalCanvasProps {
   sim: ClientCombatSimulation;
   speed: number;
+  ingressRevision: number;
   selectedShipId?: string | null;
   onSelectShip?: (shipId: string | null) => void;
 }
 
-export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: TacticalCanvasProps) {
+export function TacticalCanvas({
+  sim,
+  speed,
+  ingressRevision,
+  selectedShipId,
+  onSelectShip,
+}: TacticalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const effectsRef = useRef<VisualEffectsManager>(new VisualEffectsManager());
+  const pendingIngressRef = useRef(false);
 
   const cameraRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.85 });
   const isDraggingRef = useRef(false);
@@ -29,6 +37,12 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
   useEffect(() => {
     followRef.current = Boolean(selectedShipId);
   }, [selectedShipId]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A continued battle reuses the same simulation.
+  useEffect(() => {
+    effectsRef.current = new VisualEffectsManager();
+    pendingIngressRef.current = sim.timeElapsed === 0;
+  }, [sim, ingressRevision]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -95,8 +109,29 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
       const dt = rawDt;
 
       if (speed > 0) {
+        if (pendingIngressRef.current) {
+          effectsRef.current.triggerFleetWarpIn(sim.ships);
+          pendingIngressRef.current = false;
+          const canvas = canvasRef.current;
+          const camera = cameraRef.current;
+          const alive = sim.ships.filter((ship) => ship.isAlive);
+          if (canvas && alive.length > 0) {
+            const minX = Math.min(...alive.map((ship) => ship.pos[0] - ship.size * 2));
+            const maxX = Math.max(...alive.map((ship) => ship.pos[0] + ship.size * 2));
+            const minY = Math.min(...alive.map((ship) => ship.pos[1] - ship.size * 2));
+            const maxY = Math.max(...alive.map((ship) => ship.pos[1] + ship.size * 2));
+            camera.zoom = Math.max(
+              0.3,
+              Math.min(0.85, canvas.width / (maxX - minX), canvas.height / (maxY - minY)),
+            );
+            camera.x = -((minX + maxX) / 2) * camera.zoom;
+            camera.y = -((minY + maxY) / 2) * camera.zoom;
+            followRef.current = false;
+          }
+        }
         sim.update(dt * speed);
         effectsRef.current.update(dt * speed, sim.ships, sim.projectiles);
+        effectsRef.current.updateWarpGates(Math.min(dt, 0.05));
         effectsRef.current.syncBeams(sim.activeBeams);
       }
 
@@ -126,6 +161,8 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
           ctx.scale(cameraRef.current.zoom, cameraRef.current.zoom);
 
           drawTacticalGrid(ctx);
+
+          effectsRef.current.render(ctx);
 
           // Draw Active Beams
           for (const beam of effectsRef.current.beams) {
@@ -242,13 +279,26 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
           }
 
           // Draw Ships
+          const ingressGates = new Map(
+            effectsRef.current.warpGates.map((gate) => [gate.shipId, gate]),
+          );
           for (const ship of sim.ships) {
+            const gate = ingressGates.get(ship.id);
+            ctx.save();
+            if (gate) {
+              const progress = Math.min(1, (gate.maxDuration - gate.remainingDuration) / 0.5);
+              const eased = progress * progress * (3 - 2 * progress);
+              const offset = (1 - eased) * ship.size;
+              ctx.translate(-Math.cos(gate.heading) * offset, -Math.sin(gate.heading) * offset);
+              ctx.globalAlpha = eased;
+            }
             renderShip(
               ctx,
               ship,
               ship.id === selectedShipId,
               effectsRef.current.impactDecals.get(ship),
             );
+            ctx.restore();
           }
 
           // Draw Selected Ship Billiards Trajectory & Tactical Intent HUD

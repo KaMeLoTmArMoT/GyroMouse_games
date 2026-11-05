@@ -75,6 +75,7 @@ interface FighterWing {
   heading: number;
   rally: Vector2;
   assembledAt?: number;
+  engagementStarted?: number;
   hasLaunched?: boolean;
 }
 const CRUISER_CLEARANCE = 100;
@@ -277,7 +278,8 @@ export class ClientCombatSimulation {
     for (const ship of this.ships) {
       if (!ship.isAlive) continue;
       for (const turret of ship.turrets)
-        turret.cooldownTimer = Math.max(0, turret.cooldownTimer - dt);
+        if (!this.beamChannels.has(turret))
+          turret.cooldownTimer = Math.max(0, turret.cooldownTimer - dt);
       if (ship.shieldDelayTimer > 0) {
         ship.shieldDelayTimer = Math.max(0, ship.shieldDelayTimer - dt);
       } else if (ship.shieldCurrent < ship.shieldMax) {
@@ -337,14 +339,14 @@ export class ClientCombatSimulation {
             vecDistance(mountPosition(ship, turret), target.pos) > channel.weapon.range ||
             !inMountArc(ship, turret, target.pos)
           ) {
-            this.beamChannels.delete(turret);
+            this.finishBeam(turret);
             continue;
           }
           turret.currentTargetId = target.id;
           turret.currentTargetKind = channel.kind;
           const aimed = this.updateTurretAim(turret, dt, ship, target.pos);
           if (!aimed) {
-            this.beamChannels.delete(turret);
+            this.finishBeam(turret);
             continue;
           }
           shots.push(() => this.updateBeam(channel, aimed));
@@ -377,7 +379,7 @@ export class ClientCombatSimulation {
         (channel.kind === "ship" && !(channel.target as ShipState).isAlive) ||
         (channel.kind === "missile" && (channel.target as ProjectileState).hp <= 0)
       )
-        this.beamChannels.delete(turret);
+        this.finishBeam(turret);
     }
     this.activeBeams = [...this.beamChannels.values()].map((channel) => this.beamVisual(channel));
 
@@ -601,6 +603,7 @@ export class ClientCombatSimulation {
         wing.phase = "staging";
         wing.phaseStarted = this.timeElapsed;
         wing.assembledAt = undefined;
+        wing.engagementStarted = undefined;
         if (!target) continue;
         const anchor = aliveShips.find(
           (ship) =>
@@ -635,10 +638,20 @@ export class ClientCombatSimulation {
       );
       // Each pilot breaks independently; a spent leader must not cancel a wingmate's shot.
       if (phase === "attack") {
+        if (
+          wing.engagementStarted === undefined &&
+          healthy.some((ship) => vecDistance(ship.pos, target.pos) <= 600)
+        )
+          wing.engagementStarted = this.timeElapsed;
         for (const ship of healthy) {
+          const distance = vecDistance(ship.pos, target.pos);
+          const gunReady = ship.turrets.some((turret) => turret.cooldownTimer <= 0);
           if (
             (ship.lastMissionShotTime ?? -Infinity) >= wing.phaseStarted ||
-            vecDistance(ship.pos, target.pos) <= target.size * 1.4 + 75
+            distance < target.size + 30 ||
+            (!gunReady &&
+              (distance <= target.size * 1.4 + 75 ||
+                this.timeElapsed - (wing.engagementStarted ?? this.timeElapsed) >= 6))
           )
             ship.fighterPhase = "egress";
         }
@@ -656,9 +669,7 @@ export class ClientCombatSimulation {
         wing.hasLaunched = true;
       } else if (
         phase === "attack" &&
-        (healthy.length === 0 ||
-          elapsed >= 6 ||
-          healthy.every((ship) => ship.fighterPhase === "egress"))
+        (healthy.length === 0 || healthy.every((ship) => ship.fighterPhase === "egress"))
       ) {
         phase = "egress";
       } else if (phase === "egress" && elapsed >= 1.4) {
@@ -671,7 +682,11 @@ export class ClientCombatSimulation {
         wing.phase = phase;
         wing.phaseStarted = this.timeElapsed;
         wing.assembledAt = undefined;
-        if (phase === "attack") for (const ship of members) ship.fighterPhase = "attack";
+        wing.engagementStarted = undefined;
+        if (phase === "attack")
+          for (const ship of members)
+            ship.fighterPhase =
+              target && vecDistance(ship.pos, target.pos) < target.size + 30 ? "egress" : "attack";
       }
       for (const ship of members)
         ship.fighterPhase = this.fighterNeedsCover(ship)
@@ -733,11 +748,15 @@ export class ClientCombatSimulation {
     const isDamaged = this.fighterNeedsCover(ship);
     const wing = this.fighterWings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
     if (!wing) return { heading: ship.heading, speed: 0 };
-    let phase = ship.fighterPhase ?? wing.phase;
-    if (phase === "attack" && vecDistance(ship.pos, target.pos) <= target.size * 1.4 + 75) {
-      phase = "egress";
-      ship.fighterPhase = phase;
-    }
+    const phase = ship.fighterPhase ?? wing.phase;
+    const liningUp =
+      phase === "attack" &&
+      ship.turrets.some(
+        (turret) =>
+          turret.cooldownTimer <= 0 &&
+          vecDistance(ship.pos, target.pos) <= turret.weapon.range + 120,
+      );
+    const attackSpeed = liningUp ? ship.maxSpeed * 0.45 : ship.maxSpeed;
 
     // 2. Shared corridor intent; local steering remains free to break formation.
     let intentTarget: Vector2;
@@ -770,7 +789,10 @@ export class ClientCombatSimulation {
 
       case "attack": {
         const standoff = target.size * 1.4 + 95;
-        intentTarget = vecAdd(target.pos, rotatePoint([-standoff, slot * 35], wing.heading));
+        intentTarget =
+          vecDistance(ship.pos, target.pos) <= 600
+            ? target.pos
+            : vecAdd(target.pos, rotatePoint([-standoff, slot * 35], wing.heading));
         break;
       }
 
@@ -807,7 +829,7 @@ export class ClientCombatSimulation {
       const candidateDir: Vector2 = [Math.cos(reachable), Math.sin(reachable)];
       const candidateVel = vecScale(
         candidateDir,
-        Math.min(ship.maxSpeed, vecDistance([0, 0], ship.velocity) + 120),
+        Math.min(attackSpeed, vecDistance([0, 0], ship.velocity) + 120),
       );
 
       // A. Interest score: progress towards intent goal
@@ -848,14 +870,16 @@ export class ClientCombatSimulation {
         if (obstacle.team === ship.team && obstacle.hullClass === "strike_craft") continue;
         const relative = vecSub(obstacle.pos, ship.pos);
         const velocity = vecSub(obstacle.velocity, candidateVel);
+        const missionTarget = liningUp && obstacle.id === target.id;
         const t = clamp(
           -vecDot(relative, velocity) / Math.max(1, vecDot(velocity, velocity)),
           0,
-          1,
+          missionTarget ? 0.25 : 1,
         );
         const distance = vecDistance([0, 0], vecAdd(relative, vecScale(velocity, t)));
         const capital = obstacle.hullClass === "battleship" || obstacle.hullClass === "cruiser";
-        const clearance = (ship.size + obstacle.size) * 1.4 + (capital ? 95 : 40);
+        const clearance =
+          (ship.size + obstacle.size) * 1.4 + (missionTarget ? 20 : capital ? 95 : 40);
         if (distance < clearance) dangerScore += (capital ? 14 : 6) * (1 - distance / clearance);
         if (
           obstacle.team !== ship.team &&
@@ -923,7 +947,7 @@ export class ClientCombatSimulation {
       phase === "egress" ||
       phase === "intercept" ||
       phase === "recover"
-        ? ship.maxSpeed
+        ? attackSpeed
         : Math.min(ship.maxSpeed * 0.7, vecDistance(ship.pos, intentTarget) * 1.5);
 
     return { heading: finalHeading, speed };
@@ -1201,8 +1225,10 @@ export class ClientCombatSimulation {
         !inMountArc(ship, turret, beamTarget.pos))
     )
       return;
-    turret.cooldownTimer = turret.weapon.cooldown;
-    turret.lastFiredTime = this.timeElapsed; // Track fired time for UI cooldown bars!
+    if (!isBeam || turret.weapon.weaponType !== "beam_laser") {
+      turret.cooldownTimer = turret.weapon.cooldown;
+      turret.lastFiredTime = this.timeElapsed;
+    }
     this.observer?.onShot(this.timeElapsed, ship, turret);
     if (ship.hullClass === "strike_craft" && ship.fighterPhase === "attack") {
       const wing = this.fighterWings.find(
@@ -1310,6 +1336,12 @@ export class ClientCombatSimulation {
     return { id: `${ship.id}:${turret.id}`, from, to, ownerTeam: ship.team };
   }
 
+  private finishBeam(turret: TurretMountState): void {
+    this.beamChannels.delete(turret);
+    turret.cooldownTimer = turret.weapon.cooldown;
+    turret.lastFiredTime = this.timeElapsed;
+  }
+
   private updateBeam(channel: BeamChannel, aimed: boolean): void {
     channel.frames++;
     if (aimed && channel.frames % BEAM_TICK_FRAMES === 0) {
@@ -1341,7 +1373,7 @@ export class ClientCombatSimulation {
         }
       }
     }
-    if (channel.frames >= BEAM_TICK_FRAMES * BEAM_TICKS) this.beamChannels.delete(channel.turret);
+    if (channel.frames >= BEAM_TICK_FRAMES * BEAM_TICKS) this.finishBeam(channel.turret);
   }
 
   private updateProjectiles(dt: number, aliveShips: ShipState[]): void {

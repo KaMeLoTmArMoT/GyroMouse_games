@@ -25,8 +25,8 @@ export function buildFleetFromSlots(
   const direction = team === 0 ? 1 : -1;
   const offsets: Record<number, Vector2> = {
     1: [0, 0],
-    2: [-150 * direction, 450],
-    3: [-150 * direction, -450],
+    2: [-250 * direction, 450],
+    3: [-250 * direction, -450],
     4: [-350 * direction, 0],
     5: [250 * direction, 0],
     6: [-700 * direction, 0],

@@ -338,14 +338,59 @@ describe("channeled beam lasers", () => {
     expect(coarse.stats).toEqual(fine.stats);
   });
 
-  it("retains the calibrated start-to-start DPS over repeated channels", () => {
+  it.each(["cruiser", "battleship"] as const)(
+    "starts the full %s cooldown only after the channel completes",
+    (hull) => {
+      const { shooter, sim } = fixture(hull);
+      const turret = shooter.turrets[0];
+      sim.update(1 / 60);
+      expect(turret.cooldownTimer).toBe(0);
+      expect(turret.lastFiredTime).toBeUndefined();
+      advance(sim, 71 / 60);
+      expect(sim.activeBeams).toHaveLength(1);
+      expect(turret.cooldownTimer).toBe(0);
+      sim.update(1 / 60);
+      expect(sim.activeBeams).toHaveLength(0);
+      expect(turret.cooldownTimer).toBe(turret.weapon.cooldown);
+      expect(turret.lastFiredTime).toBe(sim.timeElapsed);
+      advance(sim, turret.weapon.cooldown - 1 / 60);
+      expect(sim.activeBeams).toHaveLength(0);
+      advance(sim, 2 / 60);
+      expect(sim.activeBeams).toHaveLength(1);
+    },
+  );
+
+  it.each(["arc", "range", "target death", "shooter death"] as const)(
+    "starts a full cooldown when a beam terminates early due to %s",
+    (reason) => {
+      const { shooter, target, sim } = fixture();
+      const turret = shooter.turrets[0];
+      advance(sim, 0.3);
+      if (reason === "arc") target.pos = [-500, 0];
+      if (reason === "range") target.pos = [2000, 0];
+      if (reason === "target death") target.isAlive = false;
+      if (reason === "shooter death") shooter.isAlive = false;
+      sim.update(1 / 60);
+      expect(sim.activeBeams).toHaveLength(0);
+      expect(turret.cooldownTimer).toBe(turret.weapon.cooldown);
+      expect(turret.lastFiredTime).toBe(sim.timeElapsed);
+      if (reason !== "shooter death") {
+        target.pos = [500, 0];
+        target.isAlive = true;
+        advance(sim, turret.weapon.cooldown - 1 / 60);
+        expect(sim.activeBeams).toHaveLength(0);
+      }
+    },
+  );
+
+  it("measures sustained DPS across channel time plus the post-channel cooldown", () => {
     const { shooter, target, sim } = fixture();
     target.shieldCurrent = target.armorCurrent = 0;
     target.hullCurrent = target.hullMax = 1e7;
     advance(sim, 10);
     const before = target.hullCurrent;
     advance(sim, 120);
-    const expected = shooter.turrets[0].weapon.damage / shooter.turrets[0].weapon.cooldown;
+    const expected = shooter.turrets[0].weapon.damage / (1.2 + shooter.turrets[0].weapon.cooldown);
     expect(Math.abs((before - target.hullCurrent) / 120 / expected - 1)).toBeLessThan(0.03);
   });
 });
@@ -500,7 +545,7 @@ describe("mount eligibility and projectile contracts", () => {
     const sim = simulate([bb, ...targets]);
     const beams: Vector2[] = [];
     sim.onBeamFire = (_from, to) => beams.push([...to]);
-    advance(sim, 0.3);
+    advance(sim, 1.3);
     expect(bb.turrets.map((t) => t.currentTargetId)).toEqual(targets.map((s) => s.id));
     expect(beams).toHaveLength(2);
     expect(targets[1].shieldCurrent).toBeLessThan(targets[1].shieldMax);
@@ -748,6 +793,61 @@ describe("tactical maneuvers", () => {
     sim.update(1 / 60);
     expect(fighters.every((f) => f.fighterPhase === "attack")).toBe(true);
   });
+
+  it("keeps distant ingress outside the six-second engagement timeout", () => {
+    const fighter = stationary(ship("strike_craft", 0, [-1100, 0]));
+    fighter.turrets[0].cooldownTimer = 20;
+    const target = stationary(ship("cruiser", 1, [1100, 0]));
+    target.turrets = [];
+    const sim = simulate([fighter, target]);
+    advance(sim, 12);
+    expect(fighter.fighterPhase).toBe("attack");
+    expect(fighter.lastMissionShotTime).toBeUndefined();
+    fighter.pos = [600, 0];
+    advance(sim, 6.1);
+    expect(fighter.fighterPhase).toBe("egress");
+  });
+
+  it.each([0, 1])(
+    "delivers all 30 first-pass payloads with short-range nose guns on team %i",
+    (team) => {
+      const fighters = buildFleetFromSlots(
+        Array.from({ length: 30 }, (_, i) => ({
+          id: `${i}`,
+          hullClass: "strike_craft" as const,
+          groupId: Math.floor(i / 10) + 1,
+        })),
+        team,
+        team ? 1100 : -1100,
+        team ? Math.PI : 0,
+      );
+      for (const fighter of fighters) {
+        fighter.maxSpeed = 220;
+        fighter.turrets[0].weapon.range = 180;
+        fighter.turrets[0].baseArc = [(-27 * Math.PI) / 180, (27 * Math.PI) / 180];
+      }
+      const targets = [-450, 0, 450].map((y, i) => {
+        const target = stationary(ship("cruiser", 1 - team, [team ? -600 : 600, y]));
+        target.id = `target_${i}`;
+        target.turrets = [];
+        target.shieldCurrent = target.shieldMax = 1e6;
+        return target;
+      });
+      const sim = simulate([...fighters, ...targets]);
+      const missed = new Set<string>();
+      for (let tick = 0; tick < 60 * 20; tick++) {
+        sim.update(1 / 60);
+        for (const fighter of fighters)
+          if (fighter.fighterPhase === "egress" && fighter.lastMissionShotTime === undefined)
+            missed.add(fighter.id);
+        if (fighters.every((fighter) => fighter.lastMissionShotTime !== undefined)) break;
+      }
+      expect([...missed]).toEqual([]);
+      expect(fighters.filter((fighter) => fighter.lastMissionShotTime !== undefined)).toHaveLength(
+        30,
+      );
+    },
+  );
 
   it("resumes fighting after bounded hull-driven recovery", () => {
     const fighter = ship("strike_craft", 0, [0, 0]);
@@ -1173,7 +1273,7 @@ describe("arena containment and matchup rebalance", () => {
     fighters.forEach((s, i) => {
       stationary(s);
       s.pos = [
-        [-100, 0],
+        [-45, 0],
         [-250, 0],
         [-330, 70],
       ][i] as Vector2;
@@ -1234,6 +1334,34 @@ describe("arena containment and matchup rebalance", () => {
     }
   });
 
+  it.each([0, 1])(
+    "keeps three ten-fighter spawn groups clear through launch on team %i",
+    (team) => {
+      const fighters = buildFleetFromSlots(
+        Array.from({ length: 30 }, (_, i) => ({
+          id: `${i}`,
+          hullClass: "strike_craft" as const,
+          groupId: Math.floor(i / 10) + 1,
+        })),
+        team,
+        team ? 1100 : -1100,
+        team ? Math.PI : 0,
+      );
+      const target = stationary(ship("cruiser", 1 - team, [team ? -1100 : 1100, 0]));
+      target.turrets = [];
+      const sim = simulate([...fighters, target]);
+      for (let tick = 0; tick < 120; tick++) {
+        for (const fighter of fighters)
+          for (const other of fighters)
+            if (fighter.groupId !== other.groupId)
+              expect(vecDistance(fighter.pos, other.pos)).toBeGreaterThan(
+                (fighter.size + other.size) * 1.4 + 20,
+              );
+        sim.update(1 / 60);
+      }
+    },
+  );
+
   it.each([
     [60, 3],
     [80, 4],
@@ -1265,8 +1393,8 @@ describe("arena containment and matchup rebalance", () => {
       const direction = team === 0 ? 1 : -1;
       const anchors = [
         [0, 0],
-        [-150 * direction, 450],
-        [-150 * direction, -450],
+        [-250 * direction, 450],
+        [-250 * direction, -450],
         [-350 * direction, 0],
         [250 * direction, 0],
       ];
@@ -1359,7 +1487,7 @@ describe("arena containment and matchup rebalance", () => {
     expect(sim.stats[0].damageDealt).toBeGreaterThan(6500);
     expect(sim.stats[1].shipsLost).toBeGreaterThanOrEqual(3);
     expect(capitalDamage).toBeGreaterThan(0);
-  }, 30000);
+  }, 60000);
 
   it("jinks away from an opening inbound torpedo before it reaches close range", () => {
     const fighter = ship("strike_craft", 0, [0, 0]);

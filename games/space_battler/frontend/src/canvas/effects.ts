@@ -103,6 +103,17 @@ export interface ParticleEffect {
   maxDuration: number;
 }
 
+export interface WarpGateEffect {
+  id: string;
+  pos: Vector2;
+  heading: number;
+  radius: number;
+  team: number;
+  remainingDuration: number;
+  maxDuration: number;
+  shipId?: string;
+}
+
 export interface FlakBurstEffect {
   pos: Vector2;
   ownerTeam: number;
@@ -134,6 +145,7 @@ interface ShipExplosionEffect {
 }
 
 export class VisualEffectsManager {
+  warpGates: WarpGateEffect[] = [];
   beams: LaserBeamEffect[] = [];
   shieldImpacts: ShieldImpactEffect[] = [];
   particles: ParticleEffect[] = [];
@@ -145,6 +157,119 @@ export class VisualEffectsManager {
   shipExplosionCores: ShipExplosionEffect[] = [];
   shipShockwaves: ShipExplosionEffect[] = [];
   impactDecals = new WeakMap<ShipState, Vector2[]>();
+
+  addWarpGate(pos: Vector2, heading: number, radius: number, team: number): void {
+    this.warpGates.push({
+      id: Math.random().toString(36).substring(2, 9),
+      pos: [...pos],
+      heading,
+      radius,
+      team,
+      remainingDuration: 0.8,
+      maxDuration: 0.8,
+    });
+  }
+
+  triggerFleetWarpIn(ships: ShipState[]): void {
+    this.warpGates = [];
+    for (const ship of ships) {
+      if (!ship.isAlive) continue;
+      this.addWarpGate(ship.pos, ship.heading, ship.size * 1.5, ship.team);
+      this.warpGates[this.warpGates.length - 1].shipId = ship.id;
+    }
+  }
+
+  updateWarpGates(dt: number): void {
+    this.warpGates = this.warpGates.filter((gate) => {
+      const elapsed = gate.maxDuration - gate.remainingDuration;
+      gate.remainingDuration -= dt;
+      if (elapsed < 0.5 && elapsed + dt >= 0.5) {
+        for (let i = 0; i < 5 && this.sparkParticles.length < 400; i++) {
+          const angle = gate.heading + (i - 2) * 0.16;
+          const speed = 140 + i * 15;
+          this.sparkParticles.push({
+            pos: [...gate.pos],
+            velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
+            color: gate.team === 0 ? "#00f0ff" : "#c084fc",
+            radius: 1,
+            remainingDuration: 0.25,
+            maxDuration: 0.25,
+          });
+        }
+      }
+      return gate.remainingDuration > 0;
+    });
+  }
+
+  render(ctx: CanvasRenderingContext2D): void {
+    for (const gate of this.warpGates) {
+      const elapsed = gate.maxDuration - gate.remainingDuration;
+      const opening = Math.min(1, elapsed / 0.2);
+      const closing = Math.min(1, gate.remainingDuration / 0.3);
+      const scale = opening * closing;
+      if (scale <= 0) continue;
+      const primary = gate.team === 0 ? "#00f0ff" : "#c084fc";
+      const secondary = gate.team === 0 ? "#38bdf8" : "#f43f5e";
+      ctx.save();
+      ctx.translate(gate.pos[0], gate.pos[1]);
+      ctx.rotate(gate.heading);
+      ctx.globalAlpha = Math.min(1, opening * 2) * closing;
+      ctx.shadowColor = primary;
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = primary;
+      ctx.lineWidth = Math.max(1.5, gate.radius * 0.045);
+      ctx.beginPath();
+      ctx.ellipse(
+        0,
+        0,
+        gate.radius * (0.05 + 0.28 * scale),
+        gate.radius * scale,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = secondary;
+      ctx.globalAlpha *= 0.6;
+      ctx.beginPath();
+      ctx.ellipse(
+        0,
+        0,
+        gate.radius * (0.1 + 0.38 * scale),
+        gate.radius * scale * 1.12,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.stroke();
+      if (elapsed >= 0.2 && elapsed < 0.5) {
+        ctx.globalAlpha *= 0.65 + 0.35 * Math.sin(elapsed * 42);
+        ctx.beginPath();
+        for (const side of [-1, 1]) {
+          ctx.moveTo(-gate.radius * 0.18, side * gate.radius * 0.7);
+          ctx.lineTo(gate.radius * 0.18, side * gate.radius * 1.1);
+        }
+        ctx.stroke();
+      }
+      if (elapsed >= 0.5) {
+        ctx.globalAlpha = (1 - closing) * closing * 3;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.ellipse(
+          0,
+          0,
+          gate.radius * 0.16 * closing,
+          gate.radius * 0.55 * closing,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
 
   addBeam(
     from: Vector2,

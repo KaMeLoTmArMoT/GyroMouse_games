@@ -34,7 +34,8 @@ describe("anti-drift guardrails", () => {
       Object.entries(codes).flatMap(([hull, code]) =>
         HULL_PROFILES[hull as keyof typeof codes].turrets.map(({ id, weapon }) => [
           `blue_${code}_0_${id}`,
-          (weapon.damage * weapon.hullMultiplier) / weapon.cooldown,
+          (weapon.damage * weapon.hullMultiplier) /
+            (weapon.cooldown + (weapon.weaponType === "beam_laser" ? 1.2 : 0)),
         ]),
       ),
     );
