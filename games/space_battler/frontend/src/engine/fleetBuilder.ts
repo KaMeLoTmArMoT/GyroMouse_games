@@ -40,18 +40,18 @@ export function buildFleetFromSlots(
       velocity: [0, 0],
       heading,
       maxSpeed: 38,
-      turnRate: 0.75,
-      size: 55,
-      shieldMax: 1800,
-      shieldCurrent: 1800,
-      shieldRegen: 40,
+      turnRate: 0.5,
+      size: 68,
+      shieldMax: 2200,
+      shieldCurrent: 2200,
+      shieldRegen: 50,
       shieldDelayTimer: 0,
       shieldRechargeDelay: 1.5,
-      armorMax: 1800,
-      armorCurrent: 1800,
+      armorMax: 2000,
+      armorCurrent: 2000,
       armorRating: 75,
-      hullMax: 2500,
-      hullCurrent: 2500,
+      hullMax: 2800,
+      hullCurrent: 2800,
       cost: 3200,
       isAlive: true,
       turrets: [
@@ -69,9 +69,9 @@ export function buildFleetFromSlots(
           weapon: {
             weaponType: "railgun",
             name: "Spinal Heavy Railgun",
-            damage: 260,
+            damage: 300,
             cooldown: 3.5,
-            range: 1350,
+            range: 1800,
             projectileSpeed: 1400,
             trackingSpeed: 0.5,
             shieldMultiplier: 1.6,
@@ -93,9 +93,9 @@ export function buildFleetFromSlots(
           weapon: {
             weaponType: "beam_laser",
             name: "Port Laser Battery",
-            damage: 65,
+            damage: 75,
             cooldown: 1.2,
-            range: 950,
+            range: 1200,
             projectileSpeed: 0,
             trackingSpeed: 1.4,
             shieldMultiplier: 0.5,
@@ -117,9 +117,9 @@ export function buildFleetFromSlots(
           weapon: {
             weaponType: "beam_laser",
             name: "Starboard Laser Battery",
-            damage: 65,
+            damage: 75,
             cooldown: 1.2,
-            range: 950,
+            range: 1200,
             projectileSpeed: 0,
             trackingSpeed: 1.4,
             shieldMultiplier: 0.5,
@@ -148,8 +148,8 @@ export function buildFleetFromSlots(
       velocity: [0, 0],
       heading,
       maxSpeed: 85,
-      turnRate: 1.0,
-      size: 34,
+      turnRate: 0.75,
+      size: 38,
       shieldMax: 600,
       shieldCurrent: 600,
       shieldRegen: 25,
@@ -177,7 +177,7 @@ export function buildFleetFromSlots(
             name: "Heavy Beam Turret",
             damage: 45,
             cooldown: 1.2,
-            range: 900,
+            range: 1100,
             projectileSpeed: 0,
             trackingSpeed: 1.6,
             shieldMultiplier: 0.5,
@@ -201,7 +201,7 @@ export function buildFleetFromSlots(
             name: "Heavy Torpedo Tube",
             damage: 220,
             cooldown: 5.5,
-            range: 1450,
+            range: 1800,
             projectileSpeed: 320,
             trackingSpeed: 1.5,
             shieldMultiplier: 1.0,
@@ -214,7 +214,7 @@ export function buildFleetFromSlots(
     });
   });
 
-  // 3. Corvettes (Escorts spawn 140u away from flagship to completely prevent shield overlap!)
+  // 3. Corvette escort columns; shield clearance is applied after assembly.
   corvettes.forEach((slot, idx) => {
     const id = `${team === 0 ? "blue" : "red"}_cv_${idx}`;
     const sign = idx % 2 === 0 ? 1 : -1;
@@ -230,7 +230,7 @@ export function buildFleetFromSlots(
       velocity: [0, 0],
       heading,
       maxSpeed: 175,
-      turnRate: 2.0,
+      turnRate: 1.6,
       size: 20,
       shieldMax: 180,
       shieldCurrent: 180,
@@ -261,7 +261,7 @@ export function buildFleetFromSlots(
             name: "Rapid Flak Alpha",
             damage: 10,
             cooldown: 0.3,
-            range: 360,
+            range: 420,
             projectileSpeed: 1500,
             trackingSpeed: 6.28,
             shieldMultiplier: 0.25,
@@ -286,7 +286,7 @@ export function buildFleetFromSlots(
             name: "Rapid Flak Beta",
             damage: 10,
             cooldown: 0.3,
-            range: 360,
+            range: 420,
             projectileSpeed: 1500,
             trackingSpeed: 6.28,
             shieldMultiplier: 0.25,
@@ -342,7 +342,7 @@ export function buildFleetFromSlots(
       heading,
       maxSpeed: 280,
       turnRate: 4.2,
-      size: 11,
+      size: 10,
       shieldMax: 60,
       shieldCurrent: 60,
       shieldRegen: 10,
@@ -370,7 +370,7 @@ export function buildFleetFromSlots(
             name: "Plasma Blaster",
             damage: 120,
             cooldown: 3.0,
-            range: 480,
+            range: 550,
             projectileSpeed: 450,
             trackingSpeed: 1.2,
             shieldMultiplier: 1.0,
@@ -382,6 +382,20 @@ export function buildFleetFromSlots(
       ],
     });
   });
+
+  // Preserve formation columns and vertical order using the calibrated shield clearance.
+  const ordered = [...ships].sort((a, b) => a.pos[1] - b.pos[1]);
+  for (let i = 0; i < ordered.length; i++) {
+    const shipB = ordered[i];
+    for (const shipA of ordered.slice(0, i)) {
+      const spacing = (shipA.size * 1.4 + shipB.size * 1.4) * 1.15 + 20;
+      if (Math.abs(shipA.pos[0] - shipB.pos[0]) < spacing) {
+        shipB.pos[1] = Math.max(shipB.pos[1], shipA.pos[1] + spacing);
+      }
+    }
+  }
+  const center = ordered.length ? (ordered[0].pos[1] + ordered[ordered.length - 1].pos[1]) / 2 : 0;
+  for (const ship of ships) ship.pos[1] -= center;
 
   return ships;
 }

@@ -171,8 +171,8 @@ export function assembleScenario(scenario: ScenarioDefinition, seed?: number): S
       })),
     );
   const ships = [
-    ...buildFleetFromSlots(slots(scenario.blue), 0, -800, 0),
-    ...buildFleetFromSlots(slots(scenario.red), 1, 800, Math.PI),
+    ...buildFleetFromSlots(slots(scenario.blue), 0, -1100, 0),
+    ...buildFleetFromSlots(slots(scenario.red), 1, 1100, Math.PI),
   ];
   if (seed !== undefined) {
     let state = seed >>> 0;

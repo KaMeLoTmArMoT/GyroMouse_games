@@ -118,20 +118,20 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
   battleship: {
     name: "Leviathan Battleship",
     cost: 3200,
-    desc: "Devastating spinal railgun (260 dmg) + dual broadside beam batteries.",
+    desc: "Devastating spinal railgun (300 dmg) + dual broadside beam batteries.",
     role: "Capital Flagship",
-    shield: 1800,
-    armor: 1800,
-    hull: 2500,
+    shield: 2200,
+    armor: 2000,
+    hull: 2800,
     speed: 38,
-    turnRate: "0.75 rad/s",
+    turnRate: "0.50 rad/s",
     weapons: [
-      { name: "Spinal Heavy Railgun", type: "Railgun", damage: 260, range: 1350, cooldown: 3.5 },
+      { name: "Spinal Heavy Railgun", type: "Railgun", damage: 300, range: 1800, cooldown: 3.5 },
       {
         name: "Dual Port/Starboard Batteries",
         type: "Beam Laser",
-        damage: 65,
-        range: 950,
+        damage: 75,
+        range: 1200,
         cooldown: 1.2,
       },
     ],
@@ -145,10 +145,10 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
     armor: 500,
     hull: 700,
     speed: 85,
-    turnRate: "1.00 rad/s",
+    turnRate: "0.75 rad/s",
     weapons: [
-      { name: "Prow Heavy Torpedo", type: "Missile", damage: 220, range: 1450, cooldown: 5.5 },
-      { name: "Dorsal Turret Battery", type: "Beam Laser", damage: 45, range: 900, cooldown: 1.2 },
+      { name: "Prow Heavy Torpedo", type: "Missile", damage: 220, range: 1800, cooldown: 5.5 },
+      { name: "Dorsal Turret Battery", type: "Beam Laser", damage: 45, range: 1100, cooldown: 1.2 },
     ],
   },
   corvette: {
@@ -160,13 +160,13 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
     armor: 150,
     hull: 220,
     speed: 175,
-    turnRate: "2.00 rad/s",
+    turnRate: "1.60 rad/s",
     weapons: [
       {
         name: "Dual Rapid Flak Turrets (360°)",
         type: "Point Defense",
         damage: 10,
-        range: 360,
+        range: 420,
         cooldown: 0.3,
       },
     ],
@@ -182,7 +182,7 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
     speed: 280,
     turnRate: "4.20 rad/s",
     weapons: [
-      { name: "Fixed Plasma Cannon", type: "Plasma Bolt", damage: 120, range: 480, cooldown: 3.0 },
+      { name: "Fixed Plasma Cannon", type: "Plasma Bolt", damage: 120, range: 550, cooldown: 3.0 },
     ],
   },
 };

@@ -1,6 +1,6 @@
 // Visual effects state management (lasers, explosions, shield impacts, engine particles)
 
-import type { ShipState, Vector2 } from "../types/combat";
+import type { ProjectileState, ShipState, Vector2 } from "../types/combat";
 
 // Nozzle centers in hull-local coordinates, matching the ship detail artwork.
 export function engineNozzles(ship: ShipState): Vector2[] {
@@ -78,6 +78,7 @@ export interface LaserBeamEffect {
   to: Vector2;
   color: string;
   width: number;
+  ownerTeam: number;
   remainingDuration: number;
   maxDuration: number;
 }
@@ -102,6 +103,7 @@ export interface ParticleEffect {
 
 export interface FlakBurstEffect {
   pos: Vector2;
+  ownerTeam: number;
   radius: number;
   maxRadius: number;
   remainingDuration: number;
@@ -141,7 +143,14 @@ export class VisualEffectsManager {
   shipExplosionCores: ShipExplosionEffect[] = [];
   shipShockwaves: ShipExplosionEffect[] = [];
 
-  addBeam(from: Vector2, to: Vector2, color = "#38bdf8", width = 2.5, duration = 0.12): void {
+  addBeam(
+    from: Vector2,
+    to: Vector2,
+    color: string,
+    width: number,
+    ownerTeam: number,
+    duration = 0.12,
+  ): void {
     if (this.beams.length >= 300) this.beams.shift();
     this.beams.push({
       id: Math.random().toString(36).substring(2, 9),
@@ -149,6 +158,7 @@ export class VisualEffectsManager {
       to: [...to],
       color,
       width,
+      ownerTeam,
       remainingDuration: duration,
       maxDuration: duration,
     });
@@ -187,10 +197,11 @@ export class VisualEffectsManager {
     if (this.particles.length < 1200) this.particles.push(particle);
   }
 
-  addFlakBurst(pos: Vector2, maxRadius = 60): void {
+  addFlakBurst(pos: Vector2, maxRadius: number, ownerTeam: number): void {
     if (this.flakBursts.length >= 200) this.flakBursts.shift();
     this.flakBursts.push({
       pos: [...pos],
+      ownerTeam,
       radius: 4,
       maxRadius,
       remainingDuration: 0.35,
@@ -204,7 +215,14 @@ export class VisualEffectsManager {
       this.addParticle({
         pos: [pos[0], pos[1]],
         velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
-        color: Math.random() > 0.45 ? "#fb923c" : "#facc15",
+        color:
+          ownerTeam === 0
+            ? Math.random() > 0.45
+              ? "#fb923c"
+              : "#facc15"
+            : Math.random() > 0.45
+              ? "#ef4444"
+              : "#f472b6",
         radius: 1.2 + Math.random() * 2.0,
         remainingDuration: 0.25 + Math.random() * 0.3,
         maxDuration: 0.55,
@@ -312,7 +330,7 @@ export class VisualEffectsManager {
     }
   }
 
-  update(dt: number, ships: ShipState[] = []): void {
+  update(dt: number, ships: ShipState[] = [], projectiles: ProjectileState[] = []): void {
     // Beams decay
     this.beams = this.beams.filter((b) => {
       b.remainingDuration -= dt;
@@ -387,6 +405,35 @@ export class VisualEffectsManager {
       p.velocity[1] *= damping;
       return p.remainingDuration > 0;
     });
+
+    for (const projectile of projectiles) {
+      if (projectile.weaponType !== "missile" || Math.random() >= Math.min(1, dt * 24)) continue;
+      const speed = Math.hypot(...projectile.velocity);
+      if (speed === 0) continue;
+      const dx = projectile.velocity[0] / speed;
+      const dy = projectile.velocity[1] / speed;
+      const blue = projectile.ownerTeam === 0;
+      const lifetime = 0.3 + Math.random() * 0.25;
+      const particle: ParticleEffect = {
+        pos: [projectile.pos[0] - dx * 10, projectile.pos[1] - dy * 10],
+        velocity: [-dx * 18 + (Math.random() - 0.5) * 12, -dy * 18 + (Math.random() - 0.5) * 12],
+        color: blue
+          ? Math.random() < 0.5
+            ? "#e2e8f0"
+            : "#94a3b8"
+          : Math.random() < 0.5
+            ? "#a855f7"
+            : "#dc2626",
+        radius: blue ? 2.5 : 1.5,
+        remainingDuration: lifetime,
+        maxDuration: lifetime,
+      };
+      if (blue) {
+        if (this.smokeParticles.length < 400) this.smokeParticles.push(particle);
+      } else {
+        this.addParticle(particle);
+      }
+    }
 
     for (const ship of ships) {
       if (!ship.isAlive) continue;

@@ -55,12 +55,12 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
 
   useEffect(() => {
     // Keep sound and visual effects on the same combat events.
-    sim.onBeamFire = (from, to, color, width) => {
-      effectsRef.current.addBeam(from, to, color, width, 0.16);
+    sim.onBeamFire = (from, to, color, width, ownerTeam) => {
+      effectsRef.current.addBeam(from, to, color, width, ownerTeam, 0.16);
       spaceAudio.playWeapon("beam_laser");
     };
-    sim.onFlakBurst = (pos, radius) => {
-      effectsRef.current.addFlakBurst(pos, radius);
+    sim.onFlakBurst = (pos, radius, ownerTeam) => {
+      effectsRef.current.addFlakBurst(pos, radius, ownerTeam);
       spaceAudio.playWeapon("point_defense");
     };
     sim.onProjectileFire = (type) => spaceAudio.playWeapon(type);
@@ -91,7 +91,7 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
 
       if (speed > 0) {
         sim.update(dt * speed);
-        effectsRef.current.update(dt * speed, sim.ships);
+        effectsRef.current.update(dt * speed, sim.ships, sim.projectiles);
       }
 
       const targetShip =
@@ -123,12 +123,46 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
 
           // Draw Active Beams
           for (const beam of effectsRef.current.beams) {
+            ctx.save();
+            const progress = 1 - beam.remainingDuration / beam.maxDuration;
+            const pulse = beam.ownerTeam === 0 ? 1 : 0.8 + 0.2 * Math.sin(progress * Math.PI * 4);
+            ctx.globalAlpha = (1 - progress) * pulse;
+            ctx.strokeStyle = beam.ownerTeam === 0 ? "#0284c7" : "#991b1b";
+            ctx.shadowColor = ctx.strokeStyle;
+            ctx.shadowBlur = beam.ownerTeam === 0 ? 8 : 12;
+            ctx.lineWidth = beam.width * (beam.ownerTeam === 0 ? 3 : 4);
+            ctx.beginPath();
+            ctx.moveTo(beam.from[0], beam.from[1]);
+            ctx.lineTo(beam.to[0], beam.to[1]);
+            ctx.stroke();
             ctx.strokeStyle = beam.color;
             ctx.lineWidth = beam.width;
             ctx.beginPath();
             ctx.moveTo(beam.from[0], beam.from[1]);
             ctx.lineTo(beam.to[0], beam.to[1]);
             ctx.stroke();
+            if (beam.ownerTeam === 1) {
+              const dx = beam.to[0] - beam.from[0];
+              const dy = beam.to[1] - beam.from[1];
+              const length = Math.hypot(dx, dy);
+              if (length > 0) {
+                ctx.fillStyle = "#fca5a5";
+                for (let i = 0; i < 6; i++) {
+                  const t = (i + 0.5 + progress * 2) / 8;
+                  const offset = Math.sin(i * 7 + progress * 20) * 3;
+                  ctx.beginPath();
+                  ctx.arc(
+                    beam.from[0] + dx * t - (dy / length) * offset,
+                    beam.from[1] + dy * t + (dx / length) * offset,
+                    1.2,
+                    0,
+                    Math.PI * 2,
+                  );
+                  ctx.fill();
+                }
+              }
+            }
+            ctx.restore();
           }
 
           // Draw expanding ship explosion cores and shockwaves.
@@ -216,13 +250,19 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
           for (const burst of effectsRef.current.flakBursts) {
             const alpha = Math.max(0, burst.remainingDuration / burst.maxDuration);
 
-            ctx.strokeStyle = `rgba(251, 146, 60, ${0.85 * alpha})`;
+            ctx.strokeStyle =
+              burst.ownerTeam === 0
+                ? `rgba(251, 146, 60, ${0.85 * alpha})`
+                : `rgba(239, 68, 68, ${0.85 * alpha})`;
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.arc(burst.pos[0], burst.pos[1], burst.radius, 0, Math.PI * 2);
             ctx.stroke();
 
-            ctx.strokeStyle = `rgba(250, 204, 21, ${0.5 * alpha})`;
+            ctx.strokeStyle =
+              burst.ownerTeam === 0
+                ? `rgba(250, 204, 21, ${0.5 * alpha})`
+                : `rgba(244, 114, 182, ${0.5 * alpha})`;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(burst.pos[0], burst.pos[1], burst.radius * 0.65, 0, Math.PI * 2);

@@ -46,8 +46,14 @@ import {
   vecSub,
 } from "./math2d";
 
-export type BeamFireCallback = (from: Vector2, to: Vector2, color: string, width: number) => void;
-export type FlakBurstCallback = (pos: Vector2, radius: number) => void;
+export type BeamFireCallback = (
+  from: Vector2,
+  to: Vector2,
+  color: string,
+  width: number,
+  ownerTeam: number,
+) => void;
+export type FlakBurstCallback = (pos: Vector2, radius: number, ownerTeam: number) => void;
 
 const FIGHTER_STANDOFF = 520;
 const FIGHTER_CLEARANCE = 45;
@@ -1052,7 +1058,7 @@ export class ClientCombatSimulation {
     // Hitscan (Beam Laser)
     if (isBeam) {
       if (targetShip) {
-        const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
+        const beamColor = ship.team === 0 ? "#38bdf8" : "#ef4444";
         this.applyDamage(
           targetShip,
           turret.weapon.damage,
@@ -1062,7 +1068,7 @@ export class ClientCombatSimulation {
           turret.id,
           spawnPos,
         );
-        if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 3.2);
+        if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 2.8, ship.team);
       } else if (targetMissile) {
         targetMissile.hp -= turret.weapon.damage;
         if (targetMissile.hp <= 0) {
@@ -1072,8 +1078,9 @@ export class ClientCombatSimulation {
         this.onBeamFire?.(
           spawnPos,
           targetMissile.pos,
-          ship.team === 0 ? "#38bdf8" : "#f87171",
-          3.2,
+          ship.team === 0 ? "#38bdf8" : "#ef4444",
+          2.8,
+          ship.team,
         );
       }
       return;
@@ -1230,7 +1237,7 @@ export class ClientCombatSimulation {
       }
     }
 
-    if (this.onFlakBurst) this.onFlakBurst([...flak.pos], profile.blastRadius);
+    if (this.onFlakBurst) this.onFlakBurst([...flak.pos], profile.blastRadius, flak.ownerTeam);
   }
 
   private applyDamage(

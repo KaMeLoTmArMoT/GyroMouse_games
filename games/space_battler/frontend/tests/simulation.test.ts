@@ -73,6 +73,46 @@ function projectile(
 }
 
 describe("damage visuals", () => {
+  it("preserves faction ownership for beams and simultaneous flak bursts", () => {
+    const blue = stationary(ship("cruiser", 0, [-150, 0]));
+    const red = stationary(ship("cruiser", 1, [150, 0]));
+    const sim = simulate([blue, red]);
+    const beamTeams: number[] = [];
+    const flakTeams: number[] = [];
+    sim.onBeamFire = (_from, _to, _color, _width, team) => beamTeams.push(team);
+    sim.onFlakBurst = (_pos, _radius, team) => flakTeams.push(team);
+    const blueFlak = projectile(ship("corvette", 0, [-500, 0]), [-1000, 0], [0, 0]);
+    const redFlak = projectile(ship("corvette", 1, [500, 0]), [1000, 0], [0, 0]);
+    blueFlak.lifetime = redFlak.lifetime = 1 / 60;
+    sim.projectiles = [blueFlak, redFlak];
+    advance(sim, 0.5);
+    expect(new Set(beamTeams)).toEqual(new Set([0, 1]));
+    expect(flakTeams).toEqual([0, 1]);
+  });
+
+  it("creates faction-colored flak and missile trails that decay", () => {
+    const effects = new VisualEffectsManager();
+    effects.addFlakBurst([0, 0], 30, 0);
+    effects.addFlakBurst([0, 0], 30, 1);
+    expect(effects.flakBursts.map((burst) => burst.ownerTeam)).toEqual([0, 1]);
+    expect(
+      effects.particles.slice(0, 12).every((p) => ["#fb923c", "#facc15"].includes(p.color)),
+    ).toBe(true);
+    expect(effects.particles.slice(12).every((p) => ["#ef4444", "#f472b6"].includes(p.color))).toBe(
+      true,
+    );
+
+    const blueMissile = projectile(ship("cruiser", 0, [0, 0]), [0, 0], [100, 0], 1);
+    const redMissile = projectile(ship("cruiser", 1, [0, 0]), [0, 0], [-100, 0], 1);
+    effects.update(1, [], [blueMissile, redMissile]);
+    expect(effects.smokeParticles).toHaveLength(1);
+    expect(effects.particles).toHaveLength(1);
+    expect(["#a855f7", "#dc2626"]).toContain(effects.particles[0].color);
+    effects.update(2);
+    expect(effects.smokeParticles).toHaveLength(0);
+    expect(effects.particles).toHaveLength(0);
+  });
+
   it("reports shield, armor and spillover impacts with their projectile origin", () => {
     const owner = ship("battleship", 0, [-500, 0]);
     const target = stationary(ship("battleship", 1, [0, 0]));
@@ -151,7 +191,9 @@ describe("mount eligibility and projectile contracts", () => {
   it("does not spend cooldown or report beams outside true muzzle range", () => {
     const cruiser = stationary(ship("cruiser", 0, [0, 0]));
     cruiser.turrets = [cruiser.turrets[0]];
-    const target = stationary(ship("battleship", 1, [908.1, 0]));
+    const rangeEdge =
+      mountPosition(cruiser, cruiser.turrets[0])[0] + cruiser.turrets[0].weapon.range;
+    const target = stationary(ship("battleship", 1, [rangeEdge + 0.1, 0]));
     target.turrets = [];
     const sim = simulate([cruiser, target]);
     let beams = 0;
@@ -159,7 +201,7 @@ describe("mount eligibility and projectile contracts", () => {
     advance(sim, 1);
     expect(beams).toBe(0);
     expect(cruiser.turrets[0].cooldownTimer).toBe(0);
-    target.pos = [907.9, 0];
+    target.pos = [rangeEdge - 0.1, 0];
     sim.update(1 / 60);
     expect(beams).toBe(1);
   });
@@ -222,7 +264,8 @@ describe("mount eligibility and projectile contracts", () => {
   it("uses a full-damage flak core and linear surface falloff, with an accurate event radius", () => {
     const owner = ship("corvette", 0, [-500, 0]);
     const targets = [18, 26, 34].map((surface, i) => {
-      const target = stationary(ship("strike_craft", 1, [11 + surface, 0]));
+      const target = stationary(ship("strike_craft", 1, [0, 0]));
+      target.pos[0] = target.size + surface;
       target.id = `flak_target_${i}`;
       target.turrets = [];
       return target;
@@ -593,7 +636,7 @@ describe("arena containment and matchup rebalance", () => {
   it("smoothly bends outward thrust inward and preserves tangential travel", () => {
     const cruiser = ship("cruiser", 0, [ARENA_RADIUS, 0]);
     expect(arenaVelocity(cruiser, [50, 25])).toEqual([50, 25]);
-    cruiser.pos[0] += 100;
+    cruiser.pos[0] = (ARENA_RADIUS + ARENA_HARD_PULL_RADIUS) / 2;
     const soft = arenaVelocity(cruiser, [50, 25]);
     expect(soft[0]).toBeLessThan(0);
     expect(soft[1]).toBe(25);
@@ -604,11 +647,12 @@ describe("arena containment and matchup rebalance", () => {
   it.each(["strike_craft", "corvette", "cruiser", "battleship"] as const)(
     "returns an outward-moving %s from beyond the hard pull radius without teleporting",
     (hull) => {
-      const s = ship(hull, 0, [1560, 0]);
+      const start: Vector2 = [ARENA_HARD_PULL_RADIUS + 10, 0];
+      const s = ship(hull, 0, [...start]);
       s.velocity = [s.maxSpeed, 0];
       const sim = simulate([s]);
       sim.update(1 / 60);
-      expect(vecDistance(s.pos, [1560, 0])).toBeLessThanOrEqual(s.maxSpeed / 60 + 1e-6);
+      expect(vecDistance(s.pos, start)).toBeLessThanOrEqual(s.maxSpeed / 60 + 1e-6);
       advance(sim, 12);
       expect(vecDistance(s.pos, [0, 0])).toBeLessThan(ARENA_HARD_PULL_RADIUS);
     },
@@ -748,8 +792,31 @@ describe("arena containment and matchup rebalance", () => {
     }
     expect(fighter.isAlive).toBe(true);
     expect(fighter.hullCurrent).toBe(fighter.hullMax);
+    expect(fighter.shieldCurrent).toBe(fighter.shieldMax);
     expect(fighter.lastMissionShotTime).toBeUndefined();
-    expect(closest).toBeGreaterThan((fighter.size + capital.size) * 1.4 + 20);
+    // Larger capitals can reach the repulsor boundary, still 20u clear of shields.
+    expect(closest).toBeGreaterThanOrEqual((fighter.size + capital.size) * 1.4 + 20);
+  });
+
+  it("spawns every preset with shield clearance for all hull pairs on both teams", () => {
+    for (const preset of FLEET_PRESETS) {
+      const slots = preset.composition.flatMap(({ hullClass, count, groupId }) =>
+        Array.from({ length: count }, (_, i) => ({ id: `${hullClass}_${i}`, hullClass, groupId })),
+      );
+      const ships = [
+        ...buildFleetFromSlots(slots, 0, -1100, 0),
+        ...buildFleetFromSlots(slots, 1, 1100, Math.PI),
+      ];
+      for (let i = 0; i < ships.length; i++) {
+        for (const other of ships.slice(i + 1)) {
+          const current = ships[i];
+          expect(
+            vecDistance(current.pos, other.pos),
+            `${preset.id}: ${current.id} / ${other.id}`,
+          ).toBeGreaterThan((current.size + other.size) * 1.4 + 20);
+        }
+      }
+    }
   });
 
   it.each([

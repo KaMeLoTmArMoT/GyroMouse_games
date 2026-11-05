@@ -100,10 +100,10 @@ describe("headless benchmark", () => {
     expect(observer.batteries[battery.id].longestReadyTrackingSeconds).toBe(1);
     observer.onShot(1, ship, battery);
     expect(observer.batteries[battery.id].shots).toBe(1);
-    ship.pos = [1600, 0];
+    ship.pos = [2300, 0];
     observer.onTick(1, 0.5, ships, []);
     observer.onTick(1.5, 0.5, ships, []);
-    expect(observer.maxRadius).toBe(1600);
+    expect(observer.maxRadius).toBe(2300);
     expect(observer.hardPullEntries).toBe(1);
     expect(observer.shipSecondsOutsideHardPull).toBe(1);
   });
