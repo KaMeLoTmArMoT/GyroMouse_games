@@ -1,11 +1,17 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 67 Vitest + 24 Pytest tests passing)
+Status: Grand Scale Production Baseline Active (All 84 Vitest + 24 Pytest tests passing)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
+
+- **Direct Numeric Input in Fleet Builder (`FleetBuilder.tsx`)**:
+  - Quantity steppers now feature an interactive, monospace number input allowing direct click, delete, and typing (e.g. typing `10` battleships or `120` fighters).
+  - Preserved `ChevronUp` and `ChevronDown` buttons with focus protection.
+  - Strict budget clamp: $\text{maxAffordable} = \text{stack.count} + \lfloor \text{remainingBudget} / \text{unitCost} \rfloor$.
+  - Rejects negative values, non-integers, and floats. Verified by 17 unit tests in `fleetBuilder.test.ts`.
 
 - **Grand Scale Arena & Sizing Calibration**:
   - Arena radius expanded to $R = 1900\text{u}$ with hard-pull boundary $R_{\text{hard}} = 2200\text{u}$.
@@ -29,13 +35,6 @@ Status: Grand Scale Production Baseline Active (All 67 Vitest + 24 Pytest tests 
 ---
 
 ## 2. Priority Backlog (Next Implementation Sprints)
-
-### B.1: Direct Numeric Input in Fleet Builder (Budget Allocation)
-- **Goal**: Allow fleet commanders to type unit numbers directly rather than repeatedly clicking `+` / `-` steppers.
-- **Scope**:
-  - In `FleetBuilder.tsx`, replace/augment the stepper with an `<input type="number" min="0" max="999" />`.
-  - On input change, clamp to maximum affordable quantity within the 20,000 credit budget.
-  - Support high-volume swarms (e.g., typing `120` fighters or `10` battleships instantly).
 
 ### B.2: Corvette Flak Dispersion & Probabilistic Interception (~90% Cap)
 - **Goal**: Prevent corvettes from forming a 100% impervious anti-missile bubble.
@@ -112,26 +111,22 @@ Status: Grand Scale Production Baseline Active (All 67 Vitest + 24 Pytest tests 
     - `brawl`: $750-800\text{u}$.
   - Secondary battery fire control: allow port/starboard batteries to independently target secondary threats (e.g. nearby cruisers or screening corvettes) even while the spinal gun pursues the primary capital flagship.
 
-### B.10: Creeping Drift Prevention & Regression Guardrail Gate
-- **Problem (The "1% Drift Over 10 Changes" Risk)**:
+### B.10: Creeping Drift Prevention & Tiered Multi-Seed Guardrail (Analyzed & Ready)
+- **Problem (The "1% Drift Over 10 Changes" Risk & Chaotic Bifurcation)**:
   - Boolean test assertions (e.g. `expect(winner).toBe("blue")`) only catch catastrophic flips (0% vs 100%).
-  - Minor procedural or physics tweaks can slowly erode HP retention by 1% per commit. By commit 10, a fleet is at the edge of collapse, and an unrelated package update or minor tweak suddenly causes a 50% win-rate plunge.
-- **Solution**:
+  - Minor procedural or physics tweaks can slowly erode HP retention by 1% per commit. By commit 10, a fleet is at the edge of collapse.
+  - Crucial finding from Astra: symmetric dogfights (`3 SC vs 3 SC`) naturally bifurcate between seeds. A naive single-seed baseline would falsely fail. Multi-seed averaging across 4 deterministic seeds (`[1, 7, 29, 42]`) converts this flip into a smooth, stable statistical mean.
+- **Specification**:
   - **Committed Golden Baseline Snapshot** (`bench/results/golden_baseline.json`):
-    - Record exact numerical baselines across all 16 Golden Set matchups:
-      - `residualHpPercent` (armor + hull retention)
+    - Compact ~10 KB JSON recording aggregated metrics across 16 scenarios on 4 seeds (64 battles in 5.9s wall time):
+      - `residualHpPercent` (armor + hull retention; shields excluded)
       - `duration` (time to decisive victory)
       - `firstShotTime`
-      - `damageDealt` by layer (shield / armor / hull)
-      - `missilesIntercepted`
   - **Automated Anti-Drift Check (`npm run bench:drift`)**:
-    - Compares current benchmark output against `golden_baseline.json`.
-    - Strict tolerance thresholds:
-      - Max allowable $\Delta \text{Residual HP}$: $\pm 5.0\%$.
-      - Max allowable $\Delta \text{Duration}$: $\pm 10.0\%$.
-      - Zero new containment / ram / stall alerts.
-    - Any cumulative drift exceeding 5% triggers an immediate **DRIFT ALERT**, preventing silent regressions from slipping into production.
-  - **Multi-Seed Stability Sampling**:
-    - Evaluate each scenario across 4 deterministic seeds (e.g., seeds `[1, 7, 29, 42]`) to ensure results represent genuine systemic stability rather than a single favorable spawn layout.
+    - Asymmetric tolerance: $|\Delta \text{Residual HP}| \le \pm 5.0\text{ pp}$, $|\Delta \text{Duration}| \le \pm 10.0\%$.
+    - Symmetric tolerance: $|\Delta \text{Duration}| \le \pm 15.0\%$, zero timeouts.
+    - Zero tolerance: no RAM, OOB, STALL, or unhandled errors.
+  - **One-Command Update (`npm run bench:update-golden`)**:
+    - Re-serializes clean formatted baseline when intentional rebalances are committed.
 
 
