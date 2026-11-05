@@ -1,12 +1,13 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 117 Vitest + 24 Pytest tests passing)
+Status: Grand Scale Production Baseline Active (All 121 Vitest + 24 Pytest tests passing)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
+- **300s Stalemate Horizon & Remnant Continuation (B.6)**: 300s draw limit (`winner = -1`), post-match «Продовжити бій» rematch button resetting surviving ships to mirrored spawns with preserved hull/armor damage and full shields.
 - **Single Source of Truth (`shipProfiles.ts`)**: Unified canonical hull/weapon profiles (`HULL_PROFILES`), eliminating magic number duplication across fleet builder, UI catalog, and drift test suites.
 - **Sustained Channeled Beam Lasers (B.3)**: 1.2s continuous beam channel with 12 discrete 0.1s damage ticks, target tracking, early cutoff, shimmering impact flares, and calibrated DPS.
 - **Capital Standoff Envelopes & Cruiser Drift Fix (B.9)**: Dynamic weapon-derived standoffs ($1500\text{u}$ / $1100\text{u}$ / $750\text{u}$); cruisers fly bow-first during approach with lateral drift clamped, broadside-weaving only in firing range.
@@ -24,8 +25,8 @@ Status: Grand Scale Production Baseline Active (All 117 Vitest + 24 Pytest tests
 ## 2. Priority Feature Backlog (Next Sprints)
 
 - **B.5: Weapon Slot Sizing & Dedicated Rear Defense**: Architectural mounts (Huge Spinal, Medium Broadsides, dedicated rear Anti-Fighter point defense).
-- **B.6: 300s Stalemate Horizon & Tactical Fleet Retreat**: Hard 300s draw limit with persistent fleet health snapshots for campaign retreat/rematch.
 - **B.7: Expanded 8-Hull Ship Roster**: Missile Frigate, Heavy Dreadnought, Plasma Corvette, Shield Tender, Artillery Monitor, Drone Carrier, Torpedo Bomber, Rocket Interceptor.
+
 
 
 

@@ -73,6 +73,144 @@ function projectile(
   };
 }
 
+describe("stalemate horizon and remnant rounds", () => {
+  it("declares a draw at 300 seconds, not before, and stops further combat", () => {
+    const blue = stationary(ship("cruiser", 0, [-1100, 0]));
+    const red = stationary(ship("cruiser", 1, [1100, 0]));
+    blue.turrets = red.turrets = [];
+    const sim = simulate([blue, red]);
+    const victories: number[] = [];
+    sim.onVictory = (winner) => victories.push(winner);
+    sim.timeElapsed = 299.98;
+    sim.update(1 / 60);
+    expect(sim.winner).toBeNull();
+    sim.update(1 / 60);
+    expect(sim.timeElapsed).toBeGreaterThanOrEqual(300);
+    expect(sim.winner).toBe(-1);
+    expect(sim.winnerDeclaredTime).toBe(300);
+    expect(victories).toEqual([-1]);
+    const stoppedAt = sim.timeElapsed;
+    sim.update(1);
+    expect(sim.timeElapsed).toBe(stoppedAt);
+    expect(victories).toEqual([-1]);
+  });
+
+  it("keeps decisive destruction and an already declared victory ahead of the time limit", () => {
+    const blue = ship("cruiser", 0, [-1100, 0]);
+    const red = ship("cruiser", 1, [1100, 0]);
+    red.isAlive = false;
+    const sim = simulate([blue, red]);
+    sim.timeElapsed = 300;
+    sim.update(1 / 60);
+    expect(sim.winner).toBe(0);
+    sim.update(1);
+    expect(sim.winner).toBe(0);
+  });
+
+  it("reforms only survivors at mirrored group spawns without repairing hull or armor", () => {
+    const slots = [
+      { id: "bb", hullClass: "battleship" as const, groupId: 1 },
+      { id: "cr", hullClass: "cruiser" as const, groupId: 1 },
+      { id: "cv", hullClass: "corvette" as const, groupId: 1 },
+      ...Array.from({ length: 7 }, (_, i) => ({
+        id: `fighter_${i}`,
+        hullClass: "strike_craft" as const,
+        groupId: 3,
+      })),
+    ];
+    const ships = [
+      ...buildFleetFromSlots(slots, 0, -1100, 0),
+      ...buildFleetFromSlots(slots, 1, 1100, Math.PI),
+    ];
+    ships[0].isAlive = false;
+    ships[slots.length].isAlive = false;
+    const survivors = ships.filter((s) => s.isAlive);
+    const damage = survivors.map((s, i) => {
+      s.pos = [i * 10, i * 20];
+      s.velocity = [50, -25];
+      s.heading = 1.5;
+      s.hullCurrent = s.hullMax * 0.37;
+      s.armorCurrent = i % 2 === 0 ? 0 : s.armorMax * 0.42;
+      s.shieldCurrent = 0;
+      s.recoveryStarted = 299;
+      s.nextRecoveryAt = 303;
+      s.escapeUntil = 310;
+      s.navigationTargetId = "old_target";
+      s.turrets[0].cooldownTimer = 10;
+      s.turrets[0].lastFiredTime = 299;
+      return { id: s.id, hull: s.hullCurrent, armor: s.armorCurrent };
+    });
+    const expected = [0, 1].flatMap((team) =>
+      buildFleetFromSlots(
+        survivors.filter((s) => s.team === team),
+        team,
+        team === 0 ? -1100 : 1100,
+        team === 0 ? 0 : Math.PI,
+      ).map((s) => s.pos),
+    );
+    const sim = simulate(ships);
+    sim.setGroupOrder({ groupId: 3, priority: "capitals", stance: "brawl" });
+    sim.timeElapsed = 300;
+    sim.winner = -1;
+    sim.winnerDeclaredTime = 300;
+    sim.projectiles = [projectile(survivors[0], [0, 0], [100, 0])];
+    sim.activeBeams = [{ id: "old_beam", from: [0, 0], to: [100, 0], ownerTeam: 0 }];
+    sim.stats[0].recentDamageWindow = [{ time: 299, damage: 50 }];
+    sim.continueBattleWithRemnants();
+
+    expect(sim.ships).toEqual(survivors);
+    expect(sim.ships.map((s) => s.pos)).toEqual(expected);
+    expect(
+      sim.ships.map((s) => ({ id: s.id, hull: s.hullCurrent, armor: s.armorCurrent })),
+    ).toEqual(damage);
+    for (const s of sim.ships) {
+      expect(s.velocity).toEqual([0, 0]);
+      expect(s.heading).toBe(s.team === 0 ? 0 : Math.PI);
+      expect(s.shieldCurrent).toBe(s.shieldMax);
+      expect(s.recoveryStarted).toBeUndefined();
+      expect(s.nextRecoveryAt).toBeUndefined();
+      expect(s.escapeUntil).toBeUndefined();
+      expect(s.navigationTargetId).toBeUndefined();
+      expect(s.turrets[0].cooldownTimer).toBe(0);
+      expect(s.turrets[0].lastFiredTime).toBeUndefined();
+      if (s.hullClass === "corvette") {
+        expect(sim.ships.find((anchor) => anchor.id === s.flagshipId)?.hullClass).toBe("cruiser");
+      }
+    }
+    expect(sim.projectiles).toEqual([]);
+    expect(sim.activeBeams).toEqual([]);
+    expect(sim.timeElapsed).toBe(0);
+    expect(sim.winner).toBeNull();
+    expect(sim.winnerDeclaredTime).toBeNull();
+    expect(sim.getRollingDPS(0)).toBe(0);
+    expect(sim.orders.get(3)?.stance).toBe("brawl");
+    sim.update(1 / 60);
+    expect(sim.timeElapsed).toBeCloseTo(1 / 60);
+    expect(
+      sim.ships
+        .filter((s) => s.hullClass === "strike_craft")
+        .every((s) => s.wingIndex !== undefined),
+    ).toBe(true);
+  });
+
+  it("clears real beam channels and pending catch-up time before the next round", () => {
+    const blue = stationary(ship("cruiser", 0, [0, 0]));
+    const red = stationary(ship("battleship", 1, [500, 0]));
+    red.turrets = [];
+    const sim = simulate([blue, red]);
+    sim.update(1 / 60);
+    expect(sim.activeBeams).toHaveLength(1);
+    sim.timeElapsed = 300;
+    sim.update(1);
+    expect(sim.winner).toBe(-1);
+    sim.continueBattleWithRemnants();
+    sim.update(1 / 60);
+    expect(sim.timeElapsed).toBeCloseTo(1 / 60);
+    expect(sim.activeBeams).toEqual([]);
+    expect(red.shieldCurrent).toBe(red.shieldMax);
+  });
+});
+
 describe("channeled beam lasers", () => {
   function fixture(hull: "cruiser" | "battleship" = "cruiser") {
     const shooter = stationary(ship(hull, 0, [0, 0]));

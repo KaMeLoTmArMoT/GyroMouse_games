@@ -22,6 +22,7 @@ import {
   squadFocusPriority,
   sweptHit,
 } from "./fireControl";
+import { buildFleetFromSlots } from "./fleetBuilder";
 import {
   ARENA_HARD_PULL_RADIUS,
   ARENA_RADIUS,
@@ -178,12 +179,92 @@ export class ClientCombatSimulation {
     this.orders.set(order.groupId, order);
   }
 
+  continueBattleWithRemnants(): void {
+    this.ships = this.ships.filter((ship) => ship.isAlive);
+    for (const team of [0, 1]) {
+      const survivors = this.ships.filter((ship) => ship.team === team);
+      const formation = buildFleetFromSlots(
+        survivors,
+        team,
+        team === 0 ? -1100 : 1100,
+        team === 0 ? 0 : Math.PI,
+      );
+      const remaining = [...survivors];
+      const originalIds = new Map<string, string>();
+      for (const spawn of formation) {
+        const index = remaining.findIndex(
+          (ship) => ship.groupId === spawn.groupId && ship.hullClass === spawn.hullClass,
+        );
+        const [ship] = remaining.splice(index, 1);
+        originalIds.set(spawn.id, ship.id);
+        ship.pos = spawn.pos;
+        ship.velocity = [0, 0];
+        ship.heading = spawn.heading;
+        ship.shieldCurrent = ship.shieldMax;
+        ship.shieldDelayTimer = 0;
+        ship.flagshipId = spawn.flagshipId;
+        // All of these describe the previous engagement, whose clock is about to reset.
+        ship.fighterPhase = undefined;
+        ship.wingIndex = undefined;
+        ship.wingSlot = undefined;
+        ship.safeHavenId = undefined;
+        ship.safeHavenTimer = undefined;
+        ship.lastSelectedSector = undefined;
+        ship.dogfightTargetId = undefined;
+        ship.lastThreatTime = undefined;
+        ship.recoveryStarted = undefined;
+        ship.nextRecoveryAt = undefined;
+        ship.recoveredHull = undefined;
+        ship.lastMissionShotTime = undefined;
+        ship.capitalManeuver = undefined;
+        ship.maneuverTargetId = undefined;
+        ship.navigationTargetId = undefined;
+        ship.broadsideSide = undefined;
+        ship.lastManeuverShot = undefined;
+        ship.escapeSide = undefined;
+        ship.escapeUntil = undefined;
+        for (const turret of ship.turrets) {
+          turret.cooldownTimer = 0;
+          turret.currentLocalAngle = clamp(0, ...turret.baseArc);
+          turret.currentTargetId = null;
+          turret.currentTargetKind = undefined;
+          turret.lastFiredTime = undefined;
+        }
+      }
+      for (const ship of survivors) {
+        if (ship.flagshipId) ship.flagshipId = originalIds.get(ship.flagshipId);
+      }
+    }
+    this.projectiles = [];
+    this.activeBeams = [];
+    this.beamChannels.clear();
+    this.fighterWings = [];
+    this.contacts.clear();
+    this.previousPositions.clear();
+    this.accumulator = 0;
+    this.timeElapsed = 0;
+    this.winner = null;
+    this.winnerDeclaredTime = null;
+    this.combatLog = [];
+    this.damageTotals = [0, 0];
+    this.shieldTotals = [0, 0];
+    for (const team of [0, 1]) {
+      this.stats[team] = {
+        damageDealt: 0,
+        shieldDamageAbsorbed: 0,
+        missilesIntercepted: 0,
+        shipsLost: 0,
+        recentDamageWindow: [],
+      };
+    }
+  }
+
   update(dt: number): void {
-    if (!Number.isFinite(dt) || dt <= 0) return;
+    if (!Number.isFinite(dt) || dt <= 0 || this.winner === -1) return;
     this.accumulator += dt;
     // Bound catch-up work after a suspended render; retain the remaining combat time.
     let steps = 0;
-    while (this.accumulator + 1e-9 >= FIXED_STEP && steps++ < 240) {
+    while (this.accumulator + 1e-9 >= FIXED_STEP && steps++ < 240 && this.winner !== -1) {
       this.accumulator = Math.max(0, this.accumulator - FIXED_STEP);
       this.tick(FIXED_STEP);
     }
@@ -311,6 +392,11 @@ export class ClientCombatSimulation {
       );
     }
 
+    this.updateWinnerState();
+    this.observer?.onTick(this.timeElapsed, dt, this.ships, this.projectiles);
+  }
+
+  private updateWinnerState(): void {
     if (this.winner === null && this.timeElapsed > 1.0) {
       const blueAlive = this.ships.some((s) => s.team === 0 && s.isAlive);
       const redAlive = this.ships.some((s) => s.team === 1 && s.isAlive);
@@ -323,9 +409,13 @@ export class ClientCombatSimulation {
         this.winnerDeclaredTime = this.timeElapsed;
         this.addCombatLog("Terran fleet achieved complete tactical victory!", 0, "critical");
       }
+      if (this.timeElapsed >= 300.0 && this.winner === null) {
+        this.winner = -1;
+        this.winnerDeclaredTime = 300.0;
+        this.addCombatLog("Tactical Stalemate: 300s combat limit reached.", -1, "critical");
+      }
       if (this.winner !== null) this.onVictory?.(this.winner);
     }
-    this.observer?.onTick(this.timeElapsed, dt, this.ships, this.projectiles);
   }
 
   private findTargetForShip(
