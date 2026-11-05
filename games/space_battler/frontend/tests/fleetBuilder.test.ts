@@ -1,4 +1,5 @@
 import type React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   calculateMaxAffordable,
@@ -6,7 +7,8 @@ import {
   RosterCountInput,
   updateSlotsForStackCount,
 } from "../src/components/FleetBuilder";
-import type { FleetSlot } from "../src/engine/fleetBuilder";
+import { GroupPreview, useDelayedPreview } from "../src/components/FleetPreviews";
+import { buildFleetFromSlots, type FleetSlot, GROUP_ANCHORS } from "../src/engine/fleetBuilder";
 
 const hooks = vi.hoisted(() => ({
   value: "",
@@ -29,6 +31,61 @@ vi.mock("react", async (importOriginal) => ({
   },
   useEffect: () => {},
 }));
+
+describe("fleet previews", () => {
+  it.each([200, 250])("waits %ims and cancels a preview on leave or a new hover", (delay) => {
+    vi.useFakeTimers();
+    try {
+      hooks.value = "";
+      hooks.refs = [];
+      const render = () => {
+        hooks.refIndex = 0;
+        // biome-ignore lint/correctness/useHookAtTopLevel: This test invokes mocked hooks directly.
+        return useDelayedPreview<string>(delay);
+      };
+      render().show("first");
+      vi.advanceTimersByTime(delay - 1);
+      expect(render().active).toBeNull();
+      render().show("second");
+      vi.advanceTimersByTime(delay);
+      expect(render().active).toBe("second");
+      render().show("third");
+      render().hide();
+      vi.advanceTimersByTime(delay);
+      expect(render().active).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("diagrams the real blue spawn anchors with exactly one highlighted group", () => {
+    const names = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"];
+    for (let group = 1; group <= 5; group++) {
+      const [ship] = buildFleetFromSlots(
+        [{ id: "anchor", hullClass: "battleship", groupId: group }],
+        0,
+        0,
+        0,
+      );
+      expect(ship.pos).toEqual(GROUP_ANCHORS[group]);
+      const markup = renderToStaticMarkup(GroupPreview({ group }));
+      expect(markup).toContain(names[group - 1]);
+      expect(markup.match(/fill="#475569"/g)).toHaveLength(4);
+      expect(markup.match(/fill="#67e8f9"/g)).toHaveLength(1);
+      const [x, y] = ship.pos;
+      expect(markup).toContain(`cx="${80 + x * 0.12}" cy="${55 + y * 0.09}" r="5"`);
+    }
+  });
+
+  it("preserves mirrored spawn anchors for both teams, including preset-only groups", () => {
+    for (let group = 1; group <= 10; group++) {
+      const slots: FleetSlot[] = [{ id: "anchor", hullClass: "battleship", groupId: group }];
+      const [x, y] = GROUP_ANCHORS[group];
+      expect(buildFleetFromSlots(slots, 0, 100, 0)[0].pos).toEqual([100 + x, y]);
+      expect(buildFleetFromSlots(slots, 1, 100, Math.PI)[0].pos).toEqual([100 - x, y]);
+    }
+  });
+});
 
 describe("RosterCountInput", () => {
   function setup(initialCount = 3) {

@@ -6,6 +6,7 @@ import type { FleetSlot } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
 import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { HullClass } from "../types/combat";
+import { GroupPreview, ShipPreview, useDelayedPreview } from "./FleetPreviews";
 
 interface FleetBuilderProps {
   slots: FleetSlot[];
@@ -412,7 +413,8 @@ export function FleetBuilder({
   onStartBattle,
 }: FleetBuilderProps) {
   const [selectedGroup, setSelectedGroup] = useState<number>(1);
-  const [inspectedHull, setInspectedHull] = useState<HullClass | null>(null);
+  const shipPreview = useDelayedPreview<HullClass>(250);
+  const groupPreview = useDelayedPreview<number>(200);
 
   const currentCost = slots.reduce((acc, slot) => acc + HULL_SPECS[slot.hullClass].cost, 0);
   const remainingBudget = budgetLimit - currentCost;
@@ -495,7 +497,7 @@ export function FleetBuilder({
         </div>
 
         {/* Group Selector with Counts */}
-        <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
+        <div className="relative p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex justify-between select-text">
             <span>Operational Group Assignment</span>
             <span className="text-cyan-400 font-mono">
@@ -512,6 +514,10 @@ export function FleetBuilder({
                   key={g}
                   type="button"
                   onClick={() => setSelectedGroup(g)}
+                  onMouseEnter={() => groupPreview.show(g)}
+                  onMouseLeave={groupPreview.hide}
+                  onFocus={() => groupPreview.show(g)}
+                  onBlur={groupPreview.hide}
                   className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer flex items-center gap-2 border ${
                     isSelected
                       ? `${theme.activeBg} ${theme.activeText} font-bold ${theme.glow} shadow-md border-transparent`
@@ -543,6 +549,7 @@ export function FleetBuilder({
               );
             })}
           </div>
+          {groupPreview.active !== null && <GroupPreview group={groupPreview.active} />}
         </div>
 
         {/* Ship Catalog */}
@@ -551,20 +558,21 @@ export function FleetBuilder({
             const spec = HULL_SPECS[hull];
             const canAfford = remainingBudget >= spec.cost;
             const counts = hullCounts[hull];
-            const isInspecting = inspectedHull === hull;
+            const isInspecting = shipPreview.active === hull;
             const activeTheme = GROUP_THEMES[selectedGroup] || GROUP_THEMES[1];
 
             return (
               <div
                 key={hull}
-                onMouseEnter={() => setInspectedHull(hull)}
-                onMouseLeave={() => setInspectedHull((prev) => (prev === hull ? null : prev))}
+                onMouseEnter={() => shipPreview.show(hull)}
+                onMouseLeave={shipPreview.hide}
                 className={`p-4 rounded-xl border transition-all flex flex-col justify-between select-text relative ${
                   isInspecting
                     ? "border-cyan-500/50 bg-zinc-900/90 shadow-md shadow-cyan-500/10"
                     : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700"
                 }`}
               >
+                {isInspecting && <ShipPreview hull={hull} />}
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
@@ -575,7 +583,7 @@ export function FleetBuilder({
                         <div className="font-semibold text-sm text-zinc-100 select-all">
                           {spec.name}
                         </div>
-                        <span className="text-[10px] uppercase font-mono text-cyan-400">
+                        <span className="text-[11px] uppercase font-mono text-cyan-300">
                           {spec.role}
                         </span>
                       </div>
@@ -605,39 +613,39 @@ export function FleetBuilder({
                     </div>
                   </div>
 
-                  <p className="text-xs text-zinc-400 mt-2.5 leading-relaxed select-text">
+                  <p className="text-xs text-zinc-300 mt-2.5 leading-relaxed select-text">
                     {spec.desc}
                   </p>
 
                   {/* Compact Stats Row */}
-                  <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-zinc-800/80 text-[10px] font-mono">
+                  <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-zinc-800/80 text-[11px] font-mono">
                     <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
-                      <span className="text-zinc-500 block">SHIELD</span>
+                      <span className="text-zinc-400 block">SHIELD</span>
                       <span className="text-cyan-400 font-semibold">{spec.shield}</span>
                     </div>
                     <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
-                      <span className="text-zinc-500 block">ARMOR</span>
+                      <span className="text-zinc-400 block">ARMOR</span>
                       <span className="text-amber-400 font-semibold">{spec.armor}</span>
                     </div>
                     <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
-                      <span className="text-zinc-500 block">HULL</span>
+                      <span className="text-zinc-400 block">HULL</span>
                       <span className="text-emerald-400 font-semibold">{spec.hull}</span>
                     </div>
                     <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
-                      <span className="text-zinc-500 block">SPEED</span>
+                      <span className="text-zinc-400 block">SPEED</span>
                       <span className="text-zinc-300 font-semibold">{spec.speed} u/s</span>
                     </div>
                   </div>
 
                   {/* Permanent Armament Loadout - Fixed height so cards never jump on hover */}
                   <div
-                    className={`mt-2.5 p-2 rounded-lg text-[10px] font-mono min-h-[56px] flex flex-col justify-center transition-colors ${
+                    className={`mt-2.5 p-2 rounded-lg text-[11px] font-mono min-h-[56px] flex flex-col justify-center transition-colors ${
                       isInspecting
                         ? "bg-zinc-950 border border-cyan-500/40 text-cyan-300"
                         : "bg-zinc-950/60 border border-zinc-800/80 text-zinc-400"
                     }`}
                   >
-                    <div className="text-zinc-500 font-semibold flex items-center gap-1 text-[9px] uppercase tracking-wider mb-1">
+                    <div className="text-zinc-300 font-semibold flex items-center gap-1 text-[11px] uppercase tracking-wider mb-1">
                       <Zap
                         className={`w-2.5 h-2.5 ${isInspecting ? "text-cyan-400" : "text-zinc-500"}`}
                       />{" "}

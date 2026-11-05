@@ -4,6 +4,15 @@ import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
 
+/** Draw the same hull and hardpoints as the battlefield, without combat HUD overlays. */
+export function renderShipPreview(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+  ctx.save();
+  ctx.rotate(ship.heading);
+  drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7");
+  ctx.restore();
+  for (const turret of ship.turrets) renderTurret(ctx, ship, turret, "#38bdf8");
+}
+
 export function renderShip(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,

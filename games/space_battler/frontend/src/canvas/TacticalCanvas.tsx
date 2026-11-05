@@ -91,9 +91,14 @@ export function TacticalCanvas({
     };
     sim.onFlakBurst = (pos, radius, ownerTeam) => {
       effectsRef.current.addFlakBurst(pos, radius, ownerTeam);
-      spaceAudio.playWeapon("point_defense");
     };
-    sim.onProjectileFire = (type) => spaceAudio.playWeapon(type);
+    sim.onProjectileFire = (type) => {
+      if (type !== "missile") spaceAudio.playWeapon(type);
+    };
+    sim.onAudioEvent = (event) => {
+      // Fleet ingress is queued before the canvas mounts and plays with its visual effect.
+      if (event.type !== "warp_ingress") spaceAudio.playCombatEvent(event.type);
+    };
     sim.onShieldHit = (_pos, intensity) => spaceAudio.playShieldHit(intensity);
     sim.onWeaponImpact = (ship, origin, shield, armor, hull) => {
       const angle = Math.atan2(origin[1] - ship.pos[1], origin[0] - ship.pos[0]);
@@ -125,6 +130,9 @@ export function TacticalCanvas({
       if (speed > 0) {
         if (pendingIngressRef.current) {
           effectsRef.current.triggerFleetWarpIn(sim.ships);
+          if (sim.drainAudioEvents().some((event) => event.type === "warp_ingress")) {
+            spaceAudio.playCombatEvent("warp_ingress");
+          }
           pendingIngressRef.current = false;
           const canvas = canvasRef.current;
           const camera = cameraRef.current;
@@ -397,6 +405,7 @@ export function TacticalCanvas({
       sim.onBeamFire = null;
       sim.onFlakBurst = null;
       sim.onProjectileFire = undefined;
+      sim.onAudioEvent = undefined;
       sim.onShieldHit = undefined;
       sim.onWeaponImpact = undefined;
       sim.onShipDestroyed = undefined;

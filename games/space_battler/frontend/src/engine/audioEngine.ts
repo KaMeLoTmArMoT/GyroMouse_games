@@ -1,6 +1,6 @@
-import type { ShipState, WeaponType } from "../types/combat";
+import type { CombatAudioCue, ShipState, WeaponType } from "../types/combat";
 
-type Sound = WeaponType | "shield" | "explosion" | "chime";
+type Sound = WeaponType | CombatAudioCue | "shield" | "explosion" | "chime";
 interface Layer {
   wave: "sine" | "triangle" | "noise";
   frequency: number;
@@ -22,6 +22,11 @@ const COOLDOWNS: Record<Sound, number> = {
   shield: 0.09,
   explosion: 0.12,
   chime: 1,
+  torpedo_launch: 0.14,
+  flak_burst: 0.09,
+  laser_intercept: 0.12,
+  warp_ingress: 1,
+  fighter_egress: 0.4,
 };
 
 /** Quiet by construction: bounded voices, low envelopes, then compression and master gain. */
@@ -153,6 +158,60 @@ export class SpaceAudioEngine {
             gain: 0.045,
             cutoff: 380,
             bandpass: true,
+          },
+        ]);
+        break;
+    }
+  }
+
+  playCombatEvent(event: CombatAudioCue): void {
+    switch (event) {
+      case "torpedo_launch":
+        this.play(event, [
+          { wave: "noise", frequency: 0, duration: 0.3, gain: 0.045, cutoff: 550, endCutoff: 160 },
+          { wave: "sine", frequency: 70, endFrequency: 180, duration: 0.25, gain: 0.04 },
+        ]);
+        break;
+      case "flak_burst":
+        this.play(event, [
+          {
+            wave: "noise",
+            frequency: 0,
+            duration: 0.13,
+            gain: 0.055,
+            cutoff: 1500,
+            endCutoff: 250,
+          },
+          { wave: "sine", frequency: 160, endFrequency: 55, duration: 0.12, gain: 0.035 },
+        ]);
+        break;
+      case "laser_intercept":
+        this.play(event, [
+          {
+            wave: "triangle",
+            frequency: 1050,
+            endFrequency: 560,
+            duration: 0.08,
+            gain: 0.035,
+            cutoff: 1800,
+          },
+        ]);
+        break;
+      case "warp_ingress":
+        this.play(event, [
+          { wave: "noise", frequency: 0, duration: 0.8, gain: 0.035, cutoff: 180, endCutoff: 1200 },
+          { wave: "sine", frequency: 90, endFrequency: 320, duration: 0.7, gain: 0.045 },
+        ]);
+        break;
+      case "fighter_egress":
+        this.play(event, [
+          {
+            wave: "triangle",
+            frequency: 600,
+            endFrequency: 180,
+            duration: 0.24,
+            gain: 0.035,
+            cutoff: 1300,
           },
         ]);
         break;

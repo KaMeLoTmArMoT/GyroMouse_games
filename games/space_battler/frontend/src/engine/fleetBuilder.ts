@@ -9,6 +9,20 @@ export interface FleetSlot {
   groupId: number;
 }
 
+// Blue fleet offsets; the opposing fleet mirrors these along the x axis.
+export const GROUP_ANCHORS: Record<number, Vector2> = {
+  1: [0, 0],
+  2: [-250, 450],
+  3: [-250, -450],
+  4: [-350, 0],
+  5: [250, 0],
+  6: [-700, 0],
+  7: [-700, 450],
+  8: [-700, -450],
+  9: [250, 450],
+  10: [250, -450],
+};
+
 export function buildFleetFromSlots(
   slots: FleetSlot[],
   team: number,
@@ -23,21 +37,10 @@ export function buildFleetFromSlots(
   }
   const counts = { battleship: 0, cruiser: 0, corvette: 0, strike_craft: 0 };
   const direction = team === 0 ? 1 : -1;
-  const offsets: Record<number, Vector2> = {
-    1: [0, 0],
-    2: [-250 * direction, 450],
-    3: [-250 * direction, -450],
-    4: [-350 * direction, 0],
-    5: [250 * direction, 0],
-    6: [-700 * direction, 0],
-    7: [-700 * direction, 450],
-    8: [-700 * direction, -450],
-    9: [250 * direction, 450],
-    10: [250 * direction, -450],
-  };
   const placed: ShipState[] = [];
   for (const [groupId, group] of [...groups].sort(([a], [b]) => a - b)) {
-    const [x, y] = offsets[groupId] ?? [0, 0];
+    const [anchorX, y] = GROUP_ANCHORS[groupId] ?? [0, 0];
+    const x = anchorX * direction;
     const ships = buildGroup(group, team, heading, counts);
     if (ships.length === 0) continue;
     const centerX =

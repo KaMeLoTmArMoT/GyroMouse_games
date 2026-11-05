@@ -69,7 +69,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 10.150000000000084,
+      "duration": 13.1666666666669,
       "residualHpPercent": [
         100,
         0
@@ -113,7 +113,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 16.066666666667036,
+      "duration": 15.750000000000362,
       "residualHpPercent": [
         100,
         0
@@ -157,9 +157,9 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 20.25000000000013,
+      "duration": 26.13333333333313,
       "residualHpPercent": [
-        69.98771498771498,
+        66.66666666666667,
         0
       ]
     },
@@ -168,7 +168,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 17.483333333333622,
+      "duration": 21.26666666666674,
       "residualHpPercent": [
         0,
         100
@@ -190,7 +190,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 26.583333333333105,
+      "duration": 25.5166666666665,
       "residualHpPercent": [
         0,
         100
@@ -201,9 +201,9 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 33.08333333333274,
+      "duration": 19.033333333333534,
       "residualHpPercent": [
-        78.51239669421487,
+        78.51239669421489,
         0
       ]
     },
@@ -245,7 +245,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 10.133333333333416,
+      "duration": 13.800000000000265,
       "residualHpPercent": [
         100,
         0
@@ -289,7 +289,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 15.76666666666703,
+      "duration": 15.733333333333695,
       "residualHpPercent": [
         100,
         0
@@ -333,7 +333,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 24.2999999999999,
+      "duration": 27.333333333333062,
       "residualHpPercent": [
         66.66666666666667,
         0
@@ -344,7 +344,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 17.483333333333622,
+      "duration": 20.150000000000137,
       "residualHpPercent": [
         0,
         100
@@ -355,7 +355,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 11.333333333333476,
+      "duration": 15.733333333333695,
       "residualHpPercent": [
         0,
         100
@@ -366,7 +366,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 24.783333333333207,
+      "duration": 24.38333333333323,
       "residualHpPercent": [
         0,
         100
@@ -376,11 +376,11 @@
       "id": "3sc-vs-3sc",
       "scenarioVersion": 1,
       "seed": 7,
-      "outcome": "blue",
-      "duration": 16.816666666666993,
+      "outcome": "red",
+      "duration": 18.983333333333537,
       "residualHpPercent": [
-        66.66666666666667,
-        0
+        0,
+        45.17906336088154
       ]
     },
     {
@@ -421,7 +421,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 13.36666666666691,
+      "duration": 16.666666666667002,
       "residualHpPercent": [
         100,
         0
@@ -465,7 +465,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 15.733333333333695,
+      "duration": 13.150000000000233,
       "residualHpPercent": [
         100,
         0
@@ -509,9 +509,9 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 23.99999999999992,
+      "duration": 25.099999999999856,
       "residualHpPercent": [
-        66.66666666666667,
+        95.24324324324324,
         0
       ]
     },
@@ -520,7 +520,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 21.18333333333341,
+      "duration": 19.90000000000015,
       "residualHpPercent": [
         0,
         100
@@ -542,21 +542,21 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 24.11666666666658,
+      "duration": 25.883333333333145,
       "residualHpPercent": [
         0,
-        71.25640839146531
+        66.66666666666667
       ]
     },
     {
       "id": "3sc-vs-3sc",
       "scenarioVersion": 1,
       "seed": 29,
-      "outcome": "blue",
-      "duration": 28.93333333333297,
+      "outcome": "red",
+      "duration": 25.799999999999816,
       "residualHpPercent": [
-        57.02479338842976,
-        0
+        0,
+        23.691460055096414
       ]
     },
     {
@@ -597,7 +597,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 10.150000000000084,
+      "duration": 13.800000000000265,
       "residualHpPercent": [
         100,
         0
@@ -641,7 +641,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 15.76666666666703,
+      "duration": 15.733333333333695,
       "residualHpPercent": [
         100,
         0
@@ -685,9 +685,9 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 20.633333333333443,
+      "duration": 25.066666666666524,
       "residualHpPercent": [
-        66.66666666666667,
+        70.49447174447174,
         0
       ]
     },
@@ -696,7 +696,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 21.18333333333341,
+      "duration": 23.48333333333328,
       "residualHpPercent": [
         0,
         100
@@ -718,21 +718,21 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 23.233333333333295,
+      "duration": 24.549999999999887,
       "residualHpPercent": [
         0,
-        95.88275913275913
+        95.7883777279084
       ]
     },
     {
       "id": "3sc-vs-3sc",
       "scenarioVersion": 1,
       "seed": 42,
-      "outcome": "blue",
-      "duration": 31.43333333333283,
+      "outcome": "red",
+      "duration": 31.616666666666152,
       "residualHpPercent": [
-        66.66666666666667,
-        0
+        0,
+        23.691460055096414
       ]
     }
   ]

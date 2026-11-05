@@ -1,12 +1,14 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 159 Vitest tests passing, 0 Drift alerts)
+Status: Grand Scale Production Baseline Active (All 187 Vitest tests passing, 0 Drift alerts)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
+- **Fighter Heatmap Dispersal, Flanking Ducts & Audio Synthesis (B.15)**: 200u quadratic repulsion between wing centers, alternating center/±40° attack corridors, wounded retreat (<30% HP) under capital ship umbrellas, and Web Audio procedural combat sound cues (`torpedo_launch`, `flak_burst`, `laser_intercept`, `warp_ingress`, `fighter_egress`).
+- **Fleet Builder Tactical Previews & Radar (UI Enhancements)**: 250ms debounced rotating 2.5D hull preview on card hover, 200ms debounced 5-dot spatial radar for group anchors with role tags ("Alpha: Center Vanguard", etc.), and enlarged armament/spec typography.
 - **Refined Heavy Torpedo Defense Matrix & Echelon Visuals (B.16)**: 120 HP heavy torpedoes, flak casing degradation (18 dmg), rotary PD bursts (15 dmg), laser PD beams, 3-tier turret target priority, live integrity bar & damage FX, echelon wave pills, and retreat coolant leak trails.
 - **Clickable Smart Projectile Telemetry HUD (B.13)**: Click guided torpedoes/missiles to inspect tracking reticle, 60° seeker cone, target pursuit line, and live fuel/speed sidebar card.
 - **3-Echelon Staggered Strike Wings & Fuel Limits (B.14)**: 10-craft wings split into 4+3+3 echelons launching every 1.7s (102 frames) to maintain shield suppression; torpedoes capped at 8s fuel to prevent orbiting.
@@ -23,10 +25,9 @@ Status: Grand Scale Production Baseline Active (All 159 Vitest tests passing, 0 
 
 ---
 
-## 2. Priority Feature Backlog (Next Sprints)
+## 2. Priority Feature Backlog (Pending Activation)
 
-- **Fighter Heatmap Dispersal & Dynamic Re-echeloning (B.15)**: Wide arc flanking runs, spatial density heatmap repulsion to avoid grouping, wounded regrouping behind friendly screens.
-- **B.7: Expanded 8-Hull Ship Roster**: Missile Frigate, Heavy Dreadnought, Plasma Corvette, Shield Tender, Artillery Monitor, Drone Carrier, Torpedo Bomber, Rocket Interceptor.
+- **B.7: Expanded 8-Hull Ship Roster (ON HOLD)**: Missile Frigate, Heavy Dreadnought, Plasma Corvette, Shield Tender, Artillery Monitor, Drone Carrier, Torpedo Bomber, Rocket Interceptor. (Inactive until explicitly requested).
 
 
 

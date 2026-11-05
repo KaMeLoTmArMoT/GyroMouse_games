@@ -64,6 +64,45 @@ export function separation(ship: ShipState, ships: ShipState[]): Vector2 {
   return result;
 }
 
+export const FIGHTER_DISPERSAL_RADIUS = 200;
+
+export function fighterIngressHeading(bearing: number, wingIndex: number): number {
+  const flank = [0, 1, -1][wingIndex % 3];
+  return normalizeAngle(bearing + (flank * 40 * Math.PI) / 180);
+}
+
+// Sample wing density at echelon centers so every wingmate receives the same soft push.
+// Short-range hull separation still handles individual craft without breaking the echelon.
+export function fighterDispersal(ship: ShipState, ships: ShipState[]): Vector2 {
+  if (ship.hullClass !== "strike_craft") return [0, 0];
+  const key = (craft: ShipState) => `${craft.groupId}:${craft.wingIndex ?? "unassigned"}`;
+  const wings = new Map<string, { sum: Vector2; count: number }>();
+  for (const peer of ships) {
+    if (!peer.isAlive || peer.team !== ship.team || peer.hullClass !== "strike_craft") continue;
+    const wingKey = key(peer);
+    const wing = wings.get(wingKey) ?? { sum: [0, 0], count: 0 };
+    wing.sum = vecAdd(wing.sum, peer.pos);
+    wing.count++;
+    wings.set(wingKey, wing);
+  }
+  const ownKey = key(ship);
+  const own = wings.get(ownKey);
+  if (!own) return [0, 0];
+  const center = vecScale(own.sum, 1 / own.count);
+  let repulsion: Vector2 = [0, 0];
+  for (const [wingKey, wing] of wings) {
+    if (wingKey === ownKey) continue;
+    const delta = vecSub(center, vecScale(wing.sum, 1 / wing.count));
+    const distance = vecDistance([0, 0], delta);
+    if (distance >= FIGHTER_DISPERSAL_RADIUS) continue;
+    const away: Vector2 =
+      distance > 1e-6 ? vecScale(delta, 1 / distance) : [0, ownKey < wingKey ? -1 : 1];
+    const falloff = (1 - distance / FIGHTER_DISPERSAL_RADIUS) ** 2;
+    repulsion = vecAdd(repulsion, vecScale(away, ship.maxSpeed * 0.8 * falloff));
+  }
+  return limitVelocity(repulsion, ship.maxSpeed);
+}
+
 // Same world-space chirality for reciprocal opponents; never derived from heading error.
 export function orbitVelocity(ship: ShipState, target: ShipState, radius = 300): Vector2 {
   const distance = vecDistance(ship.pos, target.pos);

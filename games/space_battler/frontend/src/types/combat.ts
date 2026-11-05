@@ -9,6 +9,22 @@ export type FighterPhase = WingPhase | "intercept" | "recover";
 
 export type Vector2 = [number, number];
 
+export type CombatAudioCue =
+  | "torpedo_launch"
+  | "flak_burst"
+  | "laser_intercept"
+  | "fighter_egress"
+  | "warp_ingress";
+
+export interface CombatAudioEvent {
+  type: CombatAudioCue;
+  time: number;
+  pos: Vector2;
+  team: number;
+  sourceId: string;
+  targetId?: string;
+}
+
 export interface WeaponDefinition {
   weaponType: WeaponType;
   name: string;

@@ -1,7 +1,10 @@
 // Fixed-step combat simulation with independent mount acquisition and coordinated fleet maneuvers.
 
 import type {
+  CombatAudioCue,
+  CombatAudioEvent,
   CombatLogEvent,
+  FighterPhase,
   GroupOrder,
   ProjectileState,
   ShipState,
@@ -30,6 +33,8 @@ import {
   capitalIntent,
   dogfightTarget,
   escortVelocity,
+  fighterDispersal,
+  fighterIngressHeading,
   limitVelocity,
   safeRally,
   separation,
@@ -145,6 +150,9 @@ export class ClientCombatSimulation {
   ) => void;
   onShipDestroyed?: (ship: ShipState) => void;
   onVictory?: (winnerTeam: number) => void;
+  onAudioEvent?: (event: CombatAudioEvent) => void;
+  // Bounded pending cues remain available when a consumer attaches after fleet creation.
+  audioEvents: CombatAudioEvent[] = [];
   observer?: CombatObserver;
 
   stats: Record<number, TeamBattleStats> = {
@@ -210,6 +218,33 @@ export class ClientCombatSimulation {
 
   addShip(ship: ShipState): void {
     this.ships.push(ship);
+    if (ship.isAlive) this.emitAudioEvent("warp_ingress", ship.pos, ship.team, ship.id);
+  }
+
+  drainAudioEvents(): CombatAudioEvent[] {
+    const events = this.audioEvents;
+    this.audioEvents = [];
+    return events;
+  }
+
+  private emitAudioEvent(
+    type: CombatAudioCue,
+    pos: Vector2,
+    team: number,
+    sourceId: string,
+    targetId?: string,
+  ): void {
+    const event: CombatAudioEvent = {
+      type,
+      time: this.timeElapsed,
+      pos: [...pos],
+      team,
+      sourceId,
+      ...(targetId ? { targetId } : {}),
+    };
+    this.audioEvents.push(event);
+    if (this.audioEvents.length > 256) this.audioEvents.shift();
+    this.onAudioEvent?.(event);
   }
 
   setGroupOrder(order: GroupOrder): void {
@@ -280,6 +315,9 @@ export class ClientCombatSimulation {
     this.previousPositions.clear();
     this.accumulator = 0;
     this.timeElapsed = 0;
+    this.audioEvents = [];
+    for (const ship of this.ships)
+      this.emitAudioEvent("warp_ingress", ship.pos, ship.team, ship.id);
     this.winner = null;
     this.winnerDeclaredTime = null;
     this.combatLog = [];
@@ -577,6 +615,13 @@ export class ClientCombatSimulation {
     return ship.recoveryStarted !== undefined;
   }
 
+  private setFighterPhase(ship: ShipState, phase: FighterPhase): void {
+    const wasRetreating = ship.fighterPhase === "egress" || ship.fighterPhase === "recover";
+    if (!wasRetreating && (phase === "egress" || phase === "recover"))
+      this.emitAudioEvent("fighter_egress", ship.pos, ship.team, ship.id);
+    ship.fighterPhase = phase;
+  }
+
   private fighterRallySlot(wing: FighterWing, ship: ShipState): Vector2 {
     const slot = ship.wingSlot ?? 0;
     return vecAdd(wing.rally, rotatePoint([-Math.abs(slot) * 30, slot * 50], wing.heading));
@@ -649,10 +694,7 @@ export class ClientCombatSimulation {
         );
         const approach = vecSub(target.pos, anchor?.pos ?? leader.pos);
         // Freeze each corridor's bearing for the pass, even while individual craft jink.
-        wing.heading =
-          Math.atan2(approach[1], approach[0]) +
-          (groupIndex % 2 === 0 ? 1 : -1) *
-            Math.min(0.42, 0.15 + Math.floor(groupIndex / 2) * 0.18);
+        wing.heading = fighterIngressHeading(Math.atan2(approach[1], approach[0]), wing.index);
       }
       if (!target) continue;
       wing.rally = safeRally(target, wing.heading, members, aliveShips, FIGHTER_STANDOFF);
@@ -687,7 +729,7 @@ export class ClientCombatSimulation {
               (distance <= target.size * 1.4 + 75 ||
                 this.timeElapsed - (wing.engagementStarted ?? this.timeElapsed) >= 6))
           )
-            ship.fighterPhase = "egress";
+            this.setFighterPhase(ship, "egress");
         }
       }
       // Keep later passes staggered even when independent echelons rejoin together.
@@ -724,18 +766,23 @@ export class ClientCombatSimulation {
         wing.assembledAt = undefined;
         wing.engagementStarted = undefined;
         if (phase === "attack")
-          for (const ship of members)
-            ship.fighterPhase =
-              target && vecDistance(ship.pos, target.pos) < target.size + 30 ? "egress" : "attack";
+          for (const ship of healthy)
+            this.setFighterPhase(
+              ship,
+              vecDistance(ship.pos, target.pos) < target.size + 30 ? "egress" : "attack",
+            );
       }
       for (const ship of members)
-        ship.fighterPhase = this.fighterNeedsCover(ship)
-          ? "recover"
-          : ship.dogfightTargetId
-            ? "intercept"
-            : wing.phase === "attack" && ship.fighterPhase === "egress"
-              ? "egress"
-              : wing.phase;
+        this.setFighterPhase(
+          ship,
+          this.fighterNeedsCover(ship)
+            ? "recover"
+            : ship.dogfightTargetId
+              ? "intercept"
+              : wing.phase === "attack" && ship.fighterPhase === "egress"
+                ? "egress"
+                : wing.phase,
+        );
     }
   }
 
@@ -752,8 +799,10 @@ export class ClientCombatSimulation {
         s.isAlive &&
         (s.hullClass === "battleship" || s.hullClass === "cruiser" || s.hullClass === "corvette"),
     );
+    const criticallyWounded = ship.hullCurrent < ship.hullMax * 0.3;
 
     if (
+      criticallyWounded ||
       ship.safeHavenTimer === undefined ||
       ship.safeHavenTimer <= 0 ||
       !friendlyAnchors.some((a) => a.id === ship.safeHavenId)
@@ -768,7 +817,9 @@ export class ClientCombatSimulation {
           ).length;
           const shieldRatio = anchor.shieldMax > 0 ? anchor.shieldCurrent / anchor.shieldMax : 0;
           const distToAnchor = vecDistance(ship.pos, anchor.pos);
-          const score = shieldRatio * 80 - distToAnchor * 0.15 - occupancy * 50;
+          const score = criticallyWounded
+            ? -distToAnchor
+            : shieldRatio * 80 - distToAnchor * 0.15 - occupancy * 50;
           if (score > bestScore) {
             bestScore = score;
             bestAnchor = anchor;
@@ -829,8 +880,14 @@ export class ClientCombatSimulation {
 
       case "attack": {
         const standoff = target.size * 1.4 + 95;
-        intentTarget =
-          vecDistance(ship.pos, target.pos) <= 600
+        const forward = rotatePoint([1, 0], wing.heading);
+        const toRally = vecSub(rallySlot, ship.pos);
+        const acquiringCorridor =
+          vecDot(toRally, forward) > WING_RALLY_TOLERANCE &&
+          Math.abs(vecDot(toRally, [-forward[1], forward[0]])) > WING_RALLY_TOLERANCE;
+        intentTarget = acquiringCorridor
+          ? rallySlot
+          : vecDistance(ship.pos, target.pos) <= 600
             ? target.pos
             : vecAdd(target.pos, rotatePoint([-standoff, slot * 35], wing.heading));
         break;
@@ -848,7 +905,10 @@ export class ClientCombatSimulation {
 
     const toIntent = vecSub(intentTarget, ship.pos);
     const laneAvoidance = spinalEscape(ship, aliveShips, this.projectiles, this.timeElapsed);
-    const avoid = vecAdd(laneAvoidance, separation(ship, aliveShips));
+    const avoid = vecAdd(
+      laneAvoidance,
+      vecAdd(separation(ship, aliveShips), fighterDispersal(ship, aliveShips)),
+    );
     const intentDir = vecNormalize(vecAdd(vecScale(vecNormalize(toIntent), ship.maxSpeed), avoid));
 
     // Score reachable trajectories rather than hypothetical instant maximum-speed turns.
@@ -1278,7 +1338,7 @@ export class ClientCombatSimulation {
       );
       if (targetShip?.id === wing?.targetId && targetShip?.hullClass !== "strike_craft")
         ship.lastMissionShotTime = this.timeElapsed;
-      ship.fighterPhase = "egress";
+      this.setFighterPhase(ship, "egress");
     }
 
     // Other zero-speed weapons retain their existing instantaneous hitscan behavior.
@@ -1320,6 +1380,7 @@ export class ClientCombatSimulation {
           laserPD ? 110 * FIXED_STEP : turret.weapon.damage,
           ship.team,
           laserPD ? "laser PD" : "beam battery",
+          ship,
         );
         this.onBeamFire?.(
           spawnPos,
@@ -1358,6 +1419,14 @@ export class ClientCombatSimulation {
       isFlakBurst: Boolean(turret.weapon.flak),
     });
     this.onProjectileFire?.(turret.weapon.weaponType, [...spawnPos]);
+    if (turret.weapon.weaponType === "missile")
+      this.emitAudioEvent(
+        "torpedo_launch",
+        spawnPos,
+        ship.team,
+        ship.id,
+        turret.currentTargetId ?? undefined,
+      );
   }
 
   private beamVisual(channel: BeamChannel): ActiveBeam {
@@ -1403,7 +1472,7 @@ export class ClientCombatSimulation {
         );
       } else {
         const missile = target as ProjectileState;
-        this.damageProjectile(missile, damage, ship.team, "beam battery");
+        this.damageProjectile(missile, damage, ship.team, "beam battery", ship);
       }
     }
     if (channel.frames >= BEAM_TICK_FRAMES * BEAM_TICKS) this.finishBeam(channel.turret);
@@ -1567,6 +1636,7 @@ export class ClientCombatSimulation {
     }
 
     if (this.onFlakBurst) this.onFlakBurst([...flak.pos], profile.blastRadius, flak.ownerTeam);
+    this.emitAudioEvent("flak_burst", flak.pos, flak.ownerTeam, flak.ownerId);
   }
 
   private damageProjectile(
@@ -1574,6 +1644,7 @@ export class ClientCombatSimulation {
     damage: number,
     team: number,
     source: string,
+    laserSource?: ShipState,
   ): void {
     if (projectile.hp <= 0 || projectile.lifetime <= 0) return;
     projectile.hp = Math.max(0, projectile.hp - damage);
@@ -1581,6 +1652,8 @@ export class ClientCombatSimulation {
     projectile.lifetime = 0;
     this.stats[team].missilesIntercepted++;
     this.addCombatLog(`Hostile torpedo intercepted by ${source}!`, team, "intercept");
+    if (laserSource)
+      this.emitAudioEvent("laser_intercept", projectile.pos, team, laserSource.id, projectile.id);
   }
 
   private applyDamage(
