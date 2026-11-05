@@ -4,7 +4,7 @@ import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { capitalIntent, spinalEscape } from "../src/engine/flightControl";
 import { normalizeAngle, vecDistance, vecDot } from "../src/engine/math2d";
 import { ClientCombatSimulation } from "../src/engine/simulation";
-import type { EngagementStance, HullClass } from "../src/types/combat";
+import type { EngagementStance, HullClass, Vector2 } from "../src/types/combat";
 
 function ship(hullClass: HullClass, team = 0) {
   const result = buildFleetFromSlots([{ id: "fixture", hullClass, groupId: 1 }], team, 0, 0)[0];
@@ -141,5 +141,107 @@ describe("capital standoff and cruiser drift", () => {
         normalizeAngle(Math.atan2(cruiser.velocity[1], cruiser.velocity[0]) - cruiser.heading),
       ),
     ).toBeLessThan(0.1);
+  });
+});
+
+describe("missile frigate hit-and-run", () => {
+  const order = { groupId: 1, priority: "nearest", stance: "optimal_range" } as const;
+
+  it("approaches nose-first and keeps moving across the launch envelope", () => {
+    const frigate = ship("missile_frigate");
+    const target = ship("battleship", 1);
+    target.pos = [1600, 0];
+    const approach = capitalIntent(frigate, target, [frigate, target], order);
+    expect(approach.heading).toBeCloseTo(0);
+    expect(approach.velocity[0]).toBeGreaterThan(90);
+    target.pos = [1200, 0];
+    const delivery = capitalIntent(frigate, target, [frigate, target], order);
+    expect(delivery.heading).toBeCloseTo(0);
+    expect(Math.hypot(...delivery.velocity)).toBeGreaterThanOrEqual(30);
+    expect(Math.abs(delivery.velocity[1])).toBeGreaterThanOrEqual(30);
+  });
+
+  it("finishes the staggered salvo, burns away at 150 degrees, and retains retreat until reload is near", () => {
+    const frigate = ship("missile_frigate");
+    const target = ship("battleship", 1);
+    target.pos = [1200, 0];
+    for (const tube of frigate.turrets.slice(0, 3)) {
+      tube.lastFiredTime = 1;
+      tube.cooldownTimer = 4.8;
+    }
+    frigate.turrets[3].cooldownTimer = 0;
+    expect(capitalIntent(frigate, target, [frigate, target], order).heading).toBeCloseTo(0);
+    frigate.turrets[3].lastFiredTime = 1.6;
+    frigate.turrets[3].cooldownTimer = 4.8;
+    const retreat = capitalIntent(frigate, target, [frigate, target], order);
+    expect(Math.abs(retreat.heading)).toBeCloseTo((150 * Math.PI) / 180);
+    expect(Math.hypot(...retreat.velocity)).toBeCloseTo(100);
+    expect(retreat.velocity[0]).toBeLessThan(-80);
+    expect(Math.abs(retreat.velocity[1])).toBeGreaterThan(45);
+    for (const tube of frigate.turrets) tube.cooldownTimer = 2;
+    expect(capitalIntent(frigate, target, [frigate, target], order).heading).toBeCloseTo(
+      retreat.heading,
+    );
+    for (const tube of frigate.turrets) tube.cooldownTimer = 0.9;
+    expect(capitalIntent(frigate, target, [frigate, target], order).heading).toBeCloseTo(0);
+    expect(capitalIntent(frigate, target, [frigate, target], order).heading).toBeCloseTo(0);
+    frigate.turrets[0].lastFiredTime = 6;
+    frigate.turrets[0].cooldownTimer = 4.8;
+    expect(capitalIntent(frigate, target, [frigate, target], order).heading).toBeCloseTo(0);
+    for (const tube of frigate.turrets.slice(1)) {
+      tube.lastFiredTime = 6.6;
+      tube.cooldownTimer = 4.8;
+    }
+    expect(capitalIntent(frigate, target, [frigate, target], order).heading).toBeCloseTo(
+      retreat.heading,
+    );
+  });
+
+  it("breaks off when already reloading, including on target changes", () => {
+    const frigate = ship("missile_frigate");
+    const target = ship("battleship", 1);
+    target.pos = [1200, 0];
+    for (const tube of frigate.turrets) tube.cooldownTimer = 3;
+    const retreat = capitalIntent(frigate, target, [frigate, target], order);
+    for (const tube of frigate.turrets) tube.cooldownTimer = 1.5;
+    target.id = "replacement";
+    expect(capitalIntent(frigate, target, [frigate, target], order).heading).toBeCloseTo(
+      retreat.heading,
+    );
+  });
+
+  it("delivers repeated four-tube salvoes while opening distance and relocating", () => {
+    const frigate = ship("missile_frigate");
+    const target = ship("battleship", 1);
+    target.pos = [1200, 0];
+    target.maxSpeed = target.turnRate = 0;
+    target.turrets = [];
+    target.shieldCurrent = target.shieldMax = 100000;
+    const sim = new ClientCombatSimulation();
+    sim.addShip(frigate);
+    sim.addShip(target);
+    const shots = new Map<string, number>();
+    sim.onProjectileFire = () => {
+      const mount = frigate.turrets.find((tube) => tube.lastFiredTime === sim.timeElapsed);
+      if (mount) shots.set(mount.id, (shots.get(mount.id) ?? 0) + 1);
+    };
+    let retreatStart: Vector2 | undefined;
+    let openedDistance = 0;
+    let fastestRetreat = 0;
+    for (let tick = 0; tick < 1200; tick++) {
+      sim.update(1 / 60);
+      if (frigate.capitalManeuver !== "broadside_hold") continue;
+      retreatStart ??= [...frigate.pos];
+      openedDistance = Math.max(
+        openedDistance,
+        vecDistance(frigate.pos, target.pos) - vecDistance(retreatStart, target.pos),
+      );
+      fastestRetreat = Math.max(fastestRetreat, Math.hypot(...frigate.velocity));
+    }
+    expect(shots.size).toBe(4);
+    expect([...shots.values()].every((count) => count >= 2)).toBe(true);
+    expect(openedDistance).toBeGreaterThan(100);
+    expect(fastestRetreat).toBeGreaterThan(99);
+    expect(Math.abs(frigate.pos[1])).toBeGreaterThan(100);
   });
 });

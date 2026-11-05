@@ -7,6 +7,7 @@ import { FLEET_PRESETS } from "../engine/fleetPresets";
 import { SCENARIOS } from "../engine/scenarios";
 import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { HullClass } from "../types/combat";
+import { DoctrineDialog } from "./DoctrineDialog";
 import { GroupPreview, ShipPreview, useDelayedPreview } from "./FleetPreviews";
 
 interface FleetBuilderProps {
@@ -21,6 +22,7 @@ interface FleetBuilderProps {
 }
 
 interface HullWeaponSpec {
+  mountId: string;
   name: string;
   type: string;
   damage: number;
@@ -466,6 +468,7 @@ export function FleetBuilder({
 }: FleetBuilderProps) {
   const [activeTeam, setActiveTeam] = useState<"blue" | "red">("blue");
   const [selectedGroup, setSelectedGroup] = useState<number>(1);
+  const [doctrineHull, setDoctrineHull] = useState<HullClass | null>(null);
   const shipPreview = useDelayedPreview<HullClass>(250);
   const groupPreview = useDelayedPreview<number>(200);
   const slots = activeTeam === "blue" ? blueSlots : redSlots;
@@ -698,6 +701,14 @@ export function FleetBuilder({
                   </div>
 
                   <p className="text-xs text-zinc-300 mt-1.5 select-text">{spec.desc}</p>
+                  <button
+                    type="button"
+                    onClick={() => setDoctrineHull(hull)}
+                    aria-label={`View doctrine and states for ${spec.name}`}
+                    className="mt-1.5 rounded border border-cyan-800/70 px-2 py-1 text-[11px] font-medium text-cyan-400 hover:bg-cyan-950 hover:text-cyan-200 cursor-pointer"
+                  >
+                    Doctrine &amp; States
+                  </button>
 
                   {/* Compact Stats Row */}
                   <div className="grid grid-cols-4 gap-1 mt-1.5 pt-1.5 border-t border-zinc-800/80 text-[11px] font-mono">
@@ -1027,6 +1038,7 @@ export function FleetBuilder({
           <Swords className="w-4 h-4" /> Engage Fleet Simulator
         </button>
       </div>
+      {doctrineHull && <DoctrineDialog hull={doctrineHull} onClose={() => setDoctrineHull(null)} />}
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
-import { capitalIntent } from "../src/engine/flightControl";
 import { FLEET_PRESETS } from "../src/engine/fleetPresets";
+import { capitalIntent } from "../src/engine/flightControl";
+import { normalizeAngle } from "../src/engine/math2d";
 import { SCENARIOS } from "../src/engine/scenarios";
 import { HULL_PROFILES, projectileMaxHp } from "../src/engine/shipProfiles";
 import { ClientCombatSimulation } from "../src/engine/simulation";
@@ -32,7 +33,9 @@ describe("guided ordnance", () => {
     sim.projectiles.push(projectile);
     sim.update(1 / 60);
     expect(projectile.targetId).toBe(closest.id);
-    expect(Math.atan2(projectile.velocity[1], projectile.velocity[0])).toBeCloseTo((heavy ? 0.8 : 2.2) / 60);
+    expect(Math.atan2(projectile.velocity[1], projectile.velocity[0])).toBeCloseTo(
+      (heavy ? 0.8 : 2.5) / 60,
+    );
     expect(Math.hypot(...projectile.velocity)).toBeCloseTo(360);
   });
 
@@ -45,14 +48,32 @@ describe("guided ordnance", () => {
     const sim = new ClientCombatSimulation();
     sim.addShip(owner);
     sim.addShip(target);
+    const launchAngles: number[] = [];
+    sim.onProjectileFire = () => {
+      const p = sim.projectiles[sim.projectiles.length - 1];
+      const bearing = Math.atan2(target.pos[1] - p.pos[1], target.pos[0] - p.pos[0]);
+      launchAngles.push(normalizeAngle(Math.atan2(p.velocity[1], p.velocity[0]) - bearing));
+    };
     sim.update(1 / 60);
     expect(sim.projectiles).toHaveLength(4);
+    for (const [index, degrees] of [5, -5, 30, -30].entries())
+      expect(launchAngles[index]).toBeCloseTo((degrees * Math.PI) / 180);
     const angles = sim.projectiles.map((p) => Math.atan2(p.velocity[1], p.velocity[0]));
-    expect(Math.abs(angles[0])).toBeLessThan(0.02);
-    expect(Math.abs(angles[1])).toBeLessThan(0.02);
+    expect(angles[0]).toBeGreaterThan(0);
+    expect(angles[1]).toBeLessThan(0);
     expect(angles[2]).toBeGreaterThan(0.35);
     expect(angles[3]).toBeLessThan(-0.35);
     expect(sim.projectiles.every((p) => p.maxHp === 18)).toBe(true);
+    const flanking = sim.projectiles.slice(2);
+    for (let tick = 0; tick < 15; tick++) sim.update(1 / 60);
+    expect(flanking[0].pos[1]).toBeGreaterThan(owner.turrets[2].offset[1]);
+    expect(flanking[1].pos[1]).toBeLessThan(owner.turrets[3].offset[1]);
+    expect(Math.abs(Math.atan2(flanking[0].velocity[1], flanking[0].velocity[0]))).toBeLessThan(
+      0.1,
+    );
+    expect(Math.abs(Math.atan2(flanking[1].velocity[1], flanking[1].velocity[0]))).toBeLessThan(
+      0.1,
+    );
   });
 });
 

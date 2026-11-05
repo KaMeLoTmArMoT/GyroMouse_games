@@ -1407,7 +1407,7 @@ export class ClientCombatSimulation {
     const tubeIndex = ship.turrets.indexOf(turret);
     const launchSpread =
       ship.hullClass === "missile_frigate" && turret.weapon.weaponType === "missile"
-        ? (([0, 0, 25, -25][tubeIndex] ?? 0) * Math.PI) / 180
+        ? (([5, -5, 30, -30][tubeIndex] ?? 0) * Math.PI) / 180
         : 0;
     const velocity = vecScale(rotatePoint(toTarget, launchSpread), turret.weapon.projectileSpeed);
     const lifetime = projectileLifetime(turret.weapon);
@@ -1527,7 +1527,7 @@ export class ClientCombatSimulation {
               const desiredAngle = Math.atan2(toTarget[1], toTarget[0]);
               const angleDiff = normalizeAngle(desiredAngle - currentAngle);
               if (!isHeavyTorpedo(p) || Math.abs(angleDiff) < Math.PI / 3) {
-                const maxTurn = (isHeavyTorpedo(p) ? 0.8 : 2.2) * step;
+                const maxTurn = (isHeavyTorpedo(p) ? 0.8 : 2.5) * step;
                 const turn = clamp(angleDiff, -maxTurn, maxTurn);
                 const newAngle = currentAngle + turn;
                 p.velocity = [Math.cos(newAngle) * curSpeed, Math.sin(newAngle) * curSpeed];

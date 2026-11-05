@@ -285,7 +285,7 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
           projectileSpeed: 360,
           fuelDuration: 5,
           projectileHp: 18,
-          trackingSpeed: 2.2,
+          trackingSpeed: 2.5,
           shieldMultiplier: 2,
           armorMultiplier: 0.65,
           hullMultiplier: 0.8,

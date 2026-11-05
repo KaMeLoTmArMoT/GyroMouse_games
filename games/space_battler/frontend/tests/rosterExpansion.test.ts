@@ -62,15 +62,17 @@ describe("activated expansion hulls", () => {
   });
 
   it.each(["optimal_range", "max_range", "brawl"] as const)(
-    "keeps frigates at support standoff under %s doctrine",
+    "keeps frigates moving at missile launch range under %s doctrine",
     (stance) => {
       const frigate = ship("missile_frigate");
       const target = ship("battleship", 1);
       const order = { groupId: 1, priority: "capitals" as const, stance };
       target.pos = [900, 0];
       expect(capitalIntent(frigate, target, [frigate, target], order).velocity[0]).toBeLessThan(0);
-      target.pos = [1150, 0];
-      expect(capitalIntent(frigate, target, [frigate, target], order).velocity[0]).toBeCloseTo(0);
+      target.pos = [1200, 0];
+      const delivery = capitalIntent(frigate, target, [frigate, target], order);
+      expect(delivery.velocity[0]).toBeCloseTo(0);
+      expect(Math.abs(delivery.velocity[1])).toBeGreaterThan(0);
       target.pos = [1400, 0];
       expect(capitalIntent(frigate, target, [frigate, target], order).velocity[0]).toBeGreaterThan(
         0,

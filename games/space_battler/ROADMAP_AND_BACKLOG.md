@@ -1,21 +1,20 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 211 Vitest tests passing, 0 Drift alerts)
+Status: Grand Scale Production Baseline Active (All 215 Vitest tests passing, 0 Drift alerts)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
-- **Missile Swarms & In-Flight Target Retargeting**:
-  - `missile_frigate` fires light missiles in fanned spreads (0°, 0°, +25°, -25°) with agile 2.2 rad/s terminal homing.
-  - In-flight ordnance whose target is destroyed scans a 60° forward seeker cone to immediately reacquire the nearest living hostile.
-- **Flight Orientations & Stand-off Kiting (Doctrine Fix)**:
-  - Capitals and dreadnoughts approach strictly bow-first until crossing the 1050u threshold, then orient broadsides relative to the enemy line.
-  - Missile frigates maintain standoff at 1150u and reverse thrust when threatened, avoiding forward suicidal ramming.
-- **Complete 36-Matchup Scenario Matrix & Curated Presets**:
-  - Full 36 3v3 ordered matchup matrix (`dn`, `bb`, `cr`, `mf`, `cv`, `sc`) with golden baselines across 144 battles.
-  - Added "Ironclad Linebreaker" and "Missile Saturation Screen" adversary presets.
+- **Ship Doctrine Cards & Interactive State Machine Overlays (UI)**:
+  - Canonical structured data in `src/engine/shipDoctrines.ts` detailing state flows, operational parameters, and transition triggers for all 6 hulls.
+  - Interactive `[Doctrine & States]` badge on each ship card in Fleet Builder opening a sleek modal diagram ([`DoctrineDialog.tsx`](file:///g:/programming/GyroMouse_games/games/space_battler/frontend/src/components/DoctrineDialog.tsx)).
+- **Missile Frigate "Fire-and-Run" Skirmish Doctrine**:
+  - Frigates approach to 1200u for coordinated salvo delivery, then break off at 150° and full 100u/s speed to relocate/kite along an arc while reloading.
+  - 4 missile tubes fire with exact spatial fan-out offsets (+5°, -5°, +30°, -30°) and agile 2.5 rad/s homing.
+- **In-Flight Ordnance Retargeting**:
+  - Missiles/torpedoes whose primary target dies scan a 60° forward seeker cone to immediately reacquire the nearest living hostile.
 - **Compact Fleet Builder UI (Single-Screen Zero-Scroll)**:
   - Removed clutter text, compressed card margins and button padding so all 6 ships fit without page scrolling.
   - Hides the adversary dropdown when customizing the Opposing Red Force.

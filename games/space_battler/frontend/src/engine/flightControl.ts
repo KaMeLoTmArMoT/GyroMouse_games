@@ -348,6 +348,37 @@ export function capitalIntent(
       aimBearing = Math.atan2(aim[1], aim[0]);
     }
   }
+  if (frigate) {
+    const tubes = ship.turrets.filter((t) => t.weapon.weaponType === "missile");
+    const reload = tubes.length ? Math.min(...tubes.map((t) => t.cooldownTimer)) : 0;
+    const lastShot = Math.max(...tubes.map((t) => t.lastFiredTime ?? -Infinity));
+    const salvoComplete =
+      reload > 0 &&
+      tubes.every((t) => (t.lastFiredTime ?? -Infinity) > (ship.lastManeuverShot ?? -Infinity));
+    ship.broadsideSide ??= slot % 2 === 0 ? 1 : -1;
+    ship.maneuverTargetId = target.id;
+    if (salvoComplete || reload > 2.5) {
+      ship.capitalManeuver = "broadside_hold";
+      ship.lastManeuverShot = lastShot;
+    }
+    if (ship.capitalManeuver === "broadside_hold" && reload < 1)
+      ship.capitalManeuver = "bow_reacquire";
+    ship.capitalManeuver ??= "bow_acquire";
+    const side = ship.broadsideSide;
+    const retreat = ship.capitalManeuver === "broadside_hold";
+    const heading = normalizeAngle(retreat ? bearing + side * ((150 * Math.PI) / 180) : aimBearing);
+    // Burn obliquely during reload; keep drifting laterally even while delivering a salvo.
+    const velocity = retreat
+      ? vecScale([Math.cos(heading), Math.sin(heading)], ship.maxSpeed)
+      : vecAdd(
+          vecScale(n, clamp((distance - 1200) * 0.7, -ship.maxSpeed * 0.5, ship.maxSpeed)),
+          vecScale([-n[1], n[0]], side * ship.maxSpeed * 0.3),
+        );
+    return {
+      heading,
+      velocity: limitVelocity(vecAdd(velocity, separation(ship, ships)), ship.maxSpeed),
+    };
+  }
   const newShot = gun?.lastFiredTime !== undefined && gun.lastFiredTime !== ship.lastManeuverShot;
   if (ship.maneuverTargetId !== target.id) {
     ship.maneuverTargetId = target.id;
