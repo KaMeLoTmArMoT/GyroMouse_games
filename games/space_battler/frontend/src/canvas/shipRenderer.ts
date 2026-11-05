@@ -6,18 +6,22 @@ import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./eff
 
 /** Draw the same hull and hardpoints as the battlefield, without combat HUD overlays. */
 export function renderShipPreview(ctx: CanvasRenderingContext2D, ship: ShipState, time = 0): void {
+  const isBlue = ship.team === 0;
   // Offset the lower hull in screen space so the deck keeps a visible armored edge while rotating.
   ctx.save();
   ctx.translate(0, ship.size * 0.12);
   ctx.rotate(ship.heading);
-  drawTerranHull(ctx, ship, "#164e63", "#020617", "#082f49");
+  if (isBlue) drawTerranHull(ctx, ship, "#164e63", "#020617", "#082f49");
+  else drawAlienHull(ctx, ship, "#7f1d1d", "#260606", "#991b1b");
   ctx.restore();
   ctx.save();
   ctx.rotate(ship.heading);
   drawEngineGlow(ctx, ship);
-  drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
+  if (isBlue) drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
+  else drawAlienHull(ctx, ship, "#f87171", "#450a0a", "#dc2626", time);
   ctx.restore();
-  for (const turret of ship.turrets) renderTurret(ctx, ship, turret, "#38bdf8");
+  for (const turret of ship.turrets)
+    renderTurret(ctx, ship, turret, isBlue ? "#38bdf8" : "#f87171");
 }
 
 export function renderShip(
@@ -393,9 +397,10 @@ function drawAlienHull(
   primaryColor: string,
   hullDarkColor: string,
   accentColor: string,
+  previewTime?: number,
 ): void {
   if (ship.hullClass === "dreadnought" || ship.hullClass === "missile_frigate") {
-    drawNewHull(ctx, ship, true);
+    drawNewHull(ctx, ship, true, previewTime);
     return;
   }
   // Lateral coordinates calibrated against Terran filled areas by backend/tests/test_hull_geometry.py.
@@ -1317,7 +1322,7 @@ function renderTurret(
         ctx.moveTo(0, y);
         ctx.lineTo(length, y);
         ctx.stroke();
-        ctx.strokeStyle = "#38bdf8";
+        ctx.strokeStyle = primaryColor;
         ctx.lineWidth = 0.7;
         for (const fraction of [0.4, 0.6, 0.8]) {
           ctx.beginPath();

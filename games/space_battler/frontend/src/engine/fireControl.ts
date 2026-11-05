@@ -1,4 +1,10 @@
-import type { ProjectileState, ShipState, TurretMountState, Vector2 } from "../types/combat";
+import type {
+  ProjectileState,
+  ShipState,
+  TurretMountState,
+  Vector2,
+  WeaponDefinition,
+} from "../types/combat";
 import {
   clamp,
   normalizeAngle,
@@ -9,7 +15,12 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { isHeavyTorpedo, pointDefenseMode, projectileLifetime } from "./shipProfiles";
+import {
+  isHeavyTorpedo,
+  pointDefenseMode,
+  projectileLifetime,
+  projectileMaxHp,
+} from "./shipProfiles";
 
 export function mountPosition(ship: ShipState, turret: TurretMountState): Vector2 {
   return vecAdd(ship.pos, rotatePoint(turret.offset, ship.heading));
@@ -119,12 +130,35 @@ export function squadFocusPriority(assignments: number): number {
   return assignments < 3 ? assignments * 0.6 : 1.2 - (assignments - 2) * 4;
 }
 
+export interface MissileLock {
+  targetId: string;
+  weapon: WeaponDefinition;
+}
+
+function missileCapacity(target: ShipState): number {
+  switch (target.hullClass) {
+    case "strike_craft":
+      return 2;
+    case "corvette":
+      return 6;
+    case "cruiser":
+      return 14;
+    default:
+      return Infinity;
+  }
+}
+
+function missileWeight(target: ShipState, heavy: boolean): number {
+  return heavy ? (target.hullClass === "strike_craft" ? 2 : 3) : 1;
+}
+
 export function acquireMountTarget(
   ship: ShipState,
   turret: TurretMountState,
   primary: ShipState | null,
   ships: ShipState[],
   projectiles: ProjectileState[],
+  missileLocks: MissileLock[] = [],
 ): FireSolution | null {
   const muzzle = mountPosition(ship, turret);
   const weapon = turret.weapon;
@@ -177,6 +211,25 @@ export function acquireMountTarget(
 
   for (const enemy of ships) {
     if (!enemy.isAlive || enemy.team === ship.team) continue;
+    if (weapon.weaponType === "missile") {
+      let incoming = 0;
+      for (const missile of projectiles) {
+        if (
+          missile.weaponType === "missile" &&
+          missile.targetId === enemy.id &&
+          missile.ownerTeam !== enemy.team &&
+          missile.hp > 0 &&
+          missile.lifetime > 0
+        )
+          incoming += missileWeight(enemy, isHeavyTorpedo(missile));
+      }
+      for (const lock of missileLocks) {
+        if (lock.targetId === enemy.id)
+          incoming += missileWeight(enemy, projectileMaxHp(lock.weapon) >= 120);
+      }
+      if (incoming + missileWeight(enemy, projectileMaxHp(weapon) >= 120) > missileCapacity(enemy))
+        continue;
+    }
     if (
       ship.hullClass === "strike_craft" &&
       enemy.hullClass !== "strike_craft" &&

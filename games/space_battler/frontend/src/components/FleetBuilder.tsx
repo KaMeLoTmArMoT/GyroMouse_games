@@ -114,6 +114,17 @@ export const GROUP_THEMES: Record<
   },
 };
 
+const RED_THEME = {
+  border: "border-red-900/40",
+  bg: "bg-red-950/50",
+  text: "text-red-400",
+  badgeBg: "bg-red-950/50",
+  badgeText: "text-red-300",
+  activeBg: "bg-red-900/70",
+  activeText: "text-rose-300",
+  glow: "shadow-red-950/40",
+};
+
 const HULL_SIZE_ORDER: Record<HullClass, number> = {
   dreadnought: 0,
   battleship: 1,
@@ -143,11 +154,106 @@ export const HULL_SPECS = Object.fromEntries(
 
 export function ShipSilhouette({
   hullClass,
+  team = 0,
   className = "w-6 h-6",
 }: {
   hullClass: HullClass;
+  team?: 0 | 1;
   className?: string;
 }) {
+  if (team === 1) {
+    return (
+      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
+        {hullClass === "strike_craft" && (
+          <>
+            <path
+              d="M24 6 C20 14 14 16 5 7 C7 19 10 31 18 35 C21 37 27 37 30 35 C38 31 41 19 43 7 C34 16 28 14 24 6 Z"
+              fill="currentColor"
+              fillOpacity="0.18"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M8 14 C13 24 17 29 24 30 C31 29 35 24 40 14 M20 33 Q24 35 28 33"
+              strokeWidth="1"
+            />
+          </>
+        )}
+        {hullClass === "corvette" && (
+          <>
+            <path
+              d="M24 4 C19 12 9 15 4 30 C11 27 16 29 20 34 L24 44 L28 34 C32 29 37 27 44 30 C39 15 29 12 24 4 Z"
+              fill="currentColor"
+              fillOpacity="0.18"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M24 10 C20 18 20 26 24 32 C28 26 28 18 24 10 Z M8 27 Q16 21 20 22 M40 27 Q32 21 28 22"
+              strokeWidth="1"
+            />
+            <circle cx="24" cy="21" r="2" fill="currentColor" fillOpacity="0.35" />
+          </>
+        )}
+        {hullClass === "cruiser" && (
+          <>
+            <path
+              d="M14 4 C17 11 20 14 24 16 C28 14 31 11 34 4 C35 14 31 20 29 25 C27 30 31 34 38 42 C30 40 27 38 24 41 C21 38 18 40 10 42 C17 34 21 30 19 25 C17 20 13 14 14 4 Z"
+              fill="currentColor"
+              fillOpacity="0.18"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M18 14 Q24 21 30 14 M24 19 C20 26 21 32 24 37 C27 32 28 26 24 19 Z M12 40 Q19 35 21 32 M36 40 Q29 35 27 32"
+              strokeWidth="1"
+            />
+          </>
+        )}
+        {hullClass === "battleship" && (
+          <>
+            <path
+              d="M24 4 C18 12 10 14 3 9 C5 21 8 35 16 40 C20 43 28 43 32 40 C40 35 43 21 45 9 C38 14 30 12 24 4 Z"
+              fill="currentColor"
+              fillOpacity="0.18"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M15 25 Q24 18 33 25 Q24 30 15 25 Z M8 15 Q14 25 18 30 M40 15 Q34 25 30 30 M10 23 Q14 32 21 37 M38 23 Q34 32 27 37"
+              strokeWidth="1"
+            />
+            <path d="M20 25 Q24 22 28 25 Q24 28 20 25 Z" fill="currentColor" fillOpacity="0.45" />
+          </>
+        )}
+        {hullClass === "dreadnought" && (
+          <>
+            <path
+              d="M12 3 C13 12 17 15 19 17 C13 18 8 24 8 31 C8 38 14 43 24 45 C34 43 40 38 40 31 C40 24 35 18 29 17 C31 15 35 12 36 3 C31 9 27 10 24 13 C21 10 17 9 12 3 Z"
+              fill="currentColor"
+              fillOpacity="0.18"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M24 16 C18 18 14 24 14 31 C14 37 18 40 24 42 C30 40 34 37 34 31 C34 24 30 18 24 16 Z M10 29 Q14 24 18 24 M38 29 Q34 24 30 24 M15 34 Q24 30 33 34 M19 21 Q24 24 29 21"
+              strokeWidth="1"
+            />
+            <circle cx="24" cy="28" r="2.5" fill="currentColor" fillOpacity="0.35" />
+          </>
+        )}
+        {hullClass === "missile_frigate" && (
+          <>
+            <path
+              d="M24 3 C20 10 19 17 19 25 C18 32 15 37 11 43 C17 41 20 39 24 37 C28 39 31 41 37 43 C33 37 30 32 29 25 C29 17 28 10 24 3 Z"
+              fill="currentColor"
+              fillOpacity="0.18"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M18 18 C11 19 10 25 13 32 C16 32 18 29 19 26 M30 18 C37 19 38 25 35 32 C32 32 30 29 29 26 M24 9 C21 18 21 27 24 34 C27 27 27 18 24 9 Z M14 23 Q16 25 15 29 M34 23 Q32 25 33 29"
+              strokeWidth="1.2"
+            />
+          </>
+        )}
+      </svg>
+    );
+  }
   if (hullClass === "dreadnought") {
     return (
       <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
@@ -343,6 +449,7 @@ export interface RosterCountInputProps {
   count: number;
   maxAffordable: number;
   themeText: string;
+  redTeam?: boolean;
   hullName: string;
   groupId: number;
   onChangeCount: (newCount: number) => void;
@@ -352,6 +459,7 @@ export function RosterCountInput({
   count,
   maxAffordable,
   themeText,
+  redTeam = false,
   hullName,
   groupId,
   onChangeCount,
@@ -451,7 +559,7 @@ export function RosterCountInput({
       }}
       title="Click or type to edit quantity"
       aria-label={`Quantity of ${hullName} in Group ${groupId}`}
-      className={`font-mono text-xs font-bold w-9 min-w-[24px] text-center bg-transparent border-0 outline-none focus:bg-zinc-900 focus:ring-1 focus:ring-cyan-500/50 rounded px-0.5 py-0 m-0 ${themeText}`}
+      className={`font-mono text-xs font-bold w-9 min-w-[24px] text-center bg-transparent border-0 outline-none focus:bg-zinc-900 focus:ring-1 rounded px-0.5 py-0 m-0 ${redTeam ? "focus:ring-red-500/50" : "focus:ring-cyan-500/50"} ${themeText}`}
     />
   );
 }
@@ -467,6 +575,8 @@ export function FleetBuilder({
   onStartBattle,
 }: FleetBuilderProps) {
   const [activeTeam, setActiveTeam] = useState<"blue" | "red">("blue");
+  const redTeam = activeTeam === "red";
+  const previewTeam = redTeam ? 1 : 0;
   const [selectedGroup, setSelectedGroup] = useState<number>(1);
   const [doctrineHull, setDoctrineHull] = useState<HullClass | null>(null);
   const shipPreview = useDelayedPreview<HullClass>(250);
@@ -550,7 +660,8 @@ export function FleetBuilder({
       <div className="flex-1 min-w-0 space-y-3 overflow-y-auto pr-2">
         <div>
           <h2 className="text-lg font-semibold tracking-wide flex items-center gap-2 select-text">
-            <Shield className="w-5 h-5 text-cyan-400" /> Fleet Assembly Hangar
+            <Shield className={`w-5 h-5 ${redTeam ? "text-red-400" : "text-cyan-400"}`} /> Fleet
+            Assembly Hangar
           </h2>
         </div>
 
@@ -573,7 +684,7 @@ export function FleetBuilder({
             aria-pressed={activeTeam === "red"}
             className={`px-3 py-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer ${
               activeTeam === "red"
-                ? "bg-red-950/50 border-red-500 text-red-300"
+                ? "bg-zinc-900/90 border-red-900/40 text-rose-300"
                 : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-red-800"
             }`}
           >
@@ -585,16 +696,18 @@ export function FleetBuilder({
         <div className="relative p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex justify-between select-text">
             <span>Operational Group Assignment</span>
-            <span className="text-cyan-400 font-mono">
+            <span className={`font-mono ${redTeam ? "text-red-400" : "text-cyan-400"}`}>
               Target: Group {selectedGroup} ({groupCounts[selectedGroup] || 0} vessels)
             </span>
-            {groupPreview.active !== null && <GroupPreview group={groupPreview.active} />}
+            {groupPreview.active !== null && (
+              <GroupPreview group={groupPreview.active} team={previewTeam} />
+            )}
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {[1, 2, 3, 4, 5].map((g) => {
               const count = groupCounts[g] || 0;
               const isSelected = selectedGroup === g;
-              const theme = GROUP_THEMES[g] || GROUP_THEMES[1];
+              const theme = redTeam ? RED_THEME : GROUP_THEMES[g] || GROUP_THEMES[1];
               return (
                 <button
                   key={g}
@@ -615,7 +728,13 @@ export function FleetBuilder({
                   <span className="flex items-center gap-1.5">
                     <span
                       className={`w-2 h-2 rounded-full ${
-                        isSelected ? "bg-zinc-950" : count > 0 ? theme.activeBg : "bg-zinc-700"
+                        isSelected
+                          ? redTeam
+                            ? "bg-red-400"
+                            : "bg-zinc-950"
+                          : count > 0
+                            ? theme.activeBg
+                            : "bg-zinc-700"
                       }`}
                     />
                     GRP {g}
@@ -623,7 +742,9 @@ export function FleetBuilder({
                   <span
                     className={`px-1.5 py-0.2 rounded text-[11px] font-bold ${
                       isSelected
-                        ? "bg-zinc-950/30 text-zinc-950"
+                        ? redTeam
+                          ? "bg-red-950/50 text-red-300"
+                          : "bg-zinc-950/30 text-zinc-950"
                         : count > 0
                           ? `${theme.badgeBg} ${theme.badgeText}`
                           : "bg-zinc-800 text-zinc-600"
@@ -644,33 +765,39 @@ export function FleetBuilder({
             const canAfford = remainingBudget >= spec.cost;
             const counts = hullCounts[hull];
             const isInspecting = shipPreview.active === hull;
-            const activeTheme = GROUP_THEMES[selectedGroup] || GROUP_THEMES[1];
+            const activeTheme = redTeam
+              ? RED_THEME
+              : GROUP_THEMES[selectedGroup] || GROUP_THEMES[1];
 
             return (
               <div
                 key={hull}
                 className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between select-text relative ${
                   isInspecting
-                    ? "border-cyan-500/50 bg-zinc-900/90 shadow-md shadow-cyan-500/10"
+                    ? redTeam
+                      ? "border-red-900/40 bg-zinc-900/90 shadow-md shadow-red-950/40"
+                      : "border-cyan-500/50 bg-zinc-900/90 shadow-md shadow-cyan-500/10"
                     : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700"
                 }`}
               >
-                {isInspecting && <ShipPreview hull={hull} />}
+                {isInspecting && <ShipPreview hull={hull} team={previewTeam} />}
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
                       <div
                         onMouseEnter={() => shipPreview.show(hull)}
                         onMouseLeave={shipPreview.hide}
-                        className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0"
+                        className={`w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 ${redTeam ? "text-red-400" : "text-cyan-400"}`}
                       >
-                        <ShipSilhouette hullClass={hull} className="w-7 h-7" />
+                        <ShipSilhouette hullClass={hull} team={previewTeam} className="w-7 h-7" />
                       </div>
                       <div>
                         <div className="font-semibold text-sm text-zinc-100 select-all">
                           {spec.name}
                         </div>
-                        <span className="text-[11px] uppercase font-mono text-cyan-300">
+                        <span
+                          className={`text-[11px] uppercase font-mono ${redTeam ? "text-red-300" : "text-cyan-300"}`}
+                        >
                           {spec.role}
                         </span>
                       </div>
@@ -705,7 +832,7 @@ export function FleetBuilder({
                     type="button"
                     onClick={() => setDoctrineHull(hull)}
                     aria-label={`View doctrine and states for ${spec.name}`}
-                    className="mt-1.5 rounded border border-cyan-800/70 px-2 py-1 text-[11px] font-medium text-cyan-400 hover:bg-cyan-950 hover:text-cyan-200 cursor-pointer"
+                    className={`mt-1.5 rounded border px-2 py-1 text-[11px] font-medium cursor-pointer ${redTeam ? "border-red-900/40 text-red-400 hover:bg-red-950 hover:text-rose-300" : "border-cyan-800/70 text-cyan-400 hover:bg-cyan-950 hover:text-cyan-200"}`}
                   >
                     Doctrine &amp; States
                   </button>
@@ -714,7 +841,11 @@ export function FleetBuilder({
                   <div className="grid grid-cols-4 gap-1 mt-1.5 pt-1.5 border-t border-zinc-800/80 text-[11px] font-mono">
                     <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
                       <span className="text-zinc-400 block">SHIELD</span>
-                      <span className="text-cyan-400 font-semibold">{spec.shield}</span>
+                      <span
+                        className={`font-semibold ${redTeam ? "text-red-400" : "text-cyan-400"}`}
+                      >
+                        {spec.shield}
+                      </span>
                     </div>
                     <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
                       <span className="text-zinc-400 block">ARMOR</span>
@@ -734,13 +865,15 @@ export function FleetBuilder({
                   <div
                     className={`mt-1.5 p-1.5 rounded-lg text-[11px] font-mono min-h-[56px] flex flex-col justify-center transition-colors ${
                       isInspecting
-                        ? "bg-zinc-950 border border-cyan-500/40 text-cyan-300"
+                        ? redTeam
+                          ? "bg-zinc-950 border border-red-950/60 text-red-300"
+                          : "bg-zinc-950 border border-cyan-500/40 text-cyan-300"
                         : "bg-zinc-950/60 border border-zinc-800/80 text-zinc-400"
                     }`}
                   >
                     <div className="text-zinc-300 font-semibold flex items-center gap-1 text-[11px] uppercase tracking-wider mb-1">
                       <Zap
-                        className={`w-2.5 h-2.5 ${isInspecting ? "text-cyan-400" : "text-zinc-500"}`}
+                        className={`w-2.5 h-2.5 ${isInspecting ? (redTeam ? "text-red-400" : "text-cyan-400") : "text-zinc-500"}`}
                       />{" "}
                       Armament Loadout
                     </div>
@@ -751,7 +884,9 @@ export function FleetBuilder({
                           className="flex justify-between items-center text-zinc-300"
                         >
                           <span className="truncate pr-2">{w.name}</span>
-                          <span className="text-cyan-400 font-semibold shrink-0">
+                          <span
+                            className={`font-semibold shrink-0 ${redTeam ? "text-red-400" : "text-cyan-400"}`}
+                          >
                             {w.damage} dmg / {w.range}u
                           </span>
                         </div>
@@ -766,7 +901,9 @@ export function FleetBuilder({
                   onClick={() => addShip(hull)}
                   className={`mt-1.5 w-full py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
                     canAfford
-                      ? "bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500 text-cyan-300 hover:text-zinc-950 cursor-pointer font-semibold"
+                      ? redTeam
+                        ? "bg-red-950/50 border border-red-900/40 hover:bg-red-900/60 text-red-300 cursor-pointer font-semibold"
+                        : "bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500 text-cyan-300 hover:text-zinc-950 cursor-pointer font-semibold"
                       : "bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed"
                   }`}
                 >
@@ -784,23 +921,35 @@ export function FleetBuilder({
         <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 select-text">
           <div className="flex justify-between items-center text-xs font-mono">
             <span className="text-zinc-400">{activeTeam === "blue" ? "Blue" : "Red"} Budget</span>
-            <span className={remainingBudget < 0 ? "text-red-400" : "text-cyan-400 font-bold"}>
+            <span
+              className={
+                remainingBudget < 0 || redTeam
+                  ? "text-red-400 font-bold"
+                  : "text-cyan-400 font-bold"
+              }
+            >
               {currentCost} / {budgetLimit} CR
             </span>
           </div>
           <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
             <div
-              className={`h-full transition-all ${remainingBudget < 0 ? "bg-red-500" : "bg-cyan-400"}`}
+              className={`h-full transition-all ${remainingBudget < 0 ? "bg-red-500" : redTeam ? "bg-red-700" : "bg-cyan-400"}`}
               style={{ width: `${Math.min(100, (currentCost / budgetLimit) * 100)}%` }}
             />
           </div>
         </div>
 
         {/* Selected Fleet Roster - Stretches to fill available height cleanly! */}
-        <div className="flex-1 border border-zinc-800 rounded-xl bg-zinc-900/40 p-4 flex flex-col min-h-0 select-text">
-          <div className="pb-3 border-b border-zinc-800 shrink-0 space-y-2">
+        <div
+          className={`flex-1 border rounded-xl bg-zinc-900/40 p-4 flex flex-col min-h-0 select-text ${redTeam ? "border-red-900/40" : "border-zinc-800"}`}
+        >
+          <div
+            className={`pb-3 border-b shrink-0 space-y-2 ${redTeam ? "border-red-900/40" : "border-zinc-800"}`}
+          >
             <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 select-all block">
+              <span
+                className={`text-xs font-semibold uppercase tracking-wider select-all block ${redTeam ? "text-red-400" : "text-zinc-400"}`}
+              >
                 {activeTeam === "blue" ? "Blue" : "Red"} Active Roster ({slots.length} hulls)
               </span>
               {slots.length > 0 && (
@@ -808,7 +957,7 @@ export function FleetBuilder({
                   {[1, 2, 3, 4, 5]
                     .filter((g) => groupCounts[g] && groupCounts[g] > 0)
                     .map((g) => {
-                      const theme = GROUP_THEMES[g];
+                      const theme = redTeam ? RED_THEME : GROUP_THEMES[g];
                       return (
                         <span
                           key={g}
@@ -836,7 +985,7 @@ export function FleetBuilder({
                 onClick={() => onUpdateRedSlots(blueSlots.map((slot) => ({ ...slot })))}
                 disabled={blueSlots.length === 0}
                 title="Copy the Blue fleet to Red"
-                className="px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 border bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-cyan-700 hover:text-cyan-300 transition-colors cursor-pointer disabled:border-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed"
+                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 border bg-zinc-900 border-zinc-700 text-zinc-300 transition-colors cursor-pointer disabled:border-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed ${redTeam ? "hover:border-red-700 hover:text-red-300" : "hover:border-cyan-700 hover:text-cyan-300"}`}
               >
                 <Copy className="w-3 h-3" /> Mirror Fleet
               </button>
@@ -876,7 +1025,8 @@ export function FleetBuilder({
                 });
 
                 return sortedStacks.map((stack, idx) => {
-                  const theme = GROUP_THEMES[stack.groupId] || GROUP_THEMES[1];
+                  const groupTheme = GROUP_THEMES[stack.groupId] || GROUP_THEMES[1];
+                  const theme = redTeam ? { ...RED_THEME, name: groupTheme.name } : groupTheme;
                   const isFirstOfGroup =
                     idx === 0 || sortedStacks[idx - 1].groupId !== stack.groupId;
                   const unitCost = HULL_SPECS[stack.hullClass].cost;
@@ -905,8 +1055,14 @@ export function FleetBuilder({
                         className={`p-2.5 rounded-lg bg-zinc-900 border ${theme.border} text-xs flex items-center justify-between select-text hover:bg-zinc-800/60 transition-colors gap-2`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0">
-                            <ShipSilhouette hullClass={stack.hullClass} className="w-5 h-5" />
+                          <div
+                            className={`w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 ${redTeam ? "text-red-400" : "text-cyan-400"}`}
+                          >
+                            <ShipSilhouette
+                              hullClass={stack.hullClass}
+                              team={previewTeam}
+                              className="w-5 h-5"
+                            />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
@@ -929,6 +1085,7 @@ export function FleetBuilder({
                               count={stack.count}
                               maxAffordable={maxAffordable}
                               themeText={theme.text}
+                              redTeam={redTeam}
                               hullName={HULL_SPECS[stack.hullClass].name}
                               groupId={stack.groupId}
                               onChangeCount={(newCount) =>
@@ -948,7 +1105,9 @@ export function FleetBuilder({
                                 }
                                 className={`p-0.5 rounded transition-colors ${
                                   canAddOne
-                                    ? "text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 cursor-pointer"
+                                    ? redTeam
+                                      ? "text-zinc-400 hover:text-red-400 hover:bg-zinc-800 cursor-pointer"
+                                      : "text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 cursor-pointer"
                                     : "text-zinc-700 cursor-not-allowed"
                                 }`}
                               >
@@ -1031,14 +1190,22 @@ export function FleetBuilder({
           onClick={onStartBattle}
           className={`w-full py-3.5 rounded-xl font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 transition-all shrink-0 ${
             blueSlots.length > 0 && redSlots.length > 0
-              ? "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-500/20 cursor-pointer"
+              ? redTeam
+                ? "bg-red-700 hover:bg-red-600 text-white shadow-lg shadow-red-950/40 cursor-pointer"
+                : "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-500/20 cursor-pointer"
               : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
           }`}
         >
           <Swords className="w-4 h-4" /> Engage Fleet Simulator
         </button>
       </div>
-      {doctrineHull && <DoctrineDialog hull={doctrineHull} onClose={() => setDoctrineHull(null)} />}
+      {doctrineHull && (
+        <DoctrineDialog
+          hull={doctrineHull}
+          redTeam={redTeam}
+          onClose={() => setDoctrineHull(null)}
+        />
+      )}
     </div>
   );
 }

@@ -396,6 +396,7 @@ export class ClientCombatSimulation {
 
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
+    const missileLocks: Array<{ targetId: string; weapon: TurretMountState["weapon"] }> = [];
     for (const ship of aliveShips) {
       if (!ship.isAlive) continue;
       for (const turret of ship.turrets) {
@@ -432,6 +433,7 @@ export class ClientCombatSimulation {
           navigationTargets.get(ship.id) ?? null,
           aliveShips,
           this.projectiles,
+          missileLocks,
         );
         turret.currentTargetId = solution?.target.id ?? null;
         turret.currentTargetKind = solution?.kind;
@@ -448,6 +450,8 @@ export class ClientCombatSimulation {
         const targetShip = solution.kind === "ship" ? (solution.target as ShipState) : null;
         const targetMissile =
           solution.kind === "missile" ? (solution.target as ProjectileState) : null;
+        if (targetShip && turret.weapon.weaponType === "missile")
+          missileLocks.push({ targetId: targetShip.id, weapon: turret.weapon });
         shots.push(() => this.fireWeapon(ship, turret, solution.aim, targetShip, targetMissile));
       }
     }

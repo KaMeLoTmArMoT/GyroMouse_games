@@ -30,21 +30,26 @@ export function useDelayedPreview<T>(delay: number) {
   return { active, show, hide };
 }
 
-export function ShipPreview({ hull }: { hull: HullClass }) {
+export function ShipPreview({ hull, team }: { hull: HullClass; team: 0 | 1 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const ctx = canvas.current?.getContext("2d");
     if (!ctx) return;
-    const ship = buildFleetFromSlots([{ id: "preview", hullClass: hull, groupId: 1 }], 0, 0, 0)[0];
+    const ship = buildFleetFromSlots(
+      [{ id: "preview", hullClass: hull, groupId: 1 }],
+      team,
+      0,
+      0,
+    )[0];
     ship.velocity = [ship.maxSpeed * 0.65, 0];
     let frame: number;
     const draw = (time: number) => {
       ctx.clearRect(0, 0, 240, 144);
       ctx.save();
       const halo = ctx.createRadialGradient(120, 72, 4, 120, 72, 100);
-      halo.addColorStop(0, "rgba(8, 145, 178, 0.18)");
-      halo.addColorStop(1, "rgba(8, 145, 178, 0)");
+      halo.addColorStop(0, team === 1 ? "rgba(220, 38, 38, 0.18)" : "rgba(8, 145, 178, 0.18)");
+      halo.addColorStop(1, team === 1 ? "rgba(220, 38, 38, 0)" : "rgba(8, 145, 178, 0)");
       ctx.fillStyle = halo;
       ctx.fillRect(0, 0, 240, 144);
       ctx.translate(120, 68);
@@ -56,12 +61,18 @@ export function ShipPreview({ hull }: { hull: HullClass }) {
     };
     draw(performance.now());
     return () => cancelAnimationFrame(frame);
-  }, [hull]);
+  }, [hull, team]);
 
   return (
-    <div className="absolute z-20 top-2 right-2 pointer-events-none rounded-lg border border-cyan-500/50 bg-zinc-950/95 shadow-xl shadow-cyan-950/40 text-center">
+    <div
+      className={`absolute z-20 top-2 right-2 pointer-events-none rounded-lg border bg-zinc-950/95 shadow-xl text-center ${team === 1 ? "border-red-500/50 shadow-red-950/40" : "border-cyan-500/50 shadow-cyan-950/40"}`}
+    >
       <canvas ref={canvas} width={240} height={144} className="w-48 h-auto" aria-hidden="true" />
-      <div className="text-[11px] font-mono text-cyan-200 pb-2">HULL PREVIEW</div>
+      <div
+        className={`text-[11px] font-mono pb-2 ${team === 1 ? "text-red-200" : "text-cyan-200"}`}
+      >
+        HULL PREVIEW
+      </div>
     </div>
   );
 }
@@ -75,10 +86,14 @@ const GROUP_ROLES = [
 ];
 const GROUP_NAMES = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"];
 
-export function GroupPreview({ group }: { group: number }) {
+export function GroupPreview({ group, team }: { group: number; team: 0 | 1 }) {
   return (
-    <div className="absolute z-30 right-2 top-full mt-1 pointer-events-none rounded-lg border border-cyan-500/40 bg-zinc-950 p-3 shadow-xl normal-case tracking-normal">
-      <div className="text-xs font-semibold text-cyan-200 whitespace-nowrap">
+    <div
+      className={`absolute z-30 right-2 top-full mt-1 pointer-events-none rounded-lg border bg-zinc-950 p-3 shadow-xl normal-case tracking-normal ${team === 1 ? "border-red-500/40" : "border-cyan-500/40"}`}
+    >
+      <div
+        className={`text-xs font-semibold whitespace-nowrap ${team === 1 ? "text-red-200" : "text-cyan-200"}`}
+      >
         {GROUP_NAMES[group - 1]}: {GROUP_ROLES[group - 1]}
       </div>
       <svg
@@ -98,7 +113,7 @@ export function GroupPreview({ group }: { group: number }) {
               cx={80 + x * 0.12}
               cy={55 + y * 0.09}
               r={id === group ? 5 : 3}
-              fill={id === group ? "#67e8f9" : "#475569"}
+              fill={id === group ? (team === 1 ? "#f87171" : "#67e8f9") : "#475569"}
             />
           );
         })}
