@@ -2,13 +2,14 @@
 
 import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
-import { damageState, engineNozzles, engineSpeed } from "./effects";
+import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
 
 export function renderShip(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
   selected = false,
   decals: Vector2[] = [],
+  time = performance.now() / 1000,
 ): void {
   if (!ship.isAlive) return;
 
@@ -43,6 +44,7 @@ export function renderShip(
   ctx.rotate(ship.heading);
 
   drawEngineGlow(ctx, ship);
+  if (hasFighterHazard(ship)) drawCoolantTrail(ctx, ship, time);
 
   if (isBlue) {
     drawTerranHull(ctx, ship, primaryColor, hullDarkColor, accentColor);
@@ -51,6 +53,7 @@ export function renderShip(
   }
 
   drawHullDamage(ctx, ship, decals);
+  if (hasFighterHazard(ship)) drawHazardBeacon(ctx, ship, time);
 
   ctx.restore();
 
@@ -77,6 +80,46 @@ export function renderShip(
   // 5. Compact Status HUD Bar
   renderHealthHUD(ctx, ship);
 
+  ctx.restore();
+}
+
+function drawCoolantTrail(ctx: CanvasRenderingContext2D, ship: ShipState, time: number): void {
+  const [x, y] = engineNozzles(ship)[0];
+  const s = ship.size;
+  const startX = x * s;
+  const startY = y * s;
+  const length = Math.max(18, s * 2.4);
+  const gradient = ctx.createLinearGradient(startX, startY, startX - length, startY);
+  gradient.addColorStop(0, "rgba(235, 255, 255, 0.9)");
+  gradient.addColorStop(0.35, "rgba(125, 211, 252, 0.7)");
+  gradient.addColorStop(1, "rgba(56, 189, 248, 0)");
+  ctx.save();
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = Math.max(1, s * 0.07);
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.quadraticCurveTo(
+    startX - length * 0.5,
+    startY + Math.sin(time * 8) * s * 0.12,
+    startX - length,
+    startY,
+  );
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHazardBeacon(ctx: CanvasRenderingContext2D, ship: ShipState, time: number): void {
+  const flash = time % 0.4 < 0.12;
+  const color = Math.floor(time / 0.4) % 2 === 0 ? "#ff3030" : "#fbbf24";
+  ctx.save();
+  ctx.fillStyle = flash ? color : "#7f1d1d";
+  if (flash) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = Math.max(8, ship.size * 0.7);
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.max(2, ship.size * 0.12), 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 

@@ -16,7 +16,7 @@
       "blue_cr_0_torp": 72.6,
       "blue_sc_0_gun": 58.5
     },
-    "flakInterceptRate": 0.8,
+    "flakInterceptRate": 0.4,
     "shieldDelay": {
       "battleship": 1.5333333333333328,
       "cruiser": 1.2166666666666672,
@@ -80,7 +80,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 27.316666666666396,
+      "duration": 27.41666666666639,
       "residualHpPercent": [
         0,
         100
@@ -102,7 +102,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "blue",
-      "duration": 33.76666666666603,
+      "duration": 19.933333333333483,
       "residualHpPercent": [
         100,
         0
@@ -135,7 +135,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 36.51666666666588,
+      "duration": 19.933333333333483,
       "residualHpPercent": [
         0,
         100
@@ -190,7 +190,7 @@
       "scenarioVersion": 1,
       "seed": 1,
       "outcome": "red",
-      "duration": 25.08333333333319,
+      "duration": 26.583333333333105,
       "residualHpPercent": [
         0,
         100
@@ -256,7 +256,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 27.316666666666396,
+      "duration": 29.066666666666297,
       "residualHpPercent": [
         0,
         100
@@ -278,7 +278,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 31.383333333332832,
+      "duration": 19.933333333333483,
       "residualHpPercent": [
         100,
         0
@@ -311,7 +311,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 36.49999999999921,
+      "duration": 19.933333333333483,
       "residualHpPercent": [
         0,
         100
@@ -333,7 +333,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "blue",
-      "duration": 24.69999999999988,
+      "duration": 24.2999999999999,
       "residualHpPercent": [
         66.66666666666667,
         0
@@ -366,7 +366,7 @@
       "scenarioVersion": 1,
       "seed": 7,
       "outcome": "red",
-      "duration": 24.833333333333204,
+      "duration": 24.783333333333207,
       "residualHpPercent": [
         0,
         100
@@ -432,7 +432,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 26.583333333333105,
+      "duration": 27.41666666666639,
       "residualHpPercent": [
         0,
         100
@@ -454,7 +454,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "blue",
-      "duration": 33.7833333333327,
+      "duration": 19.933333333333483,
       "residualHpPercent": [
         100,
         0
@@ -487,7 +487,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 36.41666666666588,
+      "duration": 19.933333333333483,
       "residualHpPercent": [
         0,
         100
@@ -520,7 +520,7 @@
       "scenarioVersion": 1,
       "seed": 29,
       "outcome": "red",
-      "duration": 21.200000000000077,
+      "duration": 21.18333333333341,
       "residualHpPercent": [
         0,
         100
@@ -608,7 +608,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 26.583333333333105,
+      "duration": 29.066666666666297,
       "residualHpPercent": [
         0,
         100
@@ -630,7 +630,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 33.74999999999937,
+      "duration": 19.933333333333483,
       "residualHpPercent": [
         100,
         0
@@ -663,7 +663,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 36.41666666666588,
+      "duration": 19.933333333333483,
       "residualHpPercent": [
         0,
         100
@@ -685,7 +685,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "blue",
-      "duration": 24.683333333333213,
+      "duration": 20.633333333333443,
       "residualHpPercent": [
         66.66666666666667,
         0
@@ -696,7 +696,7 @@
       "scenarioVersion": 1,
       "seed": 42,
       "outcome": "red",
-      "duration": 21.200000000000077,
+      "duration": 21.18333333333341,
       "residualHpPercent": [
         0,
         100

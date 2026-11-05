@@ -9,7 +9,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { projectileLifetime } from "./shipProfiles";
+import { isHeavyTorpedo, pointDefenseMode, projectileLifetime } from "./shipProfiles";
 
 export function mountPosition(ship: ShipState, turret: TurretMountState): Vector2 {
   return vecAdd(ship.pos, rotatePoint(turret.offset, ship.heading));
@@ -84,11 +84,23 @@ export function acquireMountTarget(
 ): FireSolution | null {
   const muzzle = mountPosition(ship, turret);
   const weapon = turret.weapon;
-  const solutions: FireSolution[] = [];
+  const defense = pointDefenseMode(weapon);
+  const defendedShips = [
+    ship,
+    ...ships.filter(
+      (s) =>
+        s.isAlive &&
+        s.team === ship.team &&
+        s.id !== ship.id &&
+        (s.id === ship.flagshipId || s.hullClass === "battleship" || s.hullClass === "cruiser"),
+    ),
+  ];
+  const solutions: Array<FireSolution & { priority: number }> = [];
   const evaluate = (
     target: ShipState | ProjectileState,
     kind: "ship" | "missile",
     role: number,
+    priority = 0,
   ) => {
     const distance = vecDistance(muzzle, target.pos);
     if (distance > weapon.range || !inMountArc(ship, turret, target.pos)) return;
@@ -106,7 +118,13 @@ export function acquireMountTarget(
     const turn =
       Math.abs(fullCircle(turret) ? normalizeAngle(error) : error) /
       Math.max(0.01, turret.trackingSpeed);
-    solutions.push({ kind, target, aim, score: role - distance / weapon.range - 0.4 * turn });
+    solutions.push({
+      kind,
+      target,
+      aim,
+      score: role - distance / weapon.range - 0.4 * turn,
+      priority,
+    });
   };
 
   for (const enemy of ships) {
@@ -126,13 +144,26 @@ export function acquireMountTarget(
     )
       role += 3;
     role += damagedTargetPriority(enemy);
-    evaluate(enemy, "ship", role);
+    let priority = 0;
+    if (enemy.hullClass === "strike_craft") {
+      if (defense === "flak" && vecDistance(muzzle, enemy.pos) < 350) priority = 3;
+      if (
+        defense === "rotary" &&
+        (enemy.fighterPhase === "attack" ||
+          defendedShips.some(
+            (defended) =>
+              vecDot(vecSub(enemy.pos, defended.pos), vecSub(enemy.velocity, defended.velocity)) <
+              0,
+          ))
+      )
+        priority = 2;
+    }
+    evaluate(enemy, "ship", role, priority);
   }
 
   const defensiveBeam =
     ship.hullClass === "battleship" && weapon.weaponType === "beam_laser" && solutions.length === 0;
   if (weapon.weaponType === "point_defense" || defensiveBeam) {
-    const anchor = ships.find((s) => s.isAlive && s.id === ship.flagshipId);
     for (const missile of projectiles) {
       if (
         missile.ownerTeam === ship.team ||
@@ -142,24 +173,45 @@ export function acquireMountTarget(
       )
         continue;
       let arrival = Infinity;
-      for (const defended of anchor ? [ship, anchor] : [ship]) {
+      let urgentTorpedo = false;
+      for (const defended of defendedShips) {
         const r = vecSub(missile.pos, defended.pos);
         const v = vecSub(missile.velocity, defended.velocity);
         const t = -vecDot(r, v) / Math.max(vecDot(v, v), 1e-6);
         if (t < 0 || t > missile.lifetime) continue;
-        if (vecDistance([0, 0], vecAdd(r, vecScale(v, t))) < defended.size + 80)
+        if (vecDistance([0, 0], vecAdd(r, vecScale(v, t))) < defended.size + 80) {
           arrival = Math.min(arrival, t);
+          if (
+            isHeavyTorpedo(missile) &&
+            (defended.hullClass === "battleship" || defended.hullClass === "cruiser") &&
+            vecDistance(missile.pos, defended.pos) < 300
+          )
+            urgentTorpedo = true;
+        }
       }
-      if (Number.isFinite(arrival)) evaluate(missile, "missile", 10 + 2 / (1 + arrival));
+      if (!Number.isFinite(arrival)) continue;
+      let priority = 3;
+      if (defense === "flak") priority = isHeavyTorpedo(missile) ? 1 : 2;
+      if (defense === "rotary") {
+        priority = isHeavyTorpedo(missile) ? 0 : 1;
+        if (urgentTorpedo) priority = 3;
+      }
+      evaluate(missile, "missile", 10 + 2 / (1 + arrival), priority);
     }
   }
-  solutions.sort((a, b) => b.score - a.score || a.target.id.localeCompare(b.target.id));
+  solutions.sort(
+    (a, b) =>
+      b.priority - a.priority || b.score - a.score || a.target.id.localeCompare(b.target.id),
+  );
   const best = solutions[0];
   if (!best) return null;
+  if (defense === "laser") return best;
   const current = solutions.find(
     (s) => s.target.id === turret.currentTargetId && s.kind === turret.currentTargetKind,
   );
-  return current && best.score <= current.score + 0.2 * Math.max(Math.abs(current.score), 1)
+  return current &&
+    best.priority === current.priority &&
+    best.score <= current.score + 0.2 * Math.max(Math.abs(current.score), 1)
     ? current
     : best;
 }

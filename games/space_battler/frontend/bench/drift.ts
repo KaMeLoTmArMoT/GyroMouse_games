@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { ARENA_HARD_PULL_RADIUS } from "../src/engine/flightControl";
 import { SCENARIOS, type ScenarioResult } from "../src/engine/scenarios";
-import { HULL_PROFILES } from "../src/engine/shipProfiles";
+import { HULL_PROFILES, projectileMaxHp } from "../src/engine/shipProfiles";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass, ProjectileState, ShipState, WeaponDefinition } from "../src/types/combat";
 import { runScenario } from "./run";
@@ -72,7 +72,8 @@ function missile(
     pos: [x, y],
     velocity: [-weapon.projectileSpeed, 0],
     lifetime: 4,
-    hp: 25,
+    hp: projectileMaxHp(weapon),
+    maxHp: projectileMaxHp(weapon),
     targetId: target.id,
   };
 }

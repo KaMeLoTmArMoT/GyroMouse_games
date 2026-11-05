@@ -17,6 +17,7 @@ export interface WeaponDefinition {
   range: number;
   projectileSpeed: number; // 0 = hitscan
   fuelDuration?: number; // Guided projectile burn limit in seconds; expires when exhausted.
+  projectileHp?: number; // Shared casing durability for interceptable projectiles.
   trackingSpeed: number; // rad/s
   shieldMultiplier: number;
   armorMultiplier: number;
@@ -112,6 +113,7 @@ export interface ProjectileState {
   lifetime: number;
   targetId: string | null;
   hp: number;
+  maxHp: number;
   isFlakBurst?: boolean; // Proximity splash munition
   weapon: WeaponDefinition; // Shot-time profile; impacts must preserve configured multipliers.
 }

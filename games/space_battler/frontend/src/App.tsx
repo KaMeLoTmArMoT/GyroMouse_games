@@ -682,6 +682,8 @@ export default function App() {
                 {selectedProjectile ? (
                   (() => {
                     const speed = Math.hypot(...selectedProjectile.velocity);
+                    const maxHp = selectedProjectile.maxHp;
+                    const integrity = Math.max(0, Math.min(1, selectedProjectile.hp / maxHp));
                     const heading = Math.atan2(
                       selectedProjectile.velocity[1],
                       selectedProjectile.velocity[0],
@@ -746,6 +748,25 @@ export default function App() {
                               style={{
                                 width: `${Math.max(0, Math.min(100, (selectedProjectile.lifetime / lifetime) * 100))}%`,
                               }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between mb-1">
+                            <span>Hull / Casing Integrity</span>
+                            <span>
+                              {Number(Math.max(0, selectedProjectile.hp).toFixed(1))} / {maxHp}
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${integrity > 0.6 ? "bg-green-400" : integrity >= 0.3 ? "bg-yellow-400" : "bg-red-500"}`}
+                              style={{ width: `${integrity * 100}%` }}
+                              role="progressbar"
+                              aria-label="Hull / Casing Integrity"
+                              aria-valuemin={0}
+                              aria-valuemax={maxHp}
+                              aria-valuenow={Math.max(0, Math.min(maxHp, selectedProjectile.hp))}
                             />
                           </div>
                         </div>

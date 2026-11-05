@@ -1,4 +1,10 @@
-import type { HullClass, TurretMountState, Vector2, WeaponDefinition } from "../types/combat";
+import type {
+  HullClass,
+  ProjectileState,
+  TurretMountState,
+  Vector2,
+  WeaponDefinition,
+} from "../types/combat";
 
 export interface TurretMountTemplate {
   id: string;
@@ -182,6 +188,7 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
           range: 1800,
           projectileSpeed: 320,
           fuelDuration: 8,
+          projectileHp: 120,
           trackingSpeed: 1.5,
           shieldMultiplier: 1,
           armorMultiplier: 1.8,
@@ -306,6 +313,19 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
 export function projectileLifetime(weapon: WeaponDefinition): number {
   if (weapon.weaponType === "missile") return weapon.fuelDuration ?? 5;
   return weapon.flak?.lifetime ?? (weapon.range / weapon.projectileSpeed) * 1.25;
+}
+
+export function projectileMaxHp(weapon: WeaponDefinition): number {
+  return weapon.projectileHp ?? 25;
+}
+
+export function isHeavyTorpedo(projectile: ProjectileState): boolean {
+  return projectile.weaponType === "missile" && projectile.maxHp >= 120;
+}
+
+export function pointDefenseMode(weapon: WeaponDefinition): "flak" | "rotary" | "laser" | null {
+  if (weapon.weaponType !== "point_defense") return null;
+  return weapon.flak ? "flak" : weapon.projectileSpeed > 0 ? "rotary" : "laser";
 }
 
 export function instantiateTurrets(

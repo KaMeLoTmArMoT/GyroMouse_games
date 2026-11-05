@@ -60,6 +60,14 @@ export function engineSpeed(ship: ShipState): number {
   return ship.maxSpeed > 0 ? Math.min(1, Math.hypot(...ship.velocity) / ship.maxSpeed) : 0;
 }
 
+export function hasFighterHazard(ship: ShipState): boolean {
+  return (
+    ship.isAlive &&
+    ship.hullClass === "strike_craft" &&
+    (ship.fighterPhase === "recover" || (ship.hullMax > 0 && ship.hullCurrent < ship.hullMax * 0.4))
+  );
+}
+
 export function damageState(ship: ShipState): {
   scarred: boolean;
   burning: boolean;
@@ -615,6 +623,44 @@ export class VisualEffectsManager {
     });
 
     for (const projectile of projectiles) {
+      if (projectile.weaponType === "missile" && projectile.hp < projectile.maxHp) {
+        const speed = Math.hypot(...projectile.velocity);
+        const dx = speed > 0 ? projectile.velocity[0] / speed : 0;
+        const dy = speed > 0 ? projectile.velocity[1] / speed : 0;
+        const damage = Math.min(1, 1 - projectile.hp / projectile.maxHp);
+        const pos: Vector2 = [projectile.pos[0] - dx * 5, projectile.pos[1] - dy * 5];
+        if (
+          this.smokeParticles.length < 400 &&
+          Math.random() < Math.min(1, dt * (4 + damage * 12))
+        ) {
+          const lifetime = 0.4 + Math.random() * 0.3;
+          this.smokeParticles.push({
+            pos: [...pos],
+            velocity: [-dx * 12, -dy * 12],
+            color: "#353035",
+            radius: 1.5,
+            remainingDuration: lifetime,
+            maxDuration: lifetime,
+          });
+        }
+        if (
+          this.sparkParticles.length < 400 &&
+          Math.random() < Math.min(1, dt * (2 + damage * 8))
+        ) {
+          const lifetime = 0.15 + Math.random() * 0.15;
+          this.sparkParticles.push({
+            pos: [...pos],
+            velocity: [
+              -dx * 25 + (Math.random() - 0.5) * 20,
+              -dy * 25 + (Math.random() - 0.5) * 20,
+            ],
+            color: "#fb923c",
+            radius: 1,
+            remainingDuration: lifetime,
+            maxDuration: lifetime,
+          });
+        }
+      }
       if (projectile.weaponType !== "missile" || Math.random() >= Math.min(1, dt * 24)) continue;
       const speed = Math.hypot(...projectile.velocity);
       if (speed === 0) continue;

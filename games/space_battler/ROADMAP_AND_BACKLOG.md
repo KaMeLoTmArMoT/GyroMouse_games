@@ -1,12 +1,13 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 144 Vitest + 24 Pytest tests passing)
+Status: Grand Scale Production Baseline Active (All 159 Vitest tests passing, 0 Drift alerts)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
+- **Refined Heavy Torpedo Defense Matrix & Echelon Visuals (B.16)**: 120 HP heavy torpedoes, flak casing degradation (18 dmg), rotary PD bursts (15 dmg), laser PD beams, 3-tier turret target priority, live integrity bar & damage FX, echelon wave pills, and retreat coolant leak trails.
 - **Clickable Smart Projectile Telemetry HUD (B.13)**: Click guided torpedoes/missiles to inspect tracking reticle, 60° seeker cone, target pursuit line, and live fuel/speed sidebar card.
 - **3-Echelon Staggered Strike Wings & Fuel Limits (B.14)**: 10-craft wings split into 4+3+3 echelons launching every 1.7s (102 frames) to maintain shield suppression; torpedoes capped at 8s fuel to prevent orbiting.
 - **Warp Gate Transition & Ingress FX**: Shimmering neon spatial rift aperture expanding and collapsing on match start and remnant rematch with team-coded particles.
@@ -25,7 +26,6 @@ Status: Grand Scale Production Baseline Active (All 144 Vitest + 24 Pytest tests
 ## 2. Priority Feature Backlog (Next Sprints)
 
 - **Fighter Heatmap Dispersal & Dynamic Re-echeloning (B.15)**: Wide arc flanking runs, spatial density heatmap repulsion to avoid grouping, wounded regrouping behind friendly screens.
-- **Refined Heavy Torpedo Defense Matrix (B.16)**: Multi-hit flak degradation (7-hit threshold, 15-25% screen intercept) instead of binary 0% immunity; rotary PD focus fire; turret target priority hierarchy.
 - **B.7: Expanded 8-Hull Ship Roster**: Missile Frigate, Heavy Dreadnought, Plasma Corvette, Shield Tender, Artillery Monitor, Drone Carrier, Torpedo Bomber, Rocket Interceptor.
 
 

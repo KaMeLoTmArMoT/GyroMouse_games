@@ -12,6 +12,7 @@ function projectile(
     pos: [x, 0],
     weaponType: "missile",
     hp: 25,
+    maxHp: 25,
     lifetime: 1,
     ...overrides,
   } as ProjectileState;

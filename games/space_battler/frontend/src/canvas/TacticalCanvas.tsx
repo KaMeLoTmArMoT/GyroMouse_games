@@ -3,10 +3,19 @@
 import { useEffect, useRef } from "react";
 import { spaceAudio } from "../engine/audioEngine";
 import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
-import type { ClientCombatSimulation } from "../engine/simulation";
+import {
+  type ClientCombatSimulation,
+  type FighterWingVisual,
+  WING_WAVE_DELAY,
+} from "../engine/simulation";
 import type { ShipState } from "../types/combat";
 import { VisualEffectsManager } from "./effects";
-import { renderBeam, renderProjectile, renderProjectileGuidance } from "./projectileRenderer";
+import {
+  renderBeam,
+  renderProjectile,
+  renderProjectileGuidance,
+  renderProjectileThreats,
+} from "./projectileRenderer";
 import { projectileAtPoint } from "./projectileSelection";
 import { renderShip } from "./shipRenderer";
 
@@ -167,6 +176,9 @@ export function TacticalCanvas({
 
           drawTacticalGrid(ctx);
 
+          const wings = sim.getFighterWingVisuals();
+          drawEchelonIndicators(ctx, wings, sim.ships);
+
           effectsRef.current.render(ctx);
 
           // Draw Active Beams
@@ -302,6 +314,7 @@ export function TacticalCanvas({
               ship,
               ship.id === selectedShipId,
               effectsRef.current.impactDecals.get(ship),
+              sim.timeElapsed,
             );
             ctx.restore();
           }
@@ -310,7 +323,7 @@ export function TacticalCanvas({
           if (selectedShipId) {
             const selectedShip = sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
             if (selectedShip) {
-              drawTacticalTrajectory(ctx, selectedShip, sim);
+              drawTacticalTrajectory(ctx, selectedShip, sim, wings);
             }
           }
 
@@ -318,6 +331,7 @@ export function TacticalCanvas({
           if (selectedProjectile) {
             const target = sim.ships.find((s) => s.id === selectedProjectile.targetId && s.isAlive);
             renderProjectileGuidance(ctx, selectedProjectile, target, cameraRef.current.zoom);
+            renderProjectileThreats(ctx, selectedProjectile, sim.ships, cameraRef.current.zoom);
           }
 
           ctx.save();
@@ -552,6 +566,54 @@ export function TacticalCanvas({
   );
 }
 
+function echelonLabel(wing: FighterWingVisual): string {
+  const timing =
+    wing.wave === 1 ? "Lead" : `Wave +${((wing.wave - 1) * WING_WAVE_DELAY).toFixed(1)}s`;
+  return `Echelon ${wing.wave} (${timing})`;
+}
+
+function drawEchelonIndicators(
+  ctx: CanvasRenderingContext2D,
+  wings: FighterWingVisual[],
+  ships: ShipState[],
+): void {
+  for (const wing of wings) {
+    const members = ships.filter((ship) => ship.isAlive && wing.members.includes(ship.id));
+    if (members.length === 0) continue;
+    const x = members.reduce((sum, ship) => sum + ship.pos[0], 0) / members.length;
+    const y = members.reduce((sum, ship) => sum + ship.pos[1], 0) / members.length;
+    const heading =
+      wing.heading + (wing.phase === "egress" || wing.phase === "rejoin" ? Math.PI : 0);
+    const color =
+      wing.phase === "attack" ? "#fbbf24" : wing.phase === "egress" ? "#a5f3fc" : "#94a3b8";
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(heading);
+    ctx.globalAlpha = 0.65;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (const offset of [35, 45]) {
+      ctx.moveTo(offset - 7, -8);
+      ctx.lineTo(offset, 0);
+      ctx.lineTo(offset - 7, 8);
+    }
+    ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.8;
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      `${wing.team === 0 ? "BLUE" : "RED"} G${wing.groupId} E${wing.wave} ${wing.phase.toUpperCase()}`,
+      x,
+      y - 25,
+    );
+    ctx.restore();
+  }
+}
+
 function drawTacticalGrid(ctx: CanvasRenderingContext2D): void {
   const gridSize = 100;
   const radius = ARENA_HARD_PULL_RADIUS;
@@ -592,6 +654,7 @@ function drawTacticalTrajectory(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
   sim: ClientCombatSimulation,
+  wings: FighterWingVisual[],
 ): void {
   const isBlue = ship.team === 0;
   const primaryColor = isBlue ? "#38bdf8" : "#f87171";
@@ -719,6 +782,9 @@ function drawTacticalTrajectory(
       case "rejoin":
         intent = "REJOINING SQUAD";
         break;
+      case "recover":
+        intent = "RECOVERING / RETREAT";
+        break;
       default:
         intent = ship.dogfightTargetId ? "DOGFIGHT INTERCEPT" : "WING CRUISE";
     }
@@ -745,13 +811,31 @@ function drawTacticalTrajectory(
   const line2 = target
     ? `TGT: ${target.name} [${Math.round(Math.hypot(target.pos[0] - ship.pos[0], target.pos[1] - ship.pos[1]))}u]`
     : null;
+  const relatedWings = wings.filter((wing) => {
+    if (!wing.members.some((id) => sim.ships.some((member) => member.id === id && member.isAlive)))
+      return false;
+    if (ship.hullClass === "strike_craft") return wing.members.includes(ship.id);
+    if (ship.hullClass === "cruiser" || ship.hullClass === "battleship") {
+      return wing.team === ship.team || wing.targetId === ship.id;
+    }
+    return false;
+  });
+  const wingLines = relatedWings.map((wing) => {
+    const affiliation =
+      ship.hullClass === "strike_craft"
+        ? ""
+        : `${wing.team === ship.team ? "FRIENDLY" : "INCOMING"} G${wing.groupId} • `;
+    return `${affiliation}${echelonLabel(wing)} • ${wing.phase.toUpperCase()}`;
+  });
+  if (ship.hullClass === "strike_craft" && wingLines.length === 0)
+    wingLines.push("ECHELON PENDING");
 
   ctx.save();
   ctx.font = "10px monospace";
   const w1 = ctx.measureText(line1).width;
   const w2 = line2 ? ctx.measureText(line2).width : 0;
-  const boxW = Math.max(w1, w2) + 16;
-  const boxH = line2 ? 30 : 18;
+  const boxW = Math.max(w1, w2, ...wingLines.map((line) => ctx.measureText(line).width)) + 16;
+  const boxH = 18 + (line2 ? 13 : 0) + wingLines.length * 13;
 
   ctx.fillStyle = "rgba(10, 15, 26, 0.85)";
   ctx.strokeStyle = primaryColor;
@@ -773,5 +857,9 @@ function drawTacticalTrajectory(
     ctx.fillStyle = "rgba(244, 114, 182, 0.9)";
     ctx.fillText(line2, pillX, pillY + 22);
   }
+  ctx.fillStyle = "#fbbf24";
+  wingLines.forEach((line, index) => {
+    ctx.fillText(line, pillX, pillY + 22 + (line2 ? 13 : 0) + index * 13);
+  });
   ctx.restore();
 }

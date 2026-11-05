@@ -46,7 +46,12 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { projectileLifetime } from "./shipProfiles";
+import {
+  isHeavyTorpedo,
+  pointDefenseMode,
+  projectileLifetime,
+  projectileMaxHp,
+} from "./shipProfiles";
 
 export type BeamFireCallback = (
   from: Vector2,
@@ -61,7 +66,7 @@ export type FlakBurstCallback = (pos: Vector2, radius: number, ownerTeam: number
 const FIGHTER_STANDOFF = 520;
 const FIGHTER_CLEARANCE = 45;
 const WING_SIZE = 4;
-const WING_WAVE_DELAY = 1.7;
+export const WING_WAVE_DELAY = 1.7;
 const WING_RELAUNCH_DELAY = 0.25;
 const WING_RALLY_TOLERANCE = 65;
 
@@ -80,6 +85,16 @@ interface FighterWing {
   assembledAt?: number;
   engagementStarted?: number;
   hasLaunched?: boolean;
+}
+
+export interface FighterWingVisual {
+  team: number;
+  groupId: number;
+  wave: number;
+  members: readonly string[];
+  phase: WingPhase;
+  targetId: string | null;
+  heading: number;
 }
 const CRUISER_CLEARANCE = 100;
 
@@ -151,6 +166,24 @@ export class ClientCombatSimulation {
   combatLog: CombatLogEvent[] = [];
   winner: number | null = null;
   winnerDeclaredTime: number | null = null;
+
+  getFighterWingVisuals(): FighterWingVisual[] {
+    const groupCounts = new Map<string, number>();
+    return this.fighterWings.map((wing) => {
+      const key = `${wing.team}:${wing.groupId}`;
+      const wave = (groupCounts.get(key) ?? 0) + 1;
+      groupCounts.set(key, wave);
+      return {
+        team: wing.team,
+        groupId: wing.groupId,
+        wave,
+        members: [...wing.members],
+        phase: wing.phase,
+        targetId: wing.targetId,
+        heading: wing.heading,
+      };
+    });
+  }
 
   getRollingDPS(team: number): number {
     const window = this.stats[team]?.recentDamageWindow ?? [];
@@ -1223,6 +1256,7 @@ export class ClientCombatSimulation {
   ): void {
     const spawnPos = mountPosition(ship, turret);
     const isBeam = turret.weapon.projectileSpeed <= 0;
+    const laserPD = pointDefenseMode(turret.weapon) === "laser";
     const beamTarget = targetShip ?? targetMissile;
     if (
       isBeam &&
@@ -1232,10 +1266,11 @@ export class ClientCombatSimulation {
         !inMountArc(ship, turret, beamTarget.pos))
     )
       return;
-    if (!isBeam || turret.weapon.weaponType !== "beam_laser") {
+    if ((!isBeam || turret.weapon.weaponType !== "beam_laser") && !laserPD) {
       turret.cooldownTimer = turret.weapon.cooldown;
       turret.lastFiredTime = this.timeElapsed;
     }
+    if (laserPD) turret.lastFiredTime = this.timeElapsed;
     this.observer?.onShot(this.timeElapsed, ship, turret);
     if (ship.hullClass === "strike_craft" && ship.fighterPhase === "attack") {
       const wing = this.fighterWings.find(
@@ -1271,7 +1306,7 @@ export class ClientCombatSimulation {
         const beamColor = ship.team === 0 ? "#38bdf8" : "#ef4444";
         this.applyDamage(
           targetShip,
-          turret.weapon.damage,
+          laserPD ? 110 * FIXED_STEP : turret.weapon.damage,
           turret.weapon,
           ship.team,
           ship.id,
@@ -1280,11 +1315,12 @@ export class ClientCombatSimulation {
         );
         if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 2.8, ship.team);
       } else if (targetMissile) {
-        targetMissile.hp -= turret.weapon.damage;
-        if (targetMissile.hp <= 0) {
-          this.stats[ship.team].missilesIntercepted += 1;
-          this.addCombatLog("Hostile torpedo intercepted by beam battery!", ship.team, "intercept");
-        }
+        this.damageProjectile(
+          targetMissile,
+          laserPD ? 110 * FIXED_STEP : turret.weapon.damage,
+          ship.team,
+          laserPD ? "laser PD" : "beam battery",
+        );
         this.onBeamFire?.(
           spawnPos,
           targetMissile.pos,
@@ -1317,7 +1353,8 @@ export class ClientCombatSimulation {
       velocity,
       lifetime,
       targetId: turret.currentTargetId,
-      hp: 25.0,
+      hp: projectileMaxHp(turret.weapon),
+      maxHp: projectileMaxHp(turret.weapon),
       isFlakBurst: Boolean(turret.weapon.flak),
     });
     this.onProjectileFire?.(turret.weapon.weaponType, [...spawnPos]);
@@ -1366,17 +1403,7 @@ export class ClientCombatSimulation {
         );
       } else {
         const missile = target as ProjectileState;
-        if (missile.hp > 0 && missile.lifetime > 0) {
-          missile.hp -= damage;
-          if (missile.hp <= 0) {
-            this.stats[ship.team].missilesIntercepted++;
-            this.addCombatLog(
-              "Hostile torpedo intercepted by beam battery!",
-              ship.team,
-              "intercept",
-            );
-          }
-        }
+        this.damageProjectile(missile, damage, ship.team, "beam battery");
       }
     }
     if (channel.frames >= BEAM_TICK_FRAMES * BEAM_TICKS) this.finishBeam(channel.turret);
@@ -1417,6 +1444,7 @@ export class ClientCombatSimulation {
       const flak = p.weapon.flak;
       let first = Infinity;
       let victim: ShipState | null = null;
+      let intercepted: ProjectileState | null = null;
       for (const ship of aliveShips) {
         if (!ship.isAlive || ship.team === p.ownerTeam) continue;
         const old = this.previousPositions.get(ship.id) ?? ship.pos;
@@ -1431,7 +1459,7 @@ export class ClientCombatSimulation {
           victim = ship;
         }
       }
-      if (flak) {
+      if (flak || pointDefenseMode(p.weapon) === "rotary") {
         for (const missile of this.projectiles) {
           if (
             missile.weaponType !== "missile" ||
@@ -1442,10 +1470,11 @@ export class ClientCombatSimulation {
             continue;
           const old = starts.get(missile.id) ?? missile.pos;
           const finish = vecAdd(old, vecScale(missile.velocity, Math.min(step, missile.lifetime)));
-          const t = sweptHit(vecSub(start, old), vecSub(end, finish), flak.triggerRadius);
+          const t = sweptHit(vecSub(start, old), vecSub(end, finish), flak?.triggerRadius ?? 5);
           if (t !== null && t < first) {
             first = t;
             victim = null;
+            intercepted = missile;
           }
         }
       }
@@ -1465,6 +1494,9 @@ export class ClientCombatSimulation {
             vecAdd(starts.get(missile.id) ?? missile.pos, vecScale(missile.velocity, elapsed)),
           );
         this.detonateFlak(p, aliveShips, positions);
+      } else if (intercepted) {
+        this.damageProjectile(intercepted, 15, p.ownerTeam, "rotary PD");
+        p.hp = 0;
       } else if (victim) {
         this.applyDamage(victim, p.damage, p.weapon, p.ownerTeam, p.ownerId, p.ownerMountId, p.pos);
         p.hp = 0;
@@ -1518,29 +1550,37 @@ export class ClientCombatSimulation {
       )
         continue;
       if (vecDistance(flak.pos, positions.get(other.id) ?? other.pos) <= profile.blastRadius) {
-        // Stable dispersion per missile keeps overlapping bursts from defeating the 90% cap.
-        let dispersion = 2166136261;
-        for (let i = 0; i < other.id.length; i++)
-          dispersion = Math.imul(dispersion ^ other.id.charCodeAt(i), 16777619);
-        dispersion ^= dispersion >>> 16;
-        dispersion = Math.imul(dispersion, 0x85ebca6b);
-        dispersion ^= dispersion >>> 13;
-        dispersion = Math.imul(dispersion, 0xc2b2ae35);
-        dispersion ^= dispersion >>> 16;
-        if ((dispersion >>> 0) / 0x100000000 >= 0.9) continue;
-        other.hp -= profile.missileDamage;
-        if (other.hp <= 0) {
-          this.stats[flak.ownerTeam].missilesIntercepted += 1;
-          this.addCombatLog(
-            "Hostile torpedo intercepted by flak burst!",
-            flak.ownerTeam,
-            "intercept",
-          );
+        if (!isHeavyTorpedo(other)) {
+          // Light missiles retain their stable dispersion cap; armored torpedoes take every hit.
+          let dispersion = 2166136261;
+          for (let i = 0; i < other.id.length; i++)
+            dispersion = Math.imul(dispersion ^ other.id.charCodeAt(i), 16777619);
+          dispersion ^= dispersion >>> 16;
+          dispersion = Math.imul(dispersion, 0x85ebca6b);
+          dispersion ^= dispersion >>> 13;
+          dispersion = Math.imul(dispersion, 0xc2b2ae35);
+          dispersion ^= dispersion >>> 16;
+          if ((dispersion >>> 0) / 0x100000000 >= 0.9) continue;
         }
+        this.damageProjectile(other, profile.missileDamage, flak.ownerTeam, "flak burst");
       }
     }
 
     if (this.onFlakBurst) this.onFlakBurst([...flak.pos], profile.blastRadius, flak.ownerTeam);
+  }
+
+  private damageProjectile(
+    projectile: ProjectileState,
+    damage: number,
+    team: number,
+    source: string,
+  ): void {
+    if (projectile.hp <= 0 || projectile.lifetime <= 0) return;
+    projectile.hp = Math.max(0, projectile.hp - damage);
+    if (projectile.hp > 0) return;
+    projectile.lifetime = 0;
+    this.stats[team].missilesIntercepted++;
+    this.addCombatLog(`Hostile torpedo intercepted by ${source}!`, team, "intercept");
   }
 
   private applyDamage(

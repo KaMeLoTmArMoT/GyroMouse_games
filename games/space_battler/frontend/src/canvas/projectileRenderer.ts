@@ -1,5 +1,6 @@
 // Projectile and munitions renderer (plasma bolts, railgun kinetics, torpedoes) with high visibility
 
+import { mountPosition } from "../engine/fireControl";
 import type { ProjectileState, ShipState } from "../types/combat";
 import type { LaserBeamEffect } from "./effects";
 
@@ -195,6 +196,50 @@ export function renderProjectileGuidance(
   ctx.beginPath();
   ctx.moveTo(x, y);
   ctx.lineTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function renderProjectileThreats(
+  ctx: CanvasRenderingContext2D,
+  projectile: ProjectileState,
+  ships: ShipState[],
+  zoom: number,
+): void {
+  const mounts = ships.flatMap((ship) =>
+    ship.isAlive && ship.team !== projectile.ownerTeam
+      ? ship.turrets
+          .filter(
+            (turret) =>
+              turret.currentTargetKind === "missile" && turret.currentTargetId === projectile.id,
+          )
+          .map((turret) => mountPosition(ship, turret))
+      : [],
+  );
+  if (mounts.length === 0) return;
+
+  const unit = 1 / zoom;
+  const [x, y] = projectile.pos;
+  ctx.save();
+  ctx.strokeStyle = "rgba(248, 113, 113, 0.55)";
+  ctx.lineWidth = unit;
+  ctx.setLineDash([4 * unit, 5 * unit]);
+  ctx.beginPath();
+  for (const mount of mounts) {
+    ctx.moveTo(...mount);
+    ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1.5 * unit;
+  ctx.beginPath();
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      ctx.moveTo(x + sx * 15 * unit, y + sy * 22 * unit);
+      ctx.lineTo(x + sx * 22 * unit, y + sy * 22 * unit);
+      ctx.lineTo(x + sx * 22 * unit, y + sy * 15 * unit);
+    }
+  }
   ctx.stroke();
   ctx.restore();
 }

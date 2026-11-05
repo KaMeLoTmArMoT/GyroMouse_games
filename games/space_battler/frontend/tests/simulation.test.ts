@@ -14,7 +14,7 @@ import {
   spinalEscape,
 } from "../src/engine/flightControl";
 import { normalizeAngle, vecDistance, vecDot, vecSub } from "../src/engine/math2d";
-import { HULL_PROFILES } from "../src/engine/shipProfiles";
+import { HULL_PROFILES, projectileMaxHp } from "../src/engine/shipProfiles";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass, ProjectileState, ShipState, Vector2 } from "../src/types/combat";
 
@@ -67,7 +67,8 @@ function projectile(
     pos,
     velocity,
     lifetime: 2,
-    hp: 25,
+    hp: projectileMaxHp(weapon),
+    maxHp: projectileMaxHp(weapon),
     targetId: null,
     isFlakBurst: Boolean(weapon.flak),
   };
@@ -594,7 +595,7 @@ describe("mount eligibility and projectile contracts", () => {
     inbound.hp = 0;
     expect(acquireMountTarget(cv, cv.turrets[0], enemy, [cv, enemy], [inbound])?.kind).toBe("ship");
     cv.turrets[0].baseArc = [-Math.PI, -Math.PI / 2];
-    inbound.hp = 25;
+    inbound.hp = inbound.maxHp;
     expect(acquireMountTarget(cv, cv.turrets[0], enemy, [cv, enemy], [inbound])).toBeNull();
   });
 
@@ -748,10 +749,12 @@ describe("mount eligibility and projectile contracts", () => {
     expect(damage).toEqual([damagePerBurst, damagePerBurst / 2, 0]);
   });
 
-  it("takes two 18-damage flak bursts to intercept and reports the kill only once", () => {
+  it("takes two 18-damage flak bursts to intercept a light missile and reports the kill only once", () => {
     const owner = ship("corvette", 0, [-500, 0]);
     const enemy = ship("cruiser", 1, [500, 0]);
     const missile = projectile(enemy, [0, 0], [0, 0], 1);
+    missile.hp = missile.maxHp = 25;
+    missile.weapon.projectileHp = 25;
     missile.id = "proj_1";
     const sim = simulate([]);
     const burst = (id: string) => ({ ...projectile(owner, [0, 0], [0, 0]), id });
@@ -773,6 +776,9 @@ describe("mount eligibility and projectile contracts", () => {
       const missiles = Array.from({ length: 1000 }, (_, i) => ({
         ...projectile(enemy, [0, 0], [0, 0], 1),
         id: `proj_${i + 1}`,
+        hp: 25,
+        maxHp: 25,
+        weapon: { ...enemy.turrets[1].weapon, projectileHp: 25 },
       }));
       const friendly = { ...projectile(owner, [0, 0], [0, 0]), weaponType: "missile" as const };
       const outside = { ...missiles[0], id: "outside", pos: [100, 0] as Vector2 };
@@ -1347,10 +1353,11 @@ describe("arena containment and matchup rebalance", () => {
     ).toBe(enemies[1].id);
   });
 
-  it("uses idle broadside beams to intercept live incoming torpedoes exactly once", () => {
+  it("uses idle broadside beams to finish damaged incoming torpedoes exactly once", () => {
     const bb = stationary(ship("battleship", 0, [0, 0]));
     const enemy = ship("cruiser", 1, [1400, 0]);
     const missile = projectile(enemy, [0, -300], [0, 320], 1);
+    missile.hp = 25;
     const sim = simulate([bb]);
     sim.projectiles.push(missile);
     advance(sim, 0.5);
@@ -1358,7 +1365,7 @@ describe("arena containment and matchup rebalance", () => {
     expect(sim.projectiles).toHaveLength(0);
     expect(bb.shieldCurrent).toBe(bb.shieldMax);
     const target = stationary(ship("cruiser", 1, [0, -500]));
-    missile.hp = 25;
+    missile.hp = missile.maxHp;
     expect(acquireMountTarget(bb, bb.turrets[1], target, [bb, target], [missile])?.kind).toBe(
       "ship",
     );
