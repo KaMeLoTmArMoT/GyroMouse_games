@@ -65,7 +65,10 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
     };
     sim.onProjectileFire = (type) => spaceAudio.playWeapon(type);
     sim.onShieldHit = (_pos, intensity) => spaceAudio.playShieldHit(intensity);
-    sim.onShipDestroyed = (ship) => spaceAudio.playExplosion(ship);
+    sim.onShipDestroyed = (ship) => {
+      effectsRef.current.addShipExplosion(ship);
+      spaceAudio.playExplosion(ship);
+    };
     sim.onVictory = (winnerTeam) => spaceAudio.playVictory(winnerTeam);
 
     let animId: number;
@@ -78,7 +81,7 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
 
       if (speed > 0) {
         sim.update(dt * speed);
-        effectsRef.current.update(dt * speed);
+        effectsRef.current.update(dt * speed, sim.ships);
       }
 
       const targetShip =
@@ -118,13 +121,76 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
             ctx.stroke();
           }
 
+          // Draw expanding ship explosion cores and shockwaves.
+          for (const core of effectsRef.current.shipExplosionCores) {
+            if (core.delay > 0) continue;
+            const progress = 1 - core.remainingDuration / core.maxDuration;
+            const radius = core.maxRadius * (0.15 + 0.85 * progress);
+            const gradient = ctx.createRadialGradient(
+              core.pos[0],
+              core.pos[1],
+              0,
+              core.pos[0],
+              core.pos[1],
+              radius,
+            );
+            const alpha = 1 - progress;
+            gradient.addColorStop(0, `rgba(255, 245, 180, ${alpha})`);
+            gradient.addColorStop(0.35, `rgba(251, 146, 60, ${alpha * 0.85})`);
+            gradient.addColorStop(1, "rgba(154, 52, 18, 0)");
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(core.pos[0], core.pos[1], radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          for (const wave of effectsRef.current.shipShockwaves) {
+            const alpha = wave.remainingDuration / wave.maxDuration;
+            const radius = wave.maxRadius * (1 - alpha);
+            ctx.strokeStyle = `rgba(255, 160, 55, ${alpha * 0.9})`;
+            ctx.lineWidth = Math.max(1, wave.maxRadius * 0.025 * alpha);
+            ctx.beginPath();
+            ctx.arc(wave.pos[0], wave.pos[1], radius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
           // Draw Particles
+          ctx.save();
           for (const p of effectsRef.current.particles) {
+            ctx.globalAlpha = p.remainingDuration / p.maxDuration;
             ctx.fillStyle = p.color;
             ctx.beginPath();
             ctx.arc(p.pos[0], p.pos[1], p.radius, 0, Math.PI * 2);
             ctx.fill();
           }
+          ctx.restore();
+
+          for (const shard of effectsRef.current.debrisShards) {
+            ctx.save();
+            ctx.translate(shard.pos[0], shard.pos[1]);
+            ctx.rotate(shard.angle);
+            ctx.globalAlpha = shard.remainingDuration / shard.maxDuration;
+            ctx.fillStyle = shard.color;
+            ctx.strokeStyle = shard.accentColor;
+            ctx.lineWidth = Math.max(0.5, shard.size * 0.12);
+            ctx.beginPath();
+            ctx.moveTo(shard.points[0][0] * shard.size, shard.points[0][1] * shard.size);
+            for (const [x, y] of shard.points.slice(1)) ctx.lineTo(x * shard.size, y * shard.size);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          ctx.save();
+          for (const p of effectsRef.current.engineParticles) {
+            ctx.globalAlpha = p.remainingDuration / p.maxDuration;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.pos[0], p.pos[1], p.radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
 
           // Draw Expanding Flak Burst Shockwaves
           for (const burst of effectsRef.current.flakBursts) {

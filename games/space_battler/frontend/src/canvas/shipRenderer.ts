@@ -2,6 +2,7 @@
 
 import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState } from "../types/combat";
+import { engineNozzles, engineSpeed } from "./effects";
 
 export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selected = false): void {
   if (!ship.isAlive) return;
@@ -36,6 +37,8 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
   ctx.save();
   ctx.rotate(ship.heading);
 
+  drawEngineGlow(ctx, ship);
+
   if (isBlue) {
     drawTerranHull(ctx, ship, primaryColor, hullDarkColor, accentColor);
   } else {
@@ -67,6 +70,28 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
   // 5. Compact Status HUD Bar
   renderHealthHUD(ctx, ship);
 
+  ctx.restore();
+}
+
+function drawEngineGlow(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+  const speed = engineSpeed(ship);
+  const flicker = 0.85 + 0.15 * Math.sin(performance.now() / 75 + ship.pos[0]);
+  const radius = ship.size * (0.18 + speed * 0.2) * flicker;
+  if (radius <= 0) return;
+  ctx.save();
+  ctx.globalAlpha *= (0.3 + speed * 0.7) * flicker;
+  for (const [x, y] of engineNozzles(ship)) {
+    const gx = ship.size * x - radius * 0.35;
+    const gy = ship.size * y;
+    const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, radius);
+    glow.addColorStop(0, ship.team === 0 ? "#38bdf8" : "#f97316");
+    glow.addColorStop(0.4, ship.team === 0 ? "#0284c7" : "#dc2626");
+    glow.addColorStop(1, "transparent");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(gx, gy, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
