@@ -87,6 +87,7 @@ export class ClientCombatSimulation {
   onFlakBurst: FlakBurstCallback | null = null;
   onProjectileFire?: (type: WeaponType, pos: Vector2) => void;
   onShieldHit?: (pos: Vector2, intensity: number) => void;
+  onWeaponImpact?: (ship: ShipState, origin: Vector2, shield: boolean, hull: boolean) => void;
   onShipDestroyed?: (ship: ShipState) => void;
   onVictory?: (winnerTeam: number) => void;
   observer?: CombatObserver;
@@ -1059,6 +1060,7 @@ export class ClientCombatSimulation {
           ship.team,
           ship.id,
           turret.id,
+          spawnPos,
         );
         if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 3.2);
       } else if (targetMissile) {
@@ -1164,7 +1166,7 @@ export class ClientCombatSimulation {
           );
         this.detonateFlak(p, aliveShips, positions);
       } else if (victim) {
-        this.applyDamage(victim, p.damage, p.weapon, p.ownerTeam, p.ownerId, p.ownerMountId);
+        this.applyDamage(victim, p.damage, p.weapon, p.ownerTeam, p.ownerId, p.ownerMountId, p.pos);
         p.hp = 0;
       } else if (p.lifetime > 1e-9) {
         active.push(p);
@@ -1203,6 +1205,7 @@ export class ClientCombatSimulation {
         flak.ownerTeam,
         flak.ownerId,
         flak.ownerMountId,
+        flak.pos,
       );
     }
 
@@ -1237,14 +1240,20 @@ export class ClientCombatSimulation {
     attackerTeam?: number,
     attackerId?: string,
     mountId?: string,
+    impactOrigin?: Vector2,
   ): void {
-    if (!this.observer) {
+    if (!this.observer && !this.onWeaponImpact) {
       this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam);
       return;
     }
     const before = [ship.shieldCurrent, ship.armorCurrent, ship.hullCurrent];
     this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam);
-    this.observer.onDamage(ship, attackerId, mountId, weapon.weaponType, before);
+    this.observer?.onDamage(ship, attackerId, mountId, weapon.weaponType, before);
+    if (impactOrigin) {
+      const shield = ship.shieldCurrent < before[0];
+      const hull = ship.armorCurrent < before[1] || ship.hullCurrent < before[2];
+      if (shield || hull) this.onWeaponImpact?.(ship, impactOrigin, shield, hull);
+    }
   }
 
   private applyDamageInternal(

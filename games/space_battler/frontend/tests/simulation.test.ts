@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { damageState, VisualEffectsManager } from "../src/canvas/effects";
 import { acquireMountTarget, inMountArc, mountPosition, sweptHit } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { FLEET_PRESETS } from "../src/engine/fleetPresets";
@@ -70,6 +71,58 @@ function projectile(
     isFlakBurst: Boolean(weapon.flak),
   };
 }
+
+describe("damage visuals", () => {
+  it("reports shield, armor and spillover impacts with their projectile origin", () => {
+    const owner = ship("battleship", 0, [-500, 0]);
+    const target = stationary(ship("battleship", 1, [0, 0]));
+    target.turrets = [];
+    const sim = simulate([target]);
+    const impacts: Array<[Vector2, boolean, boolean]> = [];
+    sim.onWeaponImpact = (_ship, origin, shield, hull) => impacts.push([[...origin], shield, hull]);
+    const hit = () => {
+      sim.projectiles = [projectile(owner, [-60, 0], [320, 0])];
+      sim.update(1 / 60);
+    };
+
+    hit();
+    expect(impacts[0][0][0]).toBeLessThan(0);
+    expect(impacts[0].slice(1)).toEqual([true, false]);
+    target.shieldCurrent = 1;
+    hit();
+    expect(impacts[1].slice(1)).toEqual([true, true]);
+    target.shieldCurrent = 0;
+    hit();
+    expect(impacts[2].slice(1)).toEqual([false, true]);
+  });
+
+  it("honors damage thresholds and bounds active smoke and spark pools", () => {
+    const target = stationary(ship("battleship", 0, [0, 0]));
+    expect(damageState(target)).toEqual({ scarred: false, burning: false, critical: false });
+    const effects = new VisualEffectsManager();
+    effects.update(1, [target]);
+    expect(effects.smokeParticles).toHaveLength(0);
+    expect(effects.sparkParticles).toHaveLength(0);
+
+    target.shieldCurrent = 0;
+    target.armorCurrent = target.armorMax * 0.6;
+    expect(damageState(target).scarred).toBe(false);
+    target.armorCurrent = 0;
+    target.hullCurrent = target.hullMax * 0.7;
+    expect(damageState(target).burning).toBe(false);
+    target.hullCurrent = target.hullMax * 0.25;
+    expect(damageState(target).critical).toBe(false);
+    target.hullCurrent = target.hullMax * 0.2;
+    expect(damageState(target)).toEqual({ scarred: true, burning: true, critical: true });
+    effects.update(1, Array(500).fill(target));
+    expect(effects.smokeParticles).toHaveLength(400);
+    expect(effects.sparkParticles).toHaveLength(400);
+    target.isAlive = false;
+    effects.update(2, [target]);
+    expect(effects.smokeParticles).toHaveLength(0);
+    expect(effects.sparkParticles).toHaveLength(0);
+  });
+});
 
 describe("mount eligibility and projectile contracts", () => {
   it("fires forward, port, and starboard mounts at independent valid targets", () => {

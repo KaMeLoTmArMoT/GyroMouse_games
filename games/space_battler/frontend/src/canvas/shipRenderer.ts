@@ -2,7 +2,7 @@
 
 import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState } from "../types/combat";
-import { engineNozzles, engineSpeed } from "./effects";
+import { damageState, engineNozzles, engineSpeed } from "./effects";
 
 export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selected = false): void {
   if (!ship.isAlive) return;
@@ -45,6 +45,8 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
     drawAlienHull(ctx, ship, primaryColor, hullDarkColor, accentColor);
   }
 
+  drawHullDamage(ctx, ship);
+
   ctx.restore();
 
   // 3. Render Independent Turrets
@@ -70,6 +72,62 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
   // 5. Compact Status HUD Bar
   renderHealthHUD(ctx, ship);
 
+  ctx.restore();
+}
+
+function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+  const { scarred, burning, critical } = damageState(ship);
+  if (!scarred && !burning && !critical) return;
+  const s = ship.size;
+  const time = performance.now();
+  ctx.save();
+
+  if (scarred || burning) {
+    ctx.strokeStyle = "#030508";
+    ctx.lineWidth = Math.max(1.2, s * 0.045);
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      ctx.moveTo(s * 0.12, side * s * 0.12);
+      ctx.lineTo(s * 0.25, side * s * 0.19);
+      ctx.lineTo(s * 0.21, side * s * 0.25);
+      ctx.lineTo(s * 0.36, side * s * 0.3);
+    }
+    ctx.stroke();
+  }
+
+  if (burning) {
+    const flicker = 0.75 + 0.25 * Math.sin(time / 85 + ship.pos[0]);
+    ctx.globalAlpha = flicker;
+    ctx.shadowColor = "#f97316";
+    ctx.shadowBlur = Math.max(3, s * 0.18);
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = "#ef4420";
+      ctx.beginPath();
+      ctx.moveTo(s * 0.18, side * s * 0.18);
+      ctx.lineTo(s * 0.25, side * s * (0.34 + flicker * 0.08));
+      ctx.lineTo(s * 0.32, side * s * 0.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#fbbf24";
+      ctx.beginPath();
+      ctx.arc(s * 0.25, side * s * 0.21, Math.max(1, s * 0.035), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (critical) {
+    const coreX =
+      ship.team === 0
+        ? { strike_craft: 0.53, corvette: 0.5, cruiser: -0.53, battleship: -0.36 }[ship.hullClass]
+        : { strike_craft: 0.57, corvette: 0.3, cruiser: 0.25, battleship: -0.16 }[ship.hullClass];
+    ctx.globalAlpha = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(time / 100));
+    ctx.shadowColor = "#ff2020";
+    ctx.shadowBlur = Math.max(5, s * 0.3);
+    ctx.fillStyle = "#ff3030";
+    ctx.beginPath();
+    ctx.ellipse(s * coreX, 0, Math.max(2, s * 0.07), Math.max(2, s * 0.1), 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 

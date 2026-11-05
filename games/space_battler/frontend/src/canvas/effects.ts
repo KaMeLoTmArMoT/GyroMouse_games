@@ -59,6 +59,19 @@ export function engineSpeed(ship: ShipState): number {
   return ship.maxSpeed > 0 ? Math.min(1, Math.hypot(...ship.velocity) / ship.maxSpeed) : 0;
 }
 
+export function damageState(ship: ShipState): {
+  scarred: boolean;
+  burning: boolean;
+  critical: boolean;
+} {
+  const critical = ship.hullMax > 0 && ship.hullCurrent < ship.hullMax * 0.25;
+  return {
+    scarred: ship.shieldCurrent <= 0 && ship.armorCurrent < ship.armorMax * 0.6,
+    burning: ship.armorCurrent <= 0 && ship.hullCurrent < ship.hullMax * 0.7,
+    critical,
+  };
+}
+
 export interface LaserBeamEffect {
   id: string;
   from: Vector2;
@@ -121,12 +134,15 @@ export class VisualEffectsManager {
   shieldImpacts: ShieldImpactEffect[] = [];
   particles: ParticleEffect[] = [];
   engineParticles: ParticleEffect[] = [];
+  smokeParticles: ParticleEffect[] = [];
+  sparkParticles: ParticleEffect[] = [];
   flakBursts: FlakBurstEffect[] = [];
   debrisShards: DebrisShard[] = [];
   shipExplosionCores: ShipExplosionEffect[] = [];
   shipShockwaves: ShipExplosionEffect[] = [];
 
   addBeam(from: Vector2, to: Vector2, color = "#38bdf8", width = 2.5, duration = 0.12): void {
+    if (this.beams.length >= 300) this.beams.shift();
     this.beams.push({
       id: Math.random().toString(36).substring(2, 9),
       from: [...from],
@@ -139,17 +155,40 @@ export class VisualEffectsManager {
   }
 
   addShieldImpact(shipId: string, pos: Vector2, shipRadius: number, impactAngle: number): void {
+    if (this.shieldImpacts.length >= 200) this.shieldImpacts.shift();
     this.shieldImpacts.push({
       id: Math.random().toString(36).substring(2, 9),
       shipId,
       pos: [...pos],
       shipRadius,
       impactAngle,
-      remainingDuration: 0.25,
+      remainingDuration: 0.15,
     });
   }
 
+  addImpactSparks(pos: Vector2, impactAngle: number): void {
+    const count = 4 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < count && this.sparkParticles.length < 400; i++) {
+      const angle = impactAngle + (Math.random() - 0.5) * Math.PI;
+      const speed = 55 + Math.random() * 120;
+      const lifetime = 0.15 + Math.random() * 0.2;
+      this.sparkParticles.push({
+        pos: [...pos],
+        velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
+        color: i % 2 === 0 ? "#fff7c2" : "#fb923c",
+        radius: 1,
+        remainingDuration: lifetime,
+        maxDuration: lifetime,
+      });
+    }
+  }
+
+  private addParticle(particle: ParticleEffect): void {
+    if (this.particles.length < 1200) this.particles.push(particle);
+  }
+
   addFlakBurst(pos: Vector2, maxRadius = 60): void {
+    if (this.flakBursts.length >= 200) this.flakBursts.shift();
     this.flakBursts.push({
       pos: [...pos],
       radius: 4,
@@ -162,7 +201,7 @@ export class VisualEffectsManager {
     for (let i = 0; i < shrapnelCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 90 + Math.random() * 170;
-      this.particles.push({
+      this.addParticle({
         pos: [pos[0], pos[1]],
         velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
         color: Math.random() > 0.45 ? "#fb923c" : "#facc15",
@@ -177,7 +216,7 @@ export class VisualEffectsManager {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 120;
-      this.particles.push({
+      this.addParticle({
         pos: [pos[0], pos[1]],
         velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
         color: Math.random() > 0.4 ? color : "#facc15",
@@ -198,6 +237,7 @@ export class VisualEffectsManager {
     const profile = profiles[ship.hullClass];
     const capital = profile.cores > 1;
 
+    if (this.shipShockwaves.length >= 100) this.shipShockwaves.shift();
     this.shipShockwaves.push({
       pos: [...ship.pos],
       maxRadius: ship.size * 2.5,
@@ -207,6 +247,7 @@ export class VisualEffectsManager {
     });
 
     for (let i = 0; i < profile.cores; i++) {
+      if (this.shipExplosionCores.length >= 300) this.shipExplosionCores.shift();
       const offset = i === 0 ? 0 : (i === 1 ? -0.55 : 0.55) * ship.size;
       const duration = profile.duration * (i === 0 ? 0.75 : 0.65);
       this.shipExplosionCores.push({
@@ -226,7 +267,7 @@ export class VisualEffectsManager {
       const smoke = capital && i % 3 === 0;
       const speed = (smoke ? 15 : 45) + Math.random() * (smoke ? 35 : 100 + ship.size);
       const lifetime = profile.duration * (0.65 + Math.random() * 0.35);
-      this.particles.push({
+      this.addParticle({
         pos: [...ship.pos],
         velocity: [
           ship.velocity[0] * 0.25 + Math.cos(angle) * speed,
@@ -329,13 +370,59 @@ export class VisualEffectsManager {
       return p.remainingDuration > 0;
     });
 
+    this.smokeParticles = this.smokeParticles.filter((p) => {
+      p.remainingDuration -= dt;
+      p.pos[0] += p.velocity[0] * dt;
+      p.pos[1] += p.velocity[1] * dt;
+      p.radius += dt * 3;
+      return p.remainingDuration > 0;
+    });
+
+    this.sparkParticles = this.sparkParticles.filter((p) => {
+      p.remainingDuration -= dt;
+      p.pos[0] += p.velocity[0] * dt;
+      p.pos[1] += p.velocity[1] * dt;
+      const damping = 0.95 ** (dt * 60);
+      p.velocity[0] *= damping;
+      p.velocity[1] *= damping;
+      return p.remainingDuration > 0;
+    });
+
     for (const ship of ships) {
-      const speed = engineSpeed(ship);
-      if (!ship.isAlive || speed < 0.05) continue;
+      if (!ship.isAlive) continue;
+      const { scarred, burning, critical } = damageState(ship);
       const cos = Math.cos(ship.heading);
       const sin = Math.sin(ship.heading);
+      if ((burning || critical) && this.smokeParticles.length < 400) {
+        if (Math.random() < Math.min(1, dt * (critical ? 12 : 5))) {
+          const localX = (Math.random() * 0.6 - 0.3) * ship.size;
+          const localY = (Math.random() * 0.4 - 0.2) * ship.size;
+          const lifetime = 0.8 + Math.random() * 0.6;
+          this.smokeParticles.push({
+            pos: [
+              ship.pos[0] + localX * cos - localY * sin,
+              ship.pos[1] + localX * sin + localY * cos,
+            ],
+            velocity: [ship.velocity[0] - cos * 18, ship.velocity[1] - sin * 18],
+            color: "#17191f",
+            radius: Math.max(2, ship.size * (critical ? 0.13 : 0.09)),
+            remainingDuration: lifetime,
+            maxDuration: lifetime,
+          });
+        }
+      }
+      if ((scarred || critical) && Math.random() < Math.min(1, dt * (critical ? 5 : 0.8))) {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const pos: Vector2 = [
+          ship.pos[0] + (0.25 * cos - side * 0.2 * sin) * ship.size,
+          ship.pos[1] + (0.25 * sin + side * 0.2 * cos) * ship.size,
+        ];
+        this.addImpactSparks(pos, ship.heading + side * Math.PI * 0.5);
+      }
+      const speed = engineSpeed(ship);
+      if (speed < 0.05) continue;
       for (const [x, y] of engineNozzles(ship)) {
-        if (this.engineParticles.length >= 600) return;
+        if (this.engineParticles.length >= 600) break;
         if (Math.random() >= Math.min(1, dt * (8 + 20 * speed))) continue;
         const lifetime = 0.25 + Math.random() * 0.15;
         const exhaustSpeed = 15 + speed * 35;
