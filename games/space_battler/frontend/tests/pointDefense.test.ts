@@ -75,6 +75,19 @@ function advance(sim: ClientCombatSimulation, frames: number): void {
 }
 
 describe("shared heavy torpedo durability", () => {
+  it("gives flak a small deterministic angular spread without changing shell speed", () => {
+    const defender = defense("flak");
+    const target = ship("battleship", 1, [300, 0]);
+    target.turrets = [];
+    const sim = simulation(defender, target);
+    sim.update(STEP);
+    const shot = sim.projectiles.find((projectile) => projectile.ownerId === defender.id);
+    expect(shot).toBeDefined();
+    const [x, y] = shot?.velocity ?? [0, 0];
+    expect(Math.atan2(y, x)).toBeCloseTo(Math.sin(12.9898) * 0.02);
+    expect(Math.hypot(x, y)).toBeCloseTo(defender.turrets[0].weapon.projectileSpeed);
+  });
+
   it("spawns a heavy torpedo with 120 current and maximum HP", () => {
     const owner = ship("cruiser");
     owner.turrets = [owner.turrets[1]];

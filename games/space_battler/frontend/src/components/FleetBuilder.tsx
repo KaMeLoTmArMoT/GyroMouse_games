@@ -161,238 +161,63 @@ export function ShipSilhouette({
   team?: 0 | 1;
   className?: string;
 }) {
-  if (team === 1) {
-    return (
-      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
-        {hullClass === "strike_craft" && (
-          <>
-            <path
-              d="M24 6 C20 14 14 16 5 7 C7 19 10 31 18 35 C21 37 27 37 30 35 C38 31 41 19 43 7 C34 16 28 14 24 6 Z"
-              fill="currentColor"
-              fillOpacity="0.18"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M8 14 C13 24 17 29 24 30 C31 29 35 24 40 14 M20 33 Q24 35 28 33"
-              strokeWidth="1"
-            />
-          </>
-        )}
-        {hullClass === "corvette" && (
-          <>
-            <path
-              d="M24 4 C19 12 9 15 4 30 C11 27 16 29 20 34 L24 44 L28 34 C32 29 37 27 44 30 C39 15 29 12 24 4 Z"
-              fill="currentColor"
-              fillOpacity="0.18"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M24 10 C20 18 20 26 24 32 C28 26 28 18 24 10 Z M8 27 Q16 21 20 22 M40 27 Q32 21 28 22"
-              strokeWidth="1"
-            />
-            <circle cx="24" cy="21" r="2" fill="currentColor" fillOpacity="0.35" />
-          </>
-        )}
-        {hullClass === "cruiser" && (
-          <>
-            <path
-              d="M14 4 C17 11 20 14 24 16 C28 14 31 11 34 4 C35 14 31 20 29 25 C27 30 31 34 38 42 C30 40 27 38 24 41 C21 38 18 40 10 42 C17 34 21 30 19 25 C17 20 13 14 14 4 Z"
-              fill="currentColor"
-              fillOpacity="0.18"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M18 14 Q24 21 30 14 M24 19 C20 26 21 32 24 37 C27 32 28 26 24 19 Z M12 40 Q19 35 21 32 M36 40 Q29 35 27 32"
-              strokeWidth="1"
-            />
-          </>
-        )}
-        {hullClass === "battleship" && (
-          <>
-            <path
-              d="M24 4 C18 12 10 14 3 9 C5 21 8 35 16 40 C20 43 28 43 32 40 C40 35 43 21 45 9 C38 14 30 12 24 4 Z"
-              fill="currentColor"
-              fillOpacity="0.18"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M15 25 Q24 18 33 25 Q24 30 15 25 Z M8 15 Q14 25 18 30 M40 15 Q34 25 30 30 M10 23 Q14 32 21 37 M38 23 Q34 32 27 37"
-              strokeWidth="1"
-            />
-            <path d="M20 25 Q24 22 28 25 Q24 28 20 25 Z" fill="currentColor" fillOpacity="0.45" />
-          </>
-        )}
-        {hullClass === "dreadnought" && (
-          <>
-            <path
-              d="M12 3 C13 12 17 15 19 17 C13 18 8 24 8 31 C8 38 14 43 24 45 C34 43 40 38 40 31 C40 24 35 18 29 17 C31 15 35 12 36 3 C31 9 27 10 24 13 C21 10 17 9 12 3 Z"
-              fill="currentColor"
-              fillOpacity="0.18"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M24 16 C18 18 14 24 14 31 C14 37 18 40 24 42 C30 40 34 37 34 31 C34 24 30 18 24 16 Z M10 29 Q14 24 18 24 M38 29 Q34 24 30 24 M15 34 Q24 30 33 34 M19 21 Q24 24 29 21"
-              strokeWidth="1"
-            />
-            <circle cx="24" cy="28" r="2.5" fill="currentColor" fillOpacity="0.35" />
-          </>
-        )}
-        {hullClass === "missile_frigate" && (
-          <>
-            <path
-              d="M24 3 C20 10 19 17 19 25 C18 32 15 37 11 43 C17 41 20 39 24 37 C28 39 31 41 37 43 C33 37 30 32 29 25 C29 17 28 10 24 3 Z"
-              fill="currentColor"
-              fillOpacity="0.18"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M18 18 C11 19 10 25 13 32 C16 32 18 29 19 26 M30 18 C37 19 38 25 35 32 C32 32 30 29 29 26 M24 9 C21 18 21 27 24 34 C27 27 27 18 24 9 Z M14 23 Q16 25 15 29 M34 23 Q32 25 33 29"
-              strokeWidth="1.2"
-            />
-          </>
-        )}
-      </svg>
-    );
-  }
-  if (hullClass === "dreadnought") {
-    return (
-      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
-        <path
-          d="M24 3 L33 10 L34 15 L39 19 L39 34 L35 38 L33 44 L15 44 L13 38 L9 34 L9 19 L14 15 L15 10 Z"
-          fill="currentColor"
-          fillOpacity="0.18"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M17 12 L14 19 L14 34 M31 12 L34 19 L34 34 M16 38 L32 38 M17 15 L19 12 M31 15 L29 12"
-          strokeWidth="1"
-        />
-        <path d="M21 20 H27 V28 H21 Z" fill="currentColor" fillOpacity="0.35" />
-        <circle cx="24" cy="13" r="3" fill="currentColor" fillOpacity="0.35" />
-        <circle cx="15" cy="25" r="3" fill="currentColor" fillOpacity="0.35" />
-        <circle cx="33" cy="25" r="3" fill="currentColor" fillOpacity="0.35" />
-        <circle cx="24" cy="35" r="3" fill="currentColor" fillOpacity="0.35" />
-        <path
-          d="M24 13 V8 M15 25 H10 M33 25 H38 M24 35 V40 M18 42 V45 M22 42 V45 M26 42 V45 M30 42 V45"
-          strokeWidth="1.5"
-        />
-      </svg>
-    );
-  }
-  if (hullClass === "missile_frigate") {
-    return (
-      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
-        <path
-          d="M24 3 L31 15 L35 35 L30 41 L24 37 L18 41 L13 35 L17 15 Z"
-          fill="currentColor"
-          fillOpacity="0.18"
-          strokeWidth="1.8"
-        />
-        <path d="M24 8 L21 16 L24 20 L27 16 Z M24 20 V27 M21 23 H27" strokeWidth="1" />
-        <path
-          d="M16 21 H20 V27 H16 Z M28 21 H32 V27 H28 Z M17 29 H21 V35 H17 Z M27 29 H31 V35 H27 Z"
-          fill="currentColor"
-          fillOpacity="0.35"
-          strokeWidth="1"
-        />
-        <path d="M18 39 V44 M30 39 V44" strokeWidth="2.5" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (hullClass === "battleship") {
-    return (
-      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
-        <polygon
-          points="24,3 35,13 37,35 31,45 17,45 11,35 13,13"
-          fill="currentColor"
-          fillOpacity="0.18"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M21 8 L21 22 M27 8 L27 22 M24 4 L24 21 M20 12 L28 12 M20 16 L28 16"
-          strokeWidth="1"
-        />
-        <path
-          d="M12 22 L14 20 L17 20 L19 22 L19 25 L17 27 L14 27 L12 25 Z M29 22 L31 20 L34 20 L36 22 L36 25 L34 27 L31 27 L29 25 Z"
-          fill="currentColor"
-          fillOpacity="0.3"
-          strokeWidth="1"
-        />
-        <rect
-          x="20"
-          y="27"
-          width="8"
-          height="7"
-          rx="1"
-          fill="currentColor"
-          fillOpacity="0.35"
-          strokeWidth="1.2"
-        />
-        <path
-          d="M22 29 L26 29 M19 34 L29 34 M17 38 L17 42 M22 38 L22 43 M26 38 L26 43 M31 38 L31 42"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-  if (hullClass === "cruiser") {
-    return (
-      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
-        <polygon
-          points="24,4 33,16 34,32 31,42 17,42 14,32 15,16"
-          fill="currentColor"
-          fillOpacity="0.18"
-          strokeWidth="1.8"
-        />
-        <path d="M20 13 L20 19 M28 13 L28 19 M24 8 L24 18" strokeWidth="1.2" />
-        <path d="M18 22 L18 32 L30 32 L30 22" strokeWidth="1" />
-        <circle cx="24" cy="25" r="4" fill="currentColor" fillOpacity="0.35" strokeWidth="1.2" />
-        <path
-          d="M18 38 L18 41 M24 37 L24 41 M30 38 L30 41"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-  if (hullClass === "corvette") {
-    return (
-      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
-        <polygon
-          points="24,4 33,17 36,32 31,41 24,37 17,41 12,32 15,17"
-          fill="currentColor"
-          fillOpacity="0.18"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M24 7 L19 18 L24 21 L29 18 Z M15 23 L19 27 L19 33 M33 23 L29 27 L29 33"
-          strokeWidth="1"
-        />
-        <circle cx="20" cy="25" r="2.5" fill="currentColor" fillOpacity="0.35" strokeWidth="1.2" />
-        <circle cx="28" cy="25" r="2.5" fill="currentColor" fillOpacity="0.35" strokeWidth="1.2" />
-        <path d="M16 33 L16 38 M32 33 L32 38" strokeWidth="3" strokeLinecap="round" />
-        <path d="M16 34 L16 38 M32 34 L32 38" strokeWidth="1" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  // Strike Craft: Swept delta fighter
+  const hulls: Record<0 | 1, Record<HullClass, string>> = {
+    0: {
+      strike_craft: "M1.1 0 L-.7 -.55 L-.5 -.2 L-.85 0 L-.5 .2 L-.7 .55 Z",
+      corvette: "M1.15 0 L.4 -.45 L-.5 -.58 L-.95 -.32 L-.75 0 L-.95 .32 L-.5 .58 L.4 .45 Z",
+      cruiser:
+        "M1.22 0 L.6 -.38 L.2 -.38 L-.65 -.5 L-1.1 -.28 L-1.1 .28 L-.65 .5 L.2 .38 L.6 .38 Z",
+      battleship:
+        "M1.28 0 L.8 -.38 L.25 -.58 L-.85 -.62 L-1.2 -.35 L-1.2 .35 L-.85 .62 L.25 .58 L.8 .38 Z",
+      dreadnought:
+        "M1.25 0 L.85 -.4 L.3 -.48 L.14 -.67 L-.58 -.67 L-.78 -.52 L-1.12 -.42 L-1.12 .42 L-.78 .52 L-.58 .67 L.14 .67 L.3 .48 L.85 .4 Z",
+      missile_frigate: "M1.2 0 L.4 -.3 L-.55 -.46 L-.95 -.34 L-.78 0 L-.95 .34 L-.55 .46 L.4 .3 Z",
+    },
+    1: {
+      strike_craft:
+        "M.85 -.6884 Q.15 -.1252 -.65 -.3505 L-.35 0 L-.65 .3505 Q.15 .1252 .85 .6884 Q.55 0 .85 -.6884 Z",
+      corvette: "M1.15 0 Q.25 -.7916 -.75 -.548 Q-.45 0 -.75 .548 Q.25 .7916 1.15 0 Z",
+      cruiser:
+        "M1.22 -.2411 L.9 0 L1.22 .2411 Q.35 .5479 -.85 .3945 Q-1.1 0 -.85 -.3945 Q.35 -.5479 1.22 -.2411 Z",
+      battleship: "M1.28 0 Q.5 -.892 -1.15 -.6559 Q-.4 0 -1.15 .6559 Q.5 .892 1.28 0 Z",
+      dreadnought:
+        "M1.25 0 Q.85 -.42 .25 -.46 L0 -.68 L-.52 -.64 Q-.9 -.55 -1.12 -.42 L-1.12 .42 Q-.9 .55 -.52 .64 L0 .68 L.25 .46 Q.85 .42 1.25 0 Z",
+      missile_frigate:
+        "M1.2 0 Q.35 -.48 -.85 -.42 L-.92 -.15 L-.65 0 L-.92 .15 L-.85 .42 Q.35 .48 1.2 0 Z",
+    },
+  };
+  const details: Record<0 | 1, Record<HullClass, string>> = {
+    0: {
+      strike_craft: "M.8 0 L.4 -.12 L.25 0 L.4 .12 Z M-.1 -.12 L-.55 -.35 M-.1 .12 L-.55 .35",
+      corvette: "M.8 0 L.4 -.2 L.15 0 L.4 .2 Z M.1 -.3 L-.5 -.4 M.1 .3 L-.5 .4",
+      cruiser:
+        "M.75 0 L-.7 0 M.2 -.22 L-.6 -.3 M.2 .22 L-.6 .3 M-.4 -.14 L-.65 -.14 L-.65 .14 L-.4 .14 Z",
+      battleship:
+        "M.95 0 L.25 0 M.25 -.3 L-.65 -.35 M.25 .3 L-.65 .35 M-.2 -.16 L-.5 -.16 L-.5 .16 L-.2 .16 Z",
+      dreadnought:
+        "M.9 0 L-.8 0 M.25 -.3 L-.6 -.42 M.25 .3 L-.6 .42 M0 -.15 L-.3 -.15 L-.3 .15 L0 .15 Z",
+      missile_frigate: "M.9 0 L.4 -.13 L.25 0 L.4 .13 Z M.1 -.23 L-.55 -.33 M.1 .23 L-.55 .33",
+    },
+    1: {
+      strike_craft:
+        "M.65 -.45 Q.05 -.1 -.4 -.22 M.65 .45 Q.05 .1 -.4 .22 M.6 0 Q.4 -.1 .25 0 Q.4 .1 .6 0 Z",
+      corvette:
+        "M.85 0 Q.2 -.35 -.55 -.35 M.85 0 Q.2 .35 -.55 .35 M.45 0 Q.3 -.12 .15 0 Q.3 .12 .45 0 Z",
+      cruiser: "M.8 0 Q.2 -.25 -.65 -.25 M.8 0 Q.2 .25 -.65 .25 M.4 0 Q.25 -.1 .1 0 Q.25 .1 .4 0 Z",
+      battleship:
+        "M.95 0 Q.2 -.45 -.8 -.4 M.95 0 Q.2 .45 -.8 .4 M0 0 Q-.15 -.14 -.3 0 Q-.15 .14 0 0 Z",
+      dreadnought:
+        "M.9 0 Q.2 -.3 -.8 -.35 M.9 0 Q.2 .3 -.8 .35 M0 0 Q-.15 -.14 -.3 0 Q-.15 .14 0 0 Z",
+      missile_frigate:
+        "M.9 0 Q.2 -.25 -.7 -.3 M.9 0 Q.2 .25 -.7 .3 M.7 0 Q.55 -.1 .4 0 Q.55 .1 .7 0 Z",
+    },
+  };
   return (
     <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
-      <polygon
-        points="24,5 37,39 29,35 24,42 19,35 11,39"
-        fill="currentColor"
-        fillOpacity="0.22"
-        strokeWidth="1.8"
-      />
-      <polygon
-        points="24,12 27,18 24,22 21,18"
-        fill="currentColor"
-        fillOpacity="0.35"
-        strokeWidth="1"
-      />
-      <path d="M20 25 L15 35 M28 25 L33 35" strokeWidth="1" />
-      <path d="M19 36 L19 39 M29 36 L29 39" strokeWidth="2.2" strokeLinecap="round" />
+      <g transform="translate(24 24) rotate(-90) scale(16)">
+        <path d={hulls[team][hullClass]} fill="currentColor" fillOpacity="0.18" strokeWidth="0.1" />
+        <path d={details[team][hullClass]} strokeWidth="0.06" />
+      </g>
     </svg>
   );
 }

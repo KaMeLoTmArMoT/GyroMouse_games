@@ -5,6 +5,7 @@ import {
   calculateMaxAffordable,
   clampTargetCount,
   RosterCountInput,
+  ShipSilhouette,
   updateSlotsForStackCount,
 } from "../src/components/FleetBuilder";
 import { GroupPreview, useDelayedPreview } from "../src/components/FleetPreviews";
@@ -33,6 +34,27 @@ vi.mock("react", async (importOriginal) => ({
 }));
 
 describe("fleet previews", () => {
+  it("renders a distinct SVG hull and details for every hull and faction", () => {
+    for (const hullClass of [
+      "strike_craft",
+      "corvette",
+      "cruiser",
+      "battleship",
+      "dreadnought",
+      "missile_frigate",
+    ] as const) {
+      const blue = renderToStaticMarkup(ShipSilhouette({ hullClass, team: 0 }));
+      const red = renderToStaticMarkup(ShipSilhouette({ hullClass, team: 1 }));
+      for (const markup of [blue, red]) {
+        expect(markup).toContain('<svg viewBox="0 0 48 48"');
+        expect(markup).toContain('transform="translate(24 24) rotate(-90) scale(16)"');
+        expect(markup.match(/<path /g)).toHaveLength(2);
+        expect(markup).not.toContain('d="undefined"');
+      }
+      expect(blue).not.toBe(red);
+    }
+  });
+
   it.each([200, 250])("waits %ims and cancels a preview on leave or a new hover", (delay) => {
     vi.useFakeTimers();
     try {

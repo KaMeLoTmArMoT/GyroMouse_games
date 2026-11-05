@@ -1413,7 +1413,11 @@ export class ClientCombatSimulation {
       ship.hullClass === "missile_frigate" && turret.weapon.weaponType === "missile"
         ? (([5, -5, 30, -30][tubeIndex] ?? 0) * Math.PI) / 180
         : 0;
-    const velocity = vecScale(rotatePoint(toTarget, launchSpread), turret.weapon.projectileSpeed);
+    const flakSpread = turret.weapon.flak ? Math.sin(this.projectileCounter * 12.9898) * 0.02 : 0;
+    const velocity = vecScale(
+      rotatePoint(toTarget, launchSpread + flakSpread),
+      turret.weapon.projectileSpeed,
+    );
     const lifetime = projectileLifetime(turret.weapon);
 
     this.projectiles.push({
