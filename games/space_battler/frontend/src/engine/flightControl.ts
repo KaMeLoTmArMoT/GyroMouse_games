@@ -1,6 +1,13 @@
-import type { GroupOrder, ProjectileState, ShipState, Vector2 } from "../types/combat";
+import type {
+  GroupOrder,
+  ProjectileState,
+  ShipState,
+  TurretMountState,
+  Vector2,
+} from "../types/combat";
 import {
   damagedTargetPriority,
+  fullCircle,
   interceptTime,
   mountPosition,
   squadFocusPriority,
@@ -182,6 +189,41 @@ export function escortVelocity(
   return vecAdd(vecScale(stationVelocity, 0.65), vecScale(orbitVelocity(ship, target), 0.35));
 }
 
+// Instant beams can fire again while a capital turns, so include a buffer beyond both arc and range.
+function beamEscape(ship: ShipState, enemy: ShipState, turret: TurretMountState): Vector2 {
+  const muzzle = mountPosition(enemy, turret);
+  const relative = vecSub(ship.pos, muzzle);
+  const future = vecAdd(relative, vecScale(vecSub(ship.velocity, enemy.velocity), 0.7));
+  const range = turret.weapon.range + ship.size * 1.4 + 80;
+  const [minArc, maxArc] = turret.baseArc;
+  const center = (minArc + maxArc) / 2;
+  const halfArc = (maxArc - minArc) / 2;
+  const turnBuffer = 0.12 + Math.min(0.3, enemy.turnRate * 0.4);
+  let best: Vector2 = [0, 0];
+  let bestDepth = -Infinity;
+  for (const point of [relative, future]) {
+    const distance = vecDistance([0, 0], point);
+    if (distance > range) continue;
+    const bearing = Math.atan2(point[1], point[0]);
+    const angle = normalizeAngle(bearing - enemy.heading - center);
+    const margin = turnBuffer + Math.asin(clamp((ship.size * 1.4) / Math.max(1, distance), 0, 1));
+    const angularDepth = halfArc + margin - Math.abs(angle);
+    if (!fullCircle(turret) && angularDepth < 0) continue;
+    const radialDepth = range - distance;
+    const depth = fullCircle(turret) ? radialDepth : Math.min(radialDepth, distance * angularDepth);
+    if (depth <= bestDepth) continue;
+    bestDepth = depth;
+    const outward: Vector2 = distance > 1e-6 ? vecScale(point, 1 / distance) : [1, 0];
+    const side = Math.sign(angle) || ((Number(ship.id.split("_").at(-1)) || 0) % 2 ? -1 : 1);
+    const direction: Vector2 =
+      fullCircle(turret) || radialDepth <= distance * angularDepth
+        ? outward
+        : [-outward[1] * side, outward[0] * side];
+    best = vecScale(direction, ship.maxSpeed * 0.25);
+  }
+  return best;
+}
+
 // Predict the finite gimbal corridor before firing, and also avoid shells already in flight.
 export function spinalEscape(
   ship: ShipState,
@@ -190,9 +232,23 @@ export function spinalEscape(
   time: number,
 ): Vector2 {
   let avoidance: Vector2 = [0, 0];
+  let beamAvoidance: Vector2 = [0, 0];
+  let closestBeam = Infinity;
   for (const enemy of ships) {
     if (!enemy.isAlive || enemy.team === ship.team) continue;
     for (const turret of enemy.turrets) {
+      if (
+        (ship.hullClass === "corvette" || ship.hullClass === "strike_craft") &&
+        (enemy.hullClass === "cruiser" || enemy.hullClass === "battleship") &&
+        turret.weapon.weaponType === "beam_laser"
+      ) {
+        const beam = beamEscape(ship, enemy, turret);
+        const distance = vecDistance(ship.pos, mountPosition(enemy, turret));
+        if (vecDot(beam, beam) > 0 && distance < closestBeam) {
+          closestBeam = distance;
+          beamAvoidance = beam;
+        }
+      }
       if (!turret.isSpinalGimbal) continue;
       const muzzle = mountPosition(enemy, turret);
       const forward: Vector2 = [Math.cos(enemy.heading), Math.sin(enemy.heading)];
@@ -251,7 +307,7 @@ export function spinalEscape(
     const side = Math.sign(vecDot(relative, lateral)) || ship.escapeSide || 1;
     avoidance = vecAdd(avoidance, vecScale(lateral, side * ship.maxSpeed * 2));
   }
-  return avoidance;
+  return vecAdd(avoidance, beamAvoidance);
 }
 
 export function capitalIntent(

@@ -503,6 +503,7 @@ export function FleetBuilder({
             <span className="text-cyan-400 font-mono">
               Target: Group {selectedGroup} ({groupCounts[selectedGroup] || 0} vessels)
             </span>
+            {groupPreview.active !== null && <GroupPreview group={groupPreview.active} />}
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {[1, 2, 3, 4, 5].map((g) => {
@@ -549,7 +550,6 @@ export function FleetBuilder({
               );
             })}
           </div>
-          {groupPreview.active !== null && <GroupPreview group={groupPreview.active} />}
         </div>
 
         {/* Ship Catalog */}
@@ -564,8 +564,6 @@ export function FleetBuilder({
             return (
               <div
                 key={hull}
-                onMouseEnter={() => shipPreview.show(hull)}
-                onMouseLeave={shipPreview.hide}
                 className={`p-4 rounded-xl border transition-all flex flex-col justify-between select-text relative ${
                   isInspecting
                     ? "border-cyan-500/50 bg-zinc-900/90 shadow-md shadow-cyan-500/10"
@@ -576,7 +574,11 @@ export function FleetBuilder({
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0">
+                      <div
+                        onMouseEnter={() => shipPreview.show(hull)}
+                        onMouseLeave={shipPreview.hide}
+                        className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-cyan-400 shrink-0"
+                      >
                         <ShipSilhouette hullClass={hull} className="w-7 h-7" />
                       </div>
                       <div>

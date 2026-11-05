@@ -27,10 +27,10 @@ Status: Grand Scale Production Baseline Active (All 187 Vitest tests passing, 0 
 
 ## 2. Priority Feature Backlog (Pending Activation)
 
-- **B.7: Expanded 8-Hull Ship Roster (ON HOLD)**: Missile Frigate, Heavy Dreadnought, Plasma Corvette, Shield Tender, Artillery Monitor, Drone Carrier, Torpedo Bomber, Rocket Interceptor. (Inactive until explicitly requested).
-
-
-
-
-
-
+- **B.7: Expanded 8-Hull Ship Roster Candidates**:
+  - Heavy Artillery Dreadnought (3-of-4 broadside architecture: bow/aft wide arcs + port/stbd casemates).
+  - Missile Frigate (saturation kinetic/explosive screen).
+  - Torpedo Bomber / Heavy Gunship (dedicated anti-capital strike craft).
+  - Shield Tender / EW Support (localized shield recharge aura).
+  - Plasma Assault Corvette (short-range brawler).
+- **Predictive Turret Slewing & Optimistic Aiming (In Progress)**: Slew off-arc turrets to sector limits facing combat target.

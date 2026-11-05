@@ -26,6 +26,28 @@ export function inMountArc(ship: ShipState, turret: TurretMountState, point: Vec
   return bearing >= turret.baseArc[0] && bearing <= turret.baseArc[1];
 }
 
+export function slewTurret(turret: TurretMountState, desiredLocal: number, dt: number): void {
+  const [minArc, maxArc] = turret.baseArc;
+  const bearing = normalizeAngle(desiredLocal);
+  let goal = bearing;
+  if (!fullCircle(turret) && (bearing < minArc || bearing > maxArc)) {
+    goal =
+      Math.abs(normalizeAngle(bearing - minArc)) <= Math.abs(normalizeAngle(bearing - maxArc))
+        ? minArc
+        : maxArc;
+  }
+  // Bounded mounts must traverse inside their sector, never wrap through the forbidden arc.
+  const current = fullCircle(turret)
+    ? normalizeAngle(turret.currentLocalAngle)
+    : clamp(turret.currentLocalAngle, minArc, maxArc);
+  const diff = fullCircle(turret) ? normalizeAngle(goal - current) : goal - current;
+  const maxStep = turret.trackingSpeed * dt;
+  const next = current + clamp(diff, -maxStep, maxStep);
+  turret.currentLocalAngle = fullCircle(turret)
+    ? normalizeAngle(next)
+    : clamp(next, minArc, maxArc);
+}
+
 // Projectiles do not inherit shooter velocity, so intercepts use absolute target velocity.
 export function interceptTime(relative: Vector2, velocity: Vector2, speed: number): number | null {
   const a = vecDot(velocity, velocity) - speed * speed;

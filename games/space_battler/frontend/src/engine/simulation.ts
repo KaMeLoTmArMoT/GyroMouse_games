@@ -19,9 +19,9 @@ import type { CombatObserver } from "./combatTelemetry";
 import {
   acquireMountTarget,
   damagedTargetPriority,
-  fullCircle,
   inMountArc,
   mountPosition,
+  slewTurret,
   squadFocusPriority,
   sweptHit,
 } from "./fireControl";
@@ -435,7 +435,13 @@ export class ClientCombatSimulation {
         );
         turret.currentTargetId = solution?.target.id ?? null;
         turret.currentTargetKind = solution?.kind;
-        const aimed = this.updateTurretAim(turret, dt, ship, solution?.aim ?? null);
+        const trackingTarget = navigationTargets.get(ship.id);
+        const aimed = this.updateTurretAim(
+          turret,
+          dt,
+          ship,
+          solution?.aim ?? trackingTarget?.pos ?? null,
+        );
         if (this.observer && (turret.id.endsWith("_port") || turret.id.endsWith("_stbd")))
           this.observer.onMountDecision(ship, turret, Boolean(solution), aimed, dt);
         if (!solution || !aimed || turret.cooldownTimer > 0) continue;
@@ -1288,17 +1294,7 @@ export class ClientCombatSimulation {
     const desiredWorldAngle = Math.atan2(toTarget[1], toTarget[0]);
     const desiredLocal = normalizeAngle(desiredWorldAngle - ship.heading);
 
-    const [minArc, maxArc] = turret.baseArc;
-    const clampedLocal = clamp(desiredLocal, minArc, maxArc);
-
-    const diff = fullCircle(turret)
-      ? normalizeAngle(clampedLocal - turret.currentLocalAngle)
-      : clampedLocal - turret.currentLocalAngle;
-    const maxStep = turret.trackingSpeed * dt;
-    const step = clamp(diff, -maxStep, maxStep);
-    turret.currentLocalAngle = fullCircle(turret)
-      ? normalizeAngle(turret.currentLocalAngle + step)
-      : clamp(turret.currentLocalAngle + step, minArc, maxArc);
+    slewTurret(turret, desiredLocal, dt);
 
     const isInArc = inMountArc(ship, turret, targetPos);
     const alignTolerance = turret.isSpinalGimbal ? 0.08 : 0.15;

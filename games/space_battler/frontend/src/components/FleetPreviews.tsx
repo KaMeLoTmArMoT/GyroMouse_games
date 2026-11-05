@@ -37,18 +37,24 @@ export function ShipPreview({ hull }: { hull: HullClass }) {
     const ctx = canvas.current?.getContext("2d");
     if (!ctx) return;
     const ship = buildFleetFromSlots([{ id: "preview", hullClass: hull, groupId: 1 }], 0, 0, 0)[0];
+    ship.velocity = [ship.maxSpeed * 0.65, 0];
     let frame: number;
     const draw = (time: number) => {
       ctx.clearRect(0, 0, 240, 144);
       ctx.save();
+      const halo = ctx.createRadialGradient(120, 72, 4, 120, 72, 100);
+      halo.addColorStop(0, "rgba(8, 145, 178, 0.18)");
+      halo.addColorStop(1, "rgba(8, 145, 178, 0)");
+      ctx.fillStyle = halo;
+      ctx.fillRect(0, 0, 240, 144);
       ctx.translate(120, 68);
-      ctx.scale(50 / ship.size, 32 / ship.size);
-      ship.heading = time / 4000;
-      renderShipPreview(ctx, ship);
+      ctx.transform(50 / ship.size, 0, 7 / ship.size, 34 / ship.size, 0, 0);
+      ship.heading = time / 5000;
+      renderShipPreview(ctx, ship, time / 1000);
       ctx.restore();
       frame = requestAnimationFrame(draw);
     };
-    frame = requestAnimationFrame(draw);
+    draw(performance.now());
     return () => cancelAnimationFrame(frame);
   }, [hull]);
 
@@ -71,7 +77,7 @@ const GROUP_NAMES = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"];
 
 export function GroupPreview({ group }: { group: number }) {
   return (
-    <div className="absolute z-30 right-2 top-full mt-1 pointer-events-none rounded-lg border border-cyan-500/40 bg-zinc-950 p-3 shadow-xl">
+    <div className="absolute z-30 right-2 top-full mt-1 pointer-events-none rounded-lg border border-cyan-500/40 bg-zinc-950 p-3 shadow-xl normal-case tracking-normal">
       <div className="text-xs font-semibold text-cyan-200 whitespace-nowrap">
         {GROUP_NAMES[group - 1]}: {GROUP_ROLES[group - 1]}
       </div>

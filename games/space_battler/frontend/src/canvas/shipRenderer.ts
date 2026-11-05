@@ -5,10 +5,17 @@ import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
 
 /** Draw the same hull and hardpoints as the battlefield, without combat HUD overlays. */
-export function renderShipPreview(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+export function renderShipPreview(ctx: CanvasRenderingContext2D, ship: ShipState, time = 0): void {
+  // Offset the lower hull in screen space so the deck keeps a visible armored edge while rotating.
+  ctx.save();
+  ctx.translate(0, ship.size * 0.12);
+  ctx.rotate(ship.heading);
+  drawTerranHull(ctx, ship, "#164e63", "#020617", "#082f49");
+  ctx.restore();
   ctx.save();
   ctx.rotate(ship.heading);
-  drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7");
+  drawEngineGlow(ctx, ship);
+  drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
   ctx.restore();
   for (const turret of ship.turrets) renderTurret(ctx, ship, turret, "#38bdf8");
 }
@@ -232,6 +239,7 @@ function drawTerranHull(
   primaryColor: string,
   hullDarkColor: string,
   accentColor: string,
+  previewTime?: number,
 ): void {
   // Calibrated scale: 100% fits strictly within the 1.40x shield bubble (<= 5% area delta vs Alien)
   const s = ship.size;
@@ -297,6 +305,28 @@ function drawTerranHull(
 
   ctx.fill();
   ctx.stroke();
+
+  if (previewTime !== undefined) {
+    ctx.save();
+    ctx.clip();
+    const light = ctx.createLinearGradient(-s, -s * 0.6, s, s * 0.6);
+    light.addColorStop(0, "rgba(186, 230, 253, 0.25)");
+    light.addColorStop(0.45, "rgba(56, 189, 248, 0.06)");
+    light.addColorStop(1, "rgba(2, 6, 23, 0.45)");
+    ctx.fillStyle = light;
+    ctx.fillRect(-s * 1.3, -s, s * 2.6, s * 2);
+    ctx.strokeStyle = `rgba(186, 230, 253, ${0.2 + 0.12 * Math.sin(previewTime * 1.5)})`;
+    ctx.lineWidth = Math.max(0.6, s * 0.018);
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.8, side * s * 0.31);
+      ctx.lineTo(-s * 0.4, side * s * 0.26);
+      ctx.lineTo(s * 0.35, side * s * 0.22);
+      ctx.lineTo(s * 0.85, 0);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   if (ship.hullClass === "cruiser") {
     ctx.save();

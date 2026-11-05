@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mountPosition } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
-import { capitalIntent } from "../src/engine/flightControl";
+import { capitalIntent, spinalEscape } from "../src/engine/flightControl";
 import { normalizeAngle, vecDistance, vecDot } from "../src/engine/math2d";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { EngagementStance, HullClass } from "../src/types/combat";
@@ -10,6 +11,57 @@ function ship(hullClass: HullClass, team = 0) {
   result.pos = [0, 0];
   return result;
 }
+
+describe("capital beam avoidance", () => {
+  it.each(["corvette", "strike_craft"] as const)(
+    "%s moves away from a broadside boundary before the capital turns",
+    (hull) => {
+      const small = ship(hull);
+      const capital = ship("battleship", 1);
+      capital.heading = 0.4;
+      const beam = capital.turrets.find((mount) => mount.id.endsWith("_stbd"));
+      if (!beam) throw new Error("Missing beam mount");
+      capital.turrets = [beam];
+      const angle = capital.heading + beam.baseArc[0] - 0.1;
+      const muzzle = mountPosition(capital, beam);
+      small.pos = [muzzle[0] + 600 * Math.cos(angle), muzzle[1] + 600 * Math.sin(angle)];
+      const avoidance = spinalEscape(small, [small, capital], [], 0);
+      const tangent: [number, number] = [-Math.sin(angle), Math.cos(angle)];
+      expect(vecDot(avoidance, tangent)).toBeLessThan(0);
+    },
+  );
+
+  it("projects incoming movement and ignores distant, friendly, and dead capitals", () => {
+    const small = ship("corvette");
+    const capital = ship("cruiser", 1);
+    capital.turrets = capital.turrets.filter((mount) => mount.weapon.weaponType === "beam_laser");
+    small.pos = [1200, 0];
+    small.velocity = [-200, 0];
+    expect(spinalEscape(small, [small, capital], [], 0)[0]).toBeGreaterThan(0);
+    small.velocity = [0, 0];
+    small.pos = [1500, 0];
+    expect(spinalEscape(small, [small, capital], [], 0)).toEqual([0, 0]);
+    small.pos = [500, 0];
+    capital.team = small.team;
+    expect(spinalEscape(small, [small, capital], [], 0)).toEqual([0, 0]);
+    capital.team = 1;
+    capital.isAlive = false;
+    expect(spinalEscape(small, [small, capital], [], 0)).toEqual([0, 0]);
+  });
+
+  it("escapes a full-circle beam radially, including across the angle wrap", () => {
+    const small = ship("strike_craft");
+    const capital = ship("cruiser", 1);
+    const beam = capital.turrets.find((mount) => mount.weapon.weaponType === "beam_laser");
+    if (!beam) throw new Error("Missing beam mount");
+    beam.baseArc = [-Math.PI, Math.PI];
+    capital.turrets = [beam];
+    capital.heading = 0.2;
+    const muzzle = mountPosition(capital, beam);
+    small.pos = [muzzle[0] - 500, muzzle[1]];
+    expect(spinalEscape(small, [small, capital], [], 0)[0]).toBeLessThan(0);
+  });
+});
 
 describe("capital standoff and cruiser drift", () => {
   it.each(["battleship", "cruiser"] as const)(
