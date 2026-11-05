@@ -142,26 +142,36 @@ function drawTerranHull(
   ctx.fill();
   ctx.stroke();
 
+  if (ship.hullClass === "cruiser") {
+    ctx.save();
+    ctx.clip();
+    drawTerranCruiserDetails(ctx, ship, accentColor);
+    ctx.restore();
+    return;
+  }
+
+  if (ship.hullClass === "corvette") {
+    ctx.save();
+    ctx.clip();
+    drawTerranCorvetteDetails(ctx, ship, accentColor);
+    ctx.restore();
+    return;
+  }
+
   if (ship.hullClass === "strike_craft") {
     drawTerranStrikeDetails(ctx, ship, accentColor);
     return;
   }
 
-  // Terran Structural Details: command bridge, armored plating seams, blue engine glows
-  ctx.strokeStyle = accentColor;
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  // Bridge Conning Tower
-  ctx.strokeRect(-s * 0.35, -s * 0.15, s * 0.35, s * 0.3);
-  // Armor Seam Centerline
-  ctx.moveTo(s * 0.55, 0);
-  ctx.lineTo(-s * 0.65, 0);
-  ctx.stroke();
-
-  // Engine exhaust glowing nozzles
-  ctx.fillStyle = "#38bdf8";
-  ctx.fillRect(-s * 1.0, -s * 0.18, s * 0.15, s * 0.08);
-  ctx.fillRect(-s * 1.0, s * 0.1, s * 0.15, s * 0.08);
+  if (ship.hullClass === "battleship") {
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = "#0c4a6e";
+    ctx.fillRect(-s * 1.18, -s * 0.35, s * 0.32, s * 0.32);
+    ctx.fillRect(-s * 1.18, s * 0.03, s * 0.32, s * 0.32);
+    drawTerranBattleshipDetails(ctx, ship, accentColor);
+    ctx.restore();
+  }
 }
 
 function drawAlienHull(
@@ -225,22 +235,495 @@ function drawAlienHull(
   ctx.fill();
   ctx.stroke();
 
+  if (ship.hullClass === "cruiser") {
+    ctx.save();
+    ctx.clip();
+    drawAlienCruiserDetails(ctx, ship, accentColor);
+    ctx.restore();
+    return;
+  }
+
+  if (ship.hullClass === "corvette") {
+    ctx.save();
+    ctx.clip();
+    drawAlienCorvetteDetails(ctx, ship, accentColor);
+    ctx.restore();
+    return;
+  }
+
   if (ship.hullClass === "strike_craft") {
     drawAlienStrikeDetails(ctx, ship, accentColor);
     return;
   }
 
-  // Alien Bio-Mechanical Details: pulsing central red eye / plasma core
-  ctx.fillStyle = "#ef4444";
+  if (ship.hullClass === "battleship") {
+    ctx.save();
+    ctx.clip();
+    drawAlienBattleshipDetails(ctx, ship, accentColor);
+    ctx.restore();
+  }
+}
+
+function drawTerranBattleshipDetails(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  accentColor: string,
+): void {
+  const s = ship.size;
+
+  // Open accelerator channel, with paired coils outside the railgun mount.
+  ctx.fillStyle = "#020617";
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 1.2;
+  ctx.fillRect(s * 0.04, -s * 0.1, s * 1.08, s * 0.2);
+  ctx.strokeRect(s * 0.04, -s * 0.1, s * 1.08, s * 0.2);
+  for (const side of [-1, 1]) {
+    for (const x of [0.15, 0.36, 0.57, 0.78]) {
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(s * x, side * s * 0.1);
+      ctx.lineTo(s * (x + 0.05), side * s * 0.17);
+      ctx.stroke();
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(s * (x + 0.025), side * s * 0.15 - s * 0.015, s * 0.05, s * 0.03);
+    }
+  }
+
+  // Armored octagonal casemates follow the actual beam battery mounts.
+  for (const turret of ship.turrets) {
+    if (turret.weapon.weaponType !== "beam_laser") continue;
+    const [x, y] = turret.offset;
+    const r = (turret.baseRadius ?? 4) * 1.8;
+    ctx.fillStyle = "#1e293b";
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI * (i + 0.5)) / 4;
+      const px = x + Math.cos(angle) * r;
+      const py = y + Math.sin(angle) * r;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    const side = Math.sign(y) || 1;
+    ctx.strokeStyle = accentColor;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.52, side * s * 0.12);
+    ctx.lineTo(-s * 0.38, side * s * 0.22);
+    ctx.lineTo(x - r, y);
+    ctx.moveTo(x - r, y + side * r * 0.8);
+    ctx.lineTo(x, y + side * r * 1.25);
+    ctx.lineTo(x + r, y + side * r * 0.8);
+    ctx.stroke();
+  }
+
+  // Fortress tiers, bridge windows, sensor masts and armored heat sinks.
+  ctx.strokeStyle = accentColor;
+  ctx.fillStyle = "#1e293b";
+  ctx.fillRect(-s * 0.7, -s * 0.22, s * 0.49, s * 0.44);
+  ctx.strokeRect(-s * 0.7, -s * 0.22, s * 0.49, s * 0.44);
+  ctx.fillStyle = "#334155";
+  ctx.fillRect(-s * 0.62, -s * 0.15, s * 0.3, s * 0.3);
+  ctx.strokeRect(-s * 0.62, -s * 0.15, s * 0.3, s * 0.3);
+  ctx.fillStyle = "#bae6fd";
+  for (const y of [-0.09, -0.03, 0.03, 0.09]) {
+    ctx.fillRect(-s * 0.36, s * (y - 0.015), s * 0.025, s * 0.03);
+  }
+  ctx.strokeStyle = "#38bdf8";
   ctx.beginPath();
-  ctx.arc(s * 0.08, 0, s * 0.1, 0, Math.PI * 2);
+  for (const side of [-1, 1]) {
+    ctx.moveTo(-s * 0.57, side * s * 0.15);
+    ctx.lineTo(-s * 0.57, side * s * 0.27);
+    ctx.lineTo(-s * 0.53, side * s * 0.29);
+    for (const x of [-0.76, -0.69, -0.62]) {
+      ctx.moveTo(s * x, side * s * 0.32);
+      ctx.lineTo(s * (x + 0.04), side * s * 0.42);
+    }
+  }
+  ctx.stroke();
+
+  // Four inset nozzles and side-facing maneuvering ports.
+  for (const y of [-0.27, -0.09, 0.09, 0.27]) {
+    ctx.fillStyle = "#164e63";
+    ctx.fillRect(-s * 1.16, s * (y - 0.065), s * 0.27, s * 0.13);
+    ctx.strokeStyle = accentColor;
+    ctx.strokeRect(-s * 1.16, s * (y - 0.065), s * 0.27, s * 0.13);
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(-s * 1.13, s * (y - 0.045), s * 0.15, s * 0.09);
+    ctx.fillStyle = "#f0f9ff";
+    ctx.fillRect(-s * 1.12, s * (y - 0.018), s * 0.09, s * 0.036);
+  }
+  ctx.fillStyle = "#bae6fd";
+  for (const side of [-1, 1]) {
+    ctx.fillRect(-s * 0.94, side * s * 0.45 - s * 0.025, s * 0.08, s * 0.05);
+  }
+}
+
+function drawAlienBattleshipDetails(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  accentColor: string,
+): void {
+  const s = ship.size;
+
+  // Wing lattice and vascular branches converging on the command eye.
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    for (const x of [-0.7, -0.42, -0.14, 0.14, 0.42]) {
+      ctx.moveTo(s * (x + 0.18), side * s * 0.12);
+      ctx.quadraticCurveTo(s * (x - 0.1), side * s * 0.32, s * x, side * s * 0.56);
+    }
+    ctx.moveTo(-s * 0.12, 0);
+    ctx.quadraticCurveTo(-s * 0.28, side * s * 0.25, -s * 0.65, side * s * 0.43);
+    ctx.moveTo(-s * 0.3, side * s * 0.25);
+    ctx.quadraticCurveTo(0, side * s * 0.42, s * 0.35, side * s * 0.44);
+  }
+  ctx.stroke();
+
+  for (const turret of ship.turrets) {
+    if (turret.weapon.weaponType !== "beam_laser") continue;
+    const [x, y] = turret.offset;
+    ctx.fillStyle = "#7f1d1d";
+    ctx.strokeStyle = "#fb923c";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(x, y, s * 0.19, s * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = "#ef4444";
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.12, 0);
+    ctx.quadraticCurveTo(x - s * 0.2, y * 0.5, x, y);
+    ctx.stroke();
+  }
+
+  // Singularity canal and curved accelerator arcs toward the focal lens.
+  ctx.fillStyle = "#200606";
+  ctx.fillRect(s * 0.08, -s * 0.085, s * 1.02, s * 0.17);
+  for (const x of [0.25, 0.43, 0.61, 0.79]) {
+    ctx.strokeStyle = "#dc2626";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(s * x, -s * 0.1);
+    ctx.quadraticCurveTo(s * (x + 0.1), 0, s * x, s * 0.1);
+    ctx.stroke();
+    ctx.strokeStyle = "#fbbf24";
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#fb923c";
+  ctx.beginPath();
+  ctx.arc(s * 1.06, 0, s * 0.065, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = accentColor;
-  ctx.lineWidth = 1.0;
+  // Segmented orbital rings surround a softly pulsing command eye.
+  ctx.fillStyle = "#450a0a";
   ctx.beginPath();
-  ctx.arc(s * 0.1, 0, s * 0.22, -Math.PI / 2, Math.PI / 2);
+  ctx.arc(-s * 0.16, 0, s * 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#fb923c";
+  ctx.lineWidth = 1.3;
+  for (const radius of [0.15, 0.21]) {
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(-s * 0.16, 0, s * radius, i * Math.PI * 0.5 + 0.15, (i + 1) * Math.PI * 0.5 - 0.15);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = "#ef4444";
+  ctx.beginPath();
+  ctx.arc(-s * 0.16, 0, s * (0.075 + 0.01 * Math.sin(performance.now() / 400)), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fde68a";
+  ctx.beginPath();
+  ctx.arc(-s * 0.16, 0, s * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The concave stern places the outer vents farther aft than the inner pair.
+  for (const y of [-0.42, -0.24, 0.24, 0.42]) {
+    const x = Math.abs(y) > 0.3 ? -0.69 : -0.45;
+    ctx.fillStyle = "#991b1b";
+    ctx.beginPath();
+    ctx.ellipse(s * x, s * y, s * 0.1, s * 0.055, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fb923c";
+    ctx.beginPath();
+    ctx.ellipse(s * x, s * y, s * 0.055, s * 0.025, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawTerranCruiserDetails(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  accentColor: string,
+): void {
+  const s = ship.size;
+
+  // Recessed loading trench and armored launch doors.
+  ctx.fillStyle = "#020617";
+  ctx.fillRect(s * 0.43, -s * 0.07, s * 0.53, s * 0.14);
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(s * 0.43, -s * 0.07, s * 0.53, s * 0.14);
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = "#164e63";
+    ctx.beginPath();
+    ctx.moveTo(s * 0.46, side * s * 0.1);
+    ctx.lineTo(s * 0.78, side * s * 0.1);
+    ctx.lineTo(s * 0.68, side * s * 0.23);
+    ctx.lineTo(s * 0.46, side * s * 0.25);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = "#f59e0b";
+    ctx.beginPath();
+    ctx.moveTo(s * 0.49, side * s * 0.15);
+    ctx.lineTo(s * 0.54, side * s * 0.2);
+    ctx.lineTo(s * 0.59, side * s * 0.15);
+    ctx.stroke();
+    ctx.strokeStyle = accentColor;
+  }
+
+  // Stepped terraces and transverse armor ribs.
+  ctx.fillStyle = "#1e293b";
+  ctx.fillRect(-s * 0.48, -s * 0.25, s * 0.85, s * 0.5);
+  ctx.strokeRect(-s * 0.48, -s * 0.25, s * 0.85, s * 0.5);
+  ctx.fillStyle = "#334155";
+  ctx.fillRect(-s * 0.36, -s * 0.18, s * 0.65, s * 0.36);
+  ctx.strokeRect(-s * 0.36, -s * 0.18, s * 0.65, s * 0.36);
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    for (const x of [-0.48, -0.22, 0.04, 0.3]) {
+      ctx.moveTo(s * x, side * s * 0.26);
+      ctx.lineTo(s * (x - 0.08), side * s * 0.4);
+    }
+    // Radiator fins flank the propulsion block.
+    for (const x of [-0.91, -0.82, -0.73]) {
+      ctx.moveTo(s * x, side * s * 0.23);
+      ctx.lineTo(s * (x + 0.06), side * s * 0.34);
+    }
+  }
   ctx.stroke();
+
+  for (const turret of ship.turrets) {
+    if (turret.weapon.weaponType !== "beam_laser") continue;
+    ctx.fillStyle = "#0f172a";
+    ctx.beginPath();
+    ctx.arc(turret.offset[0], turret.offset[1], (turret.baseRadius ?? 4) * 1.65, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Aft bridge tiers and viewport.
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(-s * 0.68, -s * 0.16, s * 0.22, s * 0.32);
+  ctx.strokeRect(-s * 0.68, -s * 0.16, s * 0.22, s * 0.32);
+  ctx.fillStyle = "#334155";
+  ctx.fillRect(-s * 0.62, -s * 0.11, s * 0.12, s * 0.22);
+  ctx.fillStyle = "#bae6fd";
+  ctx.fillRect(-s * 0.53, -s * 0.08, s * 0.025, s * 0.16);
+
+  for (const y of [-0.2, 0, 0.2]) {
+    const radius = y === 0 ? 0.09 : 0.055;
+    ctx.fillStyle = "#0284c7";
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.96, s * y, s * 0.1, s * radius, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#bae6fd";
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.98, s * y, s * 0.045, s * radius * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawAlienCruiserDetails(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  accentColor: string,
+): void {
+  const s = ship.size;
+
+  // Converging channels and paired skeletal ribs.
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    ctx.moveTo(s * 0.25, side * s * 0.11);
+    ctx.quadraticCurveTo(s * 0.65, side * s * 0.3, s * 1.08, side * s * 0.21);
+    for (const x of [-0.58, -0.3, -0.02, 0.26]) {
+      ctx.moveTo(s * x, side * s * 0.1);
+      ctx.quadraticCurveTo(s * (x - 0.12), side * s * 0.23, s * (x - 0.08), side * s * 0.39);
+    }
+  }
+  ctx.stroke();
+  ctx.strokeStyle = "#fb923c";
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    ctx.moveTo(s * 0.35, side * s * 0.08);
+    ctx.quadraticCurveTo(s * 0.7, side * s * 0.21, s * 0.99, side * s * 0.18);
+  }
+  ctx.stroke();
+
+  // Armored, luminous nexus follows the independently rendered beam mount.
+  for (const turret of ship.turrets) {
+    if (turret.weapon.weaponType !== "beam_laser") continue;
+    ctx.fillStyle = "#7f1d1d";
+    ctx.strokeStyle = "#fb923c";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(turret.offset[0], turret.offset[1], (turret.baseRadius ?? 4) * 1.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Three recessed plasma vents trace the trailing crescent.
+  for (const y of [-0.24, 0, 0.24]) {
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.81, s * (y - 0.07));
+    ctx.quadraticCurveTo(-s * 0.9, s * y, -s * 0.81, s * (y + 0.07));
+    ctx.strokeStyle = "#991b1b";
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+    ctx.strokeStyle = "#fb923c";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+}
+
+function drawTerranCorvetteDetails(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  accentColor: string,
+): void {
+  const s = ship.size;
+  const speed = Math.min(1, Math.hypot(...ship.velocity) / ship.maxSpeed);
+
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    ctx.moveTo(s * 0.95, 0);
+    ctx.lineTo(s * 0.45, side * s * 0.25);
+    ctx.lineTo(s * 0.25, side * s * 0.4);
+    ctx.moveTo(s * 0.45, side * s * 0.25);
+    ctx.lineTo(s * 0.1, side * s * 0.24);
+    ctx.lineTo(-s * 0.35, side * s * 0.44);
+    ctx.lineTo(-s * 0.62, side * s * 0.4);
+  }
+  ctx.stroke();
+
+  // The deck rings follow the independently rendered point-defense mounts.
+  for (const turret of ship.turrets) {
+    if (turret.weapon.weaponType !== "point_defense") continue;
+    ctx.fillStyle = "#020617";
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(turret.offset[0], turret.offset[1], (turret.baseRadius ?? 4) * 1.65, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Aft crossbar and forward armored bridge slit.
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.53, -s * 0.18);
+  ctx.lineTo(-s * 0.53, s * 0.18);
+  ctx.moveTo(-s * 0.61, 0);
+  ctx.lineTo(-s * 0.45, 0);
+  ctx.stroke();
+  ctx.fillStyle = "#bae6fd";
+  ctx.fillRect(s * 0.39, -s * 0.055, s * 0.22, s * 0.11);
+
+  for (const side of [-1, 1]) {
+    const y = side * s * 0.32;
+    ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.68, y - s * 0.06);
+    ctx.lineTo(-s * (0.7 + speed * 0.35), y);
+    ctx.lineTo(-s * 0.68, y + s * 0.06);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#0284c7";
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.61, y, s * 0.14, s * 0.09, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#bae6fd";
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.65, y, s * 0.07, s * 0.04, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawAlienCorvetteDetails(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  accentColor: string,
+): void {
+  const s = ship.size;
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    ctx.moveTo(s * 0.88, 0);
+    ctx.quadraticCurveTo(s * 0.35, side * s * 0.44, -s * 0.55, side * s * 0.42);
+    ctx.moveTo(s * 0.55, side * s * 0.17);
+    ctx.quadraticCurveTo(s * 0.1, side * s * 0.3, -s * 0.44, side * s * 0.3);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = "#ef4444";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  for (const turret of ship.turrets) {
+    if (turret.weapon.weaponType !== "point_defense") continue;
+    ctx.moveTo(s * 0.3, 0);
+    ctx.quadraticCurveTo(0, turret.offset[1] * 0.5, turret.offset[0], turret.offset[1]);
+  }
+  ctx.stroke();
+
+  // Concentric containment and a three-lobed nucleus, forward of the PD deck.
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 0.8;
+  for (const radius of [0.2, 0.15]) {
+    ctx.beginPath();
+    ctx.arc(s * 0.3, 0, s * radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#ef4444";
+  for (const angle of [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3]) {
+    ctx.beginPath();
+    ctx.arc(
+      s * (0.3 + Math.cos(angle) * 0.055),
+      s * Math.sin(angle) * 0.055,
+      s * 0.065,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  for (const side of [-1, 1]) {
+    ctx.strokeStyle = "#dc2626";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.56, side * s * 0.2);
+    ctx.quadraticCurveTo(-s * 0.39, side * s * 0.3, -s * 0.59, side * s * 0.4);
+    ctx.stroke();
+    ctx.fillStyle = "#fb923c";
+    ctx.beginPath();
+    ctx.arc(-s * 0.51, side * s * 0.3, s * 0.045, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function drawTerranStrikeDetails(

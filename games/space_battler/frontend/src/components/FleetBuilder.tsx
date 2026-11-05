@@ -203,19 +203,31 @@ export function ShipSilhouette({
           fillOpacity="0.18"
           strokeWidth="1.8"
         />
-        <line x1="24" y1="2" x2="24" y2="14" strokeWidth="2.2" strokeLinecap="round" />
+        <path
+          d="M21 8 L21 22 M27 8 L27 22 M24 4 L24 21 M20 12 L28 12 M20 16 L28 16"
+          strokeWidth="1"
+        />
+        <path
+          d="M12 22 L14 20 L17 20 L19 22 L19 25 L17 27 L14 27 L12 25 Z M29 22 L31 20 L34 20 L36 22 L36 25 L34 27 L31 27 L29 25 Z"
+          fill="currentColor"
+          fillOpacity="0.3"
+          strokeWidth="1"
+        />
         <rect
-          x="21"
-          y="21"
-          width="6"
-          height="8"
+          x="20"
+          y="27"
+          width="8"
+          height="7"
           rx="1"
           fill="currentColor"
           fillOpacity="0.35"
           strokeWidth="1.2"
         />
-        <line x1="10" y1="23" x2="15" y2="23" strokeWidth="1.6" />
-        <line x1="33" y1="23" x2="38" y2="23" strokeWidth="1.6" />
+        <path
+          d="M22 29 L26 29 M19 34 L29 34 M17 38 L17 42 M22 38 L22 43 M26 38 L26 43 M31 38 L31 42"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
@@ -223,13 +235,19 @@ export function ShipSilhouette({
     return (
       <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
         <polygon
-          points="24,5 34,25 32,43 27,39 21,39 16,43 14,25"
+          points="24,4 33,16 34,32 31,42 17,42 14,32 15,16"
           fill="currentColor"
           fillOpacity="0.18"
           strokeWidth="1.8"
         />
-        <circle cx="24" cy="22" r="3.5" fill="currentColor" fillOpacity="0.35" strokeWidth="1.2" />
-        <line x1="24" y1="5" x2="24" y2="13" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M20 13 L20 19 M28 13 L28 19 M24 8 L24 18" strokeWidth="1.2" />
+        <path d="M18 22 L18 32 L30 32 L30 22" strokeWidth="1" />
+        <circle cx="24" cy="25" r="4" fill="currentColor" fillOpacity="0.35" strokeWidth="1.2" />
+        <path
+          d="M18 38 L18 41 M24 37 L24 41 M30 38 L30 41"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
@@ -237,14 +255,19 @@ export function ShipSilhouette({
     return (
       <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
         <polygon
-          points="24,7 32,17 32,33 24,41 16,33 16,17"
+          points="24,4 33,17 36,32 31,41 24,37 17,41 12,32 15,17"
           fill="currentColor"
           fillOpacity="0.18"
           strokeWidth="1.8"
         />
-        <circle cx="15" cy="25" r="2.2" fill="currentColor" strokeWidth="1.2" />
-        <circle cx="33" cy="25" r="2.2" fill="currentColor" strokeWidth="1.2" />
-        <line x1="24" y1="12" x2="24" y2="24" strokeWidth="1.4" strokeDasharray="2 2" />
+        <path
+          d="M24 7 L19 18 L24 21 L29 18 Z M15 23 L19 27 L19 33 M33 23 L29 27 L29 33"
+          strokeWidth="1"
+        />
+        <circle cx="20" cy="25" r="2.5" fill="currentColor" fillOpacity="0.35" strokeWidth="1.2" />
+        <circle cx="28" cy="25" r="2.5" fill="currentColor" fillOpacity="0.35" strokeWidth="1.2" />
+        <path d="M16 33 L16 38 M32 33 L32 38" strokeWidth="3" strokeLinecap="round" />
+        <path d="M16 34 L16 38 M32 34 L32 38" strokeWidth="1" strokeLinecap="round" />
       </svg>
     );
   }
