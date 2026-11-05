@@ -894,29 +894,186 @@ function renderTurret(
   ctx.save();
   ctx.translate(tx, ty);
   ctx.rotate(turretWorldAngle);
+  const classScale = {
+    strike_craft: 0.7,
+    corvette: 1,
+    cruiser: 1.35,
+    battleship: 1.7,
+  }[ship.hullClass];
+  ctx.scale(classScale, classScale);
 
-  const baseRadius = (turret.baseRadius ?? 4) * 1.25;
-  const barrelLen = (turret.barrelLength ?? 10) * 1.25;
-  const barrelWidth = turret.isSpinalGimbal
-    ? 4.0
-    : turret.weapon.weaponType === "point_defense"
-      ? 1.6
-      : 2.6;
+  const r = turret.baseRadius ?? 4;
+  const length = turret.barrelLength ?? 10;
+  const armor = ship.team === 0 ? "#1e293b" : "#450a0a";
+  const recess = ship.team === 0 ? "#020617" : "#260606";
+  const metal = ship.team === 0 ? "#94a3b8" : "#fca5a5";
+  const lens = ship.team === 0 ? "#38bdf8" : "#ef4444";
 
-  ctx.fillStyle = turret.isSpinalGimbal ? "#020617" : "#1e293b";
+  ctx.fillStyle = armor;
   ctx.strokeStyle = primaryColor;
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.arc(0, 0, baseRadius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
+  ctx.lineWidth = 0.8;
 
-  ctx.strokeStyle = "#f8fafc";
-  ctx.lineWidth = barrelWidth;
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(barrelLen, 0);
-  ctx.stroke();
+  switch (turret.weapon.weaponType) {
+    case "railgun": {
+      // Elongated octagonal barbette and recessed capacitor banks.
+      ctx.beginPath();
+      ctx.moveTo(-r * 1.15, -r * 0.55);
+      ctx.lineTo(-r * 0.7, -r);
+      ctx.lineTo(r * 0.75, -r);
+      ctx.lineTo(r * 1.15, -r * 0.55);
+      ctx.lineTo(r * 1.15, r * 0.55);
+      ctx.lineTo(r * 0.75, r);
+      ctx.lineTo(-r * 0.7, r);
+      ctx.lineTo(-r * 1.15, r * 0.55);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = recess;
+      for (const side of [-1, 1]) {
+        ctx.fillRect(-r * 0.85, side * r * 0.65 - r * 0.12, r * 1.25, r * 0.24);
+      }
+      ctx.strokeStyle = "#facc15";
+      ctx.lineWidth = 0.5;
+      for (const side of [-1, 1]) {
+        for (const x of [-0.55, -0.2, 0.15]) {
+          ctx.beginPath();
+          ctx.moveTo(r * x, side * r * 0.53);
+          ctx.lineTo(r * x, side * r * 0.77);
+          ctx.stroke();
+        }
+      }
+      // Twin rails, emitter cross-ties, and slotted muzzle brakes.
+      for (const side of [-1, 1]) {
+        const y = side * r * 0.35;
+        ctx.strokeStyle = metal;
+        ctx.lineWidth = Math.max(1, r * 0.22);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(length, y);
+        ctx.stroke();
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 0.7;
+        for (const fraction of [0.4, 0.6, 0.8]) {
+          ctx.beginPath();
+          ctx.moveTo(length * fraction, y - r * 0.19);
+          ctx.lineTo(length * fraction, y + r * 0.19);
+          ctx.stroke();
+        }
+        ctx.fillStyle = recess;
+        ctx.fillRect(length - r * 0.4, y - r * 0.2, r * 0.5, r * 0.4);
+        ctx.strokeStyle = "#facc15";
+        ctx.beginPath();
+        ctx.moveTo(length - r * 0.25, y - r * 0.14);
+        ctx.lineTo(length - r * 0.25, y + r * 0.14);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "beam_laser": {
+      // Rounded dome with lateral radiator ribs and a focused crystal emitter.
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = metal;
+      ctx.lineWidth = 0.7;
+      for (const side of [-1, 1]) {
+        for (const x of [-0.5, -0.2, 0.1]) {
+          ctx.beginPath();
+          ctx.moveTo(r * x, side * r * 0.65);
+          ctx.lineTo(r * x, side * r * 1.1);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = recess;
+      ctx.fillRect(0, -r * 0.28, length, r * 0.56);
+      ctx.strokeStyle = metal;
+      ctx.strokeRect(0, -r * 0.28, length, r * 0.56);
+      ctx.fillStyle = lens;
+      ctx.beginPath();
+      ctx.arc(length, 0, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case "point_defense": {
+      // Hexagonal traverse ring, paired autocannons, and tracking sensor.
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 3) * i;
+        const x = Math.cos(angle) * r;
+        const y = Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      for (const side of [-1, 1]) {
+        const y = side * r * 0.38;
+        ctx.strokeStyle = metal;
+        ctx.lineWidth = Math.max(0.7, r * 0.3);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(length * 0.85, y);
+        ctx.stroke();
+        ctx.fillStyle = recess;
+        ctx.beginPath();
+        ctx.moveTo(length * 0.8, y - r * 0.14);
+        ctx.lineTo(length, y - r * 0.25);
+        ctx.lineTo(length, y + r * 0.25);
+        ctx.lineTo(length * 0.8, y + r * 0.14);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = lens;
+      ctx.beginPath();
+      ctx.arc(-r * 0.45, -r * 0.9, r * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case "missile": {
+      // Armored canister with a reinforced pair of launch guides.
+      ctx.beginPath();
+      ctx.moveTo(-r, -r * 0.8);
+      ctx.lineTo(length * 0.75, -r * 0.8);
+      ctx.lineTo(length, -r * 0.5);
+      ctx.lineTo(length, r * 0.5);
+      ctx.lineTo(length * 0.75, r * 0.8);
+      ctx.lineTo(-r, r * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = metal;
+      ctx.lineWidth = Math.max(0.7, r * 0.16);
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.75, side * r * 0.52);
+        ctx.lineTo(length * 0.85, side * r * 0.52);
+        ctx.stroke();
+      }
+      ctx.fillStyle = recess;
+      ctx.fillRect(length * 0.75, -r * 0.3, length * 0.25, r * 0.6);
+      break;
+    }
+    case "plasma": {
+      // Strike craft carry a compact forward blaster port.
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = metal;
+      ctx.lineWidth = r * 0.65;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(length, 0);
+      ctx.stroke();
+      ctx.fillStyle = lens;
+      ctx.beginPath();
+      ctx.arc(length, 0, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+  }
 
   ctx.restore();
 }
