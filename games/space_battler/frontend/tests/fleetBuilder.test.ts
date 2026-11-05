@@ -1,10 +1,114 @@
-import { describe, expect, it } from "vitest";
+import type React from "react";
+import { describe, expect, it, vi } from "vitest";
 import {
   calculateMaxAffordable,
   clampTargetCount,
+  RosterCountInput,
   updateSlotsForStackCount,
 } from "../src/components/FleetBuilder";
 import type { FleetSlot } from "../src/engine/fleetBuilder";
+
+const hooks = vi.hoisted(() => ({
+  value: "",
+  refs: [] as { current: unknown }[],
+  refIndex: 0,
+}));
+
+vi.mock("react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react")>()),
+  useState: (initial: string) => [
+    hooks.value || initial,
+    (value: string) => {
+      hooks.value = value;
+    },
+  ],
+  useRef: (initial: unknown) => {
+    const index = hooks.refIndex++;
+    hooks.refs[index] ??= { current: initial };
+    return hooks.refs[index];
+  },
+  useEffect: () => {},
+}));
+
+describe("RosterCountInput", () => {
+  function setup(initialCount = 3) {
+    hooks.value = String(initialCount);
+    hooks.refs = [];
+    let count = initialCount;
+    const onChangeCount = vi.fn((value: number) => {
+      count = value;
+    });
+    const render = () => {
+      hooks.refIndex = 0;
+      return RosterCountInput({
+        count,
+        maxAffordable: 20,
+        themeText: "",
+        hullName: "Cruiser",
+        groupId: 1,
+        onChangeCount,
+      });
+    };
+    return { render, onChangeCount };
+  }
+
+  it("restores the count captured on focus after live edits", () => {
+    const { render, onChangeCount } = setup();
+    render().props.onFocus({
+      target: { select: vi.fn() },
+    } as unknown as React.FocusEvent<HTMLInputElement>);
+    render().props.onChange({ target: { value: "5" } } as React.ChangeEvent<HTMLInputElement>);
+    expect(onChangeCount).toHaveBeenLastCalledWith(5);
+
+    const blur = vi.fn(() => render().props.onBlur());
+    render().props.onKeyDown({
+      key: "Escape",
+      stopPropagation: vi.fn(),
+      currentTarget: { blur },
+    } as unknown as React.KeyboardEvent<HTMLInputElement>);
+    expect(onChangeCount).toHaveBeenLastCalledWith(3);
+    expect(onChangeCount).toHaveBeenCalledTimes(2);
+    expect(render().props.value).toBe("3");
+    expect(blur).toHaveBeenCalledOnce();
+  });
+
+  it("rejects invalid characters while allowing digits, navigation and shortcuts", () => {
+    const { render } = setup();
+    for (const key of ["-", "+", ".", "e", "E", "a"]) {
+      const preventDefault = vi.fn();
+      render().props.onKeyDown({
+        key,
+        preventDefault,
+      } as unknown as React.KeyboardEvent<HTMLInputElement>);
+      expect(preventDefault, key).toHaveBeenCalledOnce();
+    }
+    for (const key of [
+      "0",
+      "5",
+      "Backspace",
+      "Delete",
+      "Tab",
+      "ArrowLeft",
+      "ArrowRight",
+      "Home",
+      "End",
+    ]) {
+      const preventDefault = vi.fn();
+      render().props.onKeyDown({
+        key,
+        preventDefault,
+      } as unknown as React.KeyboardEvent<HTMLInputElement>);
+      expect(preventDefault, key).not.toHaveBeenCalled();
+    }
+    const preventDefault = vi.fn();
+    render().props.onKeyDown({
+      key: "v",
+      ctrlKey: true,
+      preventDefault,
+    } as unknown as React.KeyboardEvent<HTMLInputElement>);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
 
 describe("FleetBuilder direct numeric stepper logic", () => {
   describe("calculateMaxAffordable", () => {

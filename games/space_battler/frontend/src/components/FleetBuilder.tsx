@@ -359,6 +359,7 @@ export function RosterCountInput({
 }: RosterCountInputProps) {
   const [localValue, setLocalValue] = useState(String(count));
   const isCanceledRef = useRef(false);
+  const initialCountRef = useRef(count);
 
   useEffect(() => {
     setLocalValue(String(count));
@@ -411,7 +412,10 @@ export function RosterCountInput({
     } else if (e.key === "Escape") {
       e.stopPropagation();
       isCanceledRef.current = true;
-      setLocalValue(String(count));
+      setLocalValue(String(initialCountRef.current));
+      if (count !== initialCountRef.current) {
+        onChangeCount(initialCountRef.current);
+      }
       e.currentTarget.blur();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -423,6 +427,12 @@ export function RosterCountInput({
       if (count > 0) {
         onChangeCount(count - 1);
       }
+    } else if (
+      e.key.length === 1 &&
+      !/^[0-9]$/.test(e.key) &&
+      !((e.ctrlKey || e.metaKey) && !e.altKey)
+    ) {
+      e.preventDefault();
     }
   };
 
@@ -437,6 +447,7 @@ export function RosterCountInput({
       onKeyDown={handleKeyDown}
       onFocus={(e) => {
         isCanceledRef.current = false;
+        initialCountRef.current = count;
         e.target.select();
       }}
       title="Click or type to edit quantity"
