@@ -11,16 +11,72 @@ export interface FleetPreset {
 }
 
 export const FLEET_PRESETS: FleetPreset[] = [
-  // --- Standard Combined Arms ---
+  // --- Curated Opposing Red Forces ---
   {
     id: "combined",
-    name: "Task Force (1 BS + 2 CV + 6 SC)",
+    name: "Anchor & Talons",
     description: "1 Battleship + 2 PD Corvettes + 6 Fighters. Balanced combined-arms fleet.",
     budget: 4620,
     composition: [
       { hullClass: "battleship", count: 1, groupId: 1 },
       { hullClass: "corvette", count: 2, groupId: 2 },
       { hullClass: "strike_craft", count: 6, groupId: 3 },
+    ],
+  },
+
+  {
+    id: "test_3_cruisers",
+    name: "Three Knives",
+    description: "3 Vanguard Cruisers with heavy prow torpedoes and beam turrets (3,300 CR).",
+    budget: 3300,
+    composition: [{ hullClass: "cruiser", count: 3, groupId: 1 }],
+  },
+  {
+    id: "split_spear",
+    name: "Split Spear",
+    description: "Pincer assault with dual cruiser wings and flanking fighter escorts (4,100 CR).",
+    budget: 4100,
+    composition: [
+      { hullClass: "cruiser", count: 1, groupId: 1 },
+      { hullClass: "cruiser", count: 1, groupId: 2 },
+      { hullClass: "corvette", count: 2, groupId: 3 },
+      { hullClass: "strike_craft", count: 5, groupId: 4 },
+      { hullClass: "strike_craft", count: 5, groupId: 5 },
+    ],
+  },
+  {
+    id: "glass_hammer",
+    name: "Glass Hammer",
+    description: "Heavy dual-capital line lacking dedicated point defense escorts (4,300 CR).",
+    budget: 4300,
+    composition: [
+      { hullClass: "battleship", count: 1, groupId: 1 },
+      { hullClass: "cruiser", count: 1, groupId: 2 },
+    ],
+  },
+  {
+    id: "needle_cloud",
+    name: "Needle Cloud",
+    description:
+      "24 Raider Interceptors in three distinct strike wings covered by 2 Flak Corvettes (3,580 CR).",
+    budget: 3580,
+    composition: [
+      { hullClass: "strike_craft", count: 8, groupId: 1 },
+      { hullClass: "strike_craft", count: 8, groupId: 2 },
+      { hullClass: "strike_craft", count: 8, groupId: 3 },
+      { hullClass: "corvette", count: 2, groupId: 4 },
+    ],
+  },
+  {
+    id: "picket_gambit",
+    name: "Picket Gambit",
+    description:
+      "Thick defensive screen of 6 Flak Corvettes protecting a single artillery cruiser (3,680 CR).",
+    budget: 3680,
+    composition: [
+      { hullClass: "cruiser", count: 1, groupId: 1 },
+      { hullClass: "corvette", count: 6, groupId: 2 },
+      { hullClass: "strike_craft", count: 4, groupId: 3 },
     ],
   },
 
@@ -31,13 +87,6 @@ export const FLEET_PRESETS: FleetPreset[] = [
     description: "3 Leviathan Battleships. Heavy railguns and dual broadsides (9,600 CR).",
     budget: 9600,
     composition: [{ hullClass: "battleship", count: 3, groupId: 1 }],
-  },
-  {
-    id: "test_3_cruisers",
-    name: "Cruiser Squadron (3x Cruisers)",
-    description: "3 Vanguard Cruisers with prow heavy torpedoes and beam turrets (3,300 CR).",
-    budget: 3300,
-    composition: [{ hullClass: "cruiser", count: 3, groupId: 1 }],
   },
   {
     id: "test_3_corvettes",

@@ -118,20 +118,20 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
   battleship: {
     name: "Leviathan Battleship",
     cost: 3200,
-    desc: "Devastating spinal railgun (180 dmg) + dual broadside beam batteries.",
+    desc: "Devastating spinal railgun (260 dmg) + dual broadside beam batteries.",
     role: "Capital Flagship",
     shield: 1800,
-    armor: 1600,
-    hull: 2200,
-    speed: 65,
+    armor: 1800,
+    hull: 2500,
+    speed: 38,
     turnRate: "0.75 rad/s",
     weapons: [
-      { name: "Spinal Heavy Railgun", type: "Railgun", damage: 180, range: 980, cooldown: 3.5 },
+      { name: "Spinal Heavy Railgun", type: "Railgun", damage: 260, range: 1350, cooldown: 3.5 },
       {
         name: "Dual Port/Starboard Batteries",
         type: "Beam Laser",
-        damage: 50,
-        range: 580,
+        damage: 65,
+        range: 950,
         cooldown: 1.2,
       },
     ],
@@ -141,14 +141,14 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
     cost: 1100,
     desc: "Heavy 360° beam laser + prow heavy torpedo launcher.",
     role: "Medium Combatant",
-    shield: 750,
-    armor: 600,
-    hull: 850,
-    speed: 110,
-    turnRate: "1.40 rad/s",
+    shield: 600,
+    armor: 500,
+    hull: 700,
+    speed: 85,
+    turnRate: "1.00 rad/s",
     weapons: [
-      { name: "Prow Heavy Torpedo", type: "Missile", damage: 220, range: 850, cooldown: 4.8 },
-      { name: "Dorsal Turret Battery", type: "Beam Laser", damage: 35, range: 480, cooldown: 1.0 },
+      { name: "Prow Heavy Torpedo", type: "Missile", damage: 220, range: 1450, cooldown: 5.5 },
+      { name: "Dorsal Turret Battery", type: "Beam Laser", damage: 45, range: 900, cooldown: 1.2 },
     ],
   },
   corvette: {
@@ -156,18 +156,18 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
     cost: 350,
     desc: "Dual rapid flak PD turrets (360°). Intercepts missiles, fighters, and fires at enemy ships.",
     role: "Escort Screen",
-    shield: 320,
-    armor: 220,
-    hull: 350,
-    speed: 165,
-    turnRate: "2.20 rad/s",
+    shield: 180,
+    armor: 150,
+    hull: 220,
+    speed: 175,
+    turnRate: "2.00 rad/s",
     weapons: [
       {
         name: "Dual Rapid Flak Turrets (360°)",
         type: "Point Defense",
-        damage: 14,
+        damage: 10,
         range: 360,
-        cooldown: 0.15,
+        cooldown: 0.3,
       },
     ],
   },
@@ -176,13 +176,13 @@ const HULL_SPECS: Record<HullClass, HullSpecData> = {
     cost: 120,
     desc: "Agile fighter equipped with forward plasma bolt.",
     role: "Strike Swarm",
-    shield: 45,
-    armor: 30,
-    hull: 65,
+    shield: 60,
+    armor: 40,
+    hull: 70,
     speed: 280,
     turnRate: "4.20 rad/s",
     weapons: [
-      { name: "Fixed Plasma Cannon", type: "Plasma Bolt", damage: 18, range: 280, cooldown: 0.8 },
+      { name: "Fixed Plasma Cannon", type: "Plasma Bolt", damage: 120, range: 480, cooldown: 3.0 },
     ],
   },
 };
@@ -252,17 +252,19 @@ export function ShipSilhouette({
   return (
     <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
       <polygon
-        points="24,7 35,37 24,30 13,37"
+        points="24,5 37,39 29,35 24,42 19,35 11,39"
         fill="currentColor"
         fillOpacity="0.22"
         strokeWidth="1.8"
       />
       <polygon
-        points="24,14 29,32 24,28 19,32"
+        points="24,12 27,18 24,22 21,18"
         fill="currentColor"
         fillOpacity="0.35"
         strokeWidth="1"
       />
+      <path d="M20 25 L15 35 M28 25 L33 35" strokeWidth="1" />
+      <path d="M19 36 L19 39 M29 36 L29 39" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }

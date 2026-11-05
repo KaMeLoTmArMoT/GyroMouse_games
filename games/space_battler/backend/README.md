@@ -1,23 +1,16 @@
 # Space Battler Backend
 
-Deterministic simulation engine and Monte Carlo balance optimizer for tactical fleet combat.
-
-## Capabilities
-
-- **Deterministic Simulation Core**: Fixed-step physical update loop (tracking physics, multi-layer damage, flight vectors).
-- **Monte Carlo Balancer**: Automated tournament runner generating cost-efficiency matrices across ship archetype matchups.
-- **Data Export**: Generates standardized balance datasets (`ships_balance.json`) consumed by the static web client.
+The backend's sole role is offline procedural hull geometry validation against
+`frontend/src/canvas/shipRenderer.ts`. The validator measures the renderer's
+filled hull paths using the Shoelace formula: Terran and Alien hulls must have
+less than 5% area difference and remain within the 1.40x shield bubble.
 
 ## Development Commands
 
 ```bash
-# Run test suite
-uv run pytest
+uv run pytest -q
 
-# Lint and check
 uv run ruff check .
 
-# Format code
 uv run ruff format .
 ```
-

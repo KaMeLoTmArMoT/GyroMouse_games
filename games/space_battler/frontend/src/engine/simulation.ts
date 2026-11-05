@@ -12,6 +12,7 @@ import type {
   WeaponType,
   WingPhase,
 } from "../types/combat";
+import type { CombatObserver } from "./combatTelemetry";
 import {
   acquireMountTarget,
   damagedTargetPriority,
@@ -88,6 +89,7 @@ export class ClientCombatSimulation {
   onShieldHit?: (pos: Vector2, intensity: number) => void;
   onShipDestroyed?: (ship: ShipState) => void;
   onVictory?: (winnerTeam: number) => void;
+  observer?: CombatObserver;
 
   stats: Record<number, TeamBattleStats> = {
     0: {
@@ -162,7 +164,9 @@ export class ClientCombatSimulation {
       if (ship.shieldDelayTimer > 0) {
         ship.shieldDelayTimer = Math.max(0, ship.shieldDelayTimer - dt);
       } else if (ship.shieldCurrent < ship.shieldMax) {
+        const before = this.observer ? ship.shieldCurrent : 0;
         ship.shieldCurrent = Math.min(ship.shieldMax, ship.shieldCurrent + ship.shieldRegen * dt);
+        this.observer?.onShieldRegen(ship, ship.shieldCurrent - before);
       }
     }
 
@@ -212,6 +216,8 @@ export class ClientCombatSimulation {
         turret.currentTargetId = solution?.target.id ?? null;
         turret.currentTargetKind = solution?.kind;
         const aimed = this.updateTurretAim(turret, dt, ship, solution?.aim ?? null);
+        if (this.observer && (turret.id.endsWith("_port") || turret.id.endsWith("_stbd")))
+          this.observer.onMountDecision(ship, turret, Boolean(solution), aimed, dt);
         if (!solution || !aimed || turret.cooldownTimer > 0) continue;
         const targetShip = solution.kind === "ship" ? (solution.target as ShipState) : null;
         const targetMissile =
@@ -246,6 +252,7 @@ export class ClientCombatSimulation {
       }
       if (this.winner !== null) this.onVictory?.(this.winner);
     }
+    this.observer?.onTick(this.timeElapsed, dt, this.ships, this.projectiles);
   }
 
   private findTargetForShip(
@@ -869,6 +876,7 @@ export class ClientCombatSimulation {
         if (!a.isAlive || !b.isAlive) continue;
         if (a.team === b.team && a.hullClass === "cruiser" && b.hullClass === "cruiser") continue;
         const d = vecDistance(a.pos, b.pos);
+        if (this.observer && a.team !== b.team) this.observer.onProximity(a, b, d);
 
         // Effective Shield Perimeter: calibrated 1.40x shield bubble
         const shieldA = a.size * (a.shieldCurrent > 0 ? 1.4 : 1.0);
@@ -904,6 +912,8 @@ export class ClientCombatSimulation {
 
           // Physical shield clash & ramming (hostile ships only!)
           if (d <= minBubbleDist && a.team !== b.team) {
+            const beforeA = this.observer ? [a.shieldCurrent, a.armorCurrent, a.hullCurrent] : null;
+            const beforeB = this.observer ? [b.shieldCurrent, b.armorCurrent, b.hullCurrent] : null;
             const ramDamage =
               (this.contacts.has(pair) ? 0 : Math.max(0, -closingSpeed) * 0.25) + 5 * dt;
             contacts.add(pair);
@@ -924,6 +934,11 @@ export class ClientCombatSimulation {
               (a.hullClass === "battleship" || a.hullClass === "cruiser")
             ) {
               b.hullCurrent = 0;
+            }
+
+            if (this.observer && beforeA && beforeB) {
+              this.observer.onDamage(a, b.id, undefined, "ram", beforeA);
+              this.observer.onDamage(b, a.id, undefined, "ram", beforeB);
             }
 
             if (a.hullCurrent <= 0) this.destroyShip(a, b.team);
@@ -1023,6 +1038,7 @@ export class ClientCombatSimulation {
       return;
     turret.cooldownTimer = turret.weapon.cooldown;
     turret.lastFiredTime = this.timeElapsed; // Track fired time for UI cooldown bars!
+    this.observer?.onShot(this.timeElapsed, ship, turret);
     if (ship.hullClass === "strike_craft" && ship.fighterPhase === "attack") {
       const wing = this.fighterWings.find(
         (w) => w.team === ship.team && w.index === ship.wingIndex,
@@ -1036,7 +1052,14 @@ export class ClientCombatSimulation {
     if (isBeam) {
       if (targetShip) {
         const beamColor = ship.team === 0 ? "#38bdf8" : "#f87171";
-        this.applyDamage(targetShip, turret.weapon.damage, turret.weapon, ship.team);
+        this.applyDamage(
+          targetShip,
+          turret.weapon.damage,
+          turret.weapon,
+          ship.team,
+          ship.id,
+          turret.id,
+        );
         if (this.onBeamFire) this.onBeamFire(spawnPos, targetShip.pos, beamColor, 3.2);
       } else if (targetMissile) {
         targetMissile.hp -= turret.weapon.damage;
@@ -1071,6 +1094,7 @@ export class ClientCombatSimulation {
       damage: turret.weapon.damage,
       ownerId: ship.id,
       ownerTeam: ship.team,
+      ...(this.observer ? { ownerMountId: turret.id } : {}),
       pos: spawnPos,
       velocity,
       lifetime,
@@ -1140,7 +1164,7 @@ export class ClientCombatSimulation {
           );
         this.detonateFlak(p, aliveShips, positions);
       } else if (victim) {
-        this.applyDamage(victim, p.damage, p.weapon, p.ownerTeam);
+        this.applyDamage(victim, p.damage, p.weapon, p.ownerTeam, p.ownerId, p.ownerMountId);
         p.hp = 0;
       } else if (p.lifetime > 1e-9) {
         active.push(p);
@@ -1172,7 +1196,14 @@ export class ClientCombatSimulation {
         ship.hullClass === "strike_craft"
           ? { ...flak.weapon, shieldMultiplier: 1, armorMultiplier: 1, hullMultiplier: 1 }
           : flak.weapon;
-      this.applyDamage(ship, flak.damage * falloff, weapon, flak.ownerTeam);
+      this.applyDamage(
+        ship,
+        flak.damage * falloff,
+        weapon,
+        flak.ownerTeam,
+        flak.ownerId,
+        flak.ownerMountId,
+      );
     }
 
     for (const other of this.projectiles) {
@@ -1200,6 +1231,23 @@ export class ClientCombatSimulation {
   }
 
   private applyDamage(
+    ship: ShipState,
+    rawDamage: number,
+    weapon: WeaponDefinition,
+    attackerTeam?: number,
+    attackerId?: string,
+    mountId?: string,
+  ): void {
+    if (!this.observer) {
+      this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam);
+      return;
+    }
+    const before = [ship.shieldCurrent, ship.armorCurrent, ship.hullCurrent];
+    this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam);
+    this.observer.onDamage(ship, attackerId, mountId, weapon.weaponType, before);
+  }
+
+  private applyDamageInternal(
     ship: ShipState,
     rawDamage: number,
     weapon: WeaponDefinition,

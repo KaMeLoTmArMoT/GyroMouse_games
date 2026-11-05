@@ -1,7 +1,7 @@
 [project]
 name = "space-battler-backend"
 version = "0.1.0"
-description = "Deterministic combat engine, Monte Carlo balance runner and optimizer for Space Battler"
+description = "Offline renderer hull geometry validator for Space Battler"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []

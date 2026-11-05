@@ -142,6 +142,11 @@ function drawTerranHull(
   ctx.fill();
   ctx.stroke();
 
+  if (ship.hullClass === "strike_craft") {
+    drawTerranStrikeDetails(ctx, ship, accentColor);
+    return;
+  }
+
   // Terran Structural Details: command bridge, armored plating seams, blue engine glows
   ctx.strokeStyle = accentColor;
   ctx.lineWidth = 1.2;
@@ -220,6 +225,11 @@ function drawAlienHull(
   ctx.fill();
   ctx.stroke();
 
+  if (ship.hullClass === "strike_craft") {
+    drawAlienStrikeDetails(ctx, ship, accentColor);
+    return;
+  }
+
   // Alien Bio-Mechanical Details: pulsing central red eye / plasma core
   ctx.fillStyle = "#ef4444";
   ctx.beginPath();
@@ -231,6 +241,99 @@ function drawAlienHull(
   ctx.beginPath();
   ctx.arc(s * 0.1, 0, s * 0.22, -Math.PI / 2, Math.PI / 2);
   ctx.stroke();
+}
+
+function drawTerranStrikeDetails(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  accentColor: string,
+): void {
+  const s = ship.size;
+  const speed = Math.min(1, Math.hypot(...ship.velocity) / ship.maxSpeed);
+
+  ctx.lineWidth = 0.7;
+  ctx.strokeStyle = accentColor;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    ctx.moveTo(s * 0.25, side * s * 0.1);
+    ctx.lineTo(-s * 0.35, side * s * 0.3);
+    ctx.lineTo(-s * 0.5, side * s * 0.4);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = "#0ea5e9";
+  ctx.beginPath();
+  ctx.moveTo(s * 0.75, 0);
+  ctx.lineTo(s * 0.52, -s * 0.09);
+  ctx.lineTo(s * 0.4, 0);
+  ctx.lineTo(s * 0.52, s * 0.09);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#e0f2fe";
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(s * 0.46, -s * 0.02);
+  ctx.lineTo(s * 0.56, -s * 0.05);
+  ctx.lineTo(s * 0.68, 0);
+  ctx.stroke();
+
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.arc(s * 0.15, side * s * 0.18, s * 0.055, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#38bdf8";
+    ctx.beginPath();
+    ctx.arc(s * 0.17, side * s * 0.18, s * 0.025, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.61, side * s * 0.29);
+    ctx.lineTo(-s * (0.68 + speed * 0.24), side * s * 0.32);
+    ctx.lineTo(-s * 0.61, side * s * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#0ea5e9";
+    ctx.beginPath();
+    ctx.arc(-s * 0.59, side * s * 0.32, s * 0.055, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawAlienStrikeDetails(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  accentColor: string,
+): void {
+  const s = ship.size;
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    ctx.moveTo(-s * 0.36, side * s * 0.23);
+    ctx.quadraticCurveTo(s * 0.12, side * s * 0.19, s * 0.61, side * s * 0.49);
+    ctx.moveTo(-s * 0.14, side * s * 0.16);
+    ctx.quadraticCurveTo(s * 0.15, side * s * 0.18, s * 0.34, side * s * 0.3);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = "#ef4444";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(s * 0.57, -s * 0.18);
+  ctx.quadraticCurveTo(s * 0.63, 0, s * 0.57, s * 0.18);
+  ctx.stroke();
+  ctx.strokeStyle = "#f87171";
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+
+  ctx.fillStyle = "#f87171";
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(-s * 0.43, side * s * 0.27, s * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function drawTurretArcCone(

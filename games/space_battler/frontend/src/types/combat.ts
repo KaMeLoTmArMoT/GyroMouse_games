@@ -105,6 +105,7 @@ export interface ProjectileState {
   damage: number;
   ownerId: string;
   ownerTeam: number;
+  ownerMountId?: string; // Recorded only when combat telemetry is enabled.
   pos: Vector2;
   velocity: Vector2;
   lifetime: number;
