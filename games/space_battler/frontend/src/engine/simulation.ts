@@ -1404,7 +1404,12 @@ export class ClientCombatSimulation {
     // Physical projectile (Railgun, Plasma, Missile)
     this.projectileCounter += 1;
     const toTarget = vecNormalize(vecSub(targetPos, spawnPos));
-    const velocity = vecScale(toTarget, turret.weapon.projectileSpeed);
+    const tubeIndex = ship.turrets.indexOf(turret);
+    const launchSpread =
+      ship.hullClass === "missile_frigate" && turret.weapon.weaponType === "missile"
+        ? (([0, 0, 25, -25][tubeIndex] ?? 0) * Math.PI) / 180
+        : 0;
+    const velocity = vecScale(rotatePoint(toTarget, launchSpread), turret.weapon.projectileSpeed);
     const lifetime = projectileLifetime(turret.weapon);
 
     this.projectiles.push({
@@ -1493,20 +1498,36 @@ export class ClientCombatSimulation {
       if (p.hp <= 0 || p.lifetime <= 0) continue;
       const step = Math.min(dt, p.lifetime);
 
-      // Torpedo slight homing (1-3% turn rate towards target within 60 deg seeker cone)
+      // Lost locks acquire the closest hostile within a forward 60-degree seeker arc.
       if (p.weaponType === "missile" && p.targetId) {
-        const target = aliveShips.find((s) => s.id === p.targetId && s.isAlive);
+        const currentAngle = Math.atan2(p.velocity[1], p.velocity[0]);
+        let target = aliveShips.find(
+          (s) => s.id === p.targetId && s.isAlive && s.team !== p.ownerTeam,
+        );
+        if (!target) {
+          let closest = Infinity;
+          for (const candidate of aliveShips) {
+            if (!candidate.isAlive || candidate.team === p.ownerTeam) continue;
+            const delta = vecSub(candidate.pos, p.pos);
+            const angle = normalizeAngle(Math.atan2(delta[1], delta[0]) - currentAngle);
+            const distance = vecDot(delta, delta);
+            if (Math.abs(angle) <= Math.PI / 6 && distance < closest) {
+              target = candidate;
+              closest = distance;
+            }
+          }
+          if (target) p.targetId = target.id;
+        }
         if (target) {
           const toTarget = vecSub(target.pos, p.pos);
           const distSq = toTarget[0] * toTarget[0] + toTarget[1] * toTarget[1];
           if (distSq > 100) {
             const curSpeed = Math.hypot(p.velocity[0], p.velocity[1]);
             if (curSpeed > 1) {
-              const currentAngle = Math.atan2(p.velocity[1], p.velocity[0]);
               const desiredAngle = Math.atan2(toTarget[1], toTarget[0]);
               const angleDiff = normalizeAngle(desiredAngle - currentAngle);
-              if (Math.abs(angleDiff) < Math.PI / 3) {
-                const maxTurn = 0.4 * step;
+              if (!isHeavyTorpedo(p) || Math.abs(angleDiff) < Math.PI / 3) {
+                const maxTurn = (isHeavyTorpedo(p) ? 0.8 : 2.2) * step;
                 const turn = clamp(angleDiff, -maxTurn, maxTurn);
                 const newAngle = currentAngle + turn;
                 p.velocity = [Math.cos(newAngle) * curSpeed, Math.sin(newAngle) * curSpeed];

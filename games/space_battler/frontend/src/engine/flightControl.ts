@@ -386,25 +386,47 @@ export function capitalIntent(
         ? battleship
           ? 800
           : 750
-        : Math.min(secondaryRange * 0.9, 1150);
+        : Math.min(secondaryRange * 0.9, battleship ? 1025 : 1150);
   const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
   const radius =
     nominal +
     (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0);
   const error = distance - radius;
-  const closing = !battleship && error > 200;
+  const enemies = ships.filter((peer) => peer.isAlive && peer.team !== ship.team);
+  const closing = frigate
+    ? error > 200
+    : !dreadnought && ship.hullClass === "battleship"
+      ? error > 200
+      : distance > 1050;
   const weaving =
-    dreadnought || (!frigate && ship.capitalManeuver === "broadside_hold" && !closing);
-  let heading = normalizeAngle(aimBearing - (weaving ? side * angle : 0));
+    !closing && (dreadnought || (!frigate && ship.capitalManeuver === "broadside_hold"));
+  const enemyCenter = enemies.length
+    ? vecScale(
+        enemies.reduce<Vector2>((sum, peer) => vecAdd(sum, peer.pos), [0, 0]),
+        1 / enemies.length,
+      )
+    : target.pos;
+  const fleetDelta = vecSub(enemyCenter, ship.pos);
+  const fleetBearing = Math.atan2(fleetDelta[1], fleetDelta[0]);
+  const heading = normalizeAngle(
+    weaving
+      ? dreadnought
+        ? fleetBearing - side * angle
+        : aimBearing - side * angle
+      : closing
+        ? bearing
+        : aimBearing,
+  );
   let radial = clamp(
     0.35 * Math.sign(error) * Math.max(0, Math.abs(error) - 25),
     -ship.maxSpeed * 0.65,
     ship.maxSpeed * 0.85,
   );
   const boundary = clamp((vecDistance([0, 0], ship.pos) - (ARENA_RADIUS - 200)) / 200, 0, 1);
-  if (!battleship && radial < 0) radial *= 1 - boundary;
+  if (!battleship && !frigate && radial < 0) radial *= 1 - boundary;
   const line =
     battleship &&
+    !closing &&
     ships.some(
       (peer) =>
         peer.isAlive &&
@@ -419,7 +441,6 @@ export function capitalIntent(
     (line ? ship.maxSpeed * 0.25 * Math.cos(phase) : boundary * ship.maxSpeed * 0.6 * side);
   let velocity = vecAdd(vecScale(n, radial), vecScale([-n[1], n[0]], tangential));
   velocity = vecAdd(velocity, separation(ship, ships));
-  if (closing && vecDot(velocity, velocity) > 1e-6) heading = Math.atan2(velocity[1], velocity[0]);
   const forward: Vector2 = [Math.cos(ship.heading), Math.sin(ship.heading)];
   const right: Vector2 = [-forward[1], forward[0]];
   velocity = vecAdd(

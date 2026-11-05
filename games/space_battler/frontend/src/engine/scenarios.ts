@@ -44,6 +44,8 @@ const classes: Array<{ code: string; hullClass: HullClass }> = [
   { code: "cr", hullClass: "cruiser" },
   { code: "cv", hullClass: "corvette" },
   { code: "sc", hullClass: "strike_craft" },
+  { code: "dn", hullClass: "dreadnought" },
+  { code: "mf", hullClass: "missile_frigate" },
 ];
 const fleet = (hullClass: HullClass, count: number, groupId = 1): FleetComposition => ({
   hullClass,

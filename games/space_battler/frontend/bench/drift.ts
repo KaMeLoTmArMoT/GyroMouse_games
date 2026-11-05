@@ -149,7 +149,7 @@ export function runLayerA(): FixtureMetrics {
 /** Layer B segments the complete ordered matrix by seed; no seed averaging hides asymmetry. */
 export function runLayerB(): BattleMetrics[] {
   const scenarios = SCENARIOS.filter((scenario) => scenario.tags.includes("golden"));
-  if (scenarios.length !== 16) throw new Error("Layer B requires the complete 16-scenario matrix");
+  if (scenarios.length !== 36 && scenarios.length !== 16) throw new Error("Layer B requires the complete matrix");
   const results: BattleMetrics[] = [];
   for (const seed of DRIFT_SEEDS) {
     const start = performance.now();

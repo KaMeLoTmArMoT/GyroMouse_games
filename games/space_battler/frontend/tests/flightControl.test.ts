@@ -84,14 +84,14 @@ describe("capital standoff and cruiser drift", () => {
         expect(intent.velocity[0]).toBeCloseTo(0);
       };
       checkRadius("max_range", 1500);
-      checkRadius("optimal_range", hull === "battleship" ? 1080 : 990);
+      checkRadius("optimal_range", hull === "battleship" ? 1025 : 990);
       checkRadius("brawl", hull === "battleship" ? 800 : 750);
       primary.weapon.range = 1000;
       for (const mount of secondary) mount.weapon.range = 800;
       checkRadius("max_range", 850);
       checkRadius("optimal_range", 720);
       for (const mount of secondary) mount.weapon.range = 2000;
-      checkRadius("optimal_range", 1150);
+      checkRadius("optimal_range", hull === "battleship" ? 1025 : 1150);
     },
   );
 
@@ -102,12 +102,12 @@ describe("capital standoff and cruiser drift", () => {
     cruiser.capitalManeuver = "broadside_hold";
     cruiser.turrets[1].cooldownTimer = 5;
     const order = { groupId: 1, priority: "nearest", stance: "optimal_range" } as const;
-    target.pos = [1191, 0];
+    target.pos = [1051, 0];
     const closing = capitalIntent(cruiser, target, [cruiser, target], order);
     expect(closing.heading).toBeCloseTo(0);
     expect(closing.velocity[0]).toBeGreaterThan(0);
     expect(closing.velocity[1]).toBeCloseTo(0);
-    target.pos = [1190, 0];
+    target.pos = [1050, 0];
     const weaving = capitalIntent(cruiser, target, [cruiser, target], order);
     expect(Math.abs(weaving.heading)).toBeCloseTo((40 * Math.PI) / 180);
     expect(Math.abs(weaving.velocity[1])).toBeGreaterThan(0);

@@ -82,6 +82,28 @@ export const FLEET_PRESETS: FleetPreset[] = [
 
   // --- Strict 3-Ship Variation Matchups for Benchmarking ---
   {
+    id: "ironclad_line",
+    name: "Ironclad Linebreaker",
+    description: "1 Dreadnought + 2 Corvettes + 4 Fighters. Screened broadside battle line.",
+    budget: 4780,
+    composition: [
+      { hullClass: "dreadnought", count: 1, groupId: 1 },
+      { hullClass: "corvette", count: 2, groupId: 2 },
+      { hullClass: "strike_craft", count: 4, groupId: 3 },
+    ],
+  },
+  {
+    id: "missile_wall",
+    name: "Missile Saturation Screen",
+    description: "1 Cruiser + 3 Missile Frigates + 2 Corvettes. Standoff shield saturation fleet.",
+    budget: 3900,
+    composition: [
+      { hullClass: "cruiser", count: 1, groupId: 1 },
+      { hullClass: "missile_frigate", count: 3, groupId: 2 },
+      { hullClass: "corvette", count: 2, groupId: 3 },
+    ],
+  },
+  {
     id: "test_3_battleships",
     name: "Dreadnought Line (3x Battleships)",
     description: "3 Leviathan Battleships. Heavy railguns and dual broadsides (9,600 CR).",

@@ -108,7 +108,7 @@ describe("fleet builder matchups", () => {
     tree = renderBuilder();
     expect(text(tree)).toContain("Red Active Roster (0 hulls)");
     expect(button(tree, "Engage Fleet Simulator").props.disabled).toBe(true);
-    expect(elements(tree).find((element) => element.type === "select")?.props.value).toBe("custom");
+    expect(elements(tree).find((element) => element.type === "select")).toBeUndefined();
 
     button(tree, "Enlist in Group 1").props.onClick();
     tree = renderBuilder();
@@ -116,6 +116,7 @@ describe("fleet builder matchups", () => {
     button(tree, "Terran Task Force (Blue)").props.onClick();
     tree = renderBuilder();
     expect(text(tree)).toContain("Blue Active Roster (1 hulls)");
+    expect(elements(tree).find((element) => element.type === "select")?.props.value).toBe("custom");
     button(tree, "Engage Fleet Simulator").props.onClick();
     const canvas = elements(renderApp()).find((element) => element.type === TacticalCanvas);
     expect(canvas?.props.sim.ships.map((ship) => [ship.team, ship.hullClass])).toEqual([
@@ -135,13 +136,15 @@ describe("fleet builder matchups", () => {
     button(tree, "Mirror Fleet").props.onClick();
     tree = renderBuilder();
     expect(text(tree)).toContain("Red Active Roster (1 hulls)");
-    expect(elements(tree).find((element) => element.type === "select")?.props.value).toBe("custom");
+    expect(elements(tree).find((element) => element.type === "select")).toBeUndefined();
     const builder = elements(renderApp()).find((element) => element.type === FleetBuilder);
     expect(builder?.props.redSlots).toEqual(builder?.props.blueSlots);
     expect(builder?.props.redSlots[0]).not.toBe(builder?.props.blueSlots[0]);
     button(tree, "Clear All").props.onClick();
     button(renderBuilder(), "Terran Task Force (Blue)").props.onClick();
-    expect(text(renderBuilder())).toContain("Blue Active Roster (1 hulls)");
+    tree = renderBuilder();
+    expect(text(tree)).toContain("Blue Active Roster (1 hulls)");
+    expect(elements(tree).find((element) => element.type === "select")?.props.value).toBe("custom");
   });
 
   it("distinguishes scenario IDs from presets and marks a Blue scenario edit as custom", () => {

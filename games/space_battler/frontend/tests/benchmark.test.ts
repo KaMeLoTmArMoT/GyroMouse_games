@@ -7,8 +7,8 @@ import { ClientCombatSimulation } from "../src/engine/simulation";
 describe("headless benchmark", () => {
   it("enumerates ordered matchups and assembles deterministic seeded layouts", () => {
     const matrix = SCENARIOS.filter((scenario) => scenario.tags.includes("golden"));
-    expect(matrix).toHaveLength(16);
-    expect(new Set(matrix.map((scenario) => scenario.id)).size).toBe(16);
+    expect(matrix).toHaveLength(36);
+    expect(new Set(matrix.map((scenario) => scenario.id)).size).toBe(36);
     const scenario = matrix[0];
     expect(assembleScenario(scenario, 42)).toEqual(assembleScenario(scenario, 42));
     expect(assembleScenario(scenario, 42)).not.toEqual(assembleScenario(scenario, 43));

@@ -1,12 +1,24 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 204 Vitest tests passing, 0 Drift alerts)
+Status: Grand Scale Production Baseline Active (All 211 Vitest tests passing, 0 Drift alerts)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
+- **Missile Swarms & In-Flight Target Retargeting**:
+  - `missile_frigate` fires light missiles in fanned spreads (0°, 0°, +25°, -25°) with agile 2.2 rad/s terminal homing.
+  - In-flight ordnance whose target is destroyed scans a 60° forward seeker cone to immediately reacquire the nearest living hostile.
+- **Flight Orientations & Stand-off Kiting (Doctrine Fix)**:
+  - Capitals and dreadnoughts approach strictly bow-first until crossing the 1050u threshold, then orient broadsides relative to the enemy line.
+  - Missile frigates maintain standoff at 1150u and reverse thrust when threatened, avoiding forward suicidal ramming.
+- **Complete 36-Matchup Scenario Matrix & Curated Presets**:
+  - Full 36 3v3 ordered matchup matrix (`dn`, `bb`, `cr`, `mf`, `cv`, `sc`) with golden baselines across 144 battles.
+  - Added "Ironclad Linebreaker" and "Missile Saturation Screen" adversary presets.
+- **Compact Fleet Builder UI (Single-Screen Zero-Scroll)**:
+  - Removed clutter text, compressed card margins and button padding so all 6 ships fit without page scrolling.
+  - Hides the adversary dropdown when customizing the Opposing Red Force.
 - **Roster Expansion: Bastion Dreadnought & Quiver Missile Frigate (Activated)**: 
   - `dreadnought` (3600 CR): 4 heavy 380mm artillery batteries utilizing 3-of-4 broadside architecture (bow, port, starboard, wrapped aft arc), deep armor, and bespoke 2.5D hull & turret visuals.
   - `missile_frigate` (700 CR): 4 light missile tubes delivering shield-breaking kinetic swarms, 1150u standoff doctrine, exposed launch cells and sensor mast art.

@@ -542,17 +542,13 @@ export function FleetBuilder({
   };
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row gap-6 p-6 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
+    <div className="flex-1 flex flex-col md:flex-row gap-4 p-3 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
       {/* Left: Ship Catalog & Group Selection */}
-      <div className="flex-1 space-y-5 overflow-y-auto pr-2">
+      <div className="flex-1 min-w-0 space-y-3 overflow-y-auto pr-2">
         <div>
           <h2 className="text-lg font-semibold tracking-wide flex items-center gap-2 select-text">
             <Shield className="w-5 h-5 text-cyan-400" /> Fleet Assembly Hangar
           </h2>
-          <p className="text-xs text-zinc-400 mt-1 select-text">
-            Assemble your Task Force within the credit allocation. Assign ships to tactical groups
-            and inspect armament loadouts.
-          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" aria-label="Fleet to edit">
@@ -583,7 +579,7 @@ export function FleetBuilder({
         </div>
 
         {/* Group Selector with Counts */}
-        <div className="relative p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
+        <div className="relative p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex justify-between select-text">
             <span>Operational Group Assignment</span>
             <span className="text-cyan-400 font-mono">
@@ -639,7 +635,7 @@ export function FleetBuilder({
         </div>
 
         {/* Ship Catalog */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
           {(Object.keys(HULL_SPECS) as HullClass[]).map((hull) => {
             const spec = HULL_SPECS[hull];
             const canAfford = remainingBudget >= spec.cost;
@@ -650,7 +646,7 @@ export function FleetBuilder({
             return (
               <div
                 key={hull}
-                className={`p-4 rounded-xl border transition-all flex flex-col justify-between select-text relative ${
+                className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between select-text relative ${
                   isInspecting
                     ? "border-cyan-500/50 bg-zinc-900/90 shadow-md shadow-cyan-500/10"
                     : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700"
@@ -701,12 +697,10 @@ export function FleetBuilder({
                     </div>
                   </div>
 
-                  <p className="text-xs text-zinc-300 mt-2.5 leading-relaxed select-text">
-                    {spec.desc}
-                  </p>
+                  <p className="text-xs text-zinc-300 mt-1.5 select-text">{spec.desc}</p>
 
                   {/* Compact Stats Row */}
-                  <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-zinc-800/80 text-[11px] font-mono">
+                  <div className="grid grid-cols-4 gap-1 mt-1.5 pt-1.5 border-t border-zinc-800/80 text-[11px] font-mono">
                     <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
                       <span className="text-zinc-400 block">SHIELD</span>
                       <span className="text-cyan-400 font-semibold">{spec.shield}</span>
@@ -727,7 +721,7 @@ export function FleetBuilder({
 
                   {/* Permanent Armament Loadout - Fixed height so cards never jump on hover */}
                   <div
-                    className={`mt-2.5 p-2 rounded-lg text-[11px] font-mono min-h-[56px] flex flex-col justify-center transition-colors ${
+                    className={`mt-1.5 p-1.5 rounded-lg text-[11px] font-mono min-h-[56px] flex flex-col justify-center transition-colors ${
                       isInspecting
                         ? "bg-zinc-950 border border-cyan-500/40 text-cyan-300"
                         : "bg-zinc-950/60 border border-zinc-800/80 text-zinc-400"
@@ -759,7 +753,7 @@ export function FleetBuilder({
                   type="button"
                   disabled={!canAfford}
                   onClick={() => addShip(hull)}
-                  className={`mt-4 w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                  className={`mt-1.5 w-full py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
                     canAfford
                       ? "bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500 text-cyan-300 hover:text-zinc-950 cursor-pointer font-semibold"
                       : "bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed"
@@ -984,38 +978,40 @@ export function FleetBuilder({
         </div>
 
         {/* Adversary Preset Selector */}
-        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 shrink-0 select-text">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-            Select Opposing Red Force
+        {activeTeam === "blue" && (
+          <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 shrink-0 select-text">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              Select Opposing Red Force
+            </div>
+            <select
+              value={enemyPresetId}
+              onChange={(e) => onSelectEnemyPreset(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
+            >
+              <option value="custom">Custom (Build Opposing Fleet)</option>
+              <optgroup label="Opposing Fleet Presets">
+                {FLEET_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.budget} CR)
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Tactical Scenarios (Load Both Fleets)">
+                {SCENARIOS.map((scenario) => (
+                  <option key={scenario.id} value={`scenario:${scenario.id}`}>
+                    {scenario.label.replace(/\bSC\b/g, "Fighters")}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <p className="text-[11px] text-zinc-500 italic mt-1 select-text">
+              {selectedPreset?.description ??
+                (selectedScenario
+                  ? "Loads the suggested Blue and Red fleets for this matchup."
+                  : "Edit either fleet in the hangar to build your own matchup.")}
+            </p>
           </div>
-          <select
-            value={enemyPresetId}
-            onChange={(e) => onSelectEnemyPreset(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
-          >
-            <option value="custom">Custom (Build Opposing Fleet)</option>
-            <optgroup label="Opposing Fleet Presets">
-              {FLEET_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.budget} CR)
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Tactical Scenarios (Load Both Fleets)">
-              {SCENARIOS.map((scenario) => (
-                <option key={scenario.id} value={`scenario:${scenario.id}`}>
-                  {scenario.label.replace(/\bSC\b/g, "Fighters")}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-          <p className="text-[11px] text-zinc-500 italic mt-1 select-text">
-            {selectedPreset?.description ??
-              (selectedScenario
-                ? "Loads the suggested Blue and Red fleets for this matchup."
-                : "Edit either fleet in the hangar to build your own matchup.")}
-          </p>
-        </div>
+        )}
 
         {/* Start Button */}
         <button
