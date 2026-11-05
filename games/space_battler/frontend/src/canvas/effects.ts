@@ -477,10 +477,12 @@ export class VisualEffectsManager {
     const profiles = {
       strike_craft: { particles: 10, shards: 2, duration: 0.4, cores: 1 },
       corvette: { particles: 25, shards: 6, duration: 0.7, cores: 1 },
+      missile_frigate: { particles: 35, shards: 8, duration: 0.9, cores: 2 },
       cruiser: { particles: 60, shards: 14, duration: 1.4, cores: 3 },
       battleship: { particles: 80, shards: 30, duration: 1.8, cores: 3 },
+      dreadnought: { particles: 110, shards: 45, duration: 2.2, cores: 4 },
     };
-    const profile = profiles[ship.hullClass];
+    const profile = profiles[ship.hullClass] ?? profiles.cruiser;
     const capital = profile.cores > 1;
 
     if (this.shipShockwaves.length >= 100) this.shipShockwaves.shift();

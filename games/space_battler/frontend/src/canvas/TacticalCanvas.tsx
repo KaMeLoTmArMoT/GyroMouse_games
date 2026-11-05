@@ -523,21 +523,25 @@ export function TacticalCanvas({
     }
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) * canvas.width) / rect.width - canvas.width / 2;
-    const y = ((e.clientY - rect.top) * canvas.height) / rect.height - canvas.height / 2;
-    const camera = cameraRef.current;
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    const zoom = Math.max(0.3, Math.min(2.5, camera.zoom * zoomFactor));
-    const ratio = zoom / camera.zoom;
-    camera.x = x - (x - camera.x) * ratio;
-    camera.y = y - (y - camera.y) * ratio;
-    camera.zoom = zoom;
-  };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) * canvas.width) / rect.width - canvas.width / 2;
+      const y = ((e.clientY - rect.top) * canvas.height) / rect.height - canvas.height / 2;
+      const camera = cameraRef.current;
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      const zoom = Math.max(0.3, Math.min(2.5, camera.zoom * zoomFactor));
+      const ratio = zoom / camera.zoom;
+      camera.x = x - (x - camera.x) * ratio;
+      camera.y = y - (y - camera.y) * ratio;
+      camera.zoom = zoom;
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+  }, []);
 
   return (
     <div className="relative w-full h-full overflow-hidden select-none cursor-grab active:cursor-grabbing">
@@ -550,7 +554,6 @@ export function TacticalCanvas({
           isDraggingRef.current = false;
         }}
         onDoubleClick={handleDoubleClick}
-        onWheel={handleWheel}
         className="w-full h-full block"
       />
 

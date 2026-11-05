@@ -134,7 +134,7 @@ export const HULL_SPECS = Object.fromEntries(
       hull: profile.hullMax,
       speed: profile.speed,
       turnRate: profile.turnRateDisplay,
-      weapons: profile.turrets.map(({ type, weapon }) => ({ ...weapon, type })),
+      weapons: profile.turrets.map(({ id, type, weapon }) => ({ ...weapon, type, mountId: id })),
     },
   ]),
 ) as Record<HullClass, HullSpecData>;
@@ -736,7 +736,7 @@ export function FleetBuilder({
                     <div className="space-y-0.5">
                       {spec.weapons.map((w) => (
                         <div
-                          key={w.name}
+                          key={`${w.mountId ?? w.name}`}
                           className="flex justify-between items-center text-zinc-300"
                         >
                           <span className="truncate pr-2">{w.name}</span>
