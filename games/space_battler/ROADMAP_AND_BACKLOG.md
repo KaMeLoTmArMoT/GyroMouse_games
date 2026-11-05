@@ -1,13 +1,17 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 88 Vitest + 24 Pytest tests passing)
+Status: Grand Scale Production Baseline Active (All 105 Vitest + 24 Pytest tests passing)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
-- **Picket Sortie Doctrine & 90% Flak Interception Cap (B.8 & B.2)**: Healthy corvettes deploy to a 550u forward/lateral screen (tether 600u) and fall back below 40% shields; flak has a deterministic 90% interception cap allowing ~10% torpedoes through.
+- **Capital Standoff Envelopes & Cruiser Drift Fix (B.9)**: Dynamic weapon-derived standoffs ($1500\text{u}$ / $1100\text{u}$ / $750\text{u}$); cruisers fly bow-first during approach with lateral drift clamped, broadside-weaving only in firing range.
+- **4-Layer Anti-Drift Architecture (`bench/drift.ts`, B.10)**: Layer A isolated sentinels (DPS $\pm 3\%$, 10-missile flak, shield recharge) + Layer B 16-scenario 4-seed panel (duration $\pm 10\%$, HP $\pm 5\text{ pp}$); verified in $5.7\text{s}$.
+- **Tactical Group Spatial Spawns (B.11)**: Wings Alpha, Bravo, Charlie, Delta, Echo spawn at distinct spatial anchors with inter-group distance > intra-group spacing.
+- **Layer-Specific Hit FX & Damage Decals (B.12)**: Electric blue ripples for shields, molten sparks for armor, explosive fireball/debris for hull; trailing smoke $<50\%$ armor, heavy plumes + red hazard strobes $<30\%$ hull, and scorch decals.
+- **Picket Sortie Doctrine & 90% Flak Interception Cap (B.8 & B.2)**: Corvettes sortie to 550u screen (tether 600u) when shields $>70\%$ and fall back below 40%; flak has deterministic 90% interception cap allowing ~10% torpedoes through.
 - **Direct Numeric Input in Fleet Builder (B.1)**: Quantity steppers support direct typing, budget clamping, pre-focus restore on Escape, and strict non-digit key blocking.
 - **Grand Scale Arena & Sizing Calibration**: Expanded arena radius ($R=1900\text{u}$), shield-safe fleet spawn offsets ($\pm 1100\text{u}$), calibrated capital turn rates ($0.50\text{ rad/s}$).
 - **Billiards Trajectory & Tactical HUD**: Clicked ship projects a 2.5s future vector with endpoint reticle, target lock brackets, and tactical doctrine pills.
@@ -15,28 +19,7 @@ Status: Grand Scale Production Baseline Active (All 88 Vitest + 24 Pytest tests 
 
 ---
 
-## 2. Active Implementation Sprints
-
-### B.9: Capital Standoff Envelopes & Cruiser Sideways Drift Fix
-- **Standoff Range**: Compute dynamic standoff from equipped weapon ranges ($1500\text{u}$ max_range, $1100\text{u}$ optimal, $750\text{u}$ brawl) instead of legacy 840u hardcode.
-- **Cruiser Drift Fix**: Fix flight controller so cruisers align bow with movement vector while advancing, pivoting to broadside only once inside engagement range rather than awkward sideways crab-walking.
-
-### B.10: 4-Layer Anti-Drift Architecture (`bench/drift.ts`)
-- **Layer A (Isolated Sentinels, <1.5s)**: Fixtures for direct gun fire (DPS $\pm 3\%$), flak intercept against fixed salvos, and shield recharge cycles.
-- **Layer B (Segmented Panel, 5-8s)**: Segmented metrics per archetype (artillery duration/tempo, escort intercept ratios, fighter survival AUC).
-- **Layer C (Immutable Anchor)**: Committed reference baseline with single-command update `npm run bench:update-golden`.
-- **Layer D (Diagnostic Tracing)**: Detailed breakdown identifying weapon/class attribution on failure.
-
-### B.11: Tactical Group Spatial Spawn Offsets
-- In `fleetBuilder.ts`, assign spatial spawn origins per group (Alpha, Bravo, Charlie, Delta, Echo) with inter-group distance significantly larger than intra-group ship spacing, creating distinct tactical wings.
-
-### B.12: Layer-Specific Hit FX & Visual Damage Decals
-- **Hit FX**: Distinct visual impact effects per layer: electric blue distortion ripple (Shield), molten ricochet sparks (Armor), explosive fireball and metal debris (Hull).
-- **Damage Decals & States**: Scorch marks at hit offsets, progressive smoke trails below 50% armor, and heavy smoke/emergency warning strobes below 30% hull.
-
----
-
-## 3. Priority Feature Backlog
+## 2. Priority Feature Backlog (Next Sprints)
 
 - **B.3: Sustained Beam Lasers**: Continuous channeled laser beam over 1.5–2.5s dealing high-frequency tick damage with shimmering shields.
 - **B.4: Directional Shield Quadrants**: 4-quadrant shields (Front, Aft, Port, Starboard) rewarding tactical flanking and broadside weaving.

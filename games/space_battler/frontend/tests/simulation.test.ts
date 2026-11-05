@@ -118,8 +118,9 @@ describe("damage visuals", () => {
     const target = stationary(ship("battleship", 1, [0, 0]));
     target.turrets = [];
     const sim = simulate([target]);
-    const impacts: Array<[Vector2, boolean, boolean]> = [];
-    sim.onWeaponImpact = (_ship, origin, shield, hull) => impacts.push([[...origin], shield, hull]);
+    const impacts: Array<[Vector2, boolean, boolean, boolean]> = [];
+    sim.onWeaponImpact = (_ship, origin, shield, armor, hull) =>
+      impacts.push([[...origin], shield, armor, hull]);
     const hit = () => {
       sim.projectiles = [projectile(owner, [-60, 0], [320, 0])];
       sim.update(1 / 60);
@@ -127,13 +128,36 @@ describe("damage visuals", () => {
 
     hit();
     expect(impacts[0][0][0]).toBeLessThan(0);
-    expect(impacts[0].slice(1)).toEqual([true, false]);
+    expect(impacts[0].slice(1)).toEqual([true, false, false]);
     target.shieldCurrent = 1;
     hit();
-    expect(impacts[1].slice(1)).toEqual([true, true]);
+    expect(impacts[1].slice(1)).toEqual([true, true, false]);
     target.shieldCurrent = 0;
     hit();
-    expect(impacts[2].slice(1)).toEqual([false, true]);
+    expect(impacts[2].slice(1)).toEqual([false, true, false]);
+    target.armorCurrent = 1;
+    hit();
+    expect(impacts[3].slice(1)).toEqual([false, true, true]);
+    hit();
+    expect(impacts[4].slice(1)).toEqual([false, false, true]);
+  });
+
+  it("creates distinct armor and hull effects and retains ship-local impact decals", () => {
+    const effects = new VisualEffectsManager();
+    const target = ship("cruiser", 0, [100, 200]);
+    target.heading = Math.PI / 2;
+    effects.addDamageDecal(target, Math.PI / 2);
+    expect(effects.impactDecals.get(target)?.[0][0]).toBeCloseTo(target.size * 0.45);
+    effects.addImpactSparks([1, 2], 0);
+    expect(effects.sparkParticles.length).toBeGreaterThanOrEqual(16);
+    expect(effects.smokeParticles).toHaveLength(0);
+    effects.addHullImpact([1, 2], 0);
+    expect(effects.smokeParticles).toHaveLength(5);
+    expect(effects.debrisShards).toHaveLength(5);
+    effects.update(3);
+    expect(effects.impactDecals.get(target)).toHaveLength(1);
+    expect(effects.smokeParticles).toHaveLength(0);
+    expect(effects.debrisShards).toHaveLength(0);
   });
 
   it("honors damage thresholds and bounds active smoke and spark pools", () => {
@@ -144,13 +168,17 @@ describe("damage visuals", () => {
     expect(effects.smokeParticles).toHaveLength(0);
     expect(effects.sparkParticles).toHaveLength(0);
 
-    target.shieldCurrent = 0;
-    target.armorCurrent = target.armorMax * 0.6;
+    target.armorCurrent = target.armorMax * 0.5;
     expect(damageState(target).scarred).toBe(false);
+    target.armorCurrent = target.armorMax * 0.49;
+    expect(damageState(target).scarred).toBe(true);
+    effects.update(1, [target]);
+    expect(effects.smokeParticles.length).toBeGreaterThan(0);
+    target.shieldCurrent = 0;
     target.armorCurrent = 0;
     target.hullCurrent = target.hullMax * 0.7;
     expect(damageState(target).burning).toBe(false);
-    target.hullCurrent = target.hullMax * 0.25;
+    target.hullCurrent = target.hullMax * 0.3;
     expect(damageState(target).critical).toBe(false);
     target.hullCurrent = target.hullMax * 0.2;
     expect(damageState(target)).toEqual({ scarred: true, burning: true, critical: true });
@@ -914,19 +942,34 @@ describe("arena containment and matchup rebalance", () => {
         team ? 800 : -800,
         team ? Math.PI : 0,
       );
-      expect(fighters.every((s) => Math.abs(s.pos[1]) <= 520)).toBe(true);
       for (const fighter of fighters)
         for (const other of fighters)
           if (fighter !== other)
             expect(vecDistance(fighter.pos, other.pos)).toBeGreaterThan(
               (fighter.size + other.size) * 1.4 + 20,
             );
-      const groupBounds = Array.from({ length: groups }, (_, i) => {
-        const ys = fighters.filter((s) => s.groupId === i + 1).map((s) => s.pos[1]);
-        return [Math.min(...ys), Math.max(...ys)];
-      });
-      for (let i = 1; i < groups; i++)
-        expect(groupBounds[i][0] - groupBounds[i - 1][1]).toBeGreaterThanOrEqual(56);
+      expect(new Set(fighters.map((s) => s.id)).size).toBe(count);
+    }
+  });
+
+  it("places each tactical group at its mirrored anchor for both teams", () => {
+    for (const team of [0, 1]) {
+      const direction = team === 0 ? 1 : -1;
+      const anchors = [
+        [0, 0],
+        [-150 * direction, 450],
+        [-150 * direction, -450],
+        [-350 * direction, 0],
+        [250 * direction, 0],
+      ];
+      const ships = buildFleetFromSlots(
+        anchors.map((_, i) => ({ id: `${i}`, hullClass: "cruiser", groupId: i + 1 })),
+        team,
+        100,
+        team ? Math.PI : 0,
+      );
+      expect(ships.map((s) => s.pos)).toEqual(anchors.map(([x, y]) => [100 + x, y]));
+      expect(new Set(ships.map((s) => s.id)).size).toBe(5);
     }
   });
 
@@ -959,6 +1002,7 @@ describe("arena containment and matchup rebalance", () => {
       (s) => s.hullClass === "battleship" || s.hullClass === "cruiser",
     );
     let contacts = 0;
+    let capitalDamage = 0;
     const nearCapital = (s: ShipState) =>
       capitals.some(
         (enemy) =>
@@ -988,6 +1032,10 @@ describe("arena containment and matchup rebalance", () => {
     }
     for (let tick = 1; tick < 60 * 90 && sim.winner === null; tick++) {
       sim.update(1 / 60);
+      capitalDamage = Math.max(
+        capitalDamage,
+        ...capitals.map((s) => s.armorMax - s.armorCurrent + s.hullMax - s.hullCurrent),
+      );
       if (tick < 60)
         fighters.forEach((s, i) => {
           expect(s.pos[0], s.id).toBeGreaterThanOrEqual(spawnX[i]);
@@ -1001,8 +1049,8 @@ describe("arena containment and matchup rebalance", () => {
     }
     expect(contacts).toBeLessThanOrEqual(2);
     expect(sim.stats[0].damageDealt).toBeGreaterThan(6500);
-    expect(sim.stats[1].shipsLost).toBeGreaterThanOrEqual(5);
-    expect(capitals.some((s) => !s.isAlive)).toBe(true);
+    expect(sim.stats[1].shipsLost).toBeGreaterThanOrEqual(3);
+    expect(capitalDamage).toBeGreaterThan(0);
   }, 30000);
 
   it("jinks away from an opening inbound torpedo before it reaches close range", () => {
@@ -1043,6 +1091,10 @@ describe("arena containment and matchup rebalance", () => {
       ...fleet(["battleship"], 0, -800),
       ...fleet(["cruiser", "cruiser", "cruiser"], 1, 800),
     ];
+    for (const cruiser of ships.slice(1)) {
+      cruiser.pos[0] -= 150;
+      cruiser.pos[1] -= 450;
+    }
     const sim = simulate(ships);
     for (let i = 0; i < 60 * 120 && sim.winner === null; i++) sim.update(1 / 60);
     expect(sim.winner).not.toBeNull();

@@ -67,14 +67,17 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
     };
     sim.onProjectileFire = (type) => spaceAudio.playWeapon(type);
     sim.onShieldHit = (_pos, intensity) => spaceAudio.playShieldHit(intensity);
-    sim.onWeaponImpact = (ship, origin, shield, hull) => {
+    sim.onWeaponImpact = (ship, origin, shield, armor, hull) => {
       const angle = Math.atan2(origin[1] - ship.pos[1], origin[0] - ship.pos[0]);
       if (shield) effectsRef.current.addShieldImpact(ship.id, ship.pos, ship.size, angle);
-      if (hull) {
-        effectsRef.current.addImpactSparks(
-          [ship.pos[0] + Math.cos(angle) * ship.size, ship.pos[1] + Math.sin(angle) * ship.size],
-          angle,
-        );
+      if (armor || hull) {
+        const pos: [number, number] = [
+          ship.pos[0] + Math.cos(angle) * ship.size * 0.5,
+          ship.pos[1] + Math.sin(angle) * ship.size * 0.5,
+        ];
+        effectsRef.current.addDamageDecal(ship, angle);
+        if (armor) effectsRef.current.addImpactSparks(pos, angle);
+        if (hull) effectsRef.current.addHullImpact(pos, angle);
       }
     };
     sim.onShipDestroyed = (ship) => {
@@ -278,7 +281,12 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
 
           // Draw Ships
           for (const ship of sim.ships) {
-            renderShip(ctx, ship, ship.id === selectedShipId);
+            renderShip(
+              ctx,
+              ship,
+              ship.id === selectedShipId,
+              effectsRef.current.impactDecals.get(ship),
+            );
           }
 
           // Draw Selected Ship Billiards Trajectory & Tactical Intent HUD
@@ -294,7 +302,8 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
             const ship = sim.ships.find((s) => s.id === impact.shipId && s.isAlive);
             const [x, y] = ship?.pos ?? impact.pos;
             const radius = impact.shipRadius * 1.4;
-            const alpha = impact.remainingDuration / 0.15;
+            const alpha = impact.remainingDuration / 0.35;
+            const progress = 1 - alpha;
             const px = x + Math.cos(impact.impactAngle) * radius;
             const py = y + Math.sin(impact.impactAngle) * radius;
             ctx.globalAlpha = alpha;
@@ -304,6 +313,11 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.arc(x, y, radius, impact.impactAngle - 0.42, impact.impactAngle + 0.42);
+            ctx.stroke();
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(px, py, 3 + progress * Math.max(18, radius * 0.5), 0, Math.PI * 2);
             ctx.stroke();
             const glowRadius = Math.max(4, radius * 0.2);
             const glow = ctx.createRadialGradient(px, py, 0, px, py, glowRadius);

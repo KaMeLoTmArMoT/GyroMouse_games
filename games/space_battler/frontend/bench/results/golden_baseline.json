@@ -1,0 +1,739 @@
+{
+  "version": 1,
+  "step": 0.016666666666666666,
+  "seeds": [
+    1,
+    7,
+    29,
+    42
+  ],
+  "layerA": {
+    "gunDps": {
+      "blue_bb_0_spinal": 85,
+      "blue_bb_0_port": 62.5,
+      "blue_bb_0_stbd": 62.5,
+      "blue_cr_0_laser": 37.5,
+      "blue_cr_0_torp": 72.6,
+      "blue_sc_0_gun": 58.5
+    },
+    "flakInterceptRate": 0.8,
+    "shieldDelay": {
+      "battleship": 1.5333333333333328,
+      "cruiser": 1.2166666666666672,
+      "corvette": 3.5333333333333257,
+      "strike_craft": 3.5333333333333257
+    },
+    "shieldRegen": {
+      "battleship": 50.000000000009095,
+      "cruiser": 24.999999999997726,
+      "corvette": 15,
+      "strike_craft": 10.000000000000014
+    }
+  },
+  "layerB": [
+    {
+      "id": "3bb-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "red",
+      "duration": 140.81666666667087,
+      "residualHpPercent": [
+        0,
+        12.749389865657472
+      ]
+    },
+    {
+      "id": "3bb-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "blue",
+      "duration": 26.349999999999785,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "blue",
+      "duration": 21.016666666666755,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "blue",
+      "duration": 13.533333333333585,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "red",
+      "duration": 26.416666666666448,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cr-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "blue",
+      "duration": 50.19999999999843,
+      "residualHpPercent": [
+        0.6723281199087663,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "blue",
+      "duration": 28.616666666666323,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "blue",
+      "duration": 8.566666666666672,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cv-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "red",
+      "duration": 21.433333333333398,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cv-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "red",
+      "duration": 20.466666666666786,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cv-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "blue",
+      "duration": 101.66666666666218,
+      "residualHpPercent": [
+        2.1048321048322354,
+        0
+      ]
+    },
+    {
+      "id": "3cv-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "blue",
+      "duration": 19.31666666666685,
+      "residualHpPercent": [
+        83.7039312039312,
+        0
+      ]
+    },
+    {
+      "id": "3sc-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "red",
+      "duration": 29.083333333332963,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "red",
+      "duration": 8.566666666666672,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "red",
+      "duration": 24.46666666666656,
+      "residualHpPercent": [
+        0,
+        95.24324324324324
+      ]
+    },
+    {
+      "id": "3sc-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 1,
+      "outcome": "red",
+      "duration": 32.84999999999942,
+      "residualHpPercent": [
+        0,
+        45.17906336088154
+      ]
+    },
+    {
+      "id": "3bb-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "red",
+      "duration": 140.81666666667087,
+      "residualHpPercent": [
+        0,
+        12.749389865657472
+      ]
+    },
+    {
+      "id": "3bb-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 26.349999999999785,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 21.200000000000077,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 16.850000000000325,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "red",
+      "duration": 26.383333333333116,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cr-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 50.19999999999843,
+      "residualHpPercent": [
+        0.6723281199087663,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 28.616666666666323,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 9.766666666666731,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cv-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "red",
+      "duration": 21.433333333333398,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cv-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "red",
+      "duration": 20.466666666666786,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cv-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 101.66666666666218,
+      "residualHpPercent": [
+        2.1048321048322274,
+        0
+      ]
+    },
+    {
+      "id": "3cv-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 19.266666666666854,
+      "residualHpPercent": [
+        83.7039312039312,
+        0
+      ]
+    },
+    {
+      "id": "3sc-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "red",
+      "duration": 24.46666666666656,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "red",
+      "duration": 7.333333333333313,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "red",
+      "duration": 24.64999999999988,
+      "residualHpPercent": [
+        0,
+        95.24324324324324
+      ]
+    },
+    {
+      "id": "3sc-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 7,
+      "outcome": "blue",
+      "duration": 16.816666666666993,
+      "residualHpPercent": [
+        66.66666666666667,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "red",
+      "duration": 140.8000000000042,
+      "residualHpPercent": [
+        0,
+        12.749389865657472
+      ]
+    },
+    {
+      "id": "3bb-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 26.349999999999785,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 21.016666666666755,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 27.49999999999972,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "red",
+      "duration": 26.416666666666448,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cr-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 50.19999999999843,
+      "residualHpPercent": [
+        0.6723281199087663,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 28.616666666666323,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 8.566666666666672,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cv-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "red",
+      "duration": 21.433333333333398,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cv-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "red",
+      "duration": 21.23333333333341,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cv-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 101.66666666666218,
+      "residualHpPercent": [
+        2.1048321048322345,
+        0
+      ]
+    },
+    {
+      "id": "3cv-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 19.350000000000183,
+      "residualHpPercent": [
+        83.7039312039312,
+        0
+      ]
+    },
+    {
+      "id": "3sc-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "red",
+      "duration": 21.00000000000009,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "red",
+      "duration": 6.133333333333317,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "red",
+      "duration": 25.216666666666516,
+      "residualHpPercent": [
+        0,
+        96.11808481485288
+      ]
+    },
+    {
+      "id": "3sc-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 29,
+      "outcome": "blue",
+      "duration": 28.93333333333297,
+      "residualHpPercent": [
+        57.02479338842976,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "red",
+      "duration": 140.8000000000042,
+      "residualHpPercent": [
+        0,
+        12.749389865657472
+      ]
+    },
+    {
+      "id": "3bb-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 26.349999999999785,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 21.016666666666755,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3bb-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 13.816666666666933,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "red",
+      "duration": 26.416666666666448,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cr-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 50.19999999999843,
+      "residualHpPercent": [
+        0.6723281199087663,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 28.616666666666323,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cr-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 9.766666666666731,
+      "residualHpPercent": [
+        100,
+        0
+      ]
+    },
+    {
+      "id": "3cv-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "red",
+      "duration": 21.400000000000066,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cv-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "red",
+      "duration": 20.466666666666786,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3cv-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 101.66666666666218,
+      "residualHpPercent": [
+        2.1048321048322323,
+        0
+      ]
+    },
+    {
+      "id": "3cv-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 19.350000000000183,
+      "residualHpPercent": [
+        83.7039312039312,
+        0
+      ]
+    },
+    {
+      "id": "3sc-vs-3bb",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "red",
+      "duration": 20.850000000000097,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3cr",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "red",
+      "duration": 8.45,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3cv",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "red",
+      "duration": 24.633333333333216,
+      "residualHpPercent": [
+        0,
+        100
+      ]
+    },
+    {
+      "id": "3sc-vs-3sc",
+      "scenarioVersion": 1,
+      "seed": 42,
+      "outcome": "blue",
+      "duration": 31.43333333333283,
+      "residualHpPercent": [
+        66.66666666666667,
+        0
+      ]
+    }
+  ]
+}

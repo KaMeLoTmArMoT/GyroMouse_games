@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "bench": "tsx bench/run.ts",
+    "bench:drift": "tsx bench/drift.ts",
+    "bench:update-golden": "tsx bench/drift.ts --update",
     "lint": "oxlint",
     "preview": "vite preview"
   },

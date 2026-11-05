@@ -64,9 +64,9 @@ export function damageState(ship: ShipState): {
   burning: boolean;
   critical: boolean;
 } {
-  const critical = ship.hullMax > 0 && ship.hullCurrent < ship.hullMax * 0.25;
+  const critical = ship.hullMax > 0 && ship.hullCurrent < ship.hullMax * 0.3;
   return {
-    scarred: ship.shieldCurrent <= 0 && ship.armorCurrent < ship.armorMax * 0.6,
+    scarred: ship.armorMax > 0 && ship.armorCurrent < ship.armorMax * 0.5,
     burning: ship.armorCurrent <= 0 && ship.hullCurrent < ship.hullMax * 0.7,
     critical,
   };
@@ -142,6 +142,7 @@ export class VisualEffectsManager {
   debrisShards: DebrisShard[] = [];
   shipExplosionCores: ShipExplosionEffect[] = [];
   shipShockwaves: ShipExplosionEffect[] = [];
+  impactDecals = new WeakMap<ShipState, Vector2[]>();
 
   addBeam(
     from: Vector2,
@@ -172,12 +173,12 @@ export class VisualEffectsManager {
       pos: [...pos],
       shipRadius,
       impactAngle,
-      remainingDuration: 0.15,
+      remainingDuration: 0.35,
     });
   }
 
   addImpactSparks(pos: Vector2, impactAngle: number): void {
-    const count = 4 + Math.floor(Math.random() * 5);
+    const count = 16 + Math.floor(Math.random() * 9);
     for (let i = 0; i < count && this.sparkParticles.length < 400; i++) {
       const angle = impactAngle + (Math.random() - 0.5) * Math.PI;
       const speed = 55 + Math.random() * 120;
@@ -187,6 +188,61 @@ export class VisualEffectsManager {
         velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
         color: i % 2 === 0 ? "#fff7c2" : "#fb923c",
         radius: 1,
+        remainingDuration: lifetime,
+        maxDuration: lifetime,
+      });
+    }
+    this.addParticle({
+      pos: [...pos],
+      velocity: [0, 0],
+      color: "#fbbf24",
+      radius: 5,
+      remainingDuration: 0.18,
+      maxDuration: 0.18,
+    });
+  }
+
+  addDamageDecal(ship: ShipState, impactAngle: number): void {
+    const angle = impactAngle - ship.heading;
+    const decals = this.impactDecals.get(ship) ?? [];
+    if (decals.length >= 12) decals.shift();
+    decals.push([Math.cos(angle) * ship.size * 0.45, Math.sin(angle) * ship.size * 0.22]);
+    this.impactDecals.set(ship, decals);
+  }
+
+  addHullImpact(pos: Vector2, impactAngle: number): void {
+    this.addExplosion(pos, 18, "#ef4420");
+    for (let i = 0; i < 5 && this.smokeParticles.length < 400; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 10 + Math.random() * 35;
+      const lifetime = 0.7 + Math.random() * 0.5;
+      this.smokeParticles.push({
+        pos: [...pos],
+        velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
+        color: "#202127",
+        radius: 3 + Math.random() * 4,
+        remainingDuration: lifetime,
+        maxDuration: lifetime,
+      });
+    }
+    for (let i = 0; i < 5 && this.debrisShards.length < 200; i++) {
+      const angle = impactAngle + (Math.random() - 0.5) * Math.PI * 2;
+      const speed = 40 + Math.random() * 100;
+      const lifetime = 0.8 + Math.random() * 0.7;
+      this.debrisShards.push({
+        pos: [...pos],
+        velocity: [Math.cos(angle) * speed, Math.sin(angle) * speed],
+        angle,
+        rotationSpeed: (Math.random() - 0.5) * 6,
+        points: [
+          [-1, -0.4],
+          [0.8, -0.6],
+          [1, 0.4],
+          [-0.5, 0.6],
+        ],
+        color: "#475569",
+        accentColor: "#fb923c",
+        size: 2 + Math.random() * 3,
         remainingDuration: lifetime,
         maxDuration: lifetime,
       });
@@ -440,8 +496,8 @@ export class VisualEffectsManager {
       const { scarred, burning, critical } = damageState(ship);
       const cos = Math.cos(ship.heading);
       const sin = Math.sin(ship.heading);
-      if ((burning || critical) && this.smokeParticles.length < 400) {
-        if (Math.random() < Math.min(1, dt * (critical ? 12 : 5))) {
+      if ((scarred || burning || critical) && this.smokeParticles.length < 400) {
+        if (Math.random() < Math.min(1, dt * (critical ? 16 : 4))) {
           const localX = (Math.random() * 0.6 - 0.3) * ship.size;
           const localY = (Math.random() * 0.4 - 0.2) * ship.size;
           const lifetime = 0.8 + Math.random() * 0.6;
@@ -451,8 +507,8 @@ export class VisualEffectsManager {
               ship.pos[1] + localX * sin + localY * cos,
             ],
             velocity: [ship.velocity[0] - cos * 18, ship.velocity[1] - sin * 18],
-            color: "#17191f",
-            radius: Math.max(2, ship.size * (critical ? 0.13 : 0.09)),
+            color: critical ? "#08090c" : "#64656a",
+            radius: Math.max(2, ship.size * (critical ? 0.2 : 0.07)),
             remainingDuration: lifetime,
             maxDuration: lifetime,
           });

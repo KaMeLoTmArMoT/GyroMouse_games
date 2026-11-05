@@ -93,7 +93,13 @@ export class ClientCombatSimulation {
   onFlakBurst: FlakBurstCallback | null = null;
   onProjectileFire?: (type: WeaponType, pos: Vector2) => void;
   onShieldHit?: (pos: Vector2, intensity: number) => void;
-  onWeaponImpact?: (ship: ShipState, origin: Vector2, shield: boolean, hull: boolean) => void;
+  onWeaponImpact?: (
+    ship: ShipState,
+    origin: Vector2,
+    shield: boolean,
+    armor: boolean,
+    hull: boolean,
+  ) => void;
   onShipDestroyed?: (ship: ShipState) => void;
   onVictory?: (winnerTeam: number) => void;
   observer?: CombatObserver;
@@ -837,10 +843,12 @@ export class ClientCombatSimulation {
 
     if (thrusterVelocity) desiredSpeed = vecDot(thrusterVelocity, forwardVector);
     const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
-    const newLateralSpeed = thrusterVelocity
+    let newLateralSpeed = thrusterVelocity
       ? currentLateralSpeed +
         clamp(vecDot(thrusterVelocity, rightVector) - currentLateralSpeed, -110 * dt, 110 * dt)
       : currentLateralSpeed * Math.max(0, 1 - dt * lateralDamping);
+    if (ship.hullClass === "cruiser")
+      newLateralSpeed = clamp(newLateralSpeed, -ship.maxSpeed * 0.35, ship.maxSpeed * 0.35);
 
     const forwardAccel = ship.hullClass === "strike_craft" ? 240.0 : 110.0;
     const speedError = desiredSpeed - currentForwardSpeed;
@@ -1292,8 +1300,9 @@ export class ClientCombatSimulation {
     this.observer?.onDamage(ship, attackerId, mountId, weapon.weaponType, before);
     if (impactOrigin) {
       const shield = ship.shieldCurrent < before[0];
-      const hull = ship.armorCurrent < before[1] || ship.hullCurrent < before[2];
-      if (shield || hull) this.onWeaponImpact?.(ship, impactOrigin, shield, hull);
+      const armor = ship.armorCurrent < before[1];
+      const hull = ship.hullCurrent < before[2];
+      if (shield || armor || hull) this.onWeaponImpact?.(ship, impactOrigin, shield, armor, hull);
     }
   }
 

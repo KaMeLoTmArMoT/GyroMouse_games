@@ -14,6 +14,62 @@ export function buildFleetFromSlots(
   baseX: number,
   heading: number,
 ): ShipState[] {
+  const groups = new Map<number, FleetSlot[]>();
+  for (const slot of slots) {
+    const group = groups.get(slot.groupId) ?? [];
+    group.push(slot);
+    groups.set(slot.groupId, group);
+  }
+  const counts = { battleship: 0, cruiser: 0, corvette: 0, strike_craft: 0 };
+  const direction = team === 0 ? 1 : -1;
+  const offsets: Record<number, [number, number]> = {
+    1: [0, 0],
+    2: [-150 * direction, 450],
+    3: [-150 * direction, -450],
+    4: [-350 * direction, 0],
+    5: [250 * direction, 0],
+    6: [-700 * direction, 0],
+    7: [-700 * direction, 450],
+    8: [-700 * direction, -450],
+    9: [250 * direction, 450],
+    10: [250 * direction, -450],
+  };
+  const placed: ShipState[] = [];
+  for (const [groupId, group] of [...groups].sort(([a], [b]) => a - b)) {
+    const [x, y] = offsets[groupId] ?? [0, 0];
+    const ships = buildGroup(group, team, heading, counts);
+    if (ships.length === 0) continue;
+    const centerX =
+      (Math.min(...ships.map((s) => s.pos[0])) + Math.max(...ships.map((s) => s.pos[0]))) / 2;
+    for (const ship of ships) {
+      ship.pos[0] += baseX + x - centerX;
+      ship.pos[1] += y;
+      const [startX, startY] = ship.pos;
+      const clear = () =>
+        placed.every(
+          (other) =>
+            Math.hypot(ship.pos[0] - other.pos[0], ship.pos[1] - other.pos[1]) >
+            (ship.size + other.size) * 1.4 + 20,
+        );
+      for (let ring = 1; !clear(); ring++) {
+        for (let step = 0; step < 16 && !clear(); step++) {
+          const angle = (step * Math.PI) / 8;
+          ship.pos = [startX + Math.cos(angle) * ring * 20, startY + Math.sin(angle) * ring * 20];
+        }
+      }
+      placed.push(ship);
+    }
+  }
+  return placed;
+}
+
+function buildGroup(
+  slots: FleetSlot[],
+  team: number,
+  heading: number,
+  counts: Record<HullClass, number>,
+): ShipState[] {
+  const baseX = 0;
   const ships: ShipState[] = [];
 
   const battleships = slots.filter((s) => s.hullClass === "battleship");
@@ -23,16 +79,16 @@ export function buildFleetFromSlots(
 
   // 1. Battleships (Center Core)
   const anchorIds = [
-    ...battleships.map((_, i) => `${team === 0 ? "blue" : "red"}_bb_${i}`),
-    ...cruisers.map((_, i) => `${team === 0 ? "blue" : "red"}_cr_${i}`),
+    ...battleships.map((_, i) => `${team === 0 ? "blue" : "red"}_bb_${counts.battleship + i}`),
+    ...cruisers.map((_, i) => `${team === 0 ? "blue" : "red"}_cr_${counts.cruiser + i}`),
   ];
 
   battleships.forEach((slot, idx) => {
-    const id = `${team === 0 ? "blue" : "red"}_bb_${idx}`;
+    const id = `${team === 0 ? "blue" : "red"}_bb_${counts.battleship + idx}`;
     const yOff = (idx - (battleships.length - 1) / 2) * 160;
     ships.push({
       id,
-      name: `Leviathan BB-0${idx + 1}`,
+      name: `Leviathan BB-0${counts.battleship + idx + 1}`,
       team,
       groupId: slot.groupId,
       hullClass: "battleship",
@@ -134,13 +190,13 @@ export function buildFleetFromSlots(
 
   // 2. Cruisers (Flanking lines)
   cruisers.forEach((slot, idx) => {
-    const id = `${team === 0 ? "blue" : "red"}_cr_${idx}`;
+    const id = `${team === 0 ? "blue" : "red"}_cr_${counts.cruiser + idx}`;
     const sign = idx % 2 === 0 ? 1 : -1;
     const yOff = sign * (140 + Math.floor(idx / 2) * 110);
     const xOff = (heading === 0 ? 1 : -1) * 60;
     ships.push({
       id,
-      name: `Vanguard CR-0${idx + 1}`,
+      name: `Vanguard CR-0${counts.cruiser + idx + 1}`,
       team,
       groupId: slot.groupId,
       hullClass: "cruiser",
@@ -216,13 +272,13 @@ export function buildFleetFromSlots(
 
   // 3. Corvette escort columns; shield clearance is applied after assembly.
   corvettes.forEach((slot, idx) => {
-    const id = `${team === 0 ? "blue" : "red"}_cv_${idx}`;
+    const id = `${team === 0 ? "blue" : "red"}_cv_${counts.corvette + idx}`;
     const sign = idx % 2 === 0 ? 1 : -1;
     const yOff = sign * (145 + Math.floor(idx / 2) * 85);
     const xOff = (heading === 0 ? -1 : 1) * 95;
     ships.push({
       id,
-      name: `Aegis CV-0${idx + 1}`,
+      name: `Aegis CV-0${counts.corvette + idx + 1}`,
       team,
       groupId: slot.groupId,
       hullClass: "corvette",
@@ -244,7 +300,7 @@ export function buildFleetFromSlots(
       hullCurrent: 220,
       cost: 350,
       isAlive: true,
-      flagshipId: anchorIds[idx % anchorIds.length],
+      flagshipId: anchorIds.length ? anchorIds[idx % anchorIds.length] : undefined,
       turrets: [
         {
           id: `${id}_pd1`,
@@ -330,10 +386,10 @@ export function buildFleetFromSlots(
     rowOffset += rows;
   }
   positionedFighters.forEach(({ slot, xOff, yOff }, idx) => {
-    const id = `${team === 0 ? "blue" : "red"}_sc_${idx}`;
+    const id = `${team === 0 ? "blue" : "red"}_sc_${counts.strike_craft + idx}`;
     ships.push({
       id,
-      name: `Raider F-${idx + 1}`,
+      name: `Raider F-${counts.strike_craft + idx + 1}`,
       team,
       groupId: slot.groupId,
       hullClass: "strike_craft",
@@ -396,6 +452,11 @@ export function buildFleetFromSlots(
   }
   const center = ordered.length ? (ordered[0].pos[1] + ordered[ordered.length - 1].pos[1]) / 2 : 0;
   for (const ship of ships) ship.pos[1] -= center;
+
+  counts.battleship += battleships.length;
+  counts.cruiser += cruisers.length;
+  counts.corvette += corvettes.length;
+  counts.strike_craft += fighters.length;
 
   return ships;
 }

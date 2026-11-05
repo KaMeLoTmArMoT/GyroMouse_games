@@ -10,7 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-bench/results/
+bench/results/*
+!bench/results/golden_baseline.json
 *.local
 
 # Editor directories and files

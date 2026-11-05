@@ -266,27 +266,30 @@ export function capitalIntent(
     (!gun || gun.cooldownTimer <= returnTime + 0.25 + bearingRate * 2)
   )
     ship.capitalManeuver = "bow_reacquire";
-  const weaving = ship.capitalManeuver === "broadside_hold";
   const side = ship.broadsideSide ?? 1;
   const angle = ((battleship ? 48 : 40) * Math.PI) / 180;
-  const heading = normalizeAngle(aimBearing - (weaving ? side * angle : 0));
+  const offensiveMounts = ship.turrets.filter((t) => t.weapon.weaponType !== "point_defense");
+  const primaryRange =
+    gun?.weapon.range ?? Math.max(0, ...offensiveMounts.map((t) => t.weapon.range));
+  const secondaryRange =
+    Math.max(0, ...offensiveMounts.filter((t) => t !== gun).map((t) => t.weapon.range)) ||
+    primaryRange;
   const nominal =
     order.stance === "max_range"
-      ? battleship
-        ? 1180
-        : 1250
+      ? Math.min(primaryRange * 0.85, 1500)
       : order.stance === "brawl"
         ? battleship
-          ? 620
-          : 560
-        : battleship
-          ? 840
-          : 740;
+          ? 800
+          : 750
+        : Math.min(secondaryRange * 0.9, 1150);
   const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
   const radius =
     nominal +
     (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0);
   const error = distance - radius;
+  const closing = !battleship && error > 200;
+  const weaving = ship.capitalManeuver === "broadside_hold" && !closing;
+  let heading = normalizeAngle(aimBearing - (weaving ? side * angle : 0));
   let radial = clamp(
     0.35 * Math.sign(error) * Math.max(0, Math.abs(error) - 25),
     -ship.maxSpeed * 0.65,
@@ -310,13 +313,13 @@ export function capitalIntent(
     (line ? ship.maxSpeed * 0.25 * Math.cos(phase) : boundary * ship.maxSpeed * 0.6 * side);
   let velocity = vecAdd(vecScale(n, radial), vecScale([-n[1], n[0]], tangential));
   velocity = vecAdd(velocity, separation(ship, ships));
+  if (closing && vecDot(velocity, velocity) > 1e-6) heading = Math.atan2(velocity[1], velocity[0]);
   const forward: Vector2 = [Math.cos(ship.heading), Math.sin(ship.heading)];
   const right: Vector2 = [-forward[1], forward[0]];
-  if (battleship)
-    velocity = vecAdd(
-      vecScale(forward, vecDot(velocity, forward)),
-      vecScale(right, clamp(vecDot(velocity, right), -ship.maxSpeed * 0.35, ship.maxSpeed * 0.35)),
-    );
+  velocity = vecAdd(
+    vecScale(forward, vecDot(velocity, forward)),
+    vecScale(right, clamp(vecDot(velocity, right), -ship.maxSpeed * 0.35, ship.maxSpeed * 0.35)),
+  );
   // Slow flagships bank early across a torpedo's course rather than trying to outrun it.
   if (battleship) {
     for (const missile of projectiles) {

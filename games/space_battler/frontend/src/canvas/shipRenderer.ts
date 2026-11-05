@@ -1,10 +1,15 @@
 // Procedural vector renderer for 2.5D ship hulls, Terran (sharp/industrial) vs Alien (curved/sleek), thruster flames, bridges, and turrets
 
 import { rotatePoint } from "../engine/math2d";
-import type { ShipState, TurretMountState } from "../types/combat";
+import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { damageState, engineNozzles, engineSpeed } from "./effects";
 
-export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selected = false): void {
+export function renderShip(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  selected = false,
+  decals: Vector2[] = [],
+): void {
   if (!ship.isAlive) return;
 
   const [x, y] = ship.pos;
@@ -45,7 +50,7 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
     drawAlienHull(ctx, ship, primaryColor, hullDarkColor, accentColor);
   }
 
-  drawHullDamage(ctx, ship);
+  drawHullDamage(ctx, ship, decals);
 
   ctx.restore();
 
@@ -75,12 +80,22 @@ export function renderShip(ctx: CanvasRenderingContext2D, ship: ShipState, selec
   ctx.restore();
 }
 
-function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: Vector2[]): void {
   const { scarred, burning, critical } = damageState(ship);
-  if (!scarred && !burning && !critical) return;
+  if (!scarred && !burning && !critical && decals.length === 0) return;
   const s = ship.size;
   const time = performance.now();
   ctx.save();
+
+  for (const [x, y] of decals) {
+    ctx.fillStyle = "rgba(12, 8, 8, 0.85)";
+    ctx.beginPath();
+    ctx.ellipse(x, y, Math.max(2, s * 0.12), Math.max(1.5, s * 0.07), 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#60382a";
+    ctx.lineWidth = Math.max(0.7, s * 0.015);
+    ctx.stroke();
+  }
 
   if (scarred || burning) {
     ctx.strokeStyle = "#030508";
@@ -127,6 +142,11 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState): void {
     ctx.beginPath();
     ctx.ellipse(s * coreX, 0, Math.max(2, s * 0.07), Math.max(2, s * 0.1), 0, 0, Math.PI * 2);
     ctx.fill();
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(s * coreX, side * s * 0.18, Math.max(1.5, s * 0.035), 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.restore();
 }
