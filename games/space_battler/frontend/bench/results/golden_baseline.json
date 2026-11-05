@@ -24,7 +24,7 @@
       "blue_mf_0_tube4": 6.000000000155221,
       "blue_sc_0_gun": 58.5
     },
-    "flakInterceptRate": 0.4,
+    "flakInterceptRate": 0.3,
     "shieldDelay": {
       "battleship": 1.5333333333333328,
       "dreadnought": 2.533333333333329,

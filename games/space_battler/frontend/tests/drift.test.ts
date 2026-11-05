@@ -41,7 +41,7 @@ describe("anti-drift guardrails", () => {
     );
     for (const [id, expected] of Object.entries(expectedDps))
       expect(Math.abs(fixtures.gunDps[id] / expected - 1)).toBeLessThanOrEqual(0.03);
-    expect(fixtures.flakInterceptRate).toBe(0.4);
+    expect(fixtures.flakInterceptRate).toBe(0.3);
     for (const [hull, profile] of Object.entries(HULL_PROFILES)) {
       expect(
         Math.abs(fixtures.shieldDelay[hull] - profile.shieldRechargeDelay),

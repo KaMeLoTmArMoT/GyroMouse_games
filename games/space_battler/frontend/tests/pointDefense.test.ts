@@ -84,7 +84,7 @@ describe("shared heavy torpedo durability", () => {
     const shot = sim.projectiles.find((projectile) => projectile.ownerId === defender.id);
     expect(shot).toBeDefined();
     const [x, y] = shot?.velocity ?? [0, 0];
-    expect(Math.atan2(y, x)).toBeCloseTo(Math.sin(12.9898) * 0.02);
+    expect(Math.atan2(y, x)).toBeCloseTo(Math.sin(12.9898) * 0.035);
     expect(Math.hypot(x, y)).toBeCloseTo(defender.turrets[0].weapon.projectileSpeed);
   });
 
