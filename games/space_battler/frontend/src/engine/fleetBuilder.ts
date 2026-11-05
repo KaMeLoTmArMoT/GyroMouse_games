@@ -36,7 +36,14 @@ export function buildFleetFromSlots(
     group.push(slot);
     groups.set(slot.groupId, group);
   }
-  const counts = { battleship: 0, cruiser: 0, corvette: 0, strike_craft: 0 };
+  const counts = {
+    battleship: 0,
+    dreadnought: 0,
+    cruiser: 0,
+    missile_frigate: 0,
+    corvette: 0,
+    strike_craft: 0,
+  };
   const direction = team === 0 ? 1 : -1;
   const placed: ShipState[] = [];
   for (const [groupId, group] of [...groups].sort(([a], [b]) => a - b)) {
@@ -77,11 +84,14 @@ function buildGroup(
 ): ShipState[] {
   const ships: ShipState[] = [];
   const battleships = slots.filter((s) => s.hullClass === "battleship");
+  const dreadnoughts = slots.filter((s) => s.hullClass === "dreadnought");
+  const frigates = slots.filter((s) => s.hullClass === "missile_frigate");
   const cruisers = slots.filter((s) => s.hullClass === "cruiser");
   const corvettes = slots.filter((s) => s.hullClass === "corvette");
   const fighters = slots.filter((s) => s.hullClass === "strike_craft");
   const prefix = team === 0 ? "blue" : "red";
   const anchorIds = [
+    ...dreadnoughts.map((_, i) => `${prefix}_dn_${counts.dreadnought + i}`),
     ...battleships.map((_, i) => `${prefix}_bb_${counts.battleship + i}`),
     ...cruisers.map((_, i) => `${prefix}_cr_${counts.cruiser + i}`),
   ];
@@ -126,6 +136,18 @@ function buildGroup(
     ]);
   });
   // 2. Cruisers (Flanking lines)
+  dreadnoughts.forEach((slot, idx) => {
+    addShip(slot, idx, "dn", `Bastion DN-${counts.dreadnought + idx + 1}`, [
+      0,
+      (idx - (dreadnoughts.length - 1) / 2) * (expandedSpacing ? 350 : 180),
+    ]);
+  });
+  frigates.forEach((slot, idx) => {
+    addShip(slot, idx, "mf", `Quiver MF-${counts.missile_frigate + idx + 1}`, [
+      (heading === 0 ? -1 : 1) * 180,
+      (idx - (frigates.length - 1) / 2) * 120,
+    ]);
+  });
   cruisers.forEach((slot, idx) => {
     const sign = idx % 2 === 0 ? 1 : -1;
     addShip(slot, idx, "cr", `Vanguard CR-0${counts.cruiser + idx + 1}`, [
@@ -189,6 +211,8 @@ function buildGroup(
   const center = ordered.length ? (ordered[0].pos[1] + ordered[ordered.length - 1].pos[1]) / 2 : 0;
   for (const ship of ships) ship.pos[1] -= center;
   counts.battleship += battleships.length;
+  counts.dreadnought += dreadnoughts.length;
+  counts.missile_frigate += frigates.length;
   counts.cruiser += cruisers.length;
   counts.corvette += corvettes.length;
   counts.strike_craft += fighters.length;

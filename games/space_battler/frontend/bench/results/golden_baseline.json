@@ -12,20 +12,32 @@
       "blue_bb_0_spinal": 85,
       "blue_bb_0_port": 31.25,
       "blue_bb_0_stbd": 31.25,
+      "blue_dn_0_bow": 46.8,
+      "blue_dn_0_port": 46.8,
+      "blue_dn_0_stbd": 46.8,
+      "blue_dn_0_aft": 46.8,
       "blue_cr_0_laser": 18.75,
       "blue_cr_0_torp": 72.6,
+      "blue_mf_0_tube1": 6.000000000155221,
+      "blue_mf_0_tube2": 6.000000000155221,
+      "blue_mf_0_tube3": 6.000000000155221,
+      "blue_mf_0_tube4": 6.000000000155221,
       "blue_sc_0_gun": 58.5
     },
     "flakInterceptRate": 0.4,
     "shieldDelay": {
       "battleship": 1.5333333333333328,
+      "dreadnought": 2.533333333333329,
       "cruiser": 1.2166666666666672,
+      "missile_frigate": 3.0333333333333274,
       "corvette": 3.5333333333333257,
       "strike_craft": 3.5333333333333257
     },
     "shieldRegen": {
       "battleship": 50.000000000009095,
+      "dreadnought": 34.99999999999545,
       "cruiser": 24.999999999997726,
+      "missile_frigate": 11.999999999999318,
       "corvette": 15,
       "strike_craft": 10.000000000000014
     }

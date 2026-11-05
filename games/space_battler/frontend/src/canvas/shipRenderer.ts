@@ -193,8 +193,22 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: 
   if (critical) {
     const coreX =
       ship.team === 0
-        ? { strike_craft: 0.53, corvette: 0.5, cruiser: -0.53, battleship: -0.36 }[ship.hullClass]
-        : { strike_craft: 0.57, corvette: 0.3, cruiser: 0.25, battleship: -0.16 }[ship.hullClass];
+        ? {
+            strike_craft: 0.53,
+            corvette: 0.5,
+            cruiser: -0.53,
+            battleship: -0.36,
+            dreadnought: -0.15,
+            missile_frigate: 0.55,
+          }[ship.hullClass]
+        : {
+            strike_craft: 0.57,
+            corvette: 0.3,
+            cruiser: 0.25,
+            battleship: -0.16,
+            dreadnought: -0.15,
+            missile_frigate: 0.55,
+          }[ship.hullClass];
     ctx.globalAlpha = baseAlpha * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(time / 100)));
     ctx.shadowColor = "#ff2020";
     ctx.shadowBlur = Math.max(5, s * 0.3);
@@ -219,6 +233,15 @@ function drawEngineGlow(ctx: CanvasRenderingContext2D, ship: ShipState): void {
   ctx.save();
   ctx.globalAlpha *= (0.3 + speed * 0.7) * flicker;
   for (const [x, y] of engineNozzles(ship)) {
+    if (ship.hullClass === "missile_frigate") {
+      ctx.fillStyle = ship.team === 0 ? "rgba(56, 189, 248, 0.7)" : "rgba(249, 115, 22, 0.7)";
+      ctx.beginPath();
+      ctx.moveTo(ship.size * x, ship.size * (y - 0.06));
+      ctx.lineTo(ship.size * (x - 0.25 - speed * 0.35), ship.size * y);
+      ctx.lineTo(ship.size * x, ship.size * (y + 0.06));
+      ctx.closePath();
+      ctx.fill();
+    }
     const gx = ship.size * x - radius * 0.35;
     const gy = ship.size * y;
     const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, radius);
@@ -241,6 +264,10 @@ function drawTerranHull(
   accentColor: string,
   previewTime?: number,
 ): void {
+  if (ship.hullClass === "dreadnought" || ship.hullClass === "missile_frigate") {
+    drawNewHull(ctx, ship, false, previewTime);
+    return;
+  }
   // Calibrated scale: 100% fits strictly within the 1.40x shield bubble (<= 5% area delta vs Alien)
   const s = ship.size;
 
@@ -367,6 +394,10 @@ function drawAlienHull(
   hullDarkColor: string,
   accentColor: string,
 ): void {
+  if (ship.hullClass === "dreadnought" || ship.hullClass === "missile_frigate") {
+    drawNewHull(ctx, ship, true);
+    return;
+  }
   // Lateral coordinates calibrated against Terran filled areas by backend/tests/test_hull_geometry.py.
   // Endpoints and Bezier controls remain inside the 1.40x shield envelope.
   const s = ship.size;
@@ -448,6 +479,153 @@ function drawAlienHull(
     drawAlienBattleshipDetails(ctx, ship, accentColor);
     ctx.restore();
   }
+}
+
+function drawNewHull(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  alien: boolean,
+  previewTime?: number,
+): void {
+  const s = ship.size;
+  const dread = ship.hullClass === "dreadnought";
+  const edge = alien ? "#f87171" : "#38bdf8";
+  const accent = alien ? "#fb923c" : "#bae6fd";
+  const dark = alien ? "#260606" : "#020617";
+  const plate = alien ? "#7f1d1d" : "#334155";
+
+  ctx.beginPath();
+  if (dread && alien) {
+    ctx.moveTo(s * 1.25, 0);
+    ctx.quadraticCurveTo(s * 0.85, -s * 0.42, s * 0.25, -s * 0.46);
+    ctx.lineTo(0, -s * 0.68);
+    ctx.lineTo(-s * 0.52, -s * 0.64);
+    ctx.quadraticCurveTo(-s * 0.9, -s * 0.55, -s * 1.12, -s * 0.42);
+    ctx.lineTo(-s * 1.12, s * 0.42);
+    ctx.quadraticCurveTo(-s * 0.9, s * 0.55, -s * 0.52, s * 0.64);
+    ctx.lineTo(0, s * 0.68);
+    ctx.lineTo(s * 0.25, s * 0.46);
+    ctx.quadraticCurveTo(s * 0.85, s * 0.42, s * 1.25, 0);
+  } else if (dread) {
+    ctx.moveTo(s * 1.25, 0);
+    ctx.lineTo(s * 0.85, -s * 0.4);
+    ctx.lineTo(s * 0.3, -s * 0.48);
+    ctx.lineTo(s * 0.14, -s * 0.67);
+    ctx.lineTo(-s * 0.58, -s * 0.67);
+    ctx.lineTo(-s * 0.78, -s * 0.52);
+    ctx.lineTo(-s * 1.12, -s * 0.42);
+    ctx.lineTo(-s * 1.12, s * 0.42);
+    ctx.lineTo(-s * 0.78, s * 0.52);
+    ctx.lineTo(-s * 0.58, s * 0.67);
+    ctx.lineTo(s * 0.14, s * 0.67);
+    ctx.lineTo(s * 0.3, s * 0.48);
+    ctx.lineTo(s * 0.85, s * 0.4);
+  } else if (alien) {
+    ctx.moveTo(s * 1.2, 0);
+    ctx.quadraticCurveTo(s * 0.35, -s * 0.48, -s * 0.85, -s * 0.42);
+    ctx.lineTo(-s * 0.92, -s * 0.15);
+    ctx.lineTo(-s * 0.65, 0);
+    ctx.lineTo(-s * 0.92, s * 0.15);
+    ctx.lineTo(-s * 0.85, s * 0.42);
+    ctx.quadraticCurveTo(s * 0.35, s * 0.48, s * 1.2, 0);
+  } else {
+    ctx.moveTo(s * 1.2, 0);
+    ctx.lineTo(s * 0.4, -s * 0.3);
+    ctx.lineTo(-s * 0.55, -s * 0.46);
+    ctx.lineTo(-s * 0.95, -s * 0.34);
+    ctx.lineTo(-s * 0.78, 0);
+    ctx.lineTo(-s * 0.95, s * 0.34);
+    ctx.lineTo(-s * 0.55, s * 0.46);
+    ctx.lineTo(s * 0.4, s * 0.3);
+  }
+  ctx.closePath();
+  const light = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.7);
+  light.addColorStop(0, plate);
+  light.addColorStop(0.45, alien ? "#450a0a" : "#1e293b");
+  light.addColorStop(1, dark);
+  ctx.fillStyle = light;
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1, s * 0.025);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.save();
+  ctx.clip();
+  // Layered armor ribs frame the weapon decks and catch rotating preview light.
+  ctx.strokeStyle = previewTime === undefined ? edge : accent;
+  ctx.globalAlpha = previewTime === undefined ? 0.55 : 0.55 + 0.2 * Math.sin(previewTime * 1.5);
+  ctx.lineWidth = Math.max(0.7, s * 0.015);
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(s * 0.95, 0);
+    ctx.lineTo(s * 0.46, side * s * (dread ? 0.33 : 0.19));
+    ctx.lineTo(-s * 0.65, side * s * (dread ? 0.49 : 0.34));
+    ctx.stroke();
+    for (const x of dread ? [-0.65, -0.4, -0.15, 0.1, 0.35, 0.6] : [-0.6, -0.3, 0]) {
+      ctx.beginPath();
+      ctx.moveTo(s * x, side * s * (dread ? 0.3 : 0.2));
+      ctx.lineTo(s * (x - 0.1), side * s * (dread ? 0.53 : 0.37));
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  if (dread) {
+    // Reinforced barbettes use the actual bow, broadside and aft mount positions.
+    for (const turret of ship.turrets) {
+      const [x, y] = turret.offset;
+      ctx.fillStyle = dark;
+      ctx.strokeStyle = edge;
+      ctx.beginPath();
+      ctx.ellipse(x, y, s * 0.18, s * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(x, y, s * 0.145, s * 0.125, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = dark;
+    ctx.strokeStyle = edge;
+    ctx.fillRect(-s * 0.19, -s * 0.17, s * 0.27, s * 0.34);
+    ctx.strokeRect(-s * 0.19, -s * 0.17, s * 0.27, s * 0.34);
+    ctx.fillStyle = plate;
+    ctx.fillRect(-s * 0.14, -s * 0.11, s * 0.17, s * 0.22);
+    ctx.fillStyle = accent;
+    ctx.fillRect(s * 0.005, -s * 0.075, s * 0.025, s * 0.15);
+  } else {
+    // Four exposed launch-cell sockets sit under the independent missile mounts.
+    for (const turret of ship.turrets) {
+      const [x, y] = turret.offset;
+      ctx.fillStyle = dark;
+      ctx.strokeStyle = edge;
+      ctx.fillRect(x - s * 0.12, y - s * 0.1, s * 0.24, s * 0.2);
+      ctx.strokeRect(x - s * 0.12, y - s * 0.1, s * 0.24, s * 0.2);
+    }
+    ctx.strokeStyle = accent;
+    ctx.beginPath();
+    ctx.moveTo(s * 0.48, 0);
+    ctx.lineTo(s * 0.25, 0);
+    ctx.lineTo(s * 0.16, -s * 0.13);
+    ctx.moveTo(s * 0.25, -s * 0.08);
+    ctx.lineTo(s * 0.25, s * 0.08);
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(s * 0.16, -s * 0.13, Math.max(1, s * 0.035), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (const [x, y] of engineNozzles(ship)) {
+    ctx.fillStyle = dark;
+    ctx.strokeStyle = edge;
+    ctx.beginPath();
+    ctx.ellipse(s * x, s * y, s * 0.1, s * (dread ? 0.06 : 0.08), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.ellipse(s * x, s * y, s * 0.045, s * 0.025, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawTerranBattleshipDetails(
@@ -1085,6 +1263,8 @@ function renderTurret(
     corvette: 1,
     cruiser: 1.35,
     battleship: 1.7,
+    dreadnought: 1.45,
+    missile_frigate: 0.8,
   }[ship.hullClass];
   ctx.scale(classScale, classScale);
 

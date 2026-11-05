@@ -1,12 +1,15 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 198 Vitest tests passing, 0 Drift alerts)
+Status: Grand Scale Production Baseline Active (All 204 Vitest tests passing, 0 Drift alerts)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
+- **Roster Expansion: Bastion Dreadnought & Quiver Missile Frigate (Activated)**: 
+  - `dreadnought` (3600 CR): 4 heavy 380mm artillery batteries utilizing 3-of-4 broadside architecture (bow, port, starboard, wrapped aft arc), deep armor, and bespoke 2.5D hull & turret visuals.
+  - `missile_frigate` (700 CR): 4 light missile tubes delivering shield-breaking kinetic swarms, 1150u standoff doctrine, exposed launch cells and sensor mast art.
 - **Custom Dual Fleet Builder & Scenario Selector (UI)**: Full two-fleet customization (`Custom Opposing Fleet`), Blue/Red editor tab switcher, one-click Curated & Extreme scenario presets (`Three Knives`, `Needle Cloud`, `1 BB vs 27 Fighters`, etc.), and a "Mirror Fleet" cloning action.
 - **Predictive Turret Slewing & Optimistic Aiming**: Turrets outside current firing arc pre-emptively slew to sector limits facing the ship's active target, eliminating acquisition delay upon broadside turn.
 - **Calibrate Script Refactoring & Single Source of Truth**: Replaced legacy text-patching in `bench/calibrate.ts` with direct overrides against canonical `shipProfiles.ts` (`HULL_PROFILES`).
@@ -30,9 +33,7 @@ Status: Grand Scale Production Baseline Active (All 198 Vitest tests passing, 0 
 
 ## 2. Priority Feature Backlog (Pending Activation)
 
-- **B.7: Expanded 8-Hull Ship Roster Candidates (Astra-Modelled & Calibrated)**:
-  - Heavy Artillery Dreadnought (3-of-4 broadside architecture: bow/aft wide arcs + port/stbd casemates, 3600 CR).
-  - Missile Frigate (Quiver class, 4 light missile tubes, shield saturation support, 700 CR).
+- **Remaining Roster Expansion Candidates**:
   - Torpedo Bomber / Heavy Gunship (dedicated anti-capital strike craft).
   - Shield Tender / EW Support (localized shield recharge aura).
   - Plasma Assault Corvette (short-range brawler).

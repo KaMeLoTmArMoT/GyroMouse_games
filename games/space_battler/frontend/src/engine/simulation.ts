@@ -519,11 +519,16 @@ export class ClientCombatSimulation {
 
     if (
       ship.hullClass === "battleship" ||
+      ship.hullClass === "dreadnought" ||
+      ship.hullClass === "missile_frigate" ||
       ship.hullClass === "cruiser" ||
       order.priority === "capitals"
     ) {
       const capitals = enemies.filter(
-        (s) => s.hullClass === "cruiser" || s.hullClass === "battleship",
+        (s) =>
+          s.hullClass === "cruiser" ||
+          s.hullClass === "battleship" ||
+          s.hullClass === "dreadnought",
       );
       if (capitals.length > 0) enemies = capitals;
       const mainGun = ship.turrets.find(
@@ -544,7 +549,10 @@ export class ClientCombatSimulation {
     } else if (ship.hullClass === "strike_craft") {
       // Fighter wings default to attack runs against capital hulls
       const capitals = enemies.filter(
-        (s) => s.hullClass === "cruiser" || s.hullClass === "battleship",
+        (s) =>
+          s.hullClass === "cruiser" ||
+          s.hullClass === "battleship" ||
+          s.hullClass === "dreadnought",
       );
       if (capitals.length > 0) enemies = capitals;
     }
@@ -1153,10 +1161,14 @@ export class ClientCombatSimulation {
     const contacts = new Set<string>();
     const getShipMass = (hull: string): number => {
       switch (hull) {
+        case "dreadnought":
+          return 160.0;
         case "battleship":
           return 130.0;
         case "cruiser":
           return 30.0;
+        case "missile_frigate":
+          return 15.0;
         case "corvette":
           return 8.0;
         default:

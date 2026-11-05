@@ -7,6 +7,18 @@ import type { ProjectileState, ShipState, Vector2 } from "../types/combat";
 export function engineNozzles(ship: ShipState): Vector2[] {
   const blue = ship.team === 0;
   switch (ship.hullClass) {
+    case "dreadnought":
+      return [
+        [-1.05, -0.3],
+        [-1.05, -0.1],
+        [-1.05, 0.1],
+        [-1.05, 0.3],
+      ];
+    case "missile_frigate":
+      return [
+        [-0.82, -0.25],
+        [-0.82, 0.25],
+      ];
     case "strike_craft":
       return blue
         ? [

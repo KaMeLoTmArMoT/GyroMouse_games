@@ -1,7 +1,13 @@
 // Combat simulation types matching deterministic contracts
 
 export type WeaponType = "beam_laser" | "railgun" | "plasma" | "missile" | "point_defense";
-export type HullClass = "strike_craft" | "corvette" | "cruiser" | "battleship";
+export type HullClass =
+  | "battleship"
+  | "dreadnought"
+  | "cruiser"
+  | "missile_frigate"
+  | "corvette"
+  | "strike_craft";
 export type TargetPriority = "capitals" | "screen_and_defend" | "strike_craft" | "nearest";
 export type EngagementStance = "max_range" | "optimal_range" | "brawl";
 export type WingPhase = "staging" | "attack" | "egress" | "rejoin";

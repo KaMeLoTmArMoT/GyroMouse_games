@@ -147,7 +147,9 @@ export function escortVelocity(
       (s) =>
         s.isAlive &&
         s.team === ship.team &&
-        (s.hullClass === "battleship" || s.hullClass === "cruiser"),
+        (s.hullClass === "battleship" ||
+          s.hullClass === "dreadnought" ||
+          s.hullClass === "cruiser"),
     );
     capitals.sort(
       (a, b) =>
@@ -323,7 +325,9 @@ export function capitalIntent(
   time = 0,
   projectiles: ProjectileState[] = [],
 ): { heading: number; velocity: Vector2 } {
-  const battleship = ship.hullClass === "battleship";
+  const dreadnought = ship.hullClass === "dreadnought";
+  const frigate = ship.hullClass === "missile_frigate";
+  const battleship = ship.hullClass === "battleship" || dreadnought;
   const slot = Number(ship.id.split("_").at(-1)) || 0;
   const gun = ship.turrets.find((t) =>
     battleship ? t.isSpinalGimbal : t.weapon.weaponType === "missile",
@@ -367,15 +371,16 @@ export function capitalIntent(
   )
     ship.capitalManeuver = "bow_reacquire";
   const side = ship.broadsideSide ?? 1;
-  const angle = ((battleship ? 48 : 40) * Math.PI) / 180;
+  const angle = ((dreadnought ? 90 : battleship ? 48 : 40) * Math.PI) / 180;
   const offensiveMounts = ship.turrets.filter((t) => t.weapon.weaponType !== "point_defense");
   const primaryRange =
     gun?.weapon.range ?? Math.max(0, ...offensiveMounts.map((t) => t.weapon.range));
   const secondaryRange =
     Math.max(0, ...offensiveMounts.filter((t) => t !== gun).map((t) => t.weapon.range)) ||
     primaryRange;
-  const nominal =
-    order.stance === "max_range"
+  const nominal = frigate
+    ? 1150
+    : order.stance === "max_range"
       ? Math.min(primaryRange * 0.85, 1500)
       : order.stance === "brawl"
         ? battleship
@@ -388,7 +393,8 @@ export function capitalIntent(
     (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0);
   const error = distance - radius;
   const closing = !battleship && error > 200;
-  const weaving = ship.capitalManeuver === "broadside_hold" && !closing;
+  const weaving =
+    dreadnought || (!frigate && ship.capitalManeuver === "broadside_hold" && !closing);
   let heading = normalizeAngle(aimBearing - (weaving ? side * angle : 0));
   let radial = clamp(
     0.35 * Math.sign(error) * Math.max(0, Math.abs(error) - 25),
@@ -404,7 +410,7 @@ export function capitalIntent(
         peer.isAlive &&
         peer.team === ship.team &&
         peer.id !== ship.id &&
-        peer.hullClass === "battleship",
+        (peer.hullClass === "battleship" || peer.hullClass === "dreadnought"),
     );
   const phase = time * 0.35 + slot * 2.1;
   if (line) radial += ship.maxSpeed * 0.2 * Math.sin(phase);

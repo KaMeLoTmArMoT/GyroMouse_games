@@ -23,11 +23,33 @@ export function inMountArc(ship: ShipState, turret: TurretMountState, point: Vec
   if (fullCircle(turret)) return true;
   const delta = vecSub(point, mountPosition(ship, turret));
   const bearing = normalizeAngle(Math.atan2(delta[1], delta[0]) - ship.heading);
-  return bearing >= turret.baseArc[0] && bearing <= turret.baseArc[1];
+  const [minArc, maxArc] = turret.baseArc;
+  return minArc > maxArc
+    ? bearing >= minArc || bearing <= maxArc
+    : bearing >= minArc && bearing <= maxArc;
 }
 
 export function slewTurret(turret: TurretMountState, desiredLocal: number, dt: number): void {
   const [minArc, maxArc] = turret.baseArc;
+  if (minArc > maxArc) {
+    // Unwrap the aft sector so bounded slew crosses the stern, never the bow.
+    const end = maxArc + Math.PI * 2;
+    const unwrap = (angle: number) => {
+      const normalized = normalizeAngle(angle);
+      return normalized < minArc ? normalized + Math.PI * 2 : normalized;
+    };
+    const bearing = unwrap(desiredLocal);
+    const goal =
+      bearing <= end
+        ? bearing
+        : Math.abs(normalizeAngle(bearing - minArc)) <= Math.abs(normalizeAngle(bearing - end))
+          ? minArc
+          : end;
+    const current = clamp(unwrap(turret.currentLocalAngle), minArc, end);
+    const step = turret.trackingSpeed * dt;
+    turret.currentLocalAngle = normalizeAngle(current + clamp(goal - current, -step, step));
+    return;
+  }
   const bearing = normalizeAngle(desiredLocal);
   let goal = bearing;
   if (!fullCircle(turret) && (bearing < minArc || bearing > maxArc)) {
@@ -114,7 +136,10 @@ export function acquireMountTarget(
         s.isAlive &&
         s.team === ship.team &&
         s.id !== ship.id &&
-        (s.id === ship.flagshipId || s.hullClass === "battleship" || s.hullClass === "cruiser"),
+        (s.id === ship.flagshipId ||
+          s.hullClass === "battleship" ||
+          s.hullClass === "dreadnought" ||
+          s.hullClass === "cruiser"),
     ),
   ];
   const solutions: Array<FireSolution & { priority: number }> = [];
@@ -138,8 +163,9 @@ export function acquireMountTarget(
     const local = normalizeAngle(Math.atan2(direction[1], direction[0]) - ship.heading);
     const error = local - turret.currentLocalAngle;
     const turn =
-      Math.abs(fullCircle(turret) ? normalizeAngle(error) : error) /
-      Math.max(0.01, turret.trackingSpeed);
+      Math.abs(
+        fullCircle(turret) || turret.baseArc[0] > turret.baseArc[1] ? normalizeAngle(error) : error,
+      ) / Math.max(0.01, turret.trackingSpeed);
     solutions.push({
       kind,
       target,
@@ -157,7 +183,10 @@ export function acquireMountTarget(
       (ship.fighterPhase !== "attack" || enemy.id !== primary?.id)
     )
       continue;
-    const capital = enemy.hullClass === "battleship" || enemy.hullClass === "cruiser";
+    const capital =
+      enemy.hullClass === "battleship" ||
+      enemy.hullClass === "dreadnought" ||
+      enemy.hullClass === "cruiser";
     let role = enemy.id === primary?.id ? 2 : 0;
     if ((turret.isSpinalGimbal || weapon.weaponType === "missile") && capital) role += 3;
     if (
@@ -205,7 +234,9 @@ export function acquireMountTarget(
           arrival = Math.min(arrival, t);
           if (
             isHeavyTorpedo(missile) &&
-            (defended.hullClass === "battleship" || defended.hullClass === "cruiser") &&
+            (defended.hullClass === "battleship" ||
+              defended.hullClass === "dreadnought" ||
+              defended.hullClass === "cruiser") &&
             vecDistance(missile.pos, defended.pos) < 300
           )
             urgentTorpedo = true;

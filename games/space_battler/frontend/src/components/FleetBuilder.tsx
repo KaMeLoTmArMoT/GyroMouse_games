@@ -113,8 +113,10 @@ export const GROUP_THEMES: Record<
 };
 
 const HULL_SIZE_ORDER: Record<HullClass, number> = {
+  dreadnought: 0,
   battleship: 1,
   cruiser: 2,
+  missile_frigate: 2.5,
   corvette: 3,
   strike_craft: 4,
 };
@@ -144,6 +146,51 @@ export function ShipSilhouette({
   hullClass: HullClass;
   className?: string;
 }) {
+  if (hullClass === "dreadnought") {
+    return (
+      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
+        <path
+          d="M24 3 L33 10 L34 15 L39 19 L39 34 L35 38 L33 44 L15 44 L13 38 L9 34 L9 19 L14 15 L15 10 Z"
+          fill="currentColor"
+          fillOpacity="0.18"
+          strokeWidth="1.8"
+        />
+        <path
+          d="M17 12 L14 19 L14 34 M31 12 L34 19 L34 34 M16 38 L32 38 M17 15 L19 12 M31 15 L29 12"
+          strokeWidth="1"
+        />
+        <path d="M21 20 H27 V28 H21 Z" fill="currentColor" fillOpacity="0.35" />
+        <circle cx="24" cy="13" r="3" fill="currentColor" fillOpacity="0.35" />
+        <circle cx="15" cy="25" r="3" fill="currentColor" fillOpacity="0.35" />
+        <circle cx="33" cy="25" r="3" fill="currentColor" fillOpacity="0.35" />
+        <circle cx="24" cy="35" r="3" fill="currentColor" fillOpacity="0.35" />
+        <path
+          d="M24 13 V8 M15 25 H10 M33 25 H38 M24 35 V40 M18 42 V45 M22 42 V45 M26 42 V45 M30 42 V45"
+          strokeWidth="1.5"
+        />
+      </svg>
+    );
+  }
+  if (hullClass === "missile_frigate") {
+    return (
+      <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
+        <path
+          d="M24 3 L31 15 L35 35 L30 41 L24 37 L18 41 L13 35 L17 15 Z"
+          fill="currentColor"
+          fillOpacity="0.18"
+          strokeWidth="1.8"
+        />
+        <path d="M24 8 L21 16 L24 20 L27 16 Z M24 20 V27 M21 23 H27" strokeWidth="1" />
+        <path
+          d="M16 21 H20 V27 H16 Z M28 21 H32 V27 H28 Z M17 29 H21 V35 H17 Z M27 29 H31 V35 H27 Z"
+          fill="currentColor"
+          fillOpacity="0.35"
+          strokeWidth="1"
+        />
+        <path d="M18 39 V44 M30 39 V44" strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (hullClass === "battleship") {
     return (
       <svg viewBox="0 0 48 48" className={className} fill="none" stroke="currentColor">
@@ -446,7 +493,9 @@ export function FleetBuilder({
     },
     {
       battleship: { total: 0, group: 0 },
+      dreadnought: { total: 0, group: 0 },
       cruiser: { total: 0, group: 0 },
+      missile_frigate: { total: 0, group: 0 },
       corvette: { total: 0, group: 0 },
       strike_craft: { total: 0, group: 0 },
     },
