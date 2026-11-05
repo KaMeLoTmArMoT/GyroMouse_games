@@ -1,7 +1,7 @@
 // Tactical Fleet Builder Modal & Panel Component with full-height scroll, text selection, and clear roster
 
 import { ChevronDown, ChevronUp, Plus, Shield, Swords, Trash2, Zap } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FleetSlot } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
 import type { HullClass } from "../types/combat";
@@ -114,7 +114,7 @@ const HULL_SIZE_ORDER: Record<HullClass, number> = {
   strike_craft: 4,
 };
 
-const HULL_SPECS: Record<HullClass, HullSpecData> = {
+export const HULL_SPECS: Record<HullClass, HullSpecData> = {
   battleship: {
     name: "Leviathan Battleship",
     cost: 3200,
@@ -292,6 +292,160 @@ export function ShipSilhouette({
   );
 }
 
+export function calculateMaxAffordable(
+  count: number,
+  remainingBudget: number,
+  unitCost: number,
+): number {
+  if (unitCost <= 0) return count;
+  return Math.max(0, count + Math.floor(remainingBudget / unitCost));
+}
+
+export function clampTargetCount(parsedValue: number, maxAffordable: number): number {
+  const safe = Number.isNaN(parsedValue) ? 0 : Math.max(0, Math.floor(parsedValue));
+  return Math.max(0, Math.min(safe, maxAffordable));
+}
+
+export function updateSlotsForStackCount(
+  slots: FleetSlot[],
+  groupId: number,
+  hullClass: HullClass,
+  targetCount: number,
+): FleetSlot[] {
+  const matchingIndices: number[] = [];
+  for (let i = 0; i < slots.length; i++) {
+    if (slots[i].groupId === groupId && slots[i].hullClass === hullClass) {
+      matchingIndices.push(i);
+    }
+  }
+  const currentCount = matchingIndices.length;
+  const clampedTarget = Math.max(0, Math.floor(targetCount));
+
+  if (clampedTarget === currentCount) {
+    return slots;
+  }
+
+  if (clampedTarget > currentCount) {
+    const diff = clampedTarget - currentCount;
+    const addedSlots: FleetSlot[] = Array.from({ length: diff }, (_, i) => ({
+      id: `${hullClass}_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+      hullClass,
+      groupId,
+    }));
+    return [...slots, ...addedSlots];
+  }
+
+  const toRemove = currentCount - clampedTarget;
+  const indicesToRemove = new Set(matchingIndices.slice(matchingIndices.length - toRemove));
+  return slots.filter((_, idx) => !indicesToRemove.has(idx));
+}
+
+export interface RosterCountInputProps {
+  count: number;
+  maxAffordable: number;
+  themeText: string;
+  hullName: string;
+  groupId: number;
+  onChangeCount: (newCount: number) => void;
+}
+
+export function RosterCountInput({
+  count,
+  maxAffordable,
+  themeText,
+  hullName,
+  groupId,
+  onChangeCount,
+}: RosterCountInputProps) {
+  const [localValue, setLocalValue] = useState(String(count));
+  const isCanceledRef = useRef(false);
+
+  useEffect(() => {
+    setLocalValue(String(count));
+  }, [count]);
+
+  const commit = (valueStr: string) => {
+    const digitsOnly = valueStr.replace(/[^\d]/g, "");
+    const parsed = digitsOnly === "" ? 0 : parseInt(digitsOnly, 10);
+    const parsedValue = Number.isNaN(parsed) ? 0 : parsed;
+    const targetCount = clampTargetCount(parsedValue, maxAffordable);
+    setLocalValue(String(targetCount));
+    if (targetCount !== count) {
+      onChangeCount(targetCount);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (raw === "") {
+      setLocalValue("");
+      return;
+    }
+    const digitsOnly = raw.replace(/[^\d]/g, "");
+    if (digitsOnly === "") {
+      setLocalValue("");
+      return;
+    }
+    const parsed = parseInt(digitsOnly, 10);
+    if (Number.isNaN(parsed)) {
+      return;
+    }
+    const clamped = clampTargetCount(parsed, maxAffordable);
+    setLocalValue(String(clamped));
+    if (clamped > 0 && clamped !== count) {
+      onChangeCount(clamped);
+    }
+  };
+
+  const handleBlur = () => {
+    if (isCanceledRef.current) {
+      isCanceledRef.current = false;
+      return;
+    }
+    commit(localValue);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.currentTarget.blur();
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      isCanceledRef.current = true;
+      setLocalValue(String(count));
+      e.currentTarget.blur();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (count < maxAffordable) {
+        onChangeCount(count + 1);
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (count > 0) {
+        onChangeCount(count - 1);
+      }
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      value={localValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      onFocus={(e) => {
+        isCanceledRef.current = false;
+        e.target.select();
+      }}
+      title="Click or type to edit quantity"
+      aria-label={`Quantity of ${hullName} in Group ${groupId}`}
+      className={`font-mono text-xs font-bold w-9 min-w-[24px] text-center bg-transparent border-0 outline-none focus:bg-zinc-900 focus:ring-1 focus:ring-cyan-500/50 rounded px-0.5 py-0 m-0 ${themeText}`}
+    />
+  );
+}
+
 export function FleetBuilder({
   slots,
   onUpdateSlots,
@@ -339,6 +493,17 @@ export function FleetBuilder({
         groupId: targetGroup,
       },
     ]);
+  };
+
+  const setStackCount = (groupId: number, hullClass: HullClass, targetCount: number) => {
+    const unitCost = HULL_SPECS[hullClass].cost;
+    const currentCount = slots.filter(
+      (s) => s.groupId === groupId && s.hullClass === hullClass,
+    ).length;
+    const maxAffordable = calculateMaxAffordable(currentCount, remainingBudget, unitCost);
+    const clampedTarget = clampTargetCount(targetCount, maxAffordable);
+    const updated = updateSlotsForStackCount(slots, groupId, hullClass, clampedTarget);
+    onUpdateSlots(updated);
   };
 
   const decrementStack = (groupId: number, hullClass: HullClass) => {
@@ -652,6 +817,11 @@ export function FleetBuilder({
                   const unitCost = HULL_SPECS[stack.hullClass].cost;
                   const totalStackCost = stack.count * unitCost;
                   const canAddOne = remainingBudget >= unitCost;
+                  const maxAffordable = calculateMaxAffordable(
+                    stack.count,
+                    remainingBudget,
+                    unitCost,
+                  );
 
                   return (
                     <div key={`${stack.groupId}_${stack.hullClass}`} className="space-y-1">
@@ -688,17 +858,23 @@ export function FleetBuilder({
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {/* Up/Down Quantity Stepper */}
+                          {/* Up/Down Quantity Stepper with Direct Numeric Input */}
                           <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-md px-1.5 py-0.5">
-                            <span
-                              className={`font-mono text-xs font-bold min-w-[22px] text-center ${theme.text}`}
-                            >
-                              {stack.count}
-                            </span>
+                            <RosterCountInput
+                              count={stack.count}
+                              maxAffordable={maxAffordable}
+                              themeText={theme.text}
+                              hullName={HULL_SPECS[stack.hullClass].name}
+                              groupId={stack.groupId}
+                              onChangeCount={(newCount) =>
+                                setStackCount(stack.groupId, stack.hullClass, newCount)
+                              }
+                            />
                             <div className="flex flex-col -my-0.5">
                               <button
                                 type="button"
                                 disabled={!canAddOne}
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => addShip(stack.hullClass, stack.groupId)}
                                 title={
                                   canAddOne
@@ -715,6 +891,7 @@ export function FleetBuilder({
                               </button>
                               <button
                                 type="button"
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => decrementStack(stack.groupId, stack.hullClass)}
                                 title={`Remove 1 ${HULL_SPECS[stack.hullClass].name} from Group ${stack.groupId}`}
                                 className="p-0.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-colors cursor-pointer"
