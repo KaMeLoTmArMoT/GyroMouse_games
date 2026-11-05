@@ -28,6 +28,7 @@ export function buildFleetFromSlots(
   team: number,
   baseX: number,
   heading: number,
+  expandedSpacing = false,
 ): ShipState[] {
   const groups = new Map<number, FleetSlot[]>();
   for (const slot of slots) {
@@ -41,7 +42,7 @@ export function buildFleetFromSlots(
   for (const [groupId, group] of [...groups].sort(([a], [b]) => a - b)) {
     const [anchorX, y] = GROUP_ANCHORS[groupId] ?? [0, 0];
     const x = anchorX * direction;
-    const ships = buildGroup(group, team, heading, counts);
+    const ships = buildGroup(group, team, heading, counts, expandedSpacing);
     if (ships.length === 0) continue;
     const centerX =
       (Math.min(...ships.map((s) => s.pos[0])) + Math.max(...ships.map((s) => s.pos[0]))) / 2;
@@ -72,6 +73,7 @@ function buildGroup(
   team: number,
   heading: number,
   counts: Record<HullClass, number>,
+  expandedSpacing: boolean,
 ): ShipState[] {
   const ships: ShipState[] = [];
   const battleships = slots.filter((s) => s.hullClass === "battleship");
@@ -120,7 +122,7 @@ function buildGroup(
   battleships.forEach((slot, idx) => {
     addShip(slot, idx, "bb", `Leviathan BB-0${counts.battleship + idx + 1}`, [
       0,
-      (idx - (battleships.length - 1) / 2) * 160,
+      (idx - (battleships.length - 1) / 2) * (expandedSpacing ? 330 : 160),
     ]);
   });
   // 2. Cruisers (Flanking lines)
@@ -128,7 +130,7 @@ function buildGroup(
     const sign = idx % 2 === 0 ? 1 : -1;
     addShip(slot, idx, "cr", `Vanguard CR-0${counts.cruiser + idx + 1}`, [
       (heading === 0 ? 1 : -1) * 60,
-      sign * (140 + Math.floor(idx / 2) * 110),
+      sign * (expandedSpacing ? 250 + Math.floor(idx / 2) * 155 : 140 + Math.floor(idx / 2) * 110),
     ]);
   });
   // 3. Corvette escort columns; shield clearance is applied after assembly.
@@ -136,7 +138,7 @@ function buildGroup(
     const sign = idx % 2 === 0 ? 1 : -1;
     addShip(slot, idx, "cv", `Aegis CV-0${counts.corvette + idx + 1}`, [
       (heading === 0 ? -1 : 1) * 95,
-      sign * (145 + Math.floor(idx / 2) * 85),
+      sign * (expandedSpacing ? 220 + Math.floor(idx / 2) * 90 : 145 + Math.floor(idx / 2) * 85),
     ]);
   });
   // 4. Grouped vanguard blocks. Keep shield repulsor zones clear on the first tick.
@@ -162,7 +164,9 @@ function buildGroup(
     group.forEach((slot, index) => {
       positionedFighters.push({
         slot,
-        xOff: (heading === 0 ? 1 : -1) * (180 + Math.floor(index / rows) * spacing),
+        xOff:
+          (heading === 0 ? 1 : -1) *
+          ((expandedSpacing ? 310 : 180) + Math.floor(index / rows) * spacing),
         yOff: (rowOffset + (index % rows) - (totalRows - 1) / 2) * spacing,
       });
     });

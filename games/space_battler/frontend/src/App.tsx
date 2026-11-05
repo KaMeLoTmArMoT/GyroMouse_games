@@ -21,6 +21,7 @@ import { spaceAudio } from "./engine/audioEngine";
 import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
 import { FLEET_PRESETS } from "./engine/fleetPresets";
 import { normalizeAngle } from "./engine/math2d";
+import { type FleetComposition, SCENARIOS } from "./engine/scenarios";
 import { ClientCombatSimulation } from "./engine/simulation";
 
 const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
@@ -28,6 +29,7 @@ const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
 const STORAGE_KEYS = {
   activeTab: "gyromouse_sb_active_tab",
   userSlots: "gyromouse_sb_user_slots",
+  redSlots: "gyromouse_sb_red_slots",
   enemyPreset: "gyromouse_sb_enemy_preset",
 } as const;
 
@@ -40,6 +42,16 @@ const DEFAULT_USER_SLOTS: FleetSlot[] = [
   { id: "sc_3", hullClass: "strike_craft", groupId: 3 },
   { id: "sc_4", hullClass: "strike_craft", groupId: 3 },
 ];
+
+function slotsFromComposition(composition: FleetComposition[]): FleetSlot[] {
+  return composition.flatMap((entry, index) =>
+    Array.from({ length: entry.count }, (_, i) => ({
+      id: `${index}-${i}`,
+      hullClass: entry.hullClass,
+      groupId: entry.groupId,
+    })),
+  );
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"builder" | "battle">(() => {
@@ -80,7 +92,7 @@ export default function App() {
   }, [speed]);
 
   // User Fleet Construction State (Blue Task Force) - Persisted across F5 reloads
-  const [userSlots, setUserSlots] = useState<FleetSlot[]>(() => {
+  const [blueSlots, setBlueSlots] = useState<FleetSlot[]>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.userSlots);
       if (raw) {
@@ -96,11 +108,31 @@ export default function App() {
   const [enemyPresetId, setEnemyPresetId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.enemyPreset);
-      if (saved && FLEET_PRESETS.some((p) => p.id === saved)) return saved;
+      if (
+        saved &&
+        (saved === "custom" ||
+          FLEET_PRESETS.some((p) => p.id === saved) ||
+          SCENARIOS.some((s) => `scenario:${s.id}` === saved))
+      )
+        return saved;
     } catch {
       // ignore storage errors
     }
     return "combined";
+  });
+  const [redSlots, setRedSlots] = useState<FleetSlot[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.redSlots);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    const scenario = SCENARIOS.find((s) => `scenario:${s.id}` === enemyPresetId);
+    const preset = FLEET_PRESETS.find((p) => p.id === enemyPresetId) ?? FLEET_PRESETS[0];
+    return slotsFromComposition(scenario?.red ?? preset.composition);
   });
 
   useEffect(() => {
@@ -113,11 +145,19 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEYS.userSlots, JSON.stringify(userSlots));
+      localStorage.setItem(STORAGE_KEYS.userSlots, JSON.stringify(blueSlots));
     } catch {
       // ignore
     }
-  }, [userSlots]);
+  }, [blueSlots]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.redSlots, JSON.stringify(redSlots));
+    } catch {
+      // ignore
+    }
+  }, [redSlots]);
 
   useEffect(() => {
     try {
@@ -129,7 +169,7 @@ export default function App() {
 
   // Simulation State
   const [sim, setSim] = useState<ClientCombatSimulation>(() => {
-    return assembleSimulation(userSlots, enemyPresetId);
+    return assembleSimulation(blueSlots, redSlots);
   });
   const [selectedShipId, setSelectedShipId] = useState<string | null>("blue_bb_0");
   const [selectedProjectileId, setSelectedProjectileId] = useState<string | null>(null);
@@ -210,33 +250,47 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [sim, lastActiveSpeed]);
 
-  function assembleSimulation(blueSlots: FleetSlot[], redPresetId: string): ClientCombatSimulation {
+  function assembleSimulation(
+    blueSlots: FleetSlot[],
+    redSlots: FleetSlot[],
+  ): ClientCombatSimulation {
     const s = new ClientCombatSimulation();
 
     // 1. Build Blue Force (Spawn at -1100u with wide tactical stance)
     const blueShips = buildFleetFromSlots(blueSlots, 0, -1100, 0);
     for (const ship of blueShips) s.addShip(ship);
 
-    // 2. Build Red Force from Preset (Spawn at +1100u)
-    const redPreset = FLEET_PRESETS.find((p) => p.id === redPresetId) ?? FLEET_PRESETS[0];
-    const redSlots: FleetSlot[] = [];
-    for (const comp of redPreset.composition) {
-      for (let i = 0; i < comp.count; i++) {
-        redSlots.push({
-          id: `red_${comp.hullClass}_${i}`,
-          hullClass: comp.hullClass,
-          groupId: comp.groupId,
-        });
-      }
-    }
+    // 2. Build Red Force (Spawn at +1100u)
     const redShips = buildFleetFromSlots(redSlots, 1, 1100, Math.PI);
     for (const ship of redShips) s.addShip(ship);
 
     return s;
   }
 
+  const selectEnemyPreset = (id: string) => {
+    const scenario = SCENARIOS.find((s) => `scenario:${s.id}` === id);
+    const preset = FLEET_PRESETS.find((p) => p.id === id);
+    if (scenario) {
+      setBlueSlots(slotsFromComposition(scenario.blue));
+      setRedSlots(slotsFromComposition(scenario.red));
+    } else if (preset) {
+      setRedSlots(slotsFromComposition(preset.composition));
+    }
+    setEnemyPresetId(id);
+  };
+
+  const updateBlueSlots = (slots: FleetSlot[]) => {
+    setBlueSlots(slots);
+    if (enemyPresetId.startsWith("scenario:")) setEnemyPresetId("custom");
+  };
+
+  const updateRedSlots = (slots: FleetSlot[]) => {
+    setRedSlots(slots);
+    setEnemyPresetId("custom");
+  };
+
   const resetBattle = () => {
-    const s = assembleSimulation(userSlots, enemyPresetId);
+    const s = assembleSimulation(blueSlots, redSlots);
     setSim(s);
     setSelectedShipId(s.ships[0]?.id ?? null);
     setSelectedProjectileId(null);
@@ -414,11 +468,13 @@ export default function App() {
       {/* Main Content Area */}
       {activeTab === "builder" ? (
         <FleetBuilder
-          slots={userSlots}
-          onUpdateSlots={setUserSlots}
+          blueSlots={blueSlots}
+          redSlots={redSlots}
+          onUpdateBlueSlots={updateBlueSlots}
+          onUpdateRedSlots={updateRedSlots}
           budgetLimit={budgetLimit}
           enemyPresetId={enemyPresetId}
-          onSelectEnemyPreset={setEnemyPresetId}
+          onSelectEnemyPreset={selectEnemyPreset}
           onStartBattle={handleStartFromBuilder}
         />
       ) : (

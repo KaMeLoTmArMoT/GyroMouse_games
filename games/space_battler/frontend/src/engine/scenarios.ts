@@ -161,7 +161,16 @@ export const SCENARIOS: ScenarioDefinition[] = [
 ];
 
 /** The seed perturbs only initial y coordinates, by at most two units (LCG v1). */
-export function assembleScenario(scenario: ScenarioDefinition, seed?: number): ShipState[] {
+export interface ScenarioAssemblyOptions {
+  spawn?: number;
+  expandedSpacing?: boolean;
+}
+
+export function assembleScenario(
+  scenario: ScenarioDefinition,
+  seed?: number,
+  options: ScenarioAssemblyOptions = {},
+): ShipState[] {
   const slots = (composition: FleetComposition[]): FleetSlot[] =>
     composition.flatMap((entry, index) =>
       Array.from({ length: entry.count }, (_, i) => ({
@@ -171,8 +180,20 @@ export function assembleScenario(scenario: ScenarioDefinition, seed?: number): S
       })),
     );
   const ships = [
-    ...buildFleetFromSlots(slots(scenario.blue), 0, -1100, 0),
-    ...buildFleetFromSlots(slots(scenario.red), 1, 1100, Math.PI),
+    ...buildFleetFromSlots(
+      slots(scenario.blue),
+      0,
+      -(options.spawn ?? 1100),
+      0,
+      options.expandedSpacing,
+    ),
+    ...buildFleetFromSlots(
+      slots(scenario.red),
+      1,
+      options.spawn ?? 1100,
+      Math.PI,
+      options.expandedSpacing,
+    ),
   ];
   if (seed !== undefined) {
     let state = seed >>> 0;

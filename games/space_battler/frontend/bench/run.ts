@@ -5,6 +5,7 @@ import { CombatTelemetry } from "../src/engine/combatTelemetry";
 import {
   assembleScenario,
   SCENARIOS,
+  type ScenarioAssemblyOptions,
   type ScenarioDefinition,
   type ScenarioResult,
 } from "../src/engine/scenarios";
@@ -18,8 +19,9 @@ export function runScenario(
   seed?: number,
   createTelemetry = (ships: ReturnType<typeof assembleScenario>, _sim: ClientCombatSimulation) =>
     new CombatTelemetry(ships),
+  assemblyOptions: ScenarioAssemblyOptions = {},
 ): ScenarioResult {
-  const ships = assembleScenario(scenario, seed);
+  const ships = assembleScenario(scenario, seed, assemblyOptions);
   const layout = structuredClone(ships);
   const sim = new ClientCombatSimulation();
   for (const ship of ships) sim.addShip(ship);

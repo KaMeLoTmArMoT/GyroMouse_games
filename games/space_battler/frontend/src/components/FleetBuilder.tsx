@@ -1,16 +1,19 @@
 // Tactical Fleet Builder Modal & Panel Component with full-height scroll, text selection, and clear roster
 
-import { ChevronDown, ChevronUp, Plus, Shield, Swords, Trash2, Zap } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Plus, Shield, Swords, Trash2, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { FleetSlot } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
+import { SCENARIOS } from "../engine/scenarios";
 import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { HullClass } from "../types/combat";
 import { GroupPreview, ShipPreview, useDelayedPreview } from "./FleetPreviews";
 
 interface FleetBuilderProps {
-  slots: FleetSlot[];
-  onUpdateSlots: (newSlots: FleetSlot[]) => void;
+  blueSlots: FleetSlot[];
+  redSlots: FleetSlot[];
+  onUpdateBlueSlots: (newSlots: FleetSlot[]) => void;
+  onUpdateRedSlots: (newSlots: FleetSlot[]) => void;
   budgetLimit: number;
   enemyPresetId: string;
   onSelectEnemyPreset: (presetId: string) => void;
@@ -405,16 +408,23 @@ export function RosterCountInput({
 }
 
 export function FleetBuilder({
-  slots,
-  onUpdateSlots,
+  blueSlots,
+  redSlots,
+  onUpdateBlueSlots,
+  onUpdateRedSlots,
   budgetLimit,
   enemyPresetId,
   onSelectEnemyPreset,
   onStartBattle,
 }: FleetBuilderProps) {
+  const [activeTeam, setActiveTeam] = useState<"blue" | "red">("blue");
   const [selectedGroup, setSelectedGroup] = useState<number>(1);
   const shipPreview = useDelayedPreview<HullClass>(250);
   const groupPreview = useDelayedPreview<number>(200);
+  const slots = activeTeam === "blue" ? blueSlots : redSlots;
+  const onUpdateSlots = activeTeam === "blue" ? onUpdateBlueSlots : onUpdateRedSlots;
+  const selectedScenario = SCENARIOS.find((s) => `scenario:${s.id}` === enemyPresetId);
+  const selectedPreset = FLEET_PRESETS.find((p) => p.id === enemyPresetId);
 
   const currentCost = slots.reduce((acc, slot) => acc + HULL_SPECS[slot.hullClass].cost, 0);
   const remainingBudget = budgetLimit - currentCost;
@@ -494,6 +504,33 @@ export function FleetBuilder({
             Assemble your Task Force within the credit allocation. Assign ships to tactical groups
             and inspect armament loadouts.
           </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" aria-label="Fleet to edit">
+          <button
+            type="button"
+            onClick={() => setActiveTeam("blue")}
+            aria-pressed={activeTeam === "blue"}
+            className={`px-3 py-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer ${
+              activeTeam === "blue"
+                ? "bg-cyan-950/50 border-cyan-500 text-cyan-300"
+                : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-cyan-800"
+            }`}
+          >
+            🔵 Terran Task Force (Blue)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTeam("red")}
+            aria-pressed={activeTeam === "red"}
+            className={`px-3 py-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer ${
+              activeTeam === "red"
+                ? "bg-red-950/50 border-red-500 text-red-300"
+                : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-red-800"
+            }`}
+          >
+            🔴 Opposing Force (Red)
+          </button>
         </div>
 
         {/* Group Selector with Counts */}
@@ -688,11 +725,11 @@ export function FleetBuilder({
       </div>
 
       {/* Right: Full-Height Roster & Enemy Preset Selector */}
-      <div className="w-full md:w-96 flex flex-col gap-4 h-full">
+      <div className="w-full md:w-96 md:shrink-0 flex flex-col gap-4 min-h-0 md:h-full">
         {/* Budget Bar */}
         <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 select-text">
           <div className="flex justify-between items-center text-xs font-mono">
-            <span className="text-zinc-400">Budget Allocation</span>
+            <span className="text-zinc-400">{activeTeam === "blue" ? "Blue" : "Red"} Budget</span>
             <span className={remainingBudget < 0 ? "text-red-400" : "text-cyan-400 font-bold"}>
               {currentCost} / {budgetLimit} CR
             </span>
@@ -707,10 +744,10 @@ export function FleetBuilder({
 
         {/* Selected Fleet Roster - Stretches to fill available height cleanly! */}
         <div className="flex-1 border border-zinc-800 rounded-xl bg-zinc-900/40 p-4 flex flex-col min-h-0 select-text">
-          <div className="flex items-center justify-between pb-3 border-b border-zinc-800 shrink-0">
+          <div className="pb-3 border-b border-zinc-800 shrink-0 space-y-2">
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 select-all block">
-                Active Roster ({slots.length} hulls)
+                {activeTeam === "blue" ? "Blue" : "Red"} Active Roster ({slots.length} hulls)
               </span>
               {slots.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-1">
@@ -730,22 +767,29 @@ export function FleetBuilder({
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={clearAll}
-              disabled={slots.length === 0}
-              title="Remove all vessels from the active roster"
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 border transition-colors ${
-                slots.length > 0
-                  ? "bg-red-950/30 border-red-800/50 text-red-400 hover:bg-red-900/40 hover:border-red-700 cursor-pointer"
-                  : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
-              }`}
-            >
-              <Trash2 className="w-3 h-3" /> Clear All
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={clearAll}
+                disabled={slots.length === 0}
+                title="Remove all vessels from the active roster"
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 border bg-red-950/30 border-red-800/50 text-red-400 hover:bg-red-900/40 hover:border-red-700 transition-colors cursor-pointer disabled:bg-zinc-900 disabled:border-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-3 h-3" /> Clear All
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdateRedSlots(blueSlots.map((slot) => ({ ...slot })))}
+                disabled={blueSlots.length === 0}
+                title="Copy the Blue fleet to Red"
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 border bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-cyan-700 hover:text-cyan-300 transition-colors cursor-pointer disabled:border-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed"
+              >
+                <Copy className="w-3 h-3" /> Mirror Fleet
+              </button>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2 py-3 pr-1">
+          <div key={activeTeam} className="flex-1 overflow-y-auto space-y-2 py-3 pr-1">
             {slots.length === 0 ? (
               <div className="h-full flex items-center justify-center text-center p-6 text-xs text-zinc-600 select-text">
                 Fleet is currently empty. Enlist vessels from the hangar.
@@ -900,24 +944,37 @@ export function FleetBuilder({
             onChange={(e) => onSelectEnemyPreset(e.target.value)}
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
           >
-            {FLEET_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.budget} CR)
-              </option>
-            ))}
+            <option value="custom">Custom (Build Opposing Fleet)</option>
+            <optgroup label="Opposing Fleet Presets">
+              {FLEET_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.budget} CR)
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Tactical Scenarios (Load Both Fleets)">
+              {SCENARIOS.map((scenario) => (
+                <option key={scenario.id} value={`scenario:${scenario.id}`}>
+                  {scenario.label.replace(/\bSC\b/g, "Fighters")}
+                </option>
+              ))}
+            </optgroup>
           </select>
           <p className="text-[11px] text-zinc-500 italic mt-1 select-text">
-            {FLEET_PRESETS.find((p) => p.id === enemyPresetId)?.description}
+            {selectedPreset?.description ??
+              (selectedScenario
+                ? "Loads the suggested Blue and Red fleets for this matchup."
+                : "Edit either fleet in the hangar to build your own matchup.")}
           </p>
         </div>
 
         {/* Start Button */}
         <button
           type="button"
-          disabled={slots.length === 0}
+          disabled={blueSlots.length === 0 || redSlots.length === 0}
           onClick={onStartBattle}
           className={`w-full py-3.5 rounded-xl font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 transition-all shrink-0 ${
-            slots.length > 0
+            blueSlots.length > 0 && redSlots.length > 0
               ? "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-500/20 cursor-pointer"
               : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
           }`}

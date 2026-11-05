@@ -24,8 +24,13 @@ import {
   vecSub,
 } from "./math2d";
 
-export const ARENA_RADIUS = 1900;
-export const ARENA_HARD_PULL_RADIUS = 2200;
+export let ARENA_RADIUS = 1900;
+export let ARENA_HARD_PULL_RADIUS = 2200;
+
+export function configureArena(radius: number, hardPullRadius: number): void {
+  ARENA_RADIUS = radius;
+  ARENA_HARD_PULL_RADIUS = hardPullRadius;
+}
 
 // Preserve tangential motion while smoothly replacing outward thrust with inward steering.
 export function arenaVelocity(ship: ShipState, desired: Vector2): Vector2 {

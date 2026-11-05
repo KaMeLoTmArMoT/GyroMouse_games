@@ -42,7 +42,7 @@ function battery(source: Source) {
   let mounts = profiles[source.key].turrets;
   // Single-target ideal duty: one BB broadside only. Rail + beam is a generous
   // time-multiplexed upper envelope, never a claim of overlapping physical arcs.
-  if (source.key === "battleship") mounts = mounts.slice(0, 2);
+  if (source.key === "battleship") mounts = mounts.slice(0, source.guns ?? 2);
   if (source.key === "broadside_dreadnought") mounts = mounts.slice(0, source.guns ?? 3);
   return Array.from({ length: source.count }, (_, ship) => mounts.map((mount, gun) => {
     const w = mount.weapon;
@@ -125,13 +125,20 @@ assert.equal(battery({ key: "battleship", count: 1 })[1].cycle, 144);
 const offense = (Object.keys(profiles) as Key[]).flatMap((key) =>
   (Object.keys(profiles) as Key[]).map((target) => summary([{ key, count: 1 }], target)));
 const dreadArcs = [1, 2, 3].map((guns) => summary([{ key: "broadside_dreadnought", count: 1, guns }], "battleship"));
+const budgetPressure = [
+  summary([{ key: "battleship", count: 1, guns: 1 }], "broadside_dreadnought"),
+  summary([{ key: "cruiser", count: 3 }], "broadside_dreadnought"),
+  summary([{ key: "corvette", count: 10 }], "broadside_dreadnought"),
+  summary([{ key: "strike_craft", count: 30 }], "broadside_dreadnought"),
+  summary([{ key: "missile_frigate", count: 5, stagger: true }], "broadside_dreadnought"),
+];
 const permutations: Array<{ name: string; sources: Source[] }> = [
   { name: "BB + CR + 2CV + 6SC", sources: [{ key: "battleship", count: 1 }, { key: "cruiser", count: 1 }, { key: "corvette", count: 2 }, { key: "strike_craft", count: 6 }] },
   { name: "D + CR + 2CV + 3SC", sources: [{ key: "broadside_dreadnought", count: 1 }, { key: "cruiser", count: 1 }, { key: "corvette", count: 2 }, { key: "strike_craft", count: 3 }] },
   { name: "D + 2MF + 2CV", sources: [{ key: "broadside_dreadnought", count: 1 }, { key: "missile_frigate", count: 2 }, { key: "corvette", count: 2 }] },
   { name: "D + MF + 2CV + 6SC", sources: [{ key: "broadside_dreadnought", count: 1 }, { key: "missile_frigate", count: 1 }, { key: "corvette", count: 2 }, { key: "strike_craft", count: 6 }] },
   { name: "BB + 2MF + 2CV + 4SC", sources: [{ key: "battleship", count: 1 }, { key: "missile_frigate", count: 2 }, { key: "corvette", count: 2 }, { key: "strike_craft", count: 4 }] },
-  { name: "5CR + 2CV", sources: [{ key: "cruiser", count: 5 }, { key: "corvette", count: 2 }] },
+  { name: "4CR + 2CV + 5SC", sources: [{ key: "cruiser", count: 4 }, { key: "corvette", count: 2 }, { key: "strike_craft", count: 5 }] },
 ];
 const fleetPressure = permutations.flatMap(({ name, sources }) =>
   (["battleship", "broadside_dreadnought"] as Key[]).map((target) => ({ name, ...summary(sources, target) })));
@@ -174,7 +181,7 @@ const output = {
   version: 1, date: new Date().toISOString(), node: process.version, hashes,
   baselineWallSeconds: (performance.now() - started) / 1000,
   assumptions: "Stationary outgoing damage only: no range/flight time, movement, losses, PD geometry or hit chance unless explicit delivery sweep. First impact t=0; 300s cap; live damage formula and regen; BB rail+one beam upper envelope; D three-gun broadside; full flak falloff with strike-craft multiplier override. Seeds in sweep are hypothetical Bernoulli delivery, not measured PD probability.",
-  profiles, offense, dreadArcs, fleetPressure, deliverySweep, synergy, baseline,
+  profiles, offense, dreadArcs, budgetPressure, fleetPressure, deliverySweep, synergy, baseline,
 };
 const path = new URL(process.argv.includes("--math-only") ? "./results/roster-expansion-math.json" : "./results/roster-expansion.json", import.meta.url);
 writeFileSync(path, `${JSON.stringify(output, null, 2)}\n`);
