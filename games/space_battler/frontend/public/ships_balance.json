@@ -1,0 +1,102 @@
+{
+  "weapons": {
+    "beam_laser": {
+      "name": "Beam Laser",
+      "damage": 45.0,
+      "cooldown": 1.2,
+      "range": 600.0,
+      "projectileSpeed": 0.0,
+      "trackingSpeed": 1.8,
+      "shieldMultiplier": 0.5,
+      "armorMultiplier": 1.6,
+      "hullMultiplier": 1.0,
+      "cost": 250.0
+    },
+    "railgun": {
+      "name": "Heavy Railgun",
+      "damage": 85.0,
+      "cooldown": 2.5,
+      "range": 950.0,
+      "projectileSpeed": 1200.0,
+      "trackingSpeed": 0.8,
+      "shieldMultiplier": 1.6,
+      "armorMultiplier": 0.75,
+      "hullMultiplier": 1.0,
+      "cost": 320.0
+    },
+    "plasma": {
+      "name": "Plasma Blaster",
+      "damage": 120.0,
+      "cooldown": 3.0,
+      "range": 480.0,
+      "projectileSpeed": 450.0,
+      "trackingSpeed": 1.2,
+      "shieldMultiplier": 1.0,
+      "armorMultiplier": 1.1,
+      "hullMultiplier": 1.5,
+      "cost": 280.0
+    },
+    "missile": {
+      "name": "Heavy Torpedo",
+      "damage": 220.0,
+      "cooldown": 5.0,
+      "range": 1100.0,
+      "projectileSpeed": 320.0,
+      "trackingSpeed": 2.5,
+      "shieldMultiplier": 1.0,
+      "armorMultiplier": 1.8,
+      "hullMultiplier": 1.8,
+      "cost": 380.0
+    },
+    "point_defense": {
+      "name": "Point Defense Flak",
+      "damage": 12.0,
+      "cooldown": 0.15,
+      "range": 350.0,
+      "projectileSpeed": 0.0,
+      "trackingSpeed": 6.28,
+      "shieldMultiplier": 0.1,
+      "armorMultiplier": 0.1,
+      "hullMultiplier": 0.2,
+      "cost": 150.0
+    }
+  },
+  "hulls": {
+    "strike_craft": {
+      "name": "Interceptor",
+      "cost": 120,
+      "maxSpeed": 240,
+      "turnRate": 3.5,
+      "shield": 60,
+      "armor": 40,
+      "hull": 70
+    },
+    "corvette": {
+      "name": "Aegis Corvette",
+      "cost": 350,
+      "maxSpeed": 150,
+      "turnRate": 2.2,
+      "shield": 180,
+      "armor": 150,
+      "hull": 220
+    },
+    "cruiser": {
+      "name": "Vanguard Cruiser",
+      "cost": 1100,
+      "maxSpeed": 90,
+      "turnRate": 1.2,
+      "shield": 600,
+      "armor": 500,
+      "hull": 700
+    },
+    "battleship": {
+      "name": "Leviathan Battleship",
+      "cost": 3200,
+      "maxSpeed": 45,
+      "turnRate": 0.45,
+      "shield": 1800,
+      "armor": 1600,
+      "hull": 2200
+    }
+  }
+}
