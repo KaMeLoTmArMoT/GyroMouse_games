@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Plus, Shield, Swords, Trash2, Zap } from "lucid
 import { useEffect, useRef, useState } from "react";
 import type { FleetSlot } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
+import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { HullClass } from "../types/combat";
 
 interface FleetBuilderProps {
@@ -114,78 +115,23 @@ const HULL_SIZE_ORDER: Record<HullClass, number> = {
   strike_craft: 4,
 };
 
-export const HULL_SPECS: Record<HullClass, HullSpecData> = {
-  battleship: {
-    name: "Leviathan Battleship",
-    cost: 3200,
-    desc: "Devastating spinal railgun (300 dmg) + dual broadside beam batteries.",
-    role: "Capital Flagship",
-    shield: 2200,
-    armor: 2000,
-    hull: 2800,
-    speed: 38,
-    turnRate: "0.50 rad/s",
-    weapons: [
-      { name: "Spinal Heavy Railgun", type: "Railgun", damage: 300, range: 1800, cooldown: 3.5 },
-      {
-        name: "Dual Port/Starboard Batteries",
-        type: "Beam Laser",
-        damage: 75,
-        range: 1200,
-        cooldown: 1.2,
-      },
-    ],
-  },
-  cruiser: {
-    name: "Vanguard Cruiser",
-    cost: 1100,
-    desc: "Heavy 360° beam laser + prow heavy torpedo launcher.",
-    role: "Medium Combatant",
-    shield: 600,
-    armor: 500,
-    hull: 700,
-    speed: 85,
-    turnRate: "0.75 rad/s",
-    weapons: [
-      { name: "Prow Heavy Torpedo", type: "Missile", damage: 220, range: 1800, cooldown: 5.5 },
-      { name: "Dorsal Turret Battery", type: "Beam Laser", damage: 45, range: 1100, cooldown: 1.2 },
-    ],
-  },
-  corvette: {
-    name: "Aegis Corvette",
-    cost: 350,
-    desc: "Dual rapid flak PD turrets (360°). Intercepts missiles, fighters, and fires at enemy ships.",
-    role: "Escort Screen",
-    shield: 180,
-    armor: 150,
-    hull: 220,
-    speed: 175,
-    turnRate: "1.60 rad/s",
-    weapons: [
-      {
-        name: "Dual Rapid Flak Turrets (360°)",
-        type: "Point Defense",
-        damage: 10,
-        range: 420,
-        cooldown: 0.3,
-      },
-    ],
-  },
-  strike_craft: {
-    name: "Raider Interceptor",
-    cost: 120,
-    desc: "Agile fighter equipped with forward plasma bolt.",
-    role: "Strike Swarm",
-    shield: 60,
-    armor: 40,
-    hull: 70,
-    speed: 280,
-    turnRate: "4.20 rad/s",
-    weapons: [
-      { name: "Fixed Plasma Cannon", type: "Plasma Bolt", damage: 120, range: 550, cooldown: 3.0 },
-    ],
-  },
-};
+export const HULL_SPECS = Object.fromEntries(
+  Object.entries(HULL_PROFILES).map(([hull, profile]): [string, HullSpecData] => [
+    hull,
+    {
+      name: profile.name,
+      cost: profile.cost,
+      desc: profile.desc,
+      role: profile.role,
+      shield: profile.shieldMax,
+      armor: profile.armorMax,
+      hull: profile.hullMax,
+      speed: profile.speed,
+      turnRate: profile.turnRateDisplay,
+      weapons: profile.turrets.map(({ type, weapon }) => ({ ...weapon, type })),
+    },
+  ]),
+) as Record<HullClass, HullSpecData>;
 
 export function ShipSilhouette({
   hullClass,

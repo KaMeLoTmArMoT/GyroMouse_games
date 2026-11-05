@@ -52,6 +52,7 @@ export type BeamFireCallback = (
   color: string,
   width: number,
   ownerTeam: number,
+  channeled?: boolean,
 ) => void;
 export type FlakBurstCallback = (pos: Vector2, radius: number, ownerTeam: number) => void;
 
@@ -78,10 +79,29 @@ interface FighterWing {
 const CRUISER_CLEARANCE = 100;
 
 const FIXED_STEP = 1 / 60;
+const BEAM_TICK_FRAMES = 6;
+const BEAM_TICKS = 12;
+
+interface BeamChannel {
+  ship: ShipState;
+  turret: TurretMountState;
+  target: ShipState | ProjectileState;
+  kind: "ship" | "missile";
+  weapon: WeaponDefinition;
+  frames: number;
+}
+
+export interface ActiveBeam {
+  id: string;
+  from: Vector2;
+  to: Vector2;
+  ownerTeam: number;
+}
 
 export class ClientCombatSimulation {
   ships: ShipState[] = [];
   projectiles: ProjectileState[] = [];
+  activeBeams: ActiveBeam[] = [];
   orders: Map<number, GroupOrder> = new Map();
   timeElapsed = 0;
   private projectileCounter = 0;
@@ -89,6 +109,9 @@ export class ClientCombatSimulation {
   private accumulator = 0;
   private contacts = new Set<string>();
   private previousPositions = new Map<string, Vector2>();
+  private beamChannels = new Map<TurretMountState, BeamChannel>();
+  private damageTotals = [0, 0];
+  private shieldTotals = [0, 0];
   onBeamFire: BeamFireCallback | null = null;
   onFlakBurst: FlakBurstCallback | null = null;
   onProjectileFire?: (type: WeaponType, pos: Vector2) => void;
@@ -219,6 +242,33 @@ export class ClientCombatSimulation {
     for (const ship of aliveShips) {
       if (!ship.isAlive) continue;
       for (const turret of ship.turrets) {
+        const channel = this.beamChannels.get(turret);
+        if (channel) {
+          const target = channel.target;
+          const live =
+            channel.kind === "ship"
+              ? (target as ShipState).isAlive
+              : (target as ProjectileState).hp > 0 &&
+                (target as ProjectileState).lifetime > 0 &&
+                this.projectiles.includes(target as ProjectileState);
+          if (
+            !live ||
+            vecDistance(mountPosition(ship, turret), target.pos) > channel.weapon.range ||
+            !inMountArc(ship, turret, target.pos)
+          ) {
+            this.beamChannels.delete(turret);
+            continue;
+          }
+          turret.currentTargetId = target.id;
+          turret.currentTargetKind = channel.kind;
+          const aimed = this.updateTurretAim(turret, dt, ship, target.pos);
+          if (!aimed) {
+            this.beamChannels.delete(turret);
+            continue;
+          }
+          shots.push(() => this.updateBeam(channel, aimed));
+          continue;
+        }
         const solution = acquireMountTarget(
           ship,
           turret,
@@ -239,6 +289,16 @@ export class ClientCombatSimulation {
       }
     }
     for (const fire of shots) fire();
+
+    for (const [turret, channel] of this.beamChannels) {
+      if (
+        !channel.ship.isAlive ||
+        (channel.kind === "ship" && !(channel.target as ShipState).isAlive) ||
+        (channel.kind === "missile" && (channel.target as ProjectileState).hp <= 0)
+      )
+        this.beamChannels.delete(turret);
+    }
+    this.activeBeams = [...this.beamChannels.values()].map((channel) => this.beamVisual(channel));
 
     // 4. Projectiles & Collision Resolution
     this.updateProjectiles(dt, aliveShips);
@@ -1063,8 +1123,27 @@ export class ClientCombatSimulation {
       ship.fighterPhase = "egress";
     }
 
-    // Hitscan (Beam Laser)
+    // Other zero-speed weapons retain their existing instantaneous hitscan behavior.
     if (isBeam) {
+      if (turret.weapon.weaponType === "beam_laser" && beamTarget) {
+        this.beamChannels.set(turret, {
+          ship,
+          turret,
+          target: beamTarget,
+          kind: targetShip ? "ship" : "missile",
+          weapon: { ...turret.weapon },
+          frames: 0,
+        });
+        this.onBeamFire?.(
+          spawnPos,
+          beamTarget.pos,
+          ship.team === 0 ? "#38bdf8" : "#ef4444",
+          2.8,
+          ship.team,
+          true,
+        );
+        return;
+      }
       if (targetShip) {
         const beamColor = ship.team === 0 ? "#38bdf8" : "#ef4444";
         this.applyDamage(
@@ -1120,6 +1199,59 @@ export class ClientCombatSimulation {
       isFlakBurst: Boolean(turret.weapon.flak),
     });
     this.onProjectileFire?.(turret.weapon.weaponType, [...spawnPos]);
+  }
+
+  private beamVisual(channel: BeamChannel): ActiveBeam {
+    const { ship, turret, target, kind } = channel;
+    const angle = ship.heading + turret.currentLocalAngle;
+    const from = vecAdd(mountPosition(ship, turret), [
+      Math.cos(angle) * turret.barrelLength,
+      Math.sin(angle) * turret.barrelLength,
+    ]);
+    const radius =
+      kind === "ship"
+        ? (target as ShipState).size * ((target as ShipState).shieldCurrent > 0 ? 1.4 : 1)
+        : 0;
+    const direction = vecNormalize(vecSub(from, target.pos));
+    const to = vecAdd(
+      target.pos,
+      vecScale(direction, Math.min(radius, vecDistance(from, target.pos))),
+    );
+    return { id: `${ship.id}:${turret.id}`, from, to, ownerTeam: ship.team };
+  }
+
+  private updateBeam(channel: BeamChannel, aimed: boolean): void {
+    channel.frames++;
+    if (aimed && channel.frames % BEAM_TICK_FRAMES === 0) {
+      const { ship, turret, target, weapon } = channel;
+      const damage = weapon.damage / BEAM_TICKS;
+      if (channel.kind === "ship") {
+        this.applyDamage(
+          target as ShipState,
+          damage,
+          weapon,
+          ship.team,
+          ship.id,
+          turret.id,
+          mountPosition(ship, turret),
+          channel,
+        );
+      } else {
+        const missile = target as ProjectileState;
+        if (missile.hp > 0 && missile.lifetime > 0) {
+          missile.hp -= damage;
+          if (missile.hp <= 0) {
+            this.stats[ship.team].missilesIntercepted++;
+            this.addCombatLog(
+              "Hostile torpedo intercepted by beam battery!",
+              ship.team,
+              "intercept",
+            );
+          }
+        }
+      }
+    }
+    if (channel.frames >= BEAM_TICK_FRAMES * BEAM_TICKS) this.beamChannels.delete(channel.turret);
   }
 
   private updateProjectiles(dt: number, aliveShips: ShipState[]): void {
@@ -1290,13 +1422,14 @@ export class ClientCombatSimulation {
     attackerId?: string,
     mountId?: string,
     impactOrigin?: Vector2,
+    channel?: BeamChannel,
   ): void {
     if (!this.observer && !this.onWeaponImpact) {
-      this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam);
+      this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam, channel);
       return;
     }
     const before = [ship.shieldCurrent, ship.armorCurrent, ship.hullCurrent];
-    this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam);
+    this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam, channel);
     this.observer?.onDamage(ship, attackerId, mountId, weapon.weaponType, before);
     if (impactOrigin) {
       const shield = ship.shieldCurrent < before[0];
@@ -1311,6 +1444,7 @@ export class ClientCombatSimulation {
     rawDamage: number,
     weapon: WeaponDefinition,
     attackerTeam?: number,
+    channel?: BeamChannel,
   ): void {
     if (!ship.isAlive) return;
 
@@ -1329,22 +1463,25 @@ export class ClientCombatSimulation {
       }
       if (ship.shieldCurrent >= shieldDmg) {
         ship.shieldCurrent -= shieldDmg;
-        this.stats[ship.team].shieldDamageAbsorbed += Math.round(shieldDmg);
+        this.shieldTotals[ship.team] += shieldDmg;
+        this.stats[ship.team].shieldDamageAbsorbed = Math.round(this.shieldTotals[ship.team]);
         totalAbsorbedOrDealt += shieldDmg;
         this.recordAttackerDamage(attackerTeam, totalAbsorbedOrDealt);
         return;
       }
       const absorbed = ship.shieldCurrent;
-      this.stats[ship.team].shieldDamageAbsorbed += Math.round(absorbed);
+      this.shieldTotals[ship.team] += absorbed;
+      this.stats[ship.team].shieldDamageAbsorbed = Math.round(this.shieldTotals[ship.team]);
       totalAbsorbedOrDealt += absorbed;
       remaining -= absorbed / weapon.shieldMultiplier;
       ship.shieldCurrent = 0;
     }
 
     if (ship.armorCurrent > 0 && remaining > 0) {
-      const armorDmg = remaining * weapon.armorMultiplier;
-      const mitigation = remaining / (remaining + ship.armorRating);
-      const mitigated = armorDmg * mitigation;
+      // A beam's armor penetration is based on its full pulse, not the tiny tick size.
+      const penetration = channel ? weapon.damage : remaining;
+      const mitigation = penetration / (penetration + ship.armorRating);
+      const mitigated = remaining * weapon.armorMultiplier * mitigation;
       if (ship.armorCurrent >= mitigated) {
         ship.armorCurrent -= mitigated;
         totalAbsorbedOrDealt += mitigated;
@@ -1385,7 +1522,8 @@ export class ClientCombatSimulation {
     if (attackerTeam === undefined || amount <= 0) return;
     const teamStats = this.stats[attackerTeam];
     if (!teamStats) return;
-    teamStats.damageDealt += Math.round(amount);
+    this.damageTotals[attackerTeam] += amount;
+    teamStats.damageDealt = Math.round(this.damageTotals[attackerTeam]);
     teamStats.recentDamageWindow.push({ time: this.timeElapsed, damage: amount });
   }
 }

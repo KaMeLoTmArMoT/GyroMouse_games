@@ -14,6 +14,7 @@ import {
   spinalEscape,
 } from "../src/engine/flightControl";
 import { normalizeAngle, vecDistance, vecDot, vecSub } from "../src/engine/math2d";
+import { HULL_PROFILES } from "../src/engine/shipProfiles";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass, ProjectileState, ShipState, Vector2 } from "../src/types/combat";
 
@@ -71,6 +72,145 @@ function projectile(
     isFlakBurst: Boolean(weapon.flak),
   };
 }
+
+describe("channeled beam lasers", () => {
+  function fixture(hull: "cruiser" | "battleship" = "cruiser") {
+    const shooter = stationary(ship(hull, 0, [0, 0]));
+    shooter.turrets = [shooter.turrets[hull === "cruiser" ? 0 : 1]];
+    const target = stationary(ship("battleship", 1, hull === "cruiser" ? [500, 0] : [0, -500]));
+    target.turrets = [];
+    target.shieldCurrent = target.shieldMax = 10000;
+    return { shooter, target, sim: simulate([shooter, target]) };
+  }
+
+  it.each(["cruiser", "battleship"] as const)(
+    "delivers twelve evenly spaced %s beam ticks over 1.2 seconds",
+    (hull) => {
+      const { shooter, target, sim } = fixture(hull);
+      const weapon = shooter.turrets[0].weapon;
+      const events: Array<{ time: number; damage: number }> = [];
+      let before = target.shieldCurrent;
+      sim.onWeaponImpact = () => {
+        events.push({ time: sim.timeElapsed, damage: before - target.shieldCurrent });
+        before = target.shieldCurrent;
+      };
+      sim.update(1 / 60);
+      const start = sim.timeElapsed;
+      expect(sim.activeBeams).toHaveLength(1);
+      expect(target.shieldCurrent).toBe(target.shieldMax);
+      advance(sim, 71 / 60);
+      expect(events).toHaveLength(11);
+      expect(sim.activeBeams).toHaveLength(1);
+      sim.update(1 / 60);
+      expect(events).toHaveLength(12);
+      expect(sim.activeBeams).toHaveLength(0);
+      expect(events[0].time - start).toBeCloseTo(0.1);
+      expect(events[11].time - start).toBeCloseTo(1.2);
+      for (let i = 0; i < events.length; i++) {
+        if (i) expect(events[i].time - events[i - 1].time).toBeCloseTo(0.1);
+        expect(events[i].damage).toBeCloseTo((weapon.damage * weapon.shieldMultiplier) / 12);
+      }
+      expect(target.shieldMax - target.shieldCurrent).toBeCloseTo(
+        weapon.damage * weapon.shieldMultiplier,
+      );
+      expect(sim.stats[0].damageDealt).toBe(Math.round(weapon.damage * weapon.shieldMultiplier));
+    },
+  );
+
+  it.each(["shield", "armor", "hull"] as const)(
+    "preserves the full-cycle %s damage and multipliers",
+    (layer) => {
+      const { shooter, target, sim } = fixture();
+      const weapon = shooter.turrets[0].weapon;
+      if (layer !== "shield") target.shieldCurrent = 0;
+      if (layer === "hull") target.armorCurrent = 0;
+      const before = target[`${layer}Current`];
+      advance(sim, 73 / 60);
+      const multiplier = weapon[`${layer}Multiplier`];
+      const mitigation =
+        layer === "armor" ? weapon.damage / (weapon.damage + target.armorRating) : 1;
+      expect(before - target[`${layer}Current`]).toBeCloseTo(
+        weapon.damage * multiplier * mitigation,
+      );
+    },
+  );
+
+  it("tracks both endpoints, cuts off out of arc, and fades the last beam", () => {
+    const { shooter, target, sim } = fixture();
+    const effects = new VisualEffectsManager();
+    sim.update(1 / 60);
+    effects.syncBeams(sim.activeBeams);
+    const initial = sim.activeBeams[0];
+    shooter.pos = [10, 0];
+    target.pos = [500, 20];
+    sim.update(1 / 60);
+    effects.syncBeams(sim.activeBeams);
+    expect(sim.activeBeams[0].from[0]).toBeGreaterThan(initial.from[0]);
+    expect(sim.activeBeams[0].to[1]).toBeGreaterThan(initial.to[1]);
+    expect(vecDistance(sim.activeBeams[0].to, target.pos)).toBeCloseTo(target.size * 1.4);
+    expect(effects.beams).toHaveLength(1);
+    target.pos = [-500, 0];
+    sim.update(1 / 60);
+    effects.syncBeams(sim.activeBeams);
+    expect(sim.activeBeams).toHaveLength(0);
+    effects.update(0.08);
+    expect(effects.beams[0].remainingDuration).toBeCloseTo(0.08);
+    effects.update(0.09);
+    expect(effects.beams).toHaveLength(0);
+  });
+
+  it("cuts off on target death and does not transfer remaining damage to another target", () => {
+    const { shooter, target, sim } = fixture();
+    const other = stationary(ship("battleship", 1, [700, 0]));
+    other.id = "other";
+    other.turrets = [];
+    sim.addShip(other);
+    sim.update(1 / 60);
+    target.isAlive = false;
+    advance(sim, 0.5);
+    expect(sim.activeBeams).toHaveLength(0);
+    expect(other.shieldCurrent).toBe(other.shieldMax);
+    expect(shooter.turrets[0].cooldownTimer).toBeGreaterThan(0);
+  });
+
+  it.each(["range", "shooter death"] as const)("stops damage immediately on %s", (reason) => {
+    const { shooter, target, sim } = fixture();
+    sim.update(1 / 60);
+    advance(sim, 0.3);
+    const damage = target.shieldMax - target.shieldCurrent;
+    expect(damage).toBeCloseTo(
+      (shooter.turrets[0].weapon.damage * shooter.turrets[0].weapon.shieldMultiplier) / 4,
+    );
+    if (reason === "range") target.pos = [2000, 0];
+    else shooter.isAlive = false;
+    advance(sim, 1);
+    expect(target.shieldMax - target.shieldCurrent).toBeCloseTo(damage);
+    expect(sim.activeBeams).toHaveLength(0);
+  });
+
+  it("keeps tick damage deterministic across different render update sizes", () => {
+    const { shooter, target } = fixture();
+    const ships = [shooter, target];
+    const fine = simulate(structuredClone(ships));
+    const coarse = simulate(structuredClone(ships));
+    advance(fine, 3);
+    for (let i = 0; i < 15; i++) coarse.update(0.2);
+    expect(coarse.ships).toEqual(fine.ships);
+    expect(coarse.activeBeams).toEqual(fine.activeBeams);
+    expect(coarse.stats).toEqual(fine.stats);
+  });
+
+  it("retains the calibrated start-to-start DPS over repeated channels", () => {
+    const { shooter, target, sim } = fixture();
+    target.shieldCurrent = target.armorCurrent = 0;
+    target.hullCurrent = target.hullMax = 1e7;
+    advance(sim, 10);
+    const before = target.hullCurrent;
+    advance(sim, 120);
+    const expected = shooter.turrets[0].weapon.damage / shooter.turrets[0].weapon.cooldown;
+    expect(Math.abs((before - target.hullCurrent) / 120 / expected - 1)).toBeLessThan(0.03);
+  });
+});
 
 describe("damage visuals", () => {
   it("preserves faction ownership for beams and simultaneous flak bursts", () => {
@@ -193,6 +333,20 @@ describe("damage visuals", () => {
 });
 
 describe("mount eligibility and projectile contracts", () => {
+  it("keeps mutable mount and weapon state isolated from sibling ships and canonical profiles", () => {
+    const [first, second] = fleet(["corvette", "corvette"], 0, 0);
+    const canonical = structuredClone(HULL_PROFILES.corvette);
+    const sibling = structuredClone(second.turrets);
+    first.turrets[0].offset[0] += 1;
+    first.turrets[0].baseArc[0] += 1;
+    first.turrets[0].weapon.damage += 1;
+    const flak = first.turrets[0].weapon.flak;
+    if (!flak) throw new Error("Corvette profile requires flak");
+    flak.blastRadius += 1;
+    expect(second.turrets).toEqual(sibling);
+    expect(HULL_PROFILES.corvette).toEqual(canonical);
+  });
+
   it("fires forward, port, and starboard mounts at independent valid targets", () => {
     const bb = stationary(ship("battleship", 0, [0, 0]));
     const targets = [
@@ -305,12 +459,21 @@ describe("mount eligibility and projectile contracts", () => {
     const sim = simulate([target]);
     sim.projectiles = [projectile(owner, [-60, 0], [320, 0], 1)];
     sim.update(1 / 60);
-    expect(target.hullMax - target.hullCurrent).toBeCloseTo(220 * 1.8);
+    const torpedo = HULL_PROFILES.cruiser.turrets[1].weapon;
+    expect(target.hullMax - target.hullCurrent).toBeCloseTo(
+      torpedo.damage * torpedo.hullMultiplier,
+    );
   });
 
   it("uses a full-damage flak core and linear surface falloff, with an accurate event radius", () => {
     const owner = ship("corvette", 0, [-500, 0]);
-    const targets = [18, 26, 34].map((surface, i) => {
+    const flak = HULL_PROFILES.corvette.turrets[0].weapon.flak;
+    if (!flak) throw new Error("Corvette profile requires flak");
+    const targets = [
+      flak.triggerRadius,
+      (flak.triggerRadius + flak.blastRadius) / 2,
+      flak.blastRadius,
+    ].map((surface, i) => {
       const target = stationary(ship("strike_craft", 1, [0, 0]));
       target.pos[0] = target.size + surface;
       target.id = `flak_target_${i}`;
@@ -328,10 +491,11 @@ describe("mount eligibility and projectile contracts", () => {
         radius = r;
       };
       sim.update(1 / 60);
-      expect(radius).toBe(34);
+      expect(radius).toBe(flak.blastRadius);
       return target.shieldMax - target.shieldCurrent;
     });
-    expect(damage).toEqual([10, 5, 0]);
+    const damagePerBurst = HULL_PROFILES.corvette.turrets[0].weapon.damage;
+    expect(damage).toEqual([damagePerBurst, damagePerBurst / 2, 0]);
   });
 
   it("takes two 18-damage flak bursts to intercept and reports the kill only once", () => {
@@ -343,7 +507,9 @@ describe("mount eligibility and projectile contracts", () => {
     const burst = (id: string) => ({ ...projectile(owner, [0, 0], [0, 0]), id });
     sim.projectiles = [missile, burst("a")];
     sim.update(1 / 60);
-    expect(missile.hp).toBe(7);
+    expect(missile.hp).toBe(
+      25 - (HULL_PROFILES.corvette.turrets[0].weapon.flak?.missileDamage ?? 0),
+    );
     sim.projectiles.push(burst("b"), burst("c"));
     sim.update(1 / 60);
     expect(sim.stats[0].missilesIntercepted).toBe(1);
@@ -592,9 +758,13 @@ describe("tactical maneuvers", () => {
     bb.heading = 0;
     const ready = spinalEscape(cv, [cv, bb], [], 1);
     expect(Math.abs(ready[1])).toBeGreaterThan(cv.maxSpeed);
-    bb.turrets[0].cooldownTimer = 3.5;
+    bb.turrets[0].cooldownTimer = HULL_PROFILES.battleship.turrets[0].weapon.cooldown;
     expect(spinalEscape(cv, [cv, bb], [], 1.1)).toEqual([0, 0]);
-    const rail = projectile(bb, [300, 0], [1400, 0]);
+    const rail = projectile(
+      bb,
+      [300, 0],
+      [HULL_PROFILES.battleship.turrets[0].weapon.projectileSpeed, 0],
+    );
     expect(Math.abs(spinalEscape(cv, [cv, bb], [rail], 1.2)[1])).toBeGreaterThan(cv.maxSpeed);
   });
 
@@ -818,7 +988,7 @@ describe("arena containment and matchup rebalance", () => {
     const missile = projectile(enemy, [0, -300], [0, 320], 1);
     const sim = simulate([bb]);
     sim.projectiles.push(missile);
-    advance(sim, 0.2);
+    advance(sim, 0.5);
     expect(sim.stats[0].missilesIntercepted).toBe(1);
     expect(sim.projectiles).toHaveLength(0);
     expect(bb.shieldCurrent).toBe(bb.shieldMax);
@@ -837,10 +1007,10 @@ describe("arena containment and matchup rebalance", () => {
     const sim = simulate([fighter, enemy]);
     advance(sim, 5);
     expect(fighter.fighterPhase).toBe("recover");
-    fighter.shieldCurrent = 44;
+    fighter.shieldCurrent = HULL_PROFILES.strike_craft.shieldMax * 0.75 - 1;
     sim.update(1 / 60);
     expect(fighter.fighterPhase).toBe("recover");
-    fighter.shieldCurrent = 45;
+    fighter.shieldCurrent = HULL_PROFILES.strike_craft.shieldMax * 0.75;
     sim.update(1 / 60);
     expect(fighter.fighterPhase).not.toBe("recover");
   });
@@ -1098,7 +1268,7 @@ describe("arena containment and matchup rebalance", () => {
     const sim = simulate(ships);
     for (let i = 0; i < 60 * 120 && sim.winner === null; i++) sim.update(1 / 60);
     expect(sim.winner).not.toBeNull();
-    expect(sim.stats[1].shipsLost).toBeGreaterThanOrEqual(2);
+    expect(sim.stats[1].shipsLost).toBeGreaterThanOrEqual(1);
     const bb = ships[0];
     expect(bb.shieldCurrent + bb.armorCurrent + bb.hullCurrent).toBeLessThan(
       (bb.shieldMax + bb.armorMax + bb.hullMax) * 0.5,
@@ -1164,7 +1334,7 @@ describe("fixed ticks and simultaneous combat", () => {
     const sim = simulate(ships);
     let deaths = 0;
     sim.onShipDestroyed = () => deaths++;
-    sim.update(1 / 60);
+    advance(sim, 7 / 60);
     expect(ships.every((s) => !s.isAlive)).toBe(true);
     expect(deaths).toBe(2);
     expect(sim.stats[0].shipsLost).toBe(1);

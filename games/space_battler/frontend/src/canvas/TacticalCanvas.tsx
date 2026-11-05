@@ -6,7 +6,7 @@ import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
 import type { ClientCombatSimulation } from "../engine/simulation";
 import type { ShipState } from "../types/combat";
 import { VisualEffectsManager } from "./effects";
-import { renderProjectile } from "./projectileRenderer";
+import { renderBeam, renderProjectile } from "./projectileRenderer";
 import { renderShip } from "./shipRenderer";
 
 interface TacticalCanvasProps {
@@ -57,8 +57,8 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
 
   useEffect(() => {
     // Keep sound and visual effects on the same combat events.
-    sim.onBeamFire = (from, to, color, width, ownerTeam) => {
-      effectsRef.current.addBeam(from, to, color, width, ownerTeam, 0.16);
+    sim.onBeamFire = (from, to, color, width, ownerTeam, channeled) => {
+      if (!channeled) effectsRef.current.addBeam(from, to, color, width, ownerTeam, 0.16);
       spaceAudio.playWeapon("beam_laser");
     };
     sim.onFlakBurst = (pos, radius, ownerTeam) => {
@@ -97,6 +97,7 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
       if (speed > 0) {
         sim.update(dt * speed);
         effectsRef.current.update(dt * speed, sim.ships, sim.projectiles);
+        effectsRef.current.syncBeams(sim.activeBeams);
       }
 
       const targetShip =
@@ -128,46 +129,7 @@ export function TacticalCanvas({ sim, speed, selectedShipId, onSelectShip }: Tac
 
           // Draw Active Beams
           for (const beam of effectsRef.current.beams) {
-            ctx.save();
-            const progress = 1 - beam.remainingDuration / beam.maxDuration;
-            const pulse = beam.ownerTeam === 0 ? 1 : 0.8 + 0.2 * Math.sin(progress * Math.PI * 4);
-            ctx.globalAlpha = (1 - progress) * pulse;
-            ctx.strokeStyle = beam.ownerTeam === 0 ? "#0284c7" : "#991b1b";
-            ctx.shadowColor = ctx.strokeStyle;
-            ctx.shadowBlur = beam.ownerTeam === 0 ? 8 : 12;
-            ctx.lineWidth = beam.width * (beam.ownerTeam === 0 ? 3 : 4);
-            ctx.beginPath();
-            ctx.moveTo(beam.from[0], beam.from[1]);
-            ctx.lineTo(beam.to[0], beam.to[1]);
-            ctx.stroke();
-            ctx.strokeStyle = beam.color;
-            ctx.lineWidth = beam.width;
-            ctx.beginPath();
-            ctx.moveTo(beam.from[0], beam.from[1]);
-            ctx.lineTo(beam.to[0], beam.to[1]);
-            ctx.stroke();
-            if (beam.ownerTeam === 1) {
-              const dx = beam.to[0] - beam.from[0];
-              const dy = beam.to[1] - beam.from[1];
-              const length = Math.hypot(dx, dy);
-              if (length > 0) {
-                ctx.fillStyle = "#fca5a5";
-                for (let i = 0; i < 6; i++) {
-                  const t = (i + 0.5 + progress * 2) / 8;
-                  const offset = Math.sin(i * 7 + progress * 20) * 3;
-                  ctx.beginPath();
-                  ctx.arc(
-                    beam.from[0] + dx * t - (dy / length) * offset,
-                    beam.from[1] + dy * t + (dx / length) * offset,
-                    1.2,
-                    0,
-                    Math.PI * 2,
-                  );
-                  ctx.fill();
-                }
-              }
-            }
-            ctx.restore();
+            renderBeam(ctx, beam, sim.timeElapsed);
           }
 
           // Draw expanding ship explosion cores and shockwaves.

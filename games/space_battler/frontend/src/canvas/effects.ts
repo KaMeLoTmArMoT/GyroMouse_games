@@ -1,5 +1,6 @@
 // Visual effects state management (lasers, explosions, shield impacts, engine particles)
 
+import type { ActiveBeam } from "../engine/simulation";
 import type { ProjectileState, ShipState, Vector2 } from "../types/combat";
 
 // Nozzle centers in hull-local coordinates, matching the ship detail artwork.
@@ -81,6 +82,7 @@ export interface LaserBeamEffect {
   ownerTeam: number;
   remainingDuration: number;
   maxDuration: number;
+  active?: boolean;
 }
 
 export interface ShieldImpactEffect {
@@ -163,6 +165,31 @@ export class VisualEffectsManager {
       remainingDuration: duration,
       maxDuration: duration,
     });
+  }
+
+  syncBeams(beams: ActiveBeam[]): void {
+    for (const effect of this.beams) effect.active = false;
+    for (const beam of beams) {
+      let effect = this.beams.find((entry) => entry.id === beam.id);
+      if (!effect) {
+        if (this.beams.length >= 300) this.beams.shift();
+        effect = {
+          id: beam.id,
+          from: beam.from,
+          to: beam.to,
+          color: beam.ownerTeam === 0 ? "#38bdf8" : "#ef4444",
+          width: 2.8,
+          ownerTeam: beam.ownerTeam,
+          remainingDuration: 0.16,
+          maxDuration: 0.16,
+        };
+        this.beams.push(effect);
+      }
+      effect.from = [...beam.from];
+      effect.to = [...beam.to];
+      effect.remainingDuration = effect.maxDuration;
+      effect.active = true;
+    }
   }
 
   addShieldImpact(shipId: string, pos: Vector2, shipRadius: number, impactAngle: number): void {
@@ -389,7 +416,7 @@ export class VisualEffectsManager {
   update(dt: number, ships: ShipState[] = [], projectiles: ProjectileState[] = []): void {
     // Beams decay
     this.beams = this.beams.filter((b) => {
-      b.remainingDuration -= dt;
+      if (!b.active) b.remainingDuration -= dt;
       return b.remainingDuration > 0;
     });
 

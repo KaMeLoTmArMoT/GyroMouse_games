@@ -1,12 +1,14 @@
 # Space Battler — Tactical Roadmap & Feature Backlog
 
 Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 105 Vitest + 24 Pytest tests passing)
+Status: Grand Scale Production Baseline Active (All 117 Vitest + 24 Pytest tests passing)
 
 ---
 
 ## 1. Recently Completed & Calibrated Systems
 
+- **Single Source of Truth (`shipProfiles.ts`)**: Unified canonical hull/weapon profiles (`HULL_PROFILES`), eliminating magic number duplication across fleet builder, UI catalog, and drift test suites.
+- **Sustained Channeled Beam Lasers (B.3)**: 1.2s continuous beam channel with 12 discrete 0.1s damage ticks, target tracking, early cutoff, shimmering impact flares, and calibrated DPS.
 - **Capital Standoff Envelopes & Cruiser Drift Fix (B.9)**: Dynamic weapon-derived standoffs ($1500\text{u}$ / $1100\text{u}$ / $750\text{u}$); cruisers fly bow-first during approach with lateral drift clamped, broadside-weaving only in firing range.
 - **4-Layer Anti-Drift Architecture (`bench/drift.ts`, B.10)**: Layer A isolated sentinels (DPS $\pm 3\%$, 10-missile flak, shield recharge) + Layer B 16-scenario 4-seed panel (duration $\pm 10\%$, HP $\pm 5\text{ pp}$); verified in $5.7\text{s}$.
 - **Tactical Group Spatial Spawns (B.11)**: Wings Alpha, Bravo, Charlie, Delta, Echo spawn at distinct spatial anchors with inter-group distance > intra-group spacing.
@@ -21,8 +23,6 @@ Status: Grand Scale Production Baseline Active (All 105 Vitest + 24 Pytest tests
 
 ## 2. Priority Feature Backlog (Next Sprints)
 
-- **B.3: Sustained Beam Lasers**: Continuous channeled laser beam over 1.5–2.5s dealing high-frequency tick damage with shimmering shields.
-- **B.4: Directional Shield Quadrants**: 4-quadrant shields (Front, Aft, Port, Starboard) rewarding tactical flanking and broadside weaving.
 - **B.5: Weapon Slot Sizing & Dedicated Rear Defense**: Architectural mounts (Huge Spinal, Medium Broadsides, dedicated rear Anti-Fighter point defense).
 - **B.6: 300s Stalemate Horizon & Tactical Fleet Retreat**: Hard 300s draw limit with persistent fleet health snapshots for campaign retreat/rematch.
 - **B.7: Expanded 8-Hull Ship Roster**: Missile Frigate, Heavy Dreadnought, Plasma Corvette, Shield Tender, Artillery Monitor, Drone Carrier, Torpedo Bomber, Rocket Interceptor.

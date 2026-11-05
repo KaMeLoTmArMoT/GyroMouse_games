@@ -1,6 +1,39 @@
 // Projectile and munitions renderer (plasma bolts, railgun kinetics, torpedoes) with high visibility
 
 import type { ProjectileState } from "../types/combat";
+import type { LaserBeamEffect } from "./effects";
+
+export function renderBeam(
+  ctx: CanvasRenderingContext2D,
+  beam: LaserBeamEffect,
+  time: number,
+): void {
+  const alpha = beam.remainingDuration / beam.maxDuration;
+  const shimmer = 0.85 + 0.15 * Math.sin(time * 24);
+  ctx.save();
+  ctx.globalAlpha = alpha * shimmer;
+  ctx.strokeStyle = beam.ownerTeam === 0 ? "#0284c7" : "#991b1b";
+  ctx.shadowColor = beam.color;
+  ctx.shadowBlur = 12;
+  ctx.lineWidth = beam.width * 4;
+  ctx.beginPath();
+  ctx.moveTo(...beam.from);
+  ctx.lineTo(...beam.to);
+  ctx.stroke();
+  ctx.strokeStyle = beam.color;
+  ctx.lineWidth = beam.width;
+  ctx.stroke();
+  const radius = 8 + 2 * Math.sin(time * 31);
+  const glow = ctx.createRadialGradient(beam.to[0], beam.to[1], 0, beam.to[0], beam.to[1], radius);
+  glow.addColorStop(0, "#ffffff");
+  glow.addColorStop(0.35, beam.color);
+  glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(beam.to[0], beam.to[1], radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
 
 export function renderProjectile(ctx: CanvasRenderingContext2D, p: ProjectileState): void {
   const [x, y] = p.pos;

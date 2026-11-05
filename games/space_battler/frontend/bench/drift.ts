@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { ARENA_HARD_PULL_RADIUS } from "../src/engine/flightControl";
 import { SCENARIOS, type ScenarioResult } from "../src/engine/scenarios";
+import { HULL_PROFILES } from "../src/engine/shipProfiles";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass, ProjectileState, ShipState, WeaponDefinition } from "../src/types/combat";
 import { runScenario } from "./run";
@@ -11,7 +12,7 @@ import { runScenario } from "./run";
 const STEP = 1 / 60;
 export const DRIFT_SEEDS = [1, 7, 29, 42] as const;
 const BASELINE = new URL("./results/golden_baseline.json", import.meta.url);
-const HULLS: HullClass[] = ["battleship", "cruiser", "corvette", "strike_craft"];
+const HULLS = Object.keys(HULL_PROFILES) as HullClass[];
 
 export interface FixtureMetrics {
   gunDps: Record<string, number>;
@@ -69,7 +70,7 @@ function missile(
     ownerId: "salvo",
     ownerTeam: 1,
     pos: [x, y],
-    velocity: [-320, 0],
+    velocity: [-weapon.projectileSpeed, 0],
     lifetime: 4,
     hp: 25,
     targetId: target.id,
@@ -85,7 +86,7 @@ export function runLayerA(): FixtureMetrics {
     shieldRegen: {},
   };
   for (const hull of HULLS.filter((hull) => hull !== "corvette")) {
-    const equipped = fixtureShip(hull).turrets;
+    const equipped = HULL_PROFILES[hull].turrets;
     for (let index = 0; index < equipped.length; index++) {
       const shooter = fixtureShip(hull);
       // Gun fixtures bypass fighter mission-phase gating while keeping the equipped weapon intact.
@@ -103,7 +104,8 @@ export function runLayerA(): FixtureMetrics {
       const before = target.hullCurrent;
       advance(sim, 120);
       metrics.gunDps[mount.id] = (before - target.hullCurrent) / 120;
-      const expected = (mount.weapon.damage * mount.weapon.hullMultiplier) / mount.weapon.cooldown;
+      const weapon = equipped[index].weapon;
+      const expected = (weapon.damage * weapon.hullMultiplier) / weapon.cooldown;
       if (Math.abs(metrics.gunDps[mount.id] - expected) > expected * 0.03)
         throw new Error(
           `Layer A ${mount.id}: sustained DPS differs from the equipped profile by more than 3%`,
@@ -111,7 +113,7 @@ export function runLayerA(): FixtureMetrics {
     }
   }
 
-  const torpedo = fixtureShip("cruiser").turrets[1].weapon;
+  const torpedo = HULL_PROFILES.cruiser.turrets[1].weapon;
   const defender = fixtureShip("corvette");
   defender.shieldCurrent = defender.shieldMax = 1e6;
   const flakSim = simulation([defender]);
@@ -124,12 +126,7 @@ export function runLayerA(): FixtureMetrics {
   for (const hull of HULLS) {
     const target = fixtureShip(hull);
     target.turrets = [];
-    const profile = buildFleetFromSlots(
-      [{ id: "shield", hullClass: hull, groupId: 1 }],
-      0,
-      0,
-      0,
-    )[0];
+    const profile = HULL_PROFILES[hull];
     target.shieldRegen = profile.shieldRegen;
     const sim = simulation([target]);
     const hit = missile(torpedo, `shield_${hull}`, target.size + 1, 0, target);
