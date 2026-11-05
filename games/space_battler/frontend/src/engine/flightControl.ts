@@ -7,11 +7,22 @@ import type {
 } from "../types/combat";
 import {
   damagedTargetPriority,
-  fullCircle,
   interceptTime,
   mountPosition,
   squadFocusPriority,
 } from "./fireControl";
+import {
+  BroadsideWeaveBlock,
+  calculateSeparation,
+  clampLateralVelocity,
+  formationVelocity,
+  HitAndRunSkirmishBlock,
+  LowHealthRetreatBlock,
+  limitVelocity,
+  OrdnanceAvoidanceBlock,
+  StandoffApproachBlock,
+  salvoReload,
+} from "./flightBehaviors";
 import {
   clamp,
   normalizeAngle,
@@ -23,6 +34,10 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { type CapitalFlightDoctrine, SHIP_DOCTRINES } from "./shipDoctrines";
+
+// Keep simulation callers on the existing API while sharing the underlying behavior blocks.
+export { calculateSeparation, calculateSeparation as separation, limitVelocity };
 
 export let ARENA_RADIUS = 1900;
 export let ARENA_HARD_PULL_RADIUS = 2200;
@@ -44,36 +59,6 @@ export function arenaVelocity(ship: ShipState, desired: Vector2): Vector2 {
     vecSub(desired, vecScale(outward, blend * (Math.max(0, radial) + ship.maxSpeed))),
     ship.maxSpeed,
   );
-}
-
-export function limitVelocity(velocity: Vector2, max: number): Vector2 {
-  const speed = vecDistance([0, 0], velocity);
-  return speed > max ? vecScale(velocity, max / speed) : velocity;
-}
-
-export function separation(ship: ShipState, ships: ShipState[]): Vector2 {
-  let result: Vector2 = [0, 0];
-  for (const peer of ships) {
-    if (!peer.isAlive || peer.id === ship.id) continue;
-    const distance = vecDistance(ship.pos, peer.pos);
-    const away: Vector2 =
-      distance > 1e-6
-        ? vecScale(vecSub(ship.pos, peer.pos), 1 / distance)
-        : [0, ship.id < peer.id ? -1 : 1];
-    const closing = Math.max(0, -vecDot(vecSub(ship.velocity, peer.velocity), away));
-    const wingmate =
-      ship.hullClass === "strike_craft" &&
-      peer.hullClass === "strike_craft" &&
-      ship.team === peer.team;
-    const clearance =
-      ship.size * (ship.shieldCurrent > 0 ? 1.4 : 1) +
-      peer.size * (peer.shieldCurrent > 0 ? 1.4 : 1) +
-      (wingmate ? 8 : 30);
-    const margin = clearance + (closing * closing) / 440 + closing * 0.15;
-    if (distance < margin)
-      result = vecAdd(result, vecScale(away, ship.maxSpeed * 2 * (1 - distance / margin)));
-  }
-  return result;
 }
 
 export const FIGHTER_DISPERSAL_RADIUS = 200;
@@ -123,17 +108,18 @@ export function orbitVelocity(ship: ShipState, target: ShipState, radius = 300):
       ? vecScale(vecSub(target.pos, ship.pos), 1 / distance)
       : [ship.id < target.id ? 1 : -1, 0];
   const error = distance - radius;
-  const radial = clamp(
-    0.7 * Math.sign(error) * Math.max(Math.abs(error) - 25, 0),
-    -ship.maxSpeed * 0.65,
-    ship.maxSpeed * 0.7,
-  );
   const tangent = ship.maxSpeed * 0.55 * clamp(1 - Math.abs(error) / radius, 0.25, 1);
+  const approach = StandoffApproachBlock(ship, target, radius, tangent, {
+    radialGain: 0.7,
+    deadband: 25,
+    reverseSpeedRatio: 0.65,
+    forwardSpeedRatio: 0.7,
+    standoffThreshold: radius,
+    aimBearing: Math.atan2(n[1], n[0]),
+    direction: n,
+  });
   // Limited feed-forward prevents mutually chasing velocities from saturating both ships.
-  return vecAdd(
-    vecScale(target.velocity, 0.35),
-    vecAdd(vecScale(n, radial), vecScale([-n[1], n[0]], tangent)),
-  );
+  return vecAdd(vecScale(target.velocity, 0.35), approach.velocity);
 }
 
 export function escortVelocity(
@@ -184,10 +170,14 @@ export function escortVelocity(
       anchor.heading,
     ),
   );
-  const stationVelocity = vecAdd(anchor.velocity, vecScale(vecSub(station, ship.pos), 0.6));
+  const doctrine = SHIP_DOCTRINES[ship.hullClass].flight;
+  if (doctrine.kind === "escort") {
+    const retreat = LowHealthRetreatBlock(ship, anchor, station, doctrine.retreat);
+    if (retreat) return retreat;
+  }
+  const stationVelocity = formationVelocity(ship, anchor, station);
   if (
     !target ||
-    shieldRatio <= 0.4 ||
     vecDistance(target.pos, anchor.pos) > 600 + sortie * 600 ||
     vecDistance(target.pos, ship.pos) > 600 ||
     vecDistance(ship.pos, anchor.pos) > tether
@@ -196,125 +186,103 @@ export function escortVelocity(
   return vecAdd(vecScale(stationVelocity, 0.65), vecScale(orbitVelocity(ship, target), 0.35));
 }
 
-// Instant beams can fire again while a capital turns, so include a buffer beyond both arc and range.
-function beamEscape(ship: ShipState, enemy: ShipState, turret: TurretMountState): Vector2 {
-  const muzzle = mountPosition(enemy, turret);
-  const relative = vecSub(ship.pos, muzzle);
-  const future = vecAdd(relative, vecScale(vecSub(ship.velocity, enemy.velocity), 0.7));
-  const range = turret.weapon.range + ship.size * 1.4 + 80;
-  const [minArc, maxArc] = turret.baseArc;
-  const center = (minArc + maxArc) / 2;
-  const halfArc = (maxArc - minArc) / 2;
-  const turnBuffer = 0.12 + Math.min(0.3, enemy.turnRate * 0.4);
-  let best: Vector2 = [0, 0];
-  let bestDepth = -Infinity;
-  for (const point of [relative, future]) {
-    const distance = vecDistance([0, 0], point);
-    if (distance > range) continue;
-    const bearing = Math.atan2(point[1], point[0]);
-    const angle = normalizeAngle(bearing - enemy.heading - center);
-    const margin = turnBuffer + Math.asin(clamp((ship.size * 1.4) / Math.max(1, distance), 0, 1));
-    const angularDepth = halfArc + margin - Math.abs(angle);
-    if (!fullCircle(turret) && angularDepth < 0) continue;
-    const radialDepth = range - distance;
-    const depth = fullCircle(turret) ? radialDepth : Math.min(radialDepth, distance * angularDepth);
-    if (depth <= bestDepth) continue;
-    bestDepth = depth;
-    const outward: Vector2 = distance > 1e-6 ? vecScale(point, 1 / distance) : [1, 0];
-    const side = Math.sign(angle) || ((Number(ship.id.split("_").at(-1)) || 0) % 2 ? -1 : 1);
-    const direction: Vector2 =
-      fullCircle(turret) || radialDepth <= distance * angularDepth
-        ? outward
-        : [-outward[1] * side, outward[0] * side];
-    best = vecScale(direction, ship.maxSpeed * 0.25);
-  }
-  return best;
-}
-
-// Predict the finite gimbal corridor before firing, and also avoid shells already in flight.
 export function spinalEscape(
   ship: ShipState,
   ships: ShipState[],
   projectiles: ProjectileState[],
   time: number,
 ): Vector2 {
-  let avoidance: Vector2 = [0, 0];
-  let beamAvoidance: Vector2 = [0, 0];
-  let closestBeam = Infinity;
-  for (const enemy of ships) {
-    if (!enemy.isAlive || enemy.team === ship.team) continue;
-    for (const turret of enemy.turrets) {
-      if (
-        (ship.hullClass === "corvette" || ship.hullClass === "strike_craft") &&
-        (enemy.hullClass === "cruiser" || enemy.hullClass === "battleship") &&
-        turret.weapon.weaponType === "beam_laser"
-      ) {
-        const beam = beamEscape(ship, enemy, turret);
-        const distance = vecDistance(ship.pos, mountPosition(enemy, turret));
-        if (vecDot(beam, beam) > 0 && distance < closestBeam) {
-          closestBeam = distance;
-          beamAvoidance = beam;
-        }
-      }
-      if (!turret.isSpinalGimbal) continue;
-      const muzzle = mountPosition(enemy, turret);
-      const forward: Vector2 = [Math.cos(enemy.heading), Math.sin(enemy.heading)];
-      const lateral: Vector2 = [-forward[1], forward[0]];
-      const relative = vecSub(ship.pos, muzzle);
-      const x = vecDot(relative, forward);
-      const arrival =
-        Math.max(0, turret.cooldownTimer) + Math.max(0, x) / turret.weapon.projectileSpeed;
-      if (arrival > 1.5) continue;
-      const predicted = vecAdd(
-        relative,
-        vecScale(vecSub(ship.velocity, enemy.velocity), clamp(arrival, 0.2, 1.5)),
-      );
-      const futureX = vecDot(predicted, forward);
-      const y = vecDot(relative, lateral);
-      const futureY = vecDot(predicted, lateral);
-      const lateralDistance = y * futureY < 0 ? 0 : Math.min(Math.abs(y), Math.abs(futureY));
-      const width =
-        ship.size * 1.4 +
-        35 +
-        Math.max(x, futureX) * Math.tan(Math.max(...turret.baseArc.map(Math.abs)) + 0.05);
-      if (
-        Math.max(x, futureX) <= 0 ||
-        Math.min(x, futureX) > turret.weapon.range + ship.size ||
-        lateralDistance > width + 50
+  return OrdnanceAvoidanceBlock(ship, projectiles, ships, time);
+}
+
+function primaryGun(ship: ShipState, mount: "spinal" | "missile"): TurretMountState | undefined {
+  return ship.turrets.find((t) =>
+    mount === "spinal" ? t.isSpinalGimbal : t.weapon.weaponType === "missile",
+  );
+}
+
+function interceptBearing(ship: ShipState, target: ShipState, gun?: TurretMountState): number {
+  let aim = vecSub(target.pos, ship.pos);
+  if (gun) {
+    const intercept = interceptTime(
+      vecSub(target.pos, mountPosition(ship, gun)),
+      target.velocity,
+      gun.weapon.projectileSpeed,
+    );
+    if (intercept !== null)
+      aim = vecSub(vecAdd(target.pos, vecScale(target.velocity, intercept)), ship.pos);
+  }
+  return Math.atan2(aim[1], aim[0]);
+}
+
+function updateBroadsideManeuver(
+  ship: ShipState,
+  target: ShipState,
+  gun: TurretMountState | undefined,
+  aimBearing: number,
+  doctrine: CapitalFlightDoctrine,
+): void {
+  const newShot = gun?.lastFiredTime !== undefined && gun.lastFiredTime !== ship.lastManeuverShot;
+  if (ship.maneuverTargetId !== target.id) {
+    ship.maneuverTargetId = target.id;
+    ship.capitalManeuver = "bow_acquire";
+    const slot = Number(ship.id.split("_").at(-1)) || 0;
+    ship.broadsideSide ??= slot % 2 === 0 ? 1 : -1;
+    ship.lastManeuverShot = gun?.lastFiredTime;
+  }
+  if (newShot) {
+    ship.lastManeuverShot = gun?.lastFiredTime;
+    ship.capitalManeuver = "broadside_hold";
+    if (doctrine.broadside.alternateAfterShot) ship.broadsideSide = -(ship.broadsideSide ?? 1);
+  }
+  const returnTime =
+    Math.abs(normalizeAngle(aimBearing - ship.heading)) / Math.max(ship.turnRate, 0.01);
+  const delta = vecSub(target.pos, ship.pos);
+  const distance = vecDistance(ship.pos, target.pos);
+  const relative = vecSub(target.velocity, ship.velocity);
+  const bearingRate =
+    Math.abs(delta[0] * relative[1] - delta[1] * relative[0]) / Math.max(1, distance * distance);
+  if (
+    ship.capitalManeuver === "broadside_hold" &&
+    (!gun || gun.cooldownTimer <= returnTime + 0.25 + bearingRate * 2)
+  )
+    ship.capitalManeuver = "bow_reacquire";
+}
+
+function standoffDistance(
+  ship: ShipState,
+  gun: TurretMountState | undefined,
+  order: GroupOrder,
+  doctrine: CapitalFlightDoctrine,
+): number {
+  const offensiveMounts = ship.turrets.filter((t) => t.weapon.weaponType !== "point_defense");
+  const primaryRange =
+    gun?.weapon.range ?? Math.max(0, ...offensiveMounts.map((t) => t.weapon.range));
+  const secondaryRange =
+    Math.max(0, ...offensiveMounts.filter((t) => t !== gun).map((t) => t.weapon.range)) ||
+    primaryRange;
+  const nominal =
+    order.stance === "max_range"
+      ? Math.min(primaryRange * 0.85, 1500)
+      : order.stance === "brawl"
+        ? doctrine.brawlDistance
+        : Math.min(secondaryRange * 0.9, doctrine.optimalDistanceLimit);
+  const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
+  return (
+    nominal + (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0)
+  );
+}
+
+function fleetBearing(ship: ShipState, target: ShipState, ships: ShipState[]): number {
+  const enemies = ships.filter((peer) => peer.isAlive && peer.team !== ship.team);
+  const enemyCenter = enemies.length
+    ? vecScale(
+        enemies.reduce<Vector2>((sum, peer) => vecAdd(sum, peer.pos), [0, 0]),
+        1 / enemies.length,
       )
-        continue;
-      if ((ship.escapeUntil ?? 0) <= time) {
-        ship.escapeSide =
-          Math.abs(y) > 5
-            ? Math.sign(y)
-            : (Number(ship.id.split("_").at(-1)) || 0) % 2 === 0
-              ? 1
-              : -1;
-        ship.escapeUntil = time + 1;
-      }
-      avoidance = vecAdd(avoidance, vecScale(lateral, (ship.escapeSide ?? 1) * ship.maxSpeed * 2));
-    }
-  }
-  for (const p of projectiles) {
-    if (
-      p.ownerTeam === ship.team ||
-      (p.weaponType !== "railgun" &&
-        !(ship.hullClass === "strike_craft" && p.weaponType === "missile")) ||
-      p.hp <= 0 ||
-      p.lifetime <= 0
-    )
-      continue;
-    const relative = vecSub(ship.pos, p.pos);
-    const v = vecSub(ship.velocity, p.velocity);
-    const t = clamp(-vecDot(relative, v) / Math.max(1, vecDot(v, v)), 0, Math.min(1.5, p.lifetime));
-    const closest = vecAdd(relative, vecScale(v, t));
-    if (vecDistance([0, 0], closest) > ship.size + 45) continue;
-    const direction = vecNormalize(p.velocity);
-    const lateral: Vector2 = [-direction[1], direction[0]];
-    const side = Math.sign(vecDot(relative, lateral)) || ship.escapeSide || 1;
-    avoidance = vecAdd(avoidance, vecScale(lateral, side * ship.maxSpeed * 2));
-  }
-  return vecAdd(avoidance, beamAvoidance);
+    : target.pos;
+  const delta = vecSub(enemyCenter, ship.pos);
+  return Math.atan2(delta[1], delta[0]);
 }
 
 export function capitalIntent(
@@ -325,182 +293,85 @@ export function capitalIntent(
   time = 0,
   projectiles: ProjectileState[] = [],
 ): { heading: number; velocity: Vector2 } {
-  const dreadnought = ship.hullClass === "dreadnought";
-  const frigate = ship.hullClass === "missile_frigate";
-  const battleship = ship.hullClass === "battleship" || dreadnought;
-  const slot = Number(ship.id.split("_").at(-1)) || 0;
-  const gun = ship.turrets.find((t) =>
-    battleship ? t.isSpinalGimbal : t.weapon.weaponType === "missile",
-  );
-  const delta = vecSub(target.pos, ship.pos);
-  const distance = vecDistance(ship.pos, target.pos);
-  const n = vecNormalize(delta);
-  const bearing = Math.atan2(delta[1], delta[0]);
-  let aimBearing = bearing;
-  if (gun) {
-    const intercept = interceptTime(
-      vecSub(target.pos, mountPosition(ship, gun)),
-      target.velocity,
-      gun.weapon.projectileSpeed,
-    );
-    if (intercept !== null) {
-      const aim = vecSub(vecAdd(target.pos, vecScale(target.velocity, intercept)), ship.pos);
-      aimBearing = Math.atan2(aim[1], aim[0]);
-    }
-  }
-  if (frigate) {
+  const flight = SHIP_DOCTRINES[ship.hullClass].flight;
+  // Non-capital callers historically used the cruiser movement envelope.
+  const doctrine =
+    flight.kind === "capital" || flight.kind === "skirmish"
+      ? flight
+      : (SHIP_DOCTRINES.cruiser.flight as CapitalFlightDoctrine);
+  const gun = primaryGun(ship, doctrine.primaryMount);
+  const aimBearing = interceptBearing(ship, target, gun);
+  if (doctrine.kind === "skirmish") {
     const tubes = ship.turrets.filter((t) => t.weapon.weaponType === "missile");
-    const reload = tubes.length ? Math.min(...tubes.map((t) => t.cooldownTimer)) : 0;
-    const lastShot = Math.max(...tubes.map((t) => t.lastFiredTime ?? -Infinity));
-    const salvoComplete =
-      reload > 0 &&
-      tubes.every((t) => (t.lastFiredTime ?? -Infinity) > (ship.lastManeuverShot ?? -Infinity));
-    ship.broadsideSide ??= slot % 2 === 0 ? 1 : -1;
-    ship.maneuverTargetId = target.id;
-    if (salvoComplete || reload > 2.5) {
-      ship.capitalManeuver = "broadside_hold";
-      ship.lastManeuverShot = lastShot;
-    }
-    if (ship.capitalManeuver === "broadside_hold" && reload < 1)
-      ship.capitalManeuver = "bow_reacquire";
-    ship.capitalManeuver ??= "bow_acquire";
-    const side = ship.broadsideSide;
-    const retreat = ship.capitalManeuver === "broadside_hold";
-    const heading = normalizeAngle(retreat ? bearing + side * ((150 * Math.PI) / 180) : aimBearing);
-    // Burn obliquely during reload; keep drifting laterally even while delivering a salvo.
-    const velocity = retreat
-      ? vecScale([Math.cos(heading), Math.sin(heading)], ship.maxSpeed)
-      : vecAdd(
-          vecScale(n, clamp((distance - 1200) * 0.7, -ship.maxSpeed * 0.5, ship.maxSpeed)),
-          vecScale([-n[1], n[0]], side * ship.maxSpeed * 0.3),
-        );
+    const salvo = salvoReload(ship, tubes);
+    const intent = HitAndRunSkirmishBlock(
+      ship,
+      target,
+      salvo.reloadRatio,
+      doctrine.breakoffAngle,
+      ship.maxSpeed * doctrine.breakoffSpeedRatio,
+      { doctrine, salvo, aimBearing },
+    );
     return {
-      heading,
-      velocity: limitVelocity(vecAdd(velocity, separation(ship, ships)), ship.maxSpeed),
+      heading: intent.heading,
+      velocity: limitVelocity(
+        vecAdd(intent.velocity, calculateSeparation(ship, ships)),
+        ship.maxSpeed,
+      ),
     };
   }
-  const newShot = gun?.lastFiredTime !== undefined && gun.lastFiredTime !== ship.lastManeuverShot;
-  if (ship.maneuverTargetId !== target.id) {
-    ship.maneuverTargetId = target.id;
-    ship.capitalManeuver = "bow_acquire";
-    ship.broadsideSide ??= slot % 2 === 0 ? 1 : -1;
-    ship.lastManeuverShot = gun?.lastFiredTime;
-  }
-  if (newShot) {
-    ship.lastManeuverShot = gun?.lastFiredTime;
-    ship.capitalManeuver = "broadside_hold";
-    if (battleship) ship.broadsideSide = -(ship.broadsideSide ?? 1);
-  }
-  const returnTime =
-    Math.abs(normalizeAngle(aimBearing - ship.heading)) / Math.max(ship.turnRate, 0.01);
-  const relative = vecSub(target.velocity, ship.velocity);
-  const bearingRate =
-    Math.abs(delta[0] * relative[1] - delta[1] * relative[0]) / Math.max(1, distance * distance);
-  if (
-    ship.capitalManeuver === "broadside_hold" &&
-    (!gun || gun.cooldownTimer <= returnTime + 0.25 + bearingRate * 2)
-  )
-    ship.capitalManeuver = "bow_reacquire";
+  updateBroadsideManeuver(ship, target, gun, aimBearing, doctrine);
   const side = ship.broadsideSide ?? 1;
-  const angle = ((dreadnought ? 90 : battleship ? 48 : 40) * Math.PI) / 180;
-  const offensiveMounts = ship.turrets.filter((t) => t.weapon.weaponType !== "point_defense");
-  const primaryRange =
-    gun?.weapon.range ?? Math.max(0, ...offensiveMounts.map((t) => t.weapon.range));
-  const secondaryRange =
-    Math.max(0, ...offensiveMounts.filter((t) => t !== gun).map((t) => t.weapon.range)) ||
-    primaryRange;
-  const nominal = frigate
-    ? 1150
-    : order.stance === "max_range"
-      ? Math.min(primaryRange * 0.85, 1500)
-      : order.stance === "brawl"
-        ? battleship
-          ? 800
-          : 750
-        : Math.min(secondaryRange * 0.9, battleship ? 1025 : 1150);
-  const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
-  const radius =
-    nominal +
-    (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0);
-  const error = distance - radius;
-  const enemies = ships.filter((peer) => peer.isAlive && peer.team !== ship.team);
-  const closing = frigate
-    ? error > 200
-    : !dreadnought && ship.hullClass === "battleship"
-      ? error > 200
-      : distance > 1050;
-  const weaving =
-    !closing && (dreadnought || (!frigate && ship.capitalManeuver === "broadside_hold"));
-  const enemyCenter = enemies.length
-    ? vecScale(
-        enemies.reduce<Vector2>((sum, peer) => vecAdd(sum, peer.pos), [0, 0]),
-        1 / enemies.length,
-      )
-    : target.pos;
-  const fleetDelta = vecSub(enemyCenter, ship.pos);
-  const fleetBearing = Math.atan2(fleetDelta[1], fleetDelta[0]);
-  const heading = normalizeAngle(
-    weaving
-      ? dreadnought
-        ? fleetBearing - side * angle
-        : aimBearing - side * angle
-      : closing
-        ? bearing
-        : aimBearing,
-  );
-  let radial = clamp(
-    0.35 * Math.sign(error) * Math.max(0, Math.abs(error) - 25),
-    -ship.maxSpeed * 0.65,
-    ship.maxSpeed * 0.85,
-  );
+  const radius = standoffDistance(ship, gun, order, doctrine);
+  const threshold = doctrine.standoffThreshold;
+  const standoffThreshold =
+    "distance" in threshold ? threshold.distance : radius + threshold.margin;
+  const closing = vecDistance(ship.pos, target.pos) > standoffThreshold;
   const boundary = clamp((vecDistance([0, 0], ship.pos) - (ARENA_RADIUS - 200)) / 200, 0, 1);
-  if (!battleship && !frigate && radial < 0) radial *= 1 - boundary;
   const line =
-    battleship &&
+    doctrine.formationWeave &&
     !closing &&
-    ships.some(
-      (peer) =>
+    ships.some((peer) => {
+      const peerDoctrine = SHIP_DOCTRINES[peer.hullClass].flight;
+      return (
         peer.isAlive &&
         peer.team === ship.team &&
         peer.id !== ship.id &&
-        (peer.hullClass === "battleship" || peer.hullClass === "dreadnought"),
-    );
+        peerDoctrine.kind === "capital" &&
+        peerDoctrine.formationWeave
+      );
+    });
+  const slot = Number(ship.id.split("_").at(-1)) || 0;
   const phase = time * 0.35 + slot * 2.1;
-  if (line) radial += ship.maxSpeed * 0.2 * Math.sin(phase);
-  const tangential =
-    (weaving ? ship.maxSpeed * 0.3 * side : 0) +
-    (line ? ship.maxSpeed * 0.25 * Math.cos(phase) : boundary * ship.maxSpeed * 0.6 * side);
-  let velocity = vecAdd(vecScale(n, radial), vecScale([-n[1], n[0]], tangential));
-  velocity = vecAdd(velocity, separation(ship, ships));
-  const forward: Vector2 = [Math.cos(ship.heading), Math.sin(ship.heading)];
-  const right: Vector2 = [-forward[1], forward[0]];
-  velocity = vecAdd(
-    vecScale(forward, vecDot(velocity, forward)),
-    vecScale(right, clamp(vecDot(velocity, right), -ship.maxSpeed * 0.35, ship.maxSpeed * 0.35)),
+  const lateralBias = line
+    ? ship.maxSpeed * 0.25 * Math.cos(phase)
+    : boundary * ship.maxSpeed * 0.6 * side;
+  const approach = StandoffApproachBlock(ship, target, radius, lateralBias, {
+    ...doctrine.approach,
+    standoffThreshold,
+    aimBearing,
+    reverseScale: doctrine.boundaryRetreatDamping ? 1 - boundary : 1,
+    radialBias: line ? ship.maxSpeed * 0.2 * Math.sin(phase) : 0,
+  });
+  const weaving =
+    !approach.closing &&
+    (doctrine.broadside.continuous || ship.capitalManeuver === "broadside_hold");
+  const intent = weaving
+    ? BroadsideWeaveBlock(ship, target, doctrine.broadside.arcOffset, side, standoffThreshold, {
+        bearing:
+          doctrine.broadside.bearing === "fleet" ? fleetBearing(ship, target, ships) : aimBearing,
+        radialSpeed: approach.radialSpeed,
+        lateralBias,
+      })
+    : approach;
+  let velocity = clampLateralVelocity(
+    ship,
+    vecAdd(intent.velocity, calculateSeparation(ship, ships)),
+    doctrine.lateralSpeedRatio,
   );
-  // Slow flagships bank early across a torpedo's course rather than trying to outrun it.
-  if (battleship) {
-    for (const missile of projectiles) {
-      if (
-        missile.ownerTeam === ship.team ||
-        missile.weaponType !== "missile" ||
-        missile.hp <= 0 ||
-        missile.lifetime <= 0
-      )
-        continue;
-      const relative = vecSub(ship.pos, missile.pos);
-      const closing = vecSub(ship.velocity, missile.velocity);
-      const arrival = -vecDot(relative, closing) / Math.max(1, vecDot(closing, closing));
-      if (arrival <= 0 || arrival > Math.min(1.5, missile.lifetime)) continue;
-      const closest = vecAdd(relative, vecScale(closing, arrival));
-      if (vecDistance([0, 0], closest) > ship.size + 25) continue;
-      const direction = vecNormalize(missile.velocity);
-      const lateral: Vector2 = [-direction[1], direction[0]];
-      const escapeSign = Math.sign(vecDot(relative, lateral)) || side;
-      velocity = vecAdd(velocity, vecScale(lateral, escapeSign * ship.maxSpeed * 2));
-    }
-  }
-  return { heading, velocity: limitVelocity(velocity, ship.maxSpeed) };
+  if (doctrine.avoidTorpedoes)
+    velocity = OrdnanceAvoidanceBlock(ship, projectiles, ships, time, "torpedo", velocity);
+  return { heading: intent.heading, velocity: limitVelocity(velocity, ship.maxSpeed) };
 }
 
 export function dogfightTarget(

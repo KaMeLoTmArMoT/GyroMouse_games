@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { mountPosition } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
-import { capitalIntent, spinalEscape } from "../src/engine/flightControl";
+import { capitalIntent, escortVelocity, spinalEscape } from "../src/engine/flightControl";
 import { normalizeAngle, vecDistance, vecDot } from "../src/engine/math2d";
+import { SHIP_DOCTRINES } from "../src/engine/shipDoctrines";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { EngagementStance, HullClass, Vector2 } from "../src/types/combat";
 
@@ -243,5 +244,60 @@ describe("missile frigate hit-and-run", () => {
     expect(openedDistance).toBeGreaterThan(100);
     expect(fastestRetreat).toBeGreaterThan(99);
     expect(Math.abs(frigate.pos[1])).toBeGreaterThan(100);
+  });
+});
+
+describe("doctrine-driven behavior composition", () => {
+  it("lets a cruiser reuse continuous fleet-facing broadside behavior through doctrine", () => {
+    const cruiser = ship("cruiser");
+    const target = ship("battleship", 1);
+    const otherEnemy = ship("cruiser", 1);
+    target.pos = [900, 0];
+    otherEnemy.pos = [900, 900];
+    const ships = [cruiser, target, otherEnemy];
+    const order = { groupId: 1, priority: "nearest", stance: "optimal_range" } as const;
+    expect(capitalIntent(cruiser, target, ships, order).heading).toBeCloseTo(0);
+    const doctrine = SHIP_DOCTRINES.cruiser.flight;
+    if (doctrine.kind !== "capital") throw new Error("Missing cruiser flight doctrine");
+    const original = doctrine.broadside;
+    try {
+      doctrine.broadside = {
+        ...original,
+        continuous: true,
+        bearing: "fleet",
+        arcOffset: Math.PI / 2,
+      };
+      const intent = capitalIntent(cruiser, target, ships, order);
+      expect(intent.heading).toBeCloseTo(Math.atan2(450, 900) - Math.PI / 2);
+      expect(intent.velocity[1]).toBeGreaterThan(0);
+    } finally {
+      doctrine.broadside = original;
+    }
+  });
+
+  it("reuses escort recovery for a doctrine hull threshold while shields remain healthy", () => {
+    const corvette = ship("corvette");
+    const anchor = ship("battleship");
+    const target = ship("cruiser", 1);
+    corvette.flagshipId = anchor.id;
+    corvette.pos = [490, 245];
+    target.pos = [590, 245];
+    const ships = [corvette, anchor, target];
+    const doctrine = SHIP_DOCTRINES.corvette.flight;
+    if (doctrine.kind !== "escort") throw new Error("Missing corvette flight doctrine");
+    const original = doctrine.retreat;
+    try {
+      doctrine.retreat = { hullRatio: 0.3 };
+      corvette.hullCurrent = corvette.hullMax * 0.31;
+      expect(escortVelocity(corvette, target, ships)).not.toEqual(
+        escortVelocity(corvette, null, ships),
+      );
+      corvette.hullCurrent = corvette.hullMax * 0.3;
+      expect(escortVelocity(corvette, target, ships)).toEqual(
+        escortVelocity(corvette, null, ships),
+      );
+    } finally {
+      doctrine.retreat = original;
+    }
   });
 });
