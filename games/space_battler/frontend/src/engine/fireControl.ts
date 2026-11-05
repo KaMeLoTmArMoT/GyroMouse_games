@@ -9,6 +9,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { projectileLifetime } from "./shipProfiles";
 
 export function mountPosition(ship: ShipState, turret: TurretMountState): Vector2 {
   return vecAdd(ship.pos, rotatePoint(turret.offset, ship.heading));
@@ -94,7 +95,7 @@ export function acquireMountTarget(
     let aim = target.pos;
     if (weapon.projectileSpeed > 0) {
       const t = interceptTime(vecSub(target.pos, muzzle), target.velocity, weapon.projectileSpeed);
-      const lifetime = weapon.flak?.lifetime ?? (weapon.range / weapon.projectileSpeed) * 1.25;
+      const lifetime = projectileLifetime(weapon);
       if (t === null || t > lifetime) return;
       aim = vecAdd(target.pos, vecScale(target.velocity, t));
       if (!inMountArc(ship, turret, aim)) return;

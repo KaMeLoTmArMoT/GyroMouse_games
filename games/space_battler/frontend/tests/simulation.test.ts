@@ -617,6 +617,73 @@ describe("mount eligibility and projectile contracts", () => {
     expect(missile.velocity[0]).toBeGreaterThan(0);
   });
 
+  it.each([
+    {
+      label: "heavy torpedo",
+      fuelDuration: HULL_PROFILES.cruiser.turrets[1].weapon.fuelDuration,
+      expected: 8,
+    },
+    { label: "light missile", fuelDuration: 5, expected: 5 },
+    { label: "unconfigured missile", fuelDuration: undefined, expected: 5 },
+  ])("expires a missed $label exactly at its fuel limit", ({ fuelDuration, expected }) => {
+    const owner = stationary(ship("cruiser", 0, [0, 0]));
+    const launcher = owner.turrets[1];
+    launcher.weapon.fuelDuration = fuelDuration;
+    owner.turrets = [launcher];
+    const target = stationary(ship("battleship", 1, [1200, 0]));
+    target.turrets = [];
+    const sim = simulate([owner, target]);
+    let initialLifetime = 0;
+    sim.onProjectileFire = () => {
+      initialLifetime = sim.projectiles[0].lifetime;
+    };
+    sim.update(1 / 60);
+    expect(initialLifetime).toBe(expected);
+    const missile = sim.projectiles[0];
+    expect(missile.lifetime).toBeCloseTo(expected - 1 / 60);
+    // Evade outside the seeker cone and disable further launches.
+    target.pos = [0, 1000];
+    owner.turrets = [];
+    advance(sim, expected - 2 / 60);
+    expect(sim.projectiles).toEqual([missile]);
+    expect(missile.lifetime).toBeCloseTo(1 / 60);
+    sim.update(1 / 60);
+    expect(sim.projectiles).toEqual([]);
+    expect(missile.lifetime).toBeCloseTo(0);
+    const finalPosition = [...missile.pos];
+    advance(sim, 180);
+    expect(sim.projectiles).toEqual([]);
+    expect(missile.pos).toEqual(finalPosition);
+    expect(target.shieldCurrent).toBe(target.shieldMax);
+    expect(sim.stats[0].missilesIntercepted).toBe(0);
+  });
+
+  it("clips the final missile movement to fuel remaining rather than hitting after expiry", () => {
+    const owner = ship("cruiser", 0, [-500, 0]);
+    const target = stationary(ship("battleship", 1, [0, 0]));
+    target.turrets = [];
+    const missile = projectile(owner, [-80, 0], [1200, 0], 1);
+    missile.lifetime = 1 / 120;
+    const sim = simulate([target]);
+    sim.projectiles = [missile];
+    sim.update(1 / 60);
+    expect(missile.pos).toEqual([-70, 0]);
+    expect(missile.lifetime).toBe(0);
+    expect(sim.projectiles).toEqual([]);
+    expect(target.shieldCurrent).toBe(target.shieldMax);
+  });
+
+  it("rejects intercepts beyond missile fuel while allowing the longer heavy torpedo burn", () => {
+    const owner = ship("cruiser", 0, [0, 0]);
+    const launcher = owner.turrets[1];
+    const target = ship("battleship", 1, [1216, 0]);
+    target.velocity = [100, 0];
+    launcher.weapon.fuelDuration = 5;
+    expect(acquireMountTarget(owner, launcher, target, [owner, target], [])).toBeNull();
+    launcher.weapon.fuelDuration = 8;
+    expect(acquireMountTarget(owner, launcher, target, [owner, target], [])?.target).toBe(target);
+  });
+
   it("sweeps rails through small targets and selects the first hit", () => {
     const owner = ship("battleship", 0, [-500, 0]);
     const near = stationary(ship("strike_craft", 1, [0, 0]));
@@ -782,7 +849,7 @@ describe("tactical maneuvers", () => {
   });
 
   it("launches the opening wave directly despite an unreachable rally and cooling weapons", () => {
-    const fighters = fleet(Array<HullClass>(5).fill("strike_craft"), 0, -800);
+    const fighters = fleet(Array<HullClass>(4).fill("strike_craft"), 0, -800);
     for (const f of fighters) {
       stationary(f);
       f.turrets[0].cooldownTimer = 10;
@@ -792,6 +859,65 @@ describe("tactical maneuvers", () => {
     const sim = simulate([...fighters, enemy]);
     sim.update(1 / 60);
     expect(fighters.every((f) => f.fighterPhase === "attack")).toBe(true);
+  });
+
+  it.each([10, 12])("launches %i craft as three bounded echelons 102 frames apart", (count) => {
+    for (const team of [0, 1]) {
+      const fighters = fleet(Array<HullClass>(count).fill("strike_craft"), team, team ? 800 : -800);
+      for (const fighter of fighters) {
+        stationary(fighter);
+        fighter.turrets[0].cooldownTimer = 20;
+      }
+      const target = stationary(ship("battleship", 1 - team, [team ? -1000 : 1000, 0]));
+      target.turrets = [];
+      const sim = simulate([...fighters, target]);
+      const launches = new Map<number, number>();
+      for (let frame = 0; frame <= 204; frame++) {
+        sim.update(1 / 60);
+        for (const fighter of fighters) {
+          const index = fighter.wingIndex ?? -1;
+          if (fighter.fighterPhase === "attack" && !launches.has(index)) launches.set(index, frame);
+        }
+        expect(fighters.filter((fighter) => fighter.fighterPhase === "attack")).toHaveLength(
+          frame < 102 ? 4 : frame < 204 ? (count === 10 ? 7 : 8) : count,
+        );
+      }
+      expect([...launches.values()]).toEqual([0, 102, 204]);
+      expect(
+        [...launches.keys()].map(
+          (index) => fighters.filter((fighter) => fighter.wingIndex === index).length,
+        ),
+      ).toEqual(count === 10 ? [4, 3, 3] : [4, 4, 4]);
+      expect(fighters.every((fighter) => fighter.navigationTargetId === target.id)).toBe(true);
+    }
+  });
+
+  it("keeps independent echelons staggered when they complete and rejoin on the same frame", () => {
+    const fighters = fleet(Array<HullClass>(10).fill("strike_craft"), 0, -800);
+    for (const fighter of fighters) {
+      stationary(fighter);
+      fighter.turrets[0].cooldownTimer = 100;
+    }
+    const target = stationary(ship("battleship", 1, [1000, 0]));
+    target.turrets = [];
+    const sim = simulate([...fighters, target]);
+    advance(sim, 205 / 60);
+    expect(fighters.every((fighter) => fighter.fighterPhase === "attack")).toBe(true);
+    for (const fighter of fighters) fighter.lastMissionShotTime = sim.timeElapsed;
+    sim.update(1 / 60);
+    expect(fighters.every((fighter) => fighter.fighterPhase === "egress")).toBe(true);
+    const launches = new Map<number, number>();
+    for (let frame = 0; frame < 60 * 12 && launches.size < 3; frame++) {
+      sim.update(1 / 60);
+      for (const fighter of fighters) {
+        const index = fighter.wingIndex ?? -1;
+        if (fighter.fighterPhase === "attack" && !launches.has(index)) launches.set(index, frame);
+      }
+    }
+    const frames = [...launches.values()];
+    expect(frames).toHaveLength(3);
+    expect(frames[1] - frames[0]).toBe(102);
+    expect(frames[2] - frames[1]).toBe(102);
   });
 
   it("keeps distant ingress outside the six-second engagement timeout", () => {
@@ -847,6 +973,7 @@ describe("tactical maneuvers", () => {
         30,
       );
     },
+    15000,
   );
 
   it("resumes fighting after bounded hull-driven recovery", () => {
@@ -1453,8 +1580,9 @@ describe("arena containment and matchup rebalance", () => {
       const group = fighters.filter((s) => s.groupId === groupId);
       expect(new Set(group.map((s) => s.navigationTargetId)).size).toBe(1);
       expect(group.every((s) => s.navigationTargetId !== undefined)).toBe(true);
-      expect(group.every((s) => s.fighterPhase === "attack")).toBe(true);
-      expect(new Set(group.map((s) => s.wingIndex)).size).toBe(4);
+      expect(group.filter((s) => s.fighterPhase === "attack")).toHaveLength(4);
+      expect(group.filter((s) => s.fighterPhase === "staging")).toHaveLength(16);
+      expect(new Set(group.map((s) => s.wingIndex)).size).toBe(5);
       for (const fighter of group)
         expect(
           fighters

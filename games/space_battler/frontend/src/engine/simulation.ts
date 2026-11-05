@@ -46,6 +46,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { projectileLifetime } from "./shipProfiles";
 
 export type BeamFireCallback = (
   from: Vector2,
@@ -59,8 +60,9 @@ export type FlakBurstCallback = (pos: Vector2, radius: number, ownerTeam: number
 
 const FIGHTER_STANDOFF = 520;
 const FIGHTER_CLEARANCE = 45;
-const WING_SIZE = 5;
-const WING_WAVE_DELAY = 0.25;
+const WING_SIZE = 4;
+const WING_WAVE_DELAY = 1.7;
+const WING_RELAUNCH_DELAY = 0.25;
 const WING_RALLY_TOLERANCE = 65;
 
 interface FighterWing {
@@ -71,6 +73,7 @@ interface FighterWing {
   phase: WingPhase;
   phaseStarted: number;
   launchAt: number;
+  lastLaunchAt?: number;
   targetId: string | null;
   heading: number;
   rally: Vector2;
@@ -508,11 +511,7 @@ export class ClientCombatSimulation {
     for (const fighters of fighterGroups.values()) {
       fighters.sort((a, b) => a.pos[1] - b.pos[1] || a.pos[0] - b.pos[0]);
       const { team, groupId } = fighters[0];
-      const count = Math.max(
-        1,
-        Math.ceil(fighters.length / 6),
-        Math.round(fighters.length / WING_SIZE),
-      );
+      const count = Math.ceil(fighters.length / WING_SIZE);
       const firstIndex = this.fighterWings.filter((wing) => wing.team === team).length;
       let offset = 0;
       for (let i = 0; i < count; i++) {
@@ -526,7 +525,7 @@ export class ClientCombatSimulation {
           members: members.map((ship) => ship.id),
           phase: "staging",
           phaseStarted: this.timeElapsed,
-          launchAt: this.timeElapsed,
+          launchAt: this.timeElapsed + i * WING_WAVE_DELAY,
           targetId: null,
           heading: members[0].heading,
           rally: [...members[0].pos],
@@ -582,6 +581,10 @@ export class ClientCombatSimulation {
       if (members.length === 0) continue;
       const leader = members[0];
       const groupKey = `${wing.team}:${wing.groupId}`;
+      const groupWings = this.fighterWings.filter(
+        (peer) => peer.team === wing.team && peer.groupId === wing.groupId,
+      );
+      const groupIndex = groupWings.indexOf(wing);
       let target = groupTargets.get(groupKey);
       if (!groupTargets.has(groupKey)) {
         target =
@@ -602,6 +605,7 @@ export class ClientCombatSimulation {
         wing.targetId = target?.id ?? null;
         wing.phase = "staging";
         wing.phaseStarted = this.timeElapsed;
+        wing.launchAt = this.timeElapsed + groupIndex * WING_WAVE_DELAY;
         wing.assembledAt = undefined;
         wing.engagementStarted = undefined;
         if (!target) continue;
@@ -611,9 +615,6 @@ export class ClientCombatSimulation {
             (ship.hullClass === "battleship" || ship.hullClass === "cruiser"),
         );
         const approach = vecSub(target.pos, anchor?.pos ?? leader.pos);
-        const groupIndex = this.fighterWings
-          .filter((peer) => peer.team === wing.team && peer.groupId === wing.groupId)
-          .indexOf(wing);
         // Freeze each corridor's bearing for the pass, even while individual craft jink.
         wing.heading =
           Math.atan2(approach[1], approach[0]) +
@@ -656,6 +657,11 @@ export class ClientCombatSimulation {
             ship.fighterPhase = "egress";
         }
       }
+      // Keep later passes staggered even when independent echelons rejoin together.
+      const lastGroupLaunch = Math.max(
+        -Infinity,
+        ...groupWings.map((peer) => peer.lastLaunchAt ?? -Infinity),
+      );
       if (
         phase === "staging" &&
         healthy.length > 0 &&
@@ -663,10 +669,11 @@ export class ClientCombatSimulation {
           rallyAhead ||
           assembled ||
           this.timeElapsed - (wing.assembledAt ?? wing.phaseStarted) >= 2.5) &&
-        this.timeElapsed >= wing.launchAt
+        this.timeElapsed + 1e-9 >= Math.max(wing.launchAt, lastGroupLaunch + WING_WAVE_DELAY)
       ) {
         phase = "attack";
         wing.hasLaunched = true;
+        wing.lastLaunchAt = this.timeElapsed;
       } else if (
         phase === "attack" &&
         (healthy.length === 0 || healthy.every((ship) => ship.fighterPhase === "egress"))
@@ -676,7 +683,7 @@ export class ClientCombatSimulation {
         phase = "rejoin";
       } else if (phase === "rejoin" && (assembled || elapsed >= 2.5)) {
         phase = "staging";
-        wing.launchAt = this.timeElapsed + WING_WAVE_DELAY;
+        wing.launchAt = this.timeElapsed + WING_RELAUNCH_DELAY;
       }
       if (phase !== wing.phase) {
         wing.phase = phase;
@@ -1293,8 +1300,7 @@ export class ClientCombatSimulation {
     this.projectileCounter += 1;
     const toTarget = vecNormalize(vecSub(targetPos, spawnPos));
     const velocity = vecScale(toTarget, turret.weapon.projectileSpeed);
-    const lifetime =
-      turret.weapon.flak?.lifetime ?? (turret.weapon.range / turret.weapon.projectileSpeed) * 1.25;
+    const lifetime = projectileLifetime(turret.weapon);
 
     this.projectiles.push({
       id: `proj_${this.projectileCounter}`,
@@ -1443,7 +1449,8 @@ export class ClientCombatSimulation {
           }
         }
       }
-      p.lifetime -= step;
+      // Motion is clipped to remaining fuel; no missile can steer or survive beyond it.
+      p.lifetime = Math.max(0, p.lifetime - dt);
       p.pos = vecAdd(start, vecScale(vecSub(end, start), Math.min(first, 1)));
       if (flak && (Number.isFinite(first) || p.lifetime <= 1e-9)) {
         const elapsed = step * Math.min(first, 1);

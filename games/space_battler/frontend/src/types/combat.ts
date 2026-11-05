@@ -16,6 +16,7 @@ export interface WeaponDefinition {
   cooldown: number;
   range: number;
   projectileSpeed: number; // 0 = hitscan
+  fuelDuration?: number; // Guided projectile burn limit in seconds; expires when exhausted.
   trackingSpeed: number; // rad/s
   shieldMultiplier: number;
   armorMultiplier: number;

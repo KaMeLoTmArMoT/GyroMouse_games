@@ -20,6 +20,7 @@ import { FleetBuilder } from "./components/FleetBuilder";
 import { spaceAudio } from "./engine/audioEngine";
 import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
 import { FLEET_PRESETS } from "./engine/fleetPresets";
+import { normalizeAngle } from "./engine/math2d";
 import { ClientCombatSimulation } from "./engine/simulation";
 
 const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
@@ -131,6 +132,7 @@ export default function App() {
     return assembleSimulation(userSlots, enemyPresetId);
   });
   const [selectedShipId, setSelectedShipId] = useState<string | null>("blue_bb_0");
+  const [selectedProjectileId, setSelectedProjectileId] = useState<string | null>(null);
 
   // Keyboard Shortcuts: Space (Play/Pause), 1-5 (Groups), < / > or , / . (Speed down/up)
   useEffect(() => {
@@ -199,6 +201,7 @@ export default function App() {
             return groupShips[(curIdx + 1) % groupShips.length].id;
           });
           setSidebarTab("vessel");
+          setSelectedProjectileId(null);
         }
       }
     };
@@ -236,6 +239,7 @@ export default function App() {
     const s = assembleSimulation(userSlots, enemyPresetId);
     setSim(s);
     setSelectedShipId(s.ships[0]?.id ?? null);
+    setSelectedProjectileId(null);
     setShowVictoryModal(true);
   };
 
@@ -248,9 +252,17 @@ export default function App() {
 
   const stepForward = () => {
     sim.update(1 / 30);
+    setTick((tick) => (tick + 1) % 10000);
   };
 
   const selectedShip = sim.ships.find((s) => s.id === selectedShipId);
+  const selectedProjectile = sim.projectiles.find((p) => p.id === selectedProjectileId);
+  const projectileTarget = selectedProjectile
+    ? sim.ships.find((s) => s.id === selectedProjectile.targetId && s.isAlive)
+    : undefined;
+  const projectileOwner = selectedProjectile
+    ? sim.ships.find((s) => s.id === selectedProjectile.ownerId)
+    : undefined;
   const canContinueWithRemnants = [0, 1].every((team) =>
     sim.ships.some((ship) => ship.team === team && ship.isAlive),
   );
@@ -260,6 +272,7 @@ export default function App() {
     sim.continueBattleWithRemnants();
     setIngressRevision((revision) => revision + 1);
     setSelectedShipId(sim.ships[0]?.id ?? null);
+    setSelectedProjectileId(null);
     setShowVictoryModal(true);
     setSpeed(lastActiveSpeed > 0 ? lastActiveSpeed : 1);
     setTick((tick) => (tick + 1) % 10000);
@@ -416,7 +429,17 @@ export default function App() {
               speed={speed}
               ingressRevision={ingressRevision}
               selectedShipId={selectedShipId}
-              onSelectShip={setSelectedShipId}
+              selectedProjectileId={selectedProjectileId}
+              onSelectShip={(id) => {
+                setSelectedShipId(id);
+                setSelectedProjectileId(null);
+                if (id) setSidebarTab("vessel");
+              }}
+              onSelectProjectile={(id) => {
+                setSelectedProjectileId(id);
+                setSelectedShipId(null);
+                if (id) setSidebarTab("vessel");
+              }}
             />
 
             {/* Victory / Defeat Modal Overlay */}
@@ -641,7 +664,117 @@ export default function App() {
             </div>
 
             {/* TAB 1: Inspected Vessel Details */}
-            {sidebarTab === "vessel" && (
+            {sidebarTab === "vessel" && selectedProjectileId && (
+              <div className="flex-1 border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/50 flex flex-col gap-3 overflow-y-auto text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-cyan-400" /> Projectile Telemetry
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProjectileId(null)}
+                    className="text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                    aria-label="Deselect projectile"
+                  >
+                    Close
+                  </button>
+                </div>
+                {selectedProjectile ? (
+                  (() => {
+                    const speed = Math.hypot(...selectedProjectile.velocity);
+                    const heading = Math.atan2(
+                      selectedProjectile.velocity[1],
+                      selectedProjectile.velocity[0],
+                    );
+                    const lifetime =
+                      selectedProjectile.weapon.flak?.lifetime ??
+                      (selectedProjectile.weapon.range /
+                        selectedProjectile.weapon.projectileSpeed) *
+                        1.25;
+                    const distance = projectileTarget
+                      ? Math.hypot(
+                          projectileTarget.pos[0] - selectedProjectile.pos[0],
+                          projectileTarget.pos[1] - selectedProjectile.pos[1],
+                        )
+                      : null;
+                    const bearing = projectileTarget
+                      ? normalizeAngle(
+                          Math.atan2(
+                            projectileTarget.pos[1] - selectedProjectile.pos[1],
+                            projectileTarget.pos[0] - selectedProjectile.pos[0],
+                          ) - heading,
+                        )
+                      : null;
+                    const seeking =
+                      bearing !== null &&
+                      Math.abs(bearing) < Math.PI / 3 &&
+                      distance !== null &&
+                      distance > 10 &&
+                      speed > 1;
+                    return (
+                      <div className="space-y-3 font-mono text-zinc-300">
+                        <div>
+                          <div className="font-semibold text-zinc-100">
+                            {selectedProjectile.weapon.name}
+                          </div>
+                          <div className="text-zinc-500">
+                            {selectedProjectile.weaponType} ·{" "}
+                            {selectedProjectile.ownerTeam === 0 ? "Terran" : "Alien"}
+                          </div>
+                          <div className="text-zinc-500">
+                            Launched by: {projectileOwner?.name ?? "Unknown"}
+                          </div>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Speed</span>
+                          <span>{speed.toFixed(1)} u/s</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Heading</span>
+                          <span>{(((heading * 180) / Math.PI + 360) % 360).toFixed(0)}°</span>
+                        </div>
+                        <div>
+                          <div className="flex justify-between mb-1">
+                            <span>Lifetime</span>
+                            <span>
+                              {Math.max(0, selectedProjectile.lifetime).toFixed(1)}s remaining
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-cyan-400"
+                              style={{
+                                width: `${Math.max(0, Math.min(100, (selectedProjectile.lifetime / lifetime) * 100))}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="pt-2 border-t border-zinc-800 space-y-1">
+                          <div>
+                            Target:{" "}
+                            {projectileTarget?.name ??
+                              (selectedProjectile.targetId ? "Lost" : "None")}
+                          </div>
+                          {distance !== null && <div>Distance: {distance.toFixed(0)}u</div>}
+                          {bearing !== null && (
+                            <div>
+                              Target bearing: {((bearing * 180) / Math.PI).toFixed(1)}° relative
+                            </div>
+                          )}
+                          <div>Guidance: {seeking ? "Tracking target" : "No active turn"}</div>
+                          <div className="text-zinc-500">
+                            Direct pursuit · ±60° seeker · max turn 22.9°/s
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="text-zinc-500">Projectile is no longer in flight.</div>
+                )}
+              </div>
+            )}
+            {sidebarTab === "vessel" && !selectedProjectileId && (
               <div className="flex-1 border border-zinc-800/80 rounded-lg p-3 bg-zinc-950/50 flex flex-col overflow-y-auto select-text">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5 select-text">

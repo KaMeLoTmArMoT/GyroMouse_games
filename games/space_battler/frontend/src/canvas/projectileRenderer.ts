@@ -1,6 +1,6 @@
 // Projectile and munitions renderer (plasma bolts, railgun kinetics, torpedoes) with high visibility
 
-import type { ProjectileState } from "../types/combat";
+import type { ProjectileState, ShipState } from "../types/combat";
 import type { LaserBeamEffect } from "./effects";
 
 export function renderBeam(
@@ -145,5 +145,56 @@ export function renderProjectile(ctx: CanvasRenderingContext2D, p: ProjectileSta
       ctx.fill();
   }
 
+  ctx.restore();
+}
+
+export function renderProjectileGuidance(
+  ctx: CanvasRenderingContext2D,
+  projectile: ProjectileState,
+  target: ShipState | undefined,
+  zoom: number,
+): void {
+  const [x, y] = projectile.pos;
+  const angle = Math.atan2(projectile.velocity[1], projectile.velocity[0]);
+  const unit = 1 / zoom;
+  const color = projectile.ownerTeam === 0 ? "#67e8f9" : "#fca5a5";
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5 * unit;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 18 * unit);
+  ctx.lineTo(x + 18 * unit, y);
+  ctx.lineTo(x, y + 18 * unit);
+  ctx.lineTo(x - 18 * unit, y);
+  ctx.closePath();
+  ctx.stroke();
+
+  if (target) {
+    ctx.setLineDash([5 * unit, 5 * unit]);
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(...target.pos);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(target.pos[0], target.pos[1], 7 * unit, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 0.45;
+  const radius = 65 * unit;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.arc(x, y, radius, angle - Math.PI / 3, angle + Math.PI / 3);
+  ctx.closePath();
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
+  ctx.stroke();
   ctx.restore();
 }

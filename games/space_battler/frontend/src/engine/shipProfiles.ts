@@ -181,6 +181,7 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
           cooldown: 5.5,
           range: 1800,
           projectileSpeed: 320,
+          fuelDuration: 8,
           trackingSpeed: 1.5,
           shieldMultiplier: 1,
           armorMultiplier: 1.8,
@@ -301,6 +302,11 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
     ],
   },
 };
+
+export function projectileLifetime(weapon: WeaponDefinition): number {
+  if (weapon.weaponType === "missile") return weapon.fuelDuration ?? 5;
+  return weapon.flak?.lifetime ?? (weapon.range / weapon.projectileSpeed) * 1.25;
+}
 
 export function instantiateTurrets(
   profile: HullProfile,

@@ -6,7 +6,8 @@ import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
 import type { ClientCombatSimulation } from "../engine/simulation";
 import type { ShipState } from "../types/combat";
 import { VisualEffectsManager } from "./effects";
-import { renderBeam, renderProjectile } from "./projectileRenderer";
+import { renderBeam, renderProjectile, renderProjectileGuidance } from "./projectileRenderer";
+import { projectileAtPoint } from "./projectileSelection";
 import { renderShip } from "./shipRenderer";
 
 interface TacticalCanvasProps {
@@ -15,6 +16,8 @@ interface TacticalCanvasProps {
   ingressRevision: number;
   selectedShipId?: string | null;
   onSelectShip?: (shipId: string | null) => void;
+  selectedProjectileId?: string | null;
+  onSelectProjectile?: (projectileId: string | null) => void;
 }
 
 export function TacticalCanvas({
@@ -23,6 +26,8 @@ export function TacticalCanvas({
   ingressRevision,
   selectedShipId,
   onSelectShip,
+  selectedProjectileId,
+  onSelectProjectile,
 }: TacticalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const effectsRef = useRef<VisualEffectsManager>(new VisualEffectsManager());
@@ -309,6 +314,12 @@ export function TacticalCanvas({
             }
           }
 
+          const selectedProjectile = sim.projectiles.find((p) => p.id === selectedProjectileId);
+          if (selectedProjectile) {
+            const target = sim.ships.find((s) => s.id === selectedProjectile.targetId && s.isAlive);
+            renderProjectileGuidance(ctx, selectedProjectile, target, cameraRef.current.zoom);
+          }
+
           ctx.save();
           for (const impact of effectsRef.current.shieldImpacts) {
             const ship = sim.ships.find((s) => s.id === impact.shipId && s.isAlive);
@@ -377,7 +388,7 @@ export function TacticalCanvas({
       sim.onShipDestroyed = undefined;
       sim.onVictory = undefined;
     };
-  }, [sim, speed, selectedShipId]);
+  }, [sim, speed, selectedShipId, selectedProjectileId]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -417,8 +428,8 @@ export function TacticalCanvas({
   const shipAtPoint = (e: React.MouseEvent): string | null => {
     if (canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
+      const clickX = ((e.clientX - rect.left) * canvasRef.current.width) / rect.width;
+      const clickY = ((e.clientY - rect.top) * canvasRef.current.height) / rect.height;
 
       // Convert Screen Coords -> World Coords
       const worldX =
@@ -446,20 +457,43 @@ export function TacticalCanvas({
     return null;
   };
 
+  const projectileAtMouse = (e: React.MouseEvent, shipClicked: boolean): string | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const camera = cameraRef.current;
+    const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
+    const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
+    return projectileAtPoint(
+      sim.projectiles,
+      (x - canvas.width / 2 - camera.x) / camera.zoom,
+      (y - canvas.height / 2 - camera.y) / camera.zoom,
+      (camera.zoom * rect.width) / canvas.width,
+      (camera.zoom * rect.height) / canvas.height,
+      shipClicked,
+    );
+  };
+
   const handleMouseUp = (e: React.MouseEvent) => {
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
 
     // Click selection (if not a pan drag)
-    if (!hasDraggedRef.current && onSelectShip) {
+    if (!hasDraggedRef.current) {
       const clickedShip = shipAtPoint(e);
+      const projectile = projectileAtMouse(e, Boolean(clickedShip));
+      if (projectile) {
+        followRef.current = false;
+        onSelectProjectile?.(projectile);
+        return;
+      }
       followRef.current = Boolean(clickedShip);
-      onSelectShip(clickedShip);
+      onSelectShip?.(clickedShip);
     }
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
-    if (!shipAtPoint(e)) {
+    if (!shipAtPoint(e) && !projectileAtMouse(e, false)) {
       followRef.current = false;
       cameraRef.current.x = 0;
       cameraRef.current.y = 0;
@@ -511,7 +545,7 @@ export function TacticalCanvas({
           {sim.ships.filter((s) => s.team === 1 && s.isAlive).length} Red
         </div>
         <div className="text-[10px] text-zinc-600 mt-1">
-          Click ship to view telemetry | Drag to Pan
+          Click ship or torpedo to inspect | Drag to Pan
         </div>
       </div>
     </div>
