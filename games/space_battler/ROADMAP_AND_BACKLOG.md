@@ -84,3 +84,54 @@ Status: Grand Scale Production Baseline Active (All 67 Vitest + 24 Pytest tests 
 - Light Drone Carrier (autonomous micro-fighter swarms).
 - Heavy Torpedo Bomber (anti-capital strike wing).
 - Rocket Interceptor (fast swarm defense).
+
+### B.8: Corvette Active Picket & Dynamic Sortie Doctrine
+- **Problem (Burrow Syndrome)**:
+  - In `flightControl.ts:125`, corvettes execute strict flagship tethering (`stationVelocity`) whenever `vecDistance(target.pos, anchor.pos) > 600 || vecDistance(ship.pos, anchor.pos) > 380`.
+  - In Grand Scale ($R=1900\text{u}$, spawn $\pm 1100\text{u}$), enemy capitals engage at $1000-1600\text{u}$. Therefore, `distance > 600` is virtually always true.
+  - As a result, corvettes sit permanently in their slot ($120\text{u}$ ahead of the battleship) like passive puppies, even when they possess 100% shields and have high-priority fighter wings or vulnerable cruisers nearby.
+- **Solution**:
+  - Introduce dynamic Picket Sortie envelope:
+    - When `corvette.shieldRatio > 0.70`, extend the operational tether up to $500-600\text{u}$ forward/lateral from the flagship.
+    - Prioritize screening against approaching torpedoes, engaging strike craft, or harassing exposed secondary targets.
+    - If `corvette.shieldRatio < 0.40` or heavy spinal rail fire threatens the corridor, trigger a defensive fallback to the battleship's point-defense umbrella.
+
+### B.9: Capital Ship Standoff & Range Harmony (Eliminating Legacy Hardcoded Margins)
+- **Problem (Excessive Ingress / Capital Cluster Brawls)**:
+  - In `flightControl.ts:259–270`, capital standoff distance is hardcoded to legacy pre-Grand-Scale values:
+    - Battleship: `optimal_range = 840u`, `brawl = 620u`, `max_range = 1180u`.
+    - Cruiser: `optimal_range = 740u`, `brawl = 560u`, `max_range = 1250u`.
+  - However, in Grand Scale:
+    - Battleship Railguns have **1800u** range; Broadsides have **1200u** range.
+    - Cruiser Torpedoes have **1800u** range; Beams have **1100u** range.
+  - Because `nominal` is still 840u / 740u, capital ships unnecessarily dive straight into close-quarters knife-fights rather than maintaining majestic standoff artillery duels with broadside weaving.
+- **Solution**:
+  - Dynamically compute `nominal` standoff distance directly from equipped weapon ranges:
+    - `max_range`: $\min(\text{primaryGun.range} \times 0.85, 1500\text{u})$ ($\approx 1500\text{u}$ for BBs).
+    - `optimal_range`: $\min(\text{secondaryBattery.range} \times 0.90, 1150\text{u})$ ($\approx 1080-1150\text{u}$ for BBs and Cruisers).
+    - `brawl`: $750-800\text{u}$.
+  - Secondary battery fire control: allow port/starboard batteries to independently target secondary threats (e.g. nearby cruisers or screening corvettes) even while the spinal gun pursues the primary capital flagship.
+
+### B.10: Creeping Drift Prevention & Regression Guardrail Gate
+- **Problem (The "1% Drift Over 10 Changes" Risk)**:
+  - Boolean test assertions (e.g. `expect(winner).toBe("blue")`) only catch catastrophic flips (0% vs 100%).
+  - Minor procedural or physics tweaks can slowly erode HP retention by 1% per commit. By commit 10, a fleet is at the edge of collapse, and an unrelated package update or minor tweak suddenly causes a 50% win-rate plunge.
+- **Solution**:
+  - **Committed Golden Baseline Snapshot** (`bench/results/golden_baseline.json`):
+    - Record exact numerical baselines across all 16 Golden Set matchups:
+      - `residualHpPercent` (armor + hull retention)
+      - `duration` (time to decisive victory)
+      - `firstShotTime`
+      - `damageDealt` by layer (shield / armor / hull)
+      - `missilesIntercepted`
+  - **Automated Anti-Drift Check (`npm run bench:drift`)**:
+    - Compares current benchmark output against `golden_baseline.json`.
+    - Strict tolerance thresholds:
+      - Max allowable $\Delta \text{Residual HP}$: $\pm 5.0\%$.
+      - Max allowable $\Delta \text{Duration}$: $\pm 10.0\%$.
+      - Zero new containment / ram / stall alerts.
+    - Any cumulative drift exceeding 5% triggers an immediate **DRIFT ALERT**, preventing silent regressions from slipping into production.
+  - **Multi-Seed Stability Sampling**:
+    - Evaluate each scenario across 4 deterministic seeds (e.g., seeds `[1, 7, 29, 42]`) to ensure results represent genuine systemic stability rather than a single favorable spawn layout.
+
+
