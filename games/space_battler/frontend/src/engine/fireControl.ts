@@ -211,7 +211,7 @@ export function acquireMountTarget(
   };
 
   for (const enemy of ships) {
-    if (!enemy.isAlive || enemy.team === ship.team) continue;
+    if (!enemy.isAlive || enemy.isDocked || enemy.team === ship.team) continue;
     if (weapon.weaponType === "missile") {
       let incoming = 0;
       for (const missile of projectiles) {

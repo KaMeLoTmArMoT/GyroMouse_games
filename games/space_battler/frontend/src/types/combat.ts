@@ -99,6 +99,10 @@ export interface ShipState {
   turrets: TurretMountState[];
   cost: number;
   isAlive: boolean;
+  isDocked?: boolean;
+  hangarLaunchAt?: number;
+  hangarTurnaroundUntil?: number;
+  carrierRecovering?: boolean;
 
   formationOffset?: Vector2;
   flagshipId?: string;

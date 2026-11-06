@@ -35,7 +35,7 @@ export function findNavigationTarget(
   previousTargetId?: string,
   wingTargetId?: string | null,
 ): ShipState | null {
-  let enemies = aliveShips.filter((s) => s.isAlive && s.team !== ship.team);
+  let enemies = aliveShips.filter((s) => s.isAlive && !s.isDocked && s.team !== ship.team);
   if (enemies.length === 0) return null;
   if (ship.hullClass === "strike_craft") {
     const wingTarget = enemies.find((enemy) => enemy.id === wingTargetId);

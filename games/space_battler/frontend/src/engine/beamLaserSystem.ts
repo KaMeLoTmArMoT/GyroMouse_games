@@ -94,7 +94,7 @@ export class BeamLaserSystem {
     const { ship, turret, target, kind, weapon } = channel;
     const live =
       kind === "ship"
-        ? (target as ShipState).isAlive
+        ? (target as ShipState).isAlive && !(target as ShipState).isDocked
         : (target as ProjectileState).hp > 0 &&
           (target as ProjectileState).lifetime > 0 &&
           this.context.getProjectiles().includes(target as ProjectileState);
@@ -137,6 +137,8 @@ export class BeamLaserSystem {
     for (const [turret, channel] of this.channels) {
       if (
         !channel.ship.isAlive ||
+        channel.ship.isDocked ||
+        (channel.kind === "ship" && (channel.target as ShipState).isDocked) ||
         (channel.kind === "ship" && !(channel.target as ShipState).isAlive) ||
         (channel.kind === "missile" && (channel.target as ProjectileState).hp <= 0)
       )

@@ -202,7 +202,7 @@ export class ShipWeaponSystem {
     channel?: BeamChannel,
   ): void {
     const context = this.context;
-    if (!ship.isAlive) return;
+    if (!ship.isAlive || ship.isDocked) return;
     const parent = weapon.shieldMultiplier > 0 ? context.shieldHaven.protectedParent(ship) : null;
     if (parent && rawDamage > 0) {
       const overflowMultiplier = context.shieldHaven.overflowMultiplier(parent);

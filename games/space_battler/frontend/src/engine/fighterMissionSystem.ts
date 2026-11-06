@@ -108,7 +108,7 @@ export class FighterMissionSystem {
     const assigned = new Set(this.wings.flatMap((wing) => wing.members));
     for (const ship of aliveShips) {
       if (ship.hullClass !== "strike_craft" || assigned.has(ship.id)) continue;
-      const key = `${ship.team}:${ship.groupId}`;
+      const key = `${ship.team}:${ship.groupId}:${ship.flagshipId ?? "free"}`;
       const wing = fighterGroups.get(key) ?? [];
       wing.push(ship);
       fighterGroups.set(key, wing);
@@ -146,7 +146,7 @@ export class FighterMissionSystem {
   }
 
   private needsCover(ship: ShipState): boolean {
-    return ship.recoveryStarted !== undefined;
+    return ship.carrierRecovering === true || ship.recoveryStarted !== undefined;
   }
 
   private setPhase(ship: ShipState, phase: FighterPhase): void {

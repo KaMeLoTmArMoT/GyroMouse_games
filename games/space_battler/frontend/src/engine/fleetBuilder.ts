@@ -1,6 +1,7 @@
 // Assembly builder for translating abstract compositions into concrete positioned ShipStates
 
 import type { HullClass, ShipState, Vector2 } from "../types/combat";
+import { storeCarrierAuxiliaries } from "./carrierHangar";
 import { clamp } from "./math2d";
 import { shieldEnvelopeRadius } from "./shieldGeometry";
 import { HULL_PROFILES, instantiateTurrets } from "./shipProfiles";
@@ -87,6 +88,7 @@ export function redeployFleetRemnants(ships: ShipState[]): void {
       if (ship.flagshipId) ship.flagshipId = originalIds.get(ship.flagshipId);
       if (carrierAssignments.has(ship.id)) ship.flagshipId = carrierAssignments.get(ship.id);
     }
+    storeCarrierAuxiliaries(survivors);
   }
 }
 
@@ -155,6 +157,7 @@ export function buildFleetFromSlots(
       placed.push(ship);
     }
   }
+  storeCarrierAuxiliaries(placed);
   return placed;
 }
 

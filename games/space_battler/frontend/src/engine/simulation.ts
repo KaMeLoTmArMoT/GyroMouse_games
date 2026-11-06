@@ -17,6 +17,7 @@ import {
   type BeamFireCallback,
   BeamLaserSystem,
 } from "./beamLaserSystem";
+import { moveCarrierRecovery, updateCarrierHangars } from "./carrierHangar";
 import { CollisionContactSolver } from "./collisionContactSolver";
 import type { CombatObserver } from "./combatTelemetry";
 import { FighterMissionSystem, type FighterWingVisual } from "./fighterMissionSystem";
@@ -256,10 +257,12 @@ export class ClientCombatSimulation {
 
   private tick(dt: number): void {
     this.timeElapsed += dt;
+    updateCarrierHangars(this.ships, this.timeElapsed);
     // Observe broken shields before this step's regeneration can obscure the entry trigger.
-    this.shieldHaven.update(this.ships, this.timeElapsed);
+    const externalShips = this.ships.filter((ship) => !ship.isDocked && !ship.carrierRecovering);
+    this.shieldHaven.update(externalShips, this.timeElapsed);
     for (const ship of this.ships) {
-      if (!ship.isAlive) continue;
+      if (!ship.isAlive || ship.isDocked) continue;
       for (const turret of ship.turrets)
         if (!this.beamChannels.has(turret))
           turret.cooldownTimer = Math.max(0, turret.cooldownTimer - dt);
@@ -273,7 +276,7 @@ export class ClientCombatSimulation {
     }
     // Reaching full shields ends support before subsequent impacts can reopen the deficit.
     this.harmonicShields.cleanup(this.ships, this.timeElapsed - dt);
-    const aliveShips = this.ships.filter((s) => s.isAlive);
+    const aliveShips = this.ships.filter((s) => s.isAlive && !s.isDocked);
     this.previousPositions = new Map(aliveShips.map((ship) => [ship.id, [...ship.pos] as Vector2]));
     this.ensureFighterWings(aliveShips);
     this.fighterMissions.updateWings(aliveShips);
@@ -304,7 +307,8 @@ export class ClientCombatSimulation {
     for (const ship of aliveShips) {
       const target = navigationTargets.get(ship.id) ?? null;
       const previous = { pos: ship.pos, velocity: ship.velocity, heading: ship.heading };
-      this.updateShipMovement(ship, target, aliveShips, dt);
+      if (!moveCarrierRecovery(ship, aliveShips, dt))
+        this.updateShipMovement(ship, target, aliveShips, dt);
       movements.set(ship.id, {
         pos: ship.pos,
         velocity: ship.velocity,
