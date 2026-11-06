@@ -1,6 +1,7 @@
 // Procedural vector renderer for 2.5D ship hulls, Terran (sharp/industrial) vs Alien (curved/sleek), thruster flames, bridges, and turrets
 
 import { rotatePoint } from "../engine/math2d";
+import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
 
@@ -82,10 +83,10 @@ export function renderShip(
     renderTurret(ctx, ship, turret, primaryColor);
   }
 
-  // 4. Render Shield Bubble (calibrated 1.40x envelope, completely encloses prow and stern)
+  // 4. Render the authoritative shield envelope, including capital haven umbrellas.
   if (ship.shieldCurrent > 0) {
     const shieldRatio = ship.shieldCurrent / ship.shieldMax;
-    const shieldBubbleRadius = ship.size * 1.4;
+    const shieldBubbleRadius = shieldEnvelopeRadius(ship);
 
     ctx.strokeStyle = `rgba(56, 189, 248, ${0.18 + shieldRatio * 0.42})`;
     ctx.lineWidth = 2.0;

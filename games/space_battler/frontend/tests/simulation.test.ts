@@ -14,6 +14,7 @@ import {
   spinalEscape,
 } from "../src/engine/flightControl";
 import { normalizeAngle, vecDistance, vecDot, vecSub } from "../src/engine/math2d";
+import { shieldEnvelopeRadius } from "../src/engine/shieldGeometry";
 import { HULL_PROFILES, projectileMaxHp } from "../src/engine/shipProfiles";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass, ProjectileState, ShipState, Vector2 } from "../src/types/combat";
@@ -286,7 +287,9 @@ describe("channeled beam lasers", () => {
     effects.syncBeams(sim.activeBeams);
     expect(sim.activeBeams[0].from[0]).toBeGreaterThan(initial.from[0]);
     expect(sim.activeBeams[0].to[1]).toBeGreaterThan(initial.to[1]);
-    expect(vecDistance(sim.activeBeams[0].to, target.pos)).toBeCloseTo(target.size * 1.4);
+    expect(vecDistance(sim.activeBeams[0].to, target.pos)).toBeCloseTo(
+      shieldEnvelopeRadius(target),
+    );
     expect(effects.beams).toHaveLength(1);
     target.pos = [-500, 0];
     sim.update(1 / 60);
@@ -1377,7 +1380,7 @@ describe("arena containment and matchup rebalance", () => {
 
   it("holds fighter recovery through the old timeout until shields reach 75 percent", () => {
     const fighter = stationary(ship("strike_craft", 0, [0, 0]));
-    fighter.shieldCurrent = 5;
+    fighter.shieldCurrent = 0;
     const enemy = stationary(ship("corvette", 1, [700, 0]));
     enemy.turrets = [];
     const sim = simulate([fighter, enemy]);

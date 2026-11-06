@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { spaceAudio } from "../engine/audioEngine";
 import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
+import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import {
   type ClientCombatSimulation,
   type FighterWingVisual,
@@ -102,7 +103,8 @@ export function TacticalCanvas({
     sim.onShieldHit = (_pos, intensity) => spaceAudio.playShieldHit(intensity);
     sim.onWeaponImpact = (ship, origin, shield, armor, hull) => {
       const angle = Math.atan2(origin[1] - ship.pos[1], origin[0] - ship.pos[0]);
-      if (shield) effectsRef.current.addShieldImpact(ship.id, ship.pos, ship.size, angle);
+      if (shield)
+        effectsRef.current.addShieldImpact(ship.id, ship.pos, shieldEnvelopeRadius(ship), angle);
       if (armor || hull) {
         const pos: [number, number] = [
           ship.pos[0] + Math.cos(angle) * ship.size * 0.5,
@@ -346,7 +348,7 @@ export function TacticalCanvas({
           for (const impact of effectsRef.current.shieldImpacts) {
             const ship = sim.ships.find((s) => s.id === impact.shipId && s.isAlive);
             const [x, y] = ship?.pos ?? impact.pos;
-            const radius = impact.shipRadius * 1.4;
+            const radius = ship ? shieldEnvelopeRadius(ship) : impact.shipRadius;
             const alpha = impact.remainingDuration / 0.35;
             const progress = 1 - alpha;
             const px = x + Math.cos(impact.impactAngle) * radius;
@@ -694,7 +696,7 @@ function drawTacticalTrajectory(
     ctx.stroke();
 
     // Target Corner Brackets
-    const br = Math.max(target.size * 1.4, 20);
+    const br = Math.max(shieldEnvelopeRadius(target), 20);
     const bLen = Math.min(br * 0.4, 10);
     ctx.strokeStyle = "#ef4444";
     ctx.lineWidth = 1.5;

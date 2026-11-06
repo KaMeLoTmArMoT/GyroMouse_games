@@ -134,6 +134,7 @@ describe("critically wounded fighter retreat", () => {
     (hull) => {
       const craft = ship("wounded", "strike_craft", [0, 0]);
       craft.hullCurrent = craft.hullMax * 0.29;
+      craft.shieldCurrent = craft.shieldRegen = 0;
       craft.safeHavenId = "distant";
       craft.safeHavenTimer = 10;
       const distant = ship("distant", "cruiser", [-900, 0]);

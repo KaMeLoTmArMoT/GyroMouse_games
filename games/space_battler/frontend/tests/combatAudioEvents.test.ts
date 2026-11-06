@@ -154,12 +154,14 @@ describe("discrete combat audio cues", () => {
     expect(fighter.fighterPhase).toBe("egress");
     expect(sim.audioEvents.filter((event) => event.type === "fighter_egress")).toHaveLength(1);
     fighter.hullCurrent = fighter.hullMax * 0.29;
+    fighter.shieldCurrent = 0;
     sim.update(STEP * 30);
     expect(fighter.fighterPhase).toBe("recover");
     expect(sim.audioEvents.filter((event) => event.type === "fighter_egress")).toHaveLength(1);
 
     const wounded = ship("strike_craft");
     wounded.hullCurrent = wounded.hullMax * 0.29;
+    wounded.shieldCurrent = 0;
     const recovery = new ClientCombatSimulation();
     recovery.addShip(wounded);
     recovery.addShip(target);

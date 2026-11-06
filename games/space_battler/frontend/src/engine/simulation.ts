@@ -53,6 +53,8 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { activeShieldRadius, shieldEnvelopeRadius } from "./shieldGeometry";
+import { ShieldHavenSystem } from "./shieldHaven";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
 import {
   isHeavyTorpedo,
@@ -127,6 +129,7 @@ export interface ActiveBeam {
 }
 
 export class ClientCombatSimulation {
+  readonly shieldHaven = new ShieldHavenSystem();
   ships: ShipState[] = [];
   projectiles: ProjectileState[] = [];
   activeBeams: ActiveBeam[] = [];
@@ -315,6 +318,7 @@ export class ClientCombatSimulation {
     this.projectiles = [];
     this.activeBeams = [];
     this.beamChannels.clear();
+    this.shieldHaven.clear();
     this.fighterWings = [];
     this.contacts.clear();
     this.previousPositions.clear();
@@ -352,6 +356,8 @@ export class ClientCombatSimulation {
 
   private tick(dt: number): void {
     this.timeElapsed += dt;
+    // Observe broken shields before this step's regeneration can obscure the entry trigger.
+    this.shieldHaven.update(this.ships, this.timeElapsed);
 
     // 1. Defenses & Shield Regeneration
     for (const ship of this.ships) {
@@ -474,6 +480,7 @@ export class ClientCombatSimulation {
 
     // 4. Projectiles & Collision Resolution
     this.updateProjectiles(dt, aliveShips);
+    this.shieldHaven.cleanup(this.ships);
 
     // 5. Victory Assessment & Window Pruning
     const cutoff = this.timeElapsed - 2.5;
@@ -657,27 +664,6 @@ export class ClientCombatSimulation {
     for (const ship of aliveShips) {
       if (ship.hullClass !== "strike_craft") continue;
       dogfightTarget(ship, aliveShips, this.timeElapsed);
-      const hullRetreat =
-        ship.hullCurrent < ship.hullMax * 0.4 &&
-        ship.hullCurrent < (ship.recoveredHull ?? Infinity);
-      if (
-        ship.recoveryStarted === undefined &&
-        this.timeElapsed >= (ship.nextRecoveryAt ?? 0) &&
-        (hullRetreat || ship.shieldCurrent < 10)
-      )
-        ship.recoveryStarted = this.timeElapsed;
-      const shieldsReady = ship.shieldCurrent >= ship.shieldMax * 0.75;
-      if (
-        ship.recoveryStarted !== undefined &&
-        shieldsReady &&
-        this.timeElapsed - ship.recoveryStarted >= 4
-      ) {
-        ship.recoveredHull = ship.hullCurrent;
-        ship.recoveryStarted = undefined;
-        ship.nextRecoveryAt = this.timeElapsed + 4;
-      } else if (ship.recoveryStarted !== undefined && !hullRetreat && shieldsReady) {
-        ship.recoveryStarted = undefined;
-      }
     }
     const groupTargets = new Map<string, ShipState | undefined>();
     for (const wing of this.fighterWings) {
@@ -752,7 +738,7 @@ export class ClientCombatSimulation {
             (ship.lastMissionShotTime ?? -Infinity) >= wing.phaseStarted ||
             distance < target.size + 30 ||
             (!gunReady &&
-              (distance <= target.size * 1.4 + 75 ||
+              (distance <= shieldEnvelopeRadius(target) + 75 ||
                 this.timeElapsed - (wing.engagementStarted ?? this.timeElapsed) >= 6))
           )
             this.setFighterPhase(ship, "egress");
@@ -905,7 +891,7 @@ export class ClientCombatSimulation {
       }
 
       case "attack": {
-        const standoff = target.size * 1.4 + 95;
+        const standoff = shieldEnvelopeRadius(target) + 95;
         const forward = rotatePoint([1, 0], wing.heading);
         const toRally = vecSub(rallySlot, ship.pos);
         const acquiringCorridor =
@@ -1005,7 +991,9 @@ export class ClientCombatSimulation {
         const distance = vecDistance([0, 0], vecAdd(relative, vecScale(velocity, t)));
         const capital = obstacle.hullClass === "battleship" || obstacle.hullClass === "cruiser";
         const clearance =
-          (ship.size + obstacle.size) * 1.4 + (missionTarget ? 20 : capital ? 95 : 40);
+          shieldEnvelopeRadius(ship) +
+          shieldEnvelopeRadius(obstacle) +
+          (missionTarget ? 20 : capital ? 95 : 40);
         if (distance < clearance) dangerScore += (capital ? 14 : 6) * (1 - distance / clearance);
         if (
           obstacle.team !== ship.team &&
@@ -1208,9 +1196,8 @@ export class ClientCombatSimulation {
         const d = vecDistance(a.pos, b.pos);
         if (this.observer && a.team !== b.team) this.observer.onProximity(a, b, d);
 
-        // Effective Shield Perimeter: calibrated 1.40x shield bubble
-        const shieldA = a.size * (a.shieldCurrent > 0 ? 1.4 : 1.0);
-        const shieldB = b.size * (b.shieldCurrent > 0 ? 1.4 : 1.0);
+        const shieldA = activeShieldRadius(a);
+        const shieldB = activeShieldRadius(b);
         const minBubbleDist = shieldA + shieldB;
         const repulsorZone = minBubbleDist + 20;
         const pair = [a.id, b.id].sort().join(":");
@@ -1295,7 +1282,7 @@ export class ClientCombatSimulation {
           if (a.team !== b.team) continue;
           const clearance = Math.max(
             CRUISER_CLEARANCE,
-            a.size * (a.shieldCurrent > 0 ? 1.4 : 1) + b.size * (b.shieldCurrent > 0 ? 1.4 : 1),
+            activeShieldRadius(a) + activeShieldRadius(b),
           );
           const distance = vecDistance(a.pos, b.pos);
           if (distance >= clearance) continue;
@@ -1476,10 +1463,7 @@ export class ClientCombatSimulation {
       Math.cos(angle) * turret.barrelLength,
       Math.sin(angle) * turret.barrelLength,
     ]);
-    const radius =
-      kind === "ship"
-        ? (target as ShipState).size * ((target as ShipState).shieldCurrent > 0 ? 1.4 : 1)
-        : 0;
+    const radius = kind === "ship" ? activeShieldRadius(target as ShipState) : 0;
     const direction = vecNormalize(vecSub(from, target.pos));
     const to = vecAdd(
       target.pos,

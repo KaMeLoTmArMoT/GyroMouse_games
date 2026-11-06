@@ -11,6 +11,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { activeShieldRadius, shieldEnvelopeRadius } from "./shieldGeometry";
 import type { RetreatThresholds, SkirmishFlightDoctrine, StandoffSettings } from "./shipDoctrines";
 
 export interface FlightIntent {
@@ -58,10 +59,7 @@ export function calculateSeparation(ship: ShipState, ships: ShipState[]): Vector
       ship.hullClass === "strike_craft" &&
       peer.hullClass === "strike_craft" &&
       ship.team === peer.team;
-    const clearance =
-      ship.size * (ship.shieldCurrent > 0 ? 1.4 : 1) +
-      peer.size * (peer.shieldCurrent > 0 ? 1.4 : 1) +
-      (wingmate ? 8 : 30);
+    const clearance = activeShieldRadius(ship) + activeShieldRadius(peer) + (wingmate ? 8 : 30);
     const margin = clearance + (closing * closing) / 440 + closing * 0.15;
     if (distance < margin)
       result = vecAdd(result, vecScale(away, ship.maxSpeed * 2 * (1 - distance / margin)));
@@ -213,7 +211,7 @@ function beamEscape(ship: ShipState, enemy: ShipState, turret: TurretMountState)
   const muzzle = mountPosition(enemy, turret);
   const relative = vecSub(ship.pos, muzzle);
   const future = vecAdd(relative, vecScale(vecSub(ship.velocity, enemy.velocity), 0.7));
-  const range = turret.weapon.range + ship.size * 1.4 + 80;
+  const range = turret.weapon.range + shieldEnvelopeRadius(ship) + 80;
   const [minArc, maxArc] = turret.baseArc;
   const center = (minArc + maxArc) / 2;
   const halfArc = (maxArc - minArc) / 2;
@@ -225,7 +223,8 @@ function beamEscape(ship: ShipState, enemy: ShipState, turret: TurretMountState)
     if (distance > range) continue;
     const bearing = Math.atan2(point[1], point[0]);
     const angle = normalizeAngle(bearing - enemy.heading - center);
-    const margin = turnBuffer + Math.asin(clamp((ship.size * 1.4) / Math.max(1, distance), 0, 1));
+    const margin =
+      turnBuffer + Math.asin(clamp(shieldEnvelopeRadius(ship) / Math.max(1, distance), 0, 1));
     const angularDepth = halfArc + margin - Math.abs(angle);
     if (!fullCircle(turret) && angularDepth < 0) continue;
     const radialDepth = range - distance;
@@ -319,7 +318,7 @@ export function OrdnanceAvoidanceBlock(
       const futureY = vecDot(predicted, lateral);
       const lateralDistance = y * futureY < 0 ? 0 : Math.min(Math.abs(y), Math.abs(futureY));
       const width =
-        ship.size * 1.4 +
+        shieldEnvelopeRadius(ship) +
         35 +
         Math.max(x, futureX) * Math.tan(Math.max(...turret.baseArc.map(Math.abs)) + 0.05);
       if (

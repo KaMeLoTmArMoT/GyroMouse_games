@@ -1,6 +1,7 @@
 // Assembly builder for translating abstract compositions into concrete positioned ShipStates
 
 import type { HullClass, ShipState, Vector2 } from "../types/combat";
+import { shieldEnvelopeRadius } from "./shieldGeometry";
 import { HULL_PROFILES, instantiateTurrets } from "./shipProfiles";
 
 export interface FleetSlot {
@@ -61,7 +62,7 @@ export function buildFleetFromSlots(
         placed.every(
           (other) =>
             Math.hypot(ship.pos[0] - other.pos[0], ship.pos[1] - other.pos[1]) >
-            (ship.size + other.size) * 1.4 + 20,
+            shieldEnvelopeRadius(ship) + shieldEnvelopeRadius(other) + 20,
         );
       for (let ring = 1; !clear(); ring++) {
         for (let step = 0; step < 16 && !clear(); step++) {
@@ -202,7 +203,7 @@ function buildGroup(
   for (let i = 0; i < ordered.length; i++) {
     const shipB = ordered[i];
     for (const shipA of ordered.slice(0, i)) {
-      const spacing = (shipA.size * 1.4 + shipB.size * 1.4) * 1.15 + 20;
+      const spacing = (shieldEnvelopeRadius(shipA) + shieldEnvelopeRadius(shipB)) * 1.15 + 20;
       if (Math.abs(shipA.pos[0] - shipB.pos[0]) < spacing) {
         shipB.pos[1] = Math.max(shipB.pos[1], shipA.pos[1] + spacing);
       }

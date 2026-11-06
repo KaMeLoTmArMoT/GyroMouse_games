@@ -1,5 +1,6 @@
 import type { ProjectileState, ShipState, TurretMountState, WeaponType } from "../types/combat";
 import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "./flightControl";
+import { shieldEnvelopeRadius } from "./shieldGeometry";
 
 export interface CombatObserver {
   onShot(time: number, ship: Readonly<ShipState>, mount: Readonly<TurretMountState>): void;
@@ -205,8 +206,8 @@ export class CombatTelemetry implements CombatObserver {
     const light = (s: Readonly<ShipState>) =>
       s.hullClass === "strike_craft" || s.hullClass === "corvette";
     if (
-      (capital(a) && light(b) && a.shieldCurrent > 0 && distance < a.size * 1.4 + 18) ||
-      (capital(b) && light(a) && b.shieldCurrent > 0 && distance < b.size * 1.4 + 18)
+      (capital(a) && light(b) && a.shieldCurrent > 0 && distance < shieldEnvelopeRadius(a) + 18) ||
+      (capital(b) && light(a) && b.shieldCurrent > 0 && distance < shieldEnvelopeRadius(b) + 18)
     ) {
       this.ramProximityPairTicks++;
     }
