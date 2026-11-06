@@ -29,7 +29,6 @@ import {
   mountPosition,
   slewTurret,
   squadFocusPriority,
-  sweptHit,
 } from "./fireControl";
 import { buildFleetFromSlots } from "./fleetBuilder";
 import { clampLateralVelocity } from "./flightBehaviors";
@@ -59,6 +58,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { type FlakBurstCallback, ProjectileEngine } from "./projectileEngine";
 import {
   activeShieldRadius,
   capitalSeparationDistance,
@@ -67,15 +67,10 @@ import {
 } from "./shieldGeometry";
 import { havenHullClearance, ShieldHavenSystem, sharesShieldHaven } from "./shieldHaven";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
-import {
-  isHeavyTorpedo,
-  pointDefenseMode,
-  projectileLifetime,
-  projectileMaxHp,
-} from "./shipProfiles";
+import { pointDefenseMode, projectileLifetime, projectileMaxHp } from "./shipProfiles";
 
 export type { ActiveBeam, BeamFireCallback } from "./beamLaserSystem";
-export type FlakBurstCallback = (pos: Vector2, radius: number, ownerTeam: number) => void;
+export type { FlakBurstCallback } from "./projectileEngine";
 
 const FIGHTER_STANDOFF = 520;
 const FIGHTER_CLEARANCE = 45;
@@ -116,7 +111,12 @@ const MAX_REPULSOR_STEP = 4;
 export class ClientCombatSimulation {
   readonly shieldHaven = new ShieldHavenSystem();
   ships: ShipState[] = [];
-  projectiles: ProjectileState[] = [];
+  get projectiles(): ProjectileState[] {
+    return this.projectileEngine.projectiles;
+  }
+  set projectiles(projectiles: ProjectileState[]) {
+    this.projectileEngine.projectiles = projectiles;
+  }
   activeBeams: ActiveBeam[] = [];
   orders: Map<number, GroupOrder> = new Map();
   timeElapsed = 0;
@@ -125,6 +125,18 @@ export class ClientCombatSimulation {
   private accumulator = 0;
   private contacts = new Set<string>();
   private previousPositions = new Map<string, Vector2>();
+  private readonly projectileEngine = new ProjectileEngine({
+    applyShipDamage: (...args) => this.applyDamage(...args),
+    onMissileIntercept: (projectile, team, source, laserSource) => {
+      this.stats[team].missilesIntercepted++;
+      this.addCombatLog(`Hostile torpedo intercepted by ${source}!`, team, "intercept");
+      if (laserSource)
+        this.emitAudioEvent("laser_intercept", projectile.pos, team, laserSource.id, projectile.id);
+    },
+    onDetonate: (...args) => this.onFlakBurst?.(...args),
+    onFlakAudio: (flak) =>
+      this.emitAudioEvent("flak_burst", flak.pos, flak.ownerTeam, flak.ownerId),
+  });
   private readonly beamLaserSystem = new BeamLaserSystem({
     getTime: () => this.timeElapsed,
     getProjectiles: () => this.projectiles,
@@ -1490,189 +1502,7 @@ export class ClientCombatSimulation {
   }
 
   private updateProjectiles(dt: number, aliveShips: ShipState[]): void {
-    const active: ProjectileState[] = [];
-    const starts = new Map(this.projectiles.map((p) => [p.id, p.pos]));
-    for (const p of this.projectiles) {
-      if (p.hp <= 0 || p.lifetime <= 0) continue;
-      const step = Math.min(dt, p.lifetime);
-
-      // Lost locks acquire the closest hostile within a forward 60-degree seeker arc.
-      if (p.weaponType === "missile" && p.targetId) {
-        const currentAngle = Math.atan2(p.velocity[1], p.velocity[0]);
-        let target = aliveShips.find(
-          (s) => s.id === p.targetId && s.isAlive && s.team !== p.ownerTeam,
-        );
-        if (!target) {
-          let closest = Infinity;
-          for (const candidate of aliveShips) {
-            if (!candidate.isAlive || candidate.team === p.ownerTeam) continue;
-            const delta = vecSub(candidate.pos, p.pos);
-            const angle = normalizeAngle(Math.atan2(delta[1], delta[0]) - currentAngle);
-            const distance = vecDot(delta, delta);
-            if (Math.abs(angle) <= Math.PI / 6 && distance < closest) {
-              target = candidate;
-              closest = distance;
-            }
-          }
-          if (target) p.targetId = target.id;
-        }
-        if (target) {
-          const toTarget = vecSub(target.pos, p.pos);
-          const distSq = toTarget[0] * toTarget[0] + toTarget[1] * toTarget[1];
-          if (distSq > 100) {
-            const curSpeed = Math.hypot(p.velocity[0], p.velocity[1]);
-            if (curSpeed > 1) {
-              const desiredAngle = Math.atan2(toTarget[1], toTarget[0]);
-              const angleDiff = normalizeAngle(desiredAngle - currentAngle);
-              if (!isHeavyTorpedo(p) || Math.abs(angleDiff) < Math.PI / 3) {
-                const maxTurn = (isHeavyTorpedo(p) ? 0.8 : 2.5) * step;
-                const turn = clamp(angleDiff, -maxTurn, maxTurn);
-                const newAngle = currentAngle + turn;
-                p.velocity = [Math.cos(newAngle) * curSpeed, Math.sin(newAngle) * curSpeed];
-              }
-            }
-          }
-        }
-      }
-
-      const start = starts.get(p.id) ?? p.pos;
-      const end = vecAdd(start, vecScale(p.velocity, step));
-      const flak = p.weapon.flak;
-      let first = Infinity;
-      let victim: ShipState | null = null;
-      let intercepted: ProjectileState | null = null;
-      for (const ship of aliveShips) {
-        if (!ship.isAlive || ship.team === p.ownerTeam) continue;
-        const old = this.previousPositions.get(ship.id) ?? ship.pos;
-        const finish = vecAdd(old, vecScale(vecSub(ship.pos, old), step / dt));
-        const t = sweptHit(
-          vecSub(start, old),
-          vecSub(end, finish),
-          activeShieldRadius(ship) + (flak?.triggerRadius ?? 0),
-        );
-        if (t !== null) {
-          const distToShip = vecDistance(start, old);
-          const isBetter =
-            t < first ||
-            (t === first &&
-              (ship.id === p.targetId ||
-                (victim !== null &&
-                  distToShip <
-                    vecDistance(start, this.previousPositions.get(victim.id) ?? victim.pos))));
-          if (isBetter) {
-            first = t;
-            victim = ship;
-          }
-        }
-      }
-      if (flak || pointDefenseMode(p.weapon) === "rotary") {
-        for (const missile of this.projectiles) {
-          if (
-            missile.weaponType !== "missile" ||
-            missile.ownerTeam === p.ownerTeam ||
-            missile.hp <= 0 ||
-            missile.lifetime <= 0
-          )
-            continue;
-          const old = starts.get(missile.id) ?? missile.pos;
-          const finish = vecAdd(old, vecScale(missile.velocity, Math.min(step, missile.lifetime)));
-          const t = sweptHit(vecSub(start, old), vecSub(end, finish), flak?.triggerRadius ?? 5);
-          if (t !== null && t < first) {
-            first = t;
-            victim = null;
-            intercepted = missile;
-          }
-        }
-      }
-      // Motion is clipped to remaining fuel; no missile can steer or survive beyond it.
-      p.lifetime = Math.max(0, p.lifetime - dt);
-      p.pos = vecAdd(start, vecScale(vecSub(end, start), Math.min(first, 1)));
-      if (flak && (Number.isFinite(first) || p.lifetime <= 1e-9)) {
-        const elapsed = step * Math.min(first, 1);
-        const positions = new Map<string, Vector2>();
-        for (const ship of aliveShips) {
-          const old = this.previousPositions.get(ship.id) ?? ship.pos;
-          positions.set(ship.id, vecAdd(old, vecScale(vecSub(ship.pos, old), elapsed / dt)));
-        }
-        for (const missile of this.projectiles)
-          positions.set(
-            missile.id,
-            vecAdd(starts.get(missile.id) ?? missile.pos, vecScale(missile.velocity, elapsed)),
-          );
-        this.detonateFlak(p, aliveShips, positions);
-      } else if (intercepted) {
-        this.damageProjectile(intercepted, 15, p.ownerTeam, "rotary PD");
-        p.hp = 0;
-      } else if (victim) {
-        this.applyDamage(victim, p.damage, p.weapon, p.ownerTeam, p.ownerId, p.ownerMountId, p.pos);
-        p.hp = 0;
-      } else if (p.lifetime > 1e-9) {
-        active.push(p);
-      }
-    }
-    this.projectiles = active.filter((p) => p.hp > 0);
-  }
-
-  private detonateFlak(
-    flak: ProjectileState,
-    aliveShips: ShipState[],
-    positions: Map<string, Vector2>,
-  ): void {
-    const profile = flak.weapon.flak;
-    if (!profile) return;
-    for (const ship of aliveShips) {
-      if (!ship.isAlive || ship.team === flak.ownerTeam) continue;
-      const dist = vecDistance(flak.pos, positions.get(ship.id) ?? ship.pos);
-      const shield = activeShieldRadius(ship);
-      const surface = dist >= shield ? dist - shield : Math.max(0, dist - ship.size);
-      const falloff = clamp(
-        (profile.blastRadius - surface) / (profile.blastRadius - profile.triggerRadius),
-        0,
-        1,
-      );
-      if (falloff <= 0) continue;
-      const weapon =
-        ship.hullClass === "strike_craft"
-          ? { ...flak.weapon, shieldMultiplier: 1, armorMultiplier: 1, hullMultiplier: 1 }
-          : flak.weapon;
-      this.applyDamage(
-        ship,
-        flak.damage * falloff,
-        weapon,
-        flak.ownerTeam,
-        flak.ownerId,
-        flak.ownerMountId,
-        flak.pos,
-      );
-    }
-
-    for (const other of this.projectiles) {
-      if (
-        other.weaponType !== "missile" ||
-        other.ownerTeam === flak.ownerTeam ||
-        other.hp <= 0 ||
-        other.lifetime <= 0
-      )
-        continue;
-      if (vecDistance(flak.pos, positions.get(other.id) ?? other.pos) <= profile.blastRadius) {
-        if (!isHeavyTorpedo(other)) {
-          // Light missiles retain their stable dispersion cap; armored torpedoes take every hit.
-          let dispersion = 2166136261;
-          for (let i = 0; i < other.id.length; i++)
-            dispersion = Math.imul(dispersion ^ other.id.charCodeAt(i), 16777619);
-          dispersion ^= dispersion >>> 16;
-          dispersion = Math.imul(dispersion, 0x85ebca6b);
-          dispersion ^= dispersion >>> 13;
-          dispersion = Math.imul(dispersion, 0xc2b2ae35);
-          dispersion ^= dispersion >>> 16;
-          if ((dispersion >>> 0) / 0x100000000 >= 0.9) continue;
-        }
-        this.damageProjectile(other, profile.missileDamage, flak.ownerTeam, "flak burst");
-      }
-    }
-
-    if (this.onFlakBurst) this.onFlakBurst([...flak.pos], profile.blastRadius, flak.ownerTeam);
-    this.emitAudioEvent("flak_burst", flak.pos, flak.ownerTeam, flak.ownerId);
+    this.projectileEngine.updateProjectiles(dt, aliveShips, this.previousPositions);
   }
 
   private damageProjectile(
@@ -1682,14 +1512,7 @@ export class ClientCombatSimulation {
     source: string,
     laserSource?: ShipState,
   ): void {
-    if (projectile.hp <= 0 || projectile.lifetime <= 0) return;
-    projectile.hp = Math.max(0, projectile.hp - damage);
-    if (projectile.hp > 0) return;
-    projectile.lifetime = 0;
-    this.stats[team].missilesIntercepted++;
-    this.addCombatLog(`Hostile torpedo intercepted by ${source}!`, team, "intercept");
-    if (laserSource)
-      this.emitAudioEvent("laser_intercept", projectile.pos, team, laserSource.id, projectile.id);
+    this.projectileEngine.damageProjectile(projectile, damage, team, source, laserSource);
   }
 
   private applyDamage(

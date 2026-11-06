@@ -19,10 +19,14 @@ STRICTLY FORBIDDEN: NEVER add mouse movement/cursor tilt controls (e.g. `mouseEn
 No test runner configured — validate changes manually via `npm run dev` and visual check in browser.
 
 ## Cross-Agent Bridge (CAB) Non-Blocking Execution
-When delegating tasks via CAB (`cab.cmd`):
+When delegating tasks via CAB (`cab.cmd` / `cab-orchestrator`):
 - Run tasks with non-blocking execution via `run_command` with low wait timeout (`WaitMsBeforeAsync: 500` or `1000`) so the orchestrator does not block synchronously waiting on long sub-agent execution.
 - Command format:
-  `cab.cmd exec --engine opencode --model <model> --effort <effort> --dir . -m "<task description>"`
+  `cab.cmd --engine opencode --model <model> --effort <effort> --repo . --mode execute --timeout <seconds> --prompt-file scratch/<task_file>.md`
+- Subagent model assignments:
+  - **Astra**: `azure/gpt-6-astra` (simulation balance, math specs, economic modeling)
+  - **Sol**: `azure/gpt-6.1-sol` (core engine refactoring, physics, math algorithms)
+  - **Terra**: `azure/gpt-6.1-terra` (frontend UI, React components, canvas rendering, SVG design)
 - Background tasks are tracked via `manage_task` (status/kill) without busy-polling; wait for reactive notifications.
 - When performing balance exploration or parameter sweeps, avoid brute-force grid sweeps with high iteration counts (e.g. 25k ticks) that risk 10-minute timeouts; use bisection, golden-section search, or targeted headless benchmarks instead.
 
