@@ -24,7 +24,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { isCapitalShip } from "./shieldGeometry";
+import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
 import type { ClientCombatSimulation } from "./simulation";
 
@@ -150,7 +150,8 @@ export function updateShipNavigation(
     evadingOrdnance = intent.evadingOrdnance ?? false;
     // Translational escape must not be clipped by the focused target's bow-ingress envelope.
     maintainingStandoff = aliveShips.some((enemy) => {
-      if (!enemy.isAlive || enemy.team === ship.team) return false;
+      if (!enemy.isAlive || enemy.team === ship.team || enemy.hullClass === "strike_craft")
+        return false;
       const damaged = ship.shieldCurrent <= 0 || ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4;
       const longRange = ship.hullClass === "battleship" && enemy.hullClass === "dreadnought";
       const distance =
@@ -202,6 +203,21 @@ export function updateShipNavigation(
       ? vecSub(newVelocity, vecScale(vecNormalize(ship.pos), 600 * dt))
       : newVelocity;
   let controlledVelocity = containedVelocity;
+  // Wings can cross another capital's shield while intercepting or rejoining.
+  // Preserve tangential flight, but bound closing speed by the remaining clearance.
+  if (ship.hullClass === "strike_craft") {
+    for (const capital of aliveShips) {
+      if (!capital.isAlive || capital.team === ship.team || !isCapitalShip(capital)) continue;
+      const distance = vecDistance(ship.pos, capital.pos);
+      if (distance < 1e-6) continue;
+      const clearance = shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(ship) + 30;
+      const toward = vecScale(vecSub(capital.pos, ship.pos), 1 / distance);
+      const closing = vecDot(vecSub(controlledVelocity, capital.velocity), toward);
+      const safeClosing = Math.max(0, (distance - clearance) / 0.5);
+      if (closing > safeClosing)
+        controlledVelocity = vecSub(controlledVelocity, vecScale(toward, closing - safeClosing));
+    }
+  }
   if (rangePhase && !evadingOrdnance && !maintainingStandoff) {
     const flight = SHIP_DOCTRINES[ship.hullClass].flight;
     if (flight.kind === "capital" || flight.kind === "skirmish")

@@ -270,7 +270,7 @@ function damageStandoffWeight(ship: ShipState): number {
 function skirmishSpacing(ship: ShipState, ships: ShipState[]): Vector2 {
   let spacing: Vector2 = [0, 0];
   for (const peer of ships) {
-    if (!peer.isAlive || peer.id === ship.id) continue;
+    if (!peer.isAlive || peer.id === ship.id || peer.hullClass === "strike_craft") continue;
     const delta = vecSub(peer.pos, ship.pos);
     const distance = vecDistance([0, 0], delta);
     if (distance < 1e-6 || distance > 600) continue;
@@ -305,7 +305,15 @@ function defensiveStandoff(
   const damaged = damageStandoffWeight(ship) > 0;
   let corrected = velocity;
   for (const enemy of ships) {
-    if (!enemy.isAlive || enemy.team === ship.team || (!damaged && !isCapitalShip(enemy))) continue;
+    // Fighter runs already manage their own clearance; capitals must not chase their
+    // rapidly changing bearings with full-speed defensive translation.
+    if (
+      !enemy.isAlive ||
+      enemy.team === ship.team ||
+      enemy.hullClass === "strike_craft" ||
+      (!damaged && !isCapitalShip(enemy))
+    )
+      continue;
     const distance = vecDistance(ship.pos, enemy.pos);
     if (distance < 1e-6) continue;
     const toward = vecScale(vecSub(enemy.pos, ship.pos), 1 / distance);
@@ -394,6 +402,7 @@ function updateBroadsideManeuver(
 
 function standoffDistance(
   ship: ShipState,
+  target: ShipState,
   gun: TurretMountState | undefined,
   order: GroupOrder,
   doctrine: CapitalFlightDoctrine,
@@ -414,10 +423,11 @@ function standoffDistance(
         ? doctrine.brawlDistance
         : Math.min(secondaryRange * 0.9, doctrine.optimalDistanceLimit);
   const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
+  // Keep both weapon roles in range during defensive broadsides.
   return Math.max(
     nominal +
       (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0),
-    primaryRange * 0.9 * damageStandoffWeight(ship),
+    target.hullClass === "strike_craft" ? 0 : secondaryRange * 0.9 * damageStandoffWeight(ship),
   );
 }
 
@@ -571,7 +581,7 @@ export function capitalIntent(
   updateBroadsideManeuver(ship, target, gun, aimBearing, doctrine);
   const side = ship.broadsideCycle?.side ?? 1;
   const radius = Math.max(
-    standoffDistance(ship, gun, order, doctrine),
+    standoffDistance(ship, target, gun, order, doctrine),
     ship.hullClass === "battleship" &&
       ships.some(
         (enemy) => enemy.isAlive && enemy.team !== ship.team && enemy.hullClass === "dreadnought",
