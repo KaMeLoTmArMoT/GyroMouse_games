@@ -33,6 +33,33 @@ export function renderShip(
   time = performance.now() / 1000,
 ): void {
   if (!ship.isAlive) return;
+  if (ship.isDebris) {
+    ctx.save();
+    ctx.translate(...ship.pos);
+    ctx.rotate(ship.heading);
+    ctx.globalAlpha *= Math.min(1, (ship.debrisLifetime ?? 0) / 3);
+    ctx.fillStyle = "#292d35";
+    ctx.strokeStyle = "#78716c";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < 7; i++) {
+      const angle = (i * Math.PI * 2) / 7;
+      const radius = ship.size * (i % 2 === 0 ? 1 : 0.65);
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-ship.size * 0.6, 0);
+    ctx.lineTo(ship.size * 0.4, ship.size * 0.3);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
 
   const [x, y] = ship.pos;
   const isBlue = ship.team === 0; // Blue = Terran (Battlestar style), Red = Alien/Cylon (sleek curves)

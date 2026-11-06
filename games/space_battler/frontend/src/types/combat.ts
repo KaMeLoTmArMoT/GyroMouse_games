@@ -99,6 +99,8 @@ export interface ShipState {
   turrets: TurretMountState[];
   cost: number;
   isAlive: boolean;
+  isDebris?: boolean;
+  debrisLifetime?: number; // Remaining inert wreck lifetime in seconds.
   isDocked?: boolean;
   hangarLaunchAt?: number;
   hangarTurnaroundUntil?: number;

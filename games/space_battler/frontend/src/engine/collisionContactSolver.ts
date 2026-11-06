@@ -65,23 +65,26 @@ export class CollisionContactSolver {
         const tetherB = b.havenState === "tethered";
         if ((tetherA || tetherB) !== tetheredPass) continue;
         const d = vecDistance(a.pos, b.pos);
-        if (observer && a.team !== b.team) observer.onProximity(a, b, d);
+        const debrisContact = a.isDebris || b.isDebris;
+        if (observer && !debrisContact && a.team !== b.team) observer.onProximity(a, b, d);
         const minBubbleDist = activeShieldRadius(a) + activeShieldRadius(b);
         const nested = sharesShieldHaven(a, b);
         const hullClearance = nested ? havenHullClearance(a, b) : a.size + b.size;
-        const repulsorZone = nested
-          ? hullClearance
-          : Math.max(
-              capitalSeparationDistance(a, b),
-              shieldRepulsorRadius(a) + shieldRepulsorRadius(b) + 20,
-            );
+        const repulsorZone = debrisContact
+          ? hullClearance + 20
+          : nested
+            ? hullClearance
+            : Math.max(
+                capitalSeparationDistance(a, b),
+                shieldRepulsorRadius(a) + shieldRepulsorRadius(b) + 20,
+              );
         const pair = [a.id, b.id].sort().join(":");
         if (d < repulsorZone + 5 && this.contacts.has(pair)) contacts.add(pair);
         if (d >= repulsorZone) continue;
         const normal: Vector2 =
           d > 0.001 ? vecNormalize(vecSub(a.pos, b.pos)) : [0, a.id < b.id ? -1 : 1];
-        const massA = shipMass(a.hullClass);
-        const massB = shipMass(b.hullClass);
+        const massA = a.isDebris ? 4 : shipMass(a.hullClass);
+        const massB = b.isDebris ? 4 : shipMass(b.hullClass);
         const totalMass = massA + massB;
         // Tethers are kinematic for unrelated contacts; hull penetration breaks attachment.
         if (nested) {
@@ -114,7 +117,7 @@ export class CollisionContactSolver {
         const correction = hullCorrection + softCorrection;
         a.pos = vecAdd(a.pos, vecScale(normal, correction * pushRatioA));
         b.pos = vecSub(b.pos, vecScale(normal, correction * pushRatioB));
-        if (d > minBubbleDist || a.team === b.team) continue;
+        if (debrisContact || d > minBubbleDist || a.team === b.team) continue;
         const beforeA = observer ? [a.shieldCurrent, a.armorCurrent, a.hullCurrent] : null;
         const beforeB = observer ? [b.shieldCurrent, b.armorCurrent, b.hullCurrent] : null;
         const ramDamage =
@@ -147,7 +150,7 @@ export class CollisionContactSolver {
 
   resolveCruiserClearance(aliveShips: ShipState[]): void {
     const cruisers = aliveShips
-      .filter((ship) => ship.isAlive && ship.hullClass === "cruiser")
+      .filter((ship) => ship.isAlive && !ship.isDebris && ship.hullClass === "cruiser")
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     // Revisit crowded chains because resolving one pair can compress a previous pair.
     for (let pass = 0; pass < Math.max(32, cruisers.length * 8); pass++) {

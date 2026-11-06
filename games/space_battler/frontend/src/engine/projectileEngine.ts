@@ -51,12 +51,13 @@ export class ProjectileEngine {
       if (p.weaponType === "missile" && p.targetId) {
         const currentAngle = Math.atan2(p.velocity[1], p.velocity[0]);
         let target = aliveShips.find(
-          (s) => s.id === p.targetId && s.isAlive && s.team !== p.ownerTeam,
+          (s) => s.id === p.targetId && s.isAlive && !s.isDebris && s.team !== p.ownerTeam,
         );
         if (!target) {
           let closest = Infinity;
           for (const candidate of aliveShips) {
-            if (!candidate.isAlive || candidate.team === p.ownerTeam) continue;
+            if (!candidate.isAlive || candidate.isDebris || candidate.team === p.ownerTeam)
+              continue;
             const delta = vecSub(candidate.pos, p.pos);
             const angle = normalizeAngle(Math.atan2(delta[1], delta[0]) - currentAngle);
             const distance = vecDot(delta, delta);

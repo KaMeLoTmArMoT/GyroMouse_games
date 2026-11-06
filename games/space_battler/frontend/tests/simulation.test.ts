@@ -75,6 +75,95 @@ function projectile(
   };
 }
 
+describe("capital kinetic wrecks", () => {
+  it.each(["cruiser", "battleship", "dreadnought", "carrier"] as const)(
+    "spawns inert neutral wrecks on %s destruction and expires them",
+    (hull) => {
+      const owner = stationary(ship("cruiser", 0, [-800, 0]));
+      const target = stationary(ship(hull, 1, [0, 0]));
+      target.shieldCurrent = target.armorCurrent = 0;
+      target.hullCurrent = 1;
+      target.velocity = [12, 3];
+      const shot = projectile(owner, [-100, 0], [12000, 0]);
+      owner.turrets = target.turrets = [];
+      const sim = simulate([owner, target]);
+      sim.projectiles = [shot];
+      sim.update(1 / 60);
+      const wrecks = sim.ships.filter((s) => s.isDebris);
+      expect(target.isAlive).toBe(false);
+      expect(wrecks.length).toBe(hull === "cruiser" ? 2 : 3);
+      expect(sim.stats[1].shipsLost).toBe(1);
+      for (const wreck of wrecks) {
+        expect(wreck.team).toBe(-1);
+        expect(wreck.hullCurrent).toBe(75);
+        expect(wreck.turrets).toEqual([]);
+      }
+      const start = [...wrecks[0].pos];
+      const heading = wrecks[0].heading;
+      advance(sim, 1);
+      expect(wrecks[0].pos).not.toEqual(start);
+      expect(wrecks[0].heading).not.toBe(heading);
+      expect(wrecks[0].navigationTargetId).toBeUndefined();
+      expect(sim.winner).toBe(0);
+      advance(sim, 18);
+      expect(sim.ships.filter((s) => s.isDebris)).toEqual([]);
+      expect(sim.stats[1].shipsLost).toBe(1);
+    },
+  );
+
+  it("blocks swept heavy shots without damage statistics or recursive wrecks", () => {
+    const owner = stationary(ship("cruiser", 0, [-800, 0]));
+    const target = stationary(ship("cruiser", 1, [300, 0]));
+    const sim = simulate([owner, target]);
+    const destroyed = ship("cruiser", 1, [0, 0]);
+    sim.spawnCapitalWrecks(destroyed);
+    const wrecks = sim.ships.filter((s) => s.isDebris);
+    wrecks[0].pos = [0, 0];
+    wrecks[0].velocity = [0, 0];
+    wrecks[1].pos = [0, 300];
+    const shot = projectile(owner, [-100, 0], [30000, 0]);
+    shot.damage = 1000;
+    const before = [target.hullCurrent, target.armorCurrent, target.shieldCurrent];
+    owner.turrets = target.turrets = [];
+    sim.projectiles = [shot];
+    sim.update(1 / 60);
+    expect(wrecks[0].isAlive).toBe(false);
+    expect(sim.projectiles).toEqual([]);
+    expect([target.hullCurrent, target.armorCurrent, target.shieldCurrent]).toEqual(before);
+    expect(sim.stats[0].damageDealt).toBe(0);
+    expect(sim.stats[1].shipsLost).toBe(0);
+    expect(sim.ships.filter((s) => s.isDebris)).toHaveLength(2);
+    sim.continueBattleWithRemnants();
+    expect(sim.ships.some((s) => s.isDebris)).toBe(false);
+  });
+
+  it("softly separates ships from wrecks without ramming damage or seeker locks", () => {
+    const owner = stationary(ship("cruiser", 0, [0, 0]));
+    const target = stationary(ship("cruiser", 1, [900, 0]));
+    const sim = simulate([owner, target]);
+    sim.spawnCapitalWrecks(ship("cruiser", 1, [0, 0]));
+    const wrecks = sim.ships.filter((s) => s.isDebris);
+    wrecks[0].pos = [owner.size + wrecks[0].size - 2, 0];
+    wrecks[0].velocity = [-5, 0];
+    wrecks[1].pos = [0, 400];
+    const turret = owner.turrets.find((mount) => mount.weapon.weaponType === "missile");
+    if (!turret) throw new Error("Cruiser requires a torpedo mount");
+    const shot = projectile(owner, [-400, 0], [100, 0], owner.turrets.indexOf(turret));
+    shot.targetId = "lost_lock";
+    const before = owner.shieldCurrent;
+    owner.turrets = target.turrets = [];
+    sim.projectiles = [shot];
+    sim.update(1 / 60);
+    expect(vecDistance(owner.pos, wrecks[0].pos)).toBeGreaterThanOrEqual(
+      owner.size + wrecks[0].size,
+    );
+    expect(owner.shieldCurrent).toBe(before);
+    expect(wrecks[0].hullCurrent).toBe(75);
+    expect(owner.navigationTargetId).toBe(target.id);
+    expect(shot.targetId).toBe(target.id);
+  });
+});
+
 describe("stalemate horizon and remnant rounds", () => {
   it("declares a draw at 300 seconds, not before, and stops further combat", () => {
     const blue = stationary(ship("cruiser", 0, [-1100, 0]));

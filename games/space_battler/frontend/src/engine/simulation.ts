@@ -24,8 +24,9 @@ import { FighterMissionSystem, type FighterWingVisual } from "./fighterMissionSy
 import { acquireMountTarget } from "./fireControl";
 import { redeployFleetRemnants } from "./fleetBuilder";
 import { HarmonicShieldSystem } from "./harmonicShieldSystem";
-import { normalizeAngle } from "./math2d";
+import { normalizeAngle, vecAdd, vecScale } from "./math2d";
 import { type FlakBurstCallback, ProjectileEngine } from "./projectileEngine";
+import { isCapitalShip } from "./shieldGeometry";
 import { ShieldHavenSystem } from "./shieldHaven";
 import { findNavigationTarget, updateShipNavigation } from "./shipNavigationSystem";
 import { ShipWeaponSystem } from "./shipWeaponSystem";
@@ -183,6 +184,43 @@ export class ClientCombatSimulation {
     if (ship.isAlive) this.emitAudioEvent("warp_ingress", ship.pos, ship.team, ship.id);
   }
 
+  spawnCapitalWrecks(ship: ShipState): void {
+    if (ship.isDebris || !isCapitalShip(ship)) return;
+    const count = ship.hullClass === "cruiser" ? 2 : 3;
+    for (let i = 0; i < count; i++) {
+      const angle = ship.heading + (i * Math.PI * 2) / count;
+      const direction: Vector2 = [Math.cos(angle), Math.sin(angle)];
+      this.ships.push({
+        id: `${ship.id}_wreck_${i}`,
+        name: `${ship.name} wreck`,
+        team: -1,
+        groupId: -1,
+        hullClass: ship.hullClass,
+        pos: vecAdd(ship.pos, vecScale(direction, ship.size * 0.35)),
+        velocity: vecAdd(ship.velocity, vecScale(direction, 8)),
+        heading: angle,
+        angularVelocity: i % 2 === 0 ? 0.12 : -0.16,
+        maxSpeed: 0,
+        turnRate: 0,
+        size: ship.size * 0.28,
+        shieldMax: 0,
+        shieldCurrent: 0,
+        shieldRegen: 0,
+        shieldDelayTimer: 0,
+        armorMax: 0,
+        armorCurrent: 0,
+        armorRating: 0,
+        hullMax: 75,
+        hullCurrent: 75,
+        turrets: [],
+        cost: 0,
+        isAlive: true,
+        isDebris: true,
+        debrisLifetime: 16 + i,
+      });
+    }
+  }
+
   drainAudioEvents(): CombatAudioEvent[] {
     const events = this.audioEvents;
     this.audioEvents = [];
@@ -214,7 +252,7 @@ export class ClientCombatSimulation {
   }
 
   continueBattleWithRemnants(): void {
-    this.ships = this.ships.filter((ship) => ship.isAlive);
+    this.ships = this.ships.filter((ship) => ship.isAlive && !ship.isDebris);
     redeployFleetRemnants(this.ships);
     this.projectiles = [];
     this.activeBeams = [];
@@ -257,11 +295,21 @@ export class ClientCombatSimulation {
 
   private tick(dt: number): void {
     this.timeElapsed += dt;
-    updateCarrierHangars(this.ships, this.timeElapsed);
+    this.ships = this.ships.filter((ship) => !ship.isDebris || ship.isAlive);
+    const combatShips = this.ships.filter((ship) => !ship.isDebris);
+    const wrecks = this.ships.filter((ship) => ship.isDebris);
+    const wreckStarts = new Map(wrecks.map((ship) => [ship.id, [...ship.pos] as Vector2]));
+    for (const wreck of wrecks) {
+      wreck.debrisLifetime = Math.max(0, (wreck.debrisLifetime ?? 0) - dt);
+      wreck.isAlive = wreck.debrisLifetime > 0;
+      wreck.pos = vecAdd(wreck.pos, vecScale(wreck.velocity, dt));
+      wreck.heading = normalizeAngle(wreck.heading + (wreck.angularVelocity ?? 0) * dt);
+    }
+    updateCarrierHangars(combatShips, this.timeElapsed);
     // Observe broken shields before this step's regeneration can obscure the entry trigger.
-    const externalShips = this.ships.filter((ship) => !ship.isDocked && !ship.carrierRecovering);
+    const externalShips = combatShips.filter((ship) => !ship.isDocked && !ship.carrierRecovering);
     this.shieldHaven.update(externalShips, this.timeElapsed);
-    for (const ship of this.ships) {
+    for (const ship of combatShips) {
       if (!ship.isAlive || ship.isDocked) continue;
       for (const turret of ship.turrets)
         if (!this.beamChannels.has(turret))
@@ -275,9 +323,12 @@ export class ClientCombatSimulation {
       }
     }
     // Reaching full shields ends support before subsequent impacts can reopen the deficit.
-    this.harmonicShields.cleanup(this.ships, this.timeElapsed - dt);
-    const aliveShips = this.ships.filter((s) => s.isAlive && !s.isDocked);
-    this.previousPositions = new Map(aliveShips.map((ship) => [ship.id, [...ship.pos] as Vector2]));
+    this.harmonicShields.cleanup(combatShips, this.timeElapsed - dt);
+    const aliveShips = combatShips.filter((s) => s.isAlive && !s.isDocked);
+    this.previousPositions = new Map([
+      ...wreckStarts,
+      ...aliveShips.map((ship) => [ship.id, [...ship.pos] as Vector2] as const),
+    ]);
     this.ensureFighterWings(aliveShips);
     this.fighterMissions.updateWings(aliveShips);
     const navigationTargets = new Map<string, ShipState | null>();
@@ -318,13 +369,14 @@ export class ClientCombatSimulation {
       Object.assign(ship, previous);
     }
     for (const ship of aliveShips) Object.assign(ship, movements.get(ship.id));
-    this.shieldHaven.refreshAmplification(this.ships);
+    this.shieldHaven.refreshAmplification(combatShips);
     const repulsorSteps = new Map<string, number>();
-    this.resolveShipCollisions(aliveShips, dt, false, repulsorSteps);
+    const collisionShips = [...aliveShips, ...wrecks.filter((ship) => ship.isAlive)];
+    this.resolveShipCollisions(collisionShips, dt, false, repulsorSteps);
     this.contactSolver.resolveCruiserClearance(aliveShips);
     this.shieldHaven.attachGuests(aliveShips, dt);
-    this.resolveShipCollisions(aliveShips, dt, true, repulsorSteps);
-    this.shieldHaven.refreshAmplification(this.ships);
+    this.resolveShipCollisions(collisionShips, dt, true, repulsorSteps);
+    this.shieldHaven.refreshAmplification(combatShips);
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
     const missileLocks: Array<{ targetId: string; weapon: TurretMountState["weapon"] }> = [];
@@ -366,15 +418,18 @@ export class ClientCombatSimulation {
       }
     }
     for (const fire of shots) fire();
-    this.updateProjectiles(dt, aliveShips);
+    this.updateProjectiles(
+      dt,
+      this.ships.filter((ship) => ship.isAlive && !ship.isDocked),
+    );
     this.harmonicShields.update(
-      this.ships,
+      combatShips,
       this.timeElapsed,
       dt,
       this.onBeamFire,
       (recipient, amount) => this.observer?.onShieldRegen(recipient, amount),
     );
-    this.shieldHaven.cleanup(this.ships);
+    this.shieldHaven.cleanup(combatShips);
     this.activeBeams = [
       ...this.beamLaserSystem.collectActiveBeams(),
       ...this.harmonicShields.collectActiveBeams(),

@@ -34,6 +34,7 @@ type WeaponContext = Pick<
   | "onShipDestroyed"
   | "onBeamFire"
   | "onProjectileFire"
+  | "spawnCapitalWrecks"
 >;
 
 const FIXED_STEP = 1 / 60;
@@ -203,6 +204,12 @@ export class ShipWeaponSystem {
   ): void {
     const context = this.context;
     if (!ship.isAlive || ship.isDocked) return;
+    if (ship.isDebris) {
+      ship.hullCurrent = Math.max(0, ship.hullCurrent - rawDamage * weapon.hullMultiplier);
+      if (impactOrigin) context.onWeaponImpact?.(ship, impactOrigin, false, false, true);
+      if (ship.hullCurrent <= 0) this.destroyShip(ship);
+      return;
+    }
     const parent = weapon.shieldMultiplier > 0 ? context.shieldHaven.protectedParent(ship) : null;
     if (parent && rawDamage > 0) {
       const overflowMultiplier = context.shieldHaven.overflowMultiplier(parent);
@@ -300,6 +307,8 @@ export class ShipWeaponSystem {
   destroyShip(ship: ShipState, attackerTeam?: number): void {
     if (!ship.isAlive) return;
     ship.isAlive = false;
+    if (ship.isDebris) return;
+    this.context.spawnCapitalWrecks(ship);
     this.context.shieldHaven.refreshAmplification();
     this.context.shieldHaven.releaseGuests(ship.id);
     this.context.stats[ship.team].shipsLost += 1;

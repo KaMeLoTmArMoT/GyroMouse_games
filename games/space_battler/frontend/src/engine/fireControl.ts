@@ -211,9 +211,11 @@ export function acquireMountTarget(
   };
 
   for (const enemy of ships) {
-    if (!enemy.isAlive || enemy.isDocked || enemy.team === ship.team) continue;
+    if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team) continue;
     if (weapon.weaponType === "missile") {
       let incoming = 0;
+      let inFlightDamage = 0;
+      let insuranceDamage = 0;
       for (const missile of projectiles) {
         if (
           missile.weaponType === "missile" &&
@@ -221,13 +223,23 @@ export function acquireMountTarget(
           missile.ownerTeam !== enemy.team &&
           missile.hp > 0 &&
           missile.lifetime > 0
-        )
+        ) {
           incoming += missileWeight(enemy, isHeavyTorpedo(missile));
+          inFlightDamage += missile.damage;
+          insuranceDamage = Math.max(insuranceDamage, missile.damage);
+        }
       }
       for (const lock of missileLocks) {
-        if (lock.targetId === enemy.id)
+        if (lock.targetId === enemy.id) {
           incoming += missileWeight(enemy, projectileMaxHp(lock.weapon) >= 120);
+          inFlightDamage += lock.weapon.damage;
+          insuranceDamage = Math.max(insuranceDamage, lock.weapon.damage);
+        }
       }
+      // Remove one committed payload from the estimate: exactly one insurance shot
+      // may follow the lethal allocation, including reservations at this firing instant.
+      const effectiveHealth = enemy.hullCurrent + enemy.armorCurrent + enemy.shieldCurrent;
+      if (inFlightDamage - insuranceDamage >= effectiveHealth) continue;
       if (incoming + missileWeight(enemy, projectileMaxHp(weapon) >= 120) > missileCapacity(enemy))
         continue;
     }

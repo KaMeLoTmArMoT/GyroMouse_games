@@ -58,15 +58,68 @@ describe("missile saturation", () => {
     );
   });
 
-  it.each(["battleship", "dreadnought"] as const)("does not cap %s", (hull) => {
+  it.each(["battleship", "dreadnought"] as const)("has no count cap on healthy %s", (hull) => {
     const owner = fixture("missile_frigate", 0);
     const target = fixture(hull);
     const turret = owner.turrets[0];
+    target.hullCurrent = turret.weapon.damage * 101;
     const locks = Array.from({ length: 100 }, () => ({
       targetId: target.id,
       weapon: turret.weapon,
     }));
     expect(acquireMountTarget(owner, turret, target, [target], [], locks)?.target.id).toBe(
+      target.id,
+    );
+  });
+
+  it("reserves lethal damage plus one insurance torpedo, then retargets", () => {
+    const owner = fixture("cruiser", 0);
+    const turret = owner.turrets.find((mount) => mount.weapon.weaponType === "missile");
+    if (!turret) throw new Error("Cruiser requires a torpedo mount");
+    turret.offset = [0, 0];
+    turret.baseArc = [-Math.PI, Math.PI];
+    const target = fixture("cruiser");
+    target.shieldCurrent = target.armorCurrent = 0;
+    target.hullCurrent = turret.weapon.damage * 0.5;
+    const alternate = fixture("cruiser", 1, "alternate");
+    alternate.pos = [400, 0];
+    const locks: Array<{ targetId: string; weapon: typeof turret.weapon }> = [];
+    for (let i = 0; i < 4; i++) {
+      const solution = acquireMountTarget(owner, turret, target, [target, alternate], [], locks);
+      expect(solution?.target.id).toBe(i < 2 ? target.id : alternate.id);
+      if (!solution) throw new Error("Expected an eligible missile target");
+      locks.push({ targetId: solution.target.id, weapon: turret.weapon });
+    }
+  });
+
+  it("counts live payloads and reopens allocation after interception or fuel expiry", () => {
+    const owner = fixture("missile_frigate", 0);
+    const turret = owner.turrets[0];
+    const target = fixture("battleship");
+    target.shieldCurrent = target.armorCurrent = 0;
+    target.hullCurrent = 20;
+    const missiles: ProjectileState[] = Array.from({ length: 2 }, (_, i) => ({
+      id: `incoming_${i}`,
+      weaponType: "missile",
+      weapon: turret.weapon,
+      ownerId: owner.id,
+      ownerTeam: 0,
+      targetId: target.id,
+      pos: [100, 0],
+      velocity: [100, 0],
+      lifetime: 5,
+      hp: 120,
+      maxHp: 120,
+      damage: 30,
+    }));
+    expect(acquireMountTarget(owner, turret, target, [target], missiles)).toBeNull();
+    missiles[0].hp = 0;
+    expect(acquireMountTarget(owner, turret, target, [target], missiles)?.target.id).toBe(
+      target.id,
+    );
+    missiles[0].hp = 120;
+    missiles[0].lifetime = 0;
+    expect(acquireMountTarget(owner, turret, target, [target], missiles)?.target.id).toBe(
       target.id,
     );
   });
