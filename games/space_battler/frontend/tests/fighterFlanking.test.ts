@@ -130,7 +130,7 @@ describe("wide-arc ingress doctrine", () => {
 
 describe("critically wounded fighter retreat", () => {
   it.each(["battleship", "cruiser", "corvette"] as const)(
-    "routes toward the nearest friendly %s even with exhausted shields and a cached distant haven",
+    "falls back toward the nearest friendly %s when no haven lease is available",
     (hull) => {
       const craft = ship("wounded", "strike_craft", [0, 0]);
       craft.hullCurrent = craft.hullMax * 0.29;
@@ -138,6 +138,7 @@ describe("critically wounded fighter retreat", () => {
       craft.safeHavenId = "distant";
       craft.safeHavenTimer = 10;
       const distant = ship("distant", "cruiser", [-900, 0]);
+      distant.shieldCurrent = distant.shieldRegen = 0;
       const nearest = ship("nearest", hull, [0, 350]);
       nearest.shieldCurrent = nearest.shieldRegen = 0;
       const dead = ship("dead", "cruiser", [0, 100]);

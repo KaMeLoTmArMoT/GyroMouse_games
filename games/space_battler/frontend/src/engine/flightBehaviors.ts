@@ -12,6 +12,7 @@ import {
   vecSub,
 } from "./math2d";
 import { activeShieldRadius, shieldEnvelopeRadius } from "./shieldGeometry";
+import { havenHullClearance, sharesShieldHaven } from "./shieldHaven";
 import type { RetreatThresholds, SkirmishFlightDoctrine, StandoffSettings } from "./shipDoctrines";
 
 export interface FlightIntent {
@@ -59,8 +60,11 @@ export function calculateSeparation(ship: ShipState, ships: ShipState[]): Vector
       ship.hullClass === "strike_craft" &&
       peer.hullClass === "strike_craft" &&
       ship.team === peer.team;
-    const clearance = activeShieldRadius(ship) + activeShieldRadius(peer) + (wingmate ? 8 : 30);
-    const margin = clearance + (closing * closing) / 440 + closing * 0.15;
+    const nested = sharesShieldHaven(ship, peer);
+    const clearance = nested
+      ? havenHullClearance(ship, peer)
+      : activeShieldRadius(ship) + activeShieldRadius(peer) + (wingmate ? 8 : 30);
+    const margin = nested ? clearance : clearance + (closing * closing) / 440 + closing * 0.15;
     if (distance < margin)
       result = vecAdd(result, vecScale(away, ship.maxSpeed * 2 * (1 - distance / margin)));
   }

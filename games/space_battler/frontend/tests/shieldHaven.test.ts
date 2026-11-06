@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
-import { vecDistance } from "../src/engine/math2d";
+import { calculateSeparation } from "../src/engine/flightBehaviors";
+import { normalizeAngle, vecDistance } from "../src/engine/math2d";
 import { activeShieldRadius, shieldEnvelopeRadius } from "../src/engine/shieldGeometry";
 import {
+  havenAcceleration,
+  havenHullClearance,
   SHIELD_HAVEN_SLOTS,
   type ShieldHavenSlotId,
   ShieldHavenSystem,
+  sharesShieldHaven,
   shieldHavenSlotPosition,
+  shieldHavenSlotVelocity,
 } from "../src/engine/shieldHaven";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass, ShipState, Vector2 } from "../src/types/combat";
@@ -84,6 +89,242 @@ describe("authoritative shield geometry", () => {
     const moved = shieldHavenSlotPosition(parent, "port-forward");
     expect(moved[0]).toBeCloseTo(-20 - parent.size * 0.65);
     expect(moved[1]).toBeCloseTo(30 + parent.size * 1.05);
+  });
+});
+
+function dockedSimulation(hull: "strike_craft" | "corvette" = "strike_craft") {
+  const parent = ship("parent", "battleship");
+  const craft = guest("guest", hull);
+  const sim = new ClientCombatSimulation();
+  sim.addShip(parent);
+  sim.addShip(craft);
+  const lease = sim.shieldHaven.request(craft, sim.ships, 0);
+  if (!lease) throw new Error("Expected haven reservation");
+  craft.pos = shieldHavenSlotPosition(parent, lease.slotId);
+  craft.velocity = shieldHavenSlotVelocity(parent, lease.slotId);
+  sim.shieldHaven.attachGuests(sim.ships, 1 / 60);
+  expect(craft.havenState).toBe("tethered");
+  return { sim, parent, craft, lease };
+}
+
+describe("moving-slot attachment and relationship-aware collisions", () => {
+  it.each(["battleship", "dreadnought", "cruiser"] as const)(
+    "matches all six moving %s slots under linear movement and both rotation directions",
+    (hull) => {
+      const parent = ship("parent", hull, [200, -100]);
+      const guests = Array.from({ length: 6 }, (_, i) => guest(`guest_${i}`));
+      const ships = [parent, ...guests];
+      const system = new ShieldHavenSystem();
+      system.update(ships, 0);
+      for (const craft of guests) {
+        const lease = system.getLease(craft.id);
+        if (!lease) throw new Error("Expected reservation");
+        craft.pos = shieldHavenSlotPosition(parent, lease.slotId);
+      }
+      system.attachGuests(ships, 1 / 60);
+      expect(parent.havenGuestCount).toBe(6);
+      for (const omega of [-0.4, 0, 0.3]) {
+        parent.heading += omega * 0.5;
+        parent.pos = [parent.pos[0] + 15, parent.pos[1] - 10];
+        parent.velocity = [30, -20];
+        parent.angularVelocity = omega;
+        system.attachGuests([...ships].reverse(), 1 / 60);
+        for (const craft of guests) {
+          const lease = system.getLease(craft.id);
+          if (!lease) throw new Error("Expected attachment");
+          const pos = shieldHavenSlotPosition(parent, lease.slotId);
+          const r = [pos[0] - parent.pos[0], pos[1] - parent.pos[1]];
+          expect(craft.pos).toEqual(pos);
+          expect(craft.velocity[0]).toBeCloseTo(30 - omega * r[1]);
+          expect(craft.velocity[1]).toBeCloseTo(-20 + omega * r[0]);
+          expect(craft.havenParentId).toBe(parent.id);
+          expect(craft.havenSlotId).toBe(lease.slotId);
+        }
+      }
+    },
+  );
+
+  it("applies the final parent transform independent of fleet order and combat steering", () => {
+    const run = (reverse: boolean) => {
+      const { sim, parent, craft, lease } = dockedSimulation("corvette");
+      const enemy = ship("enemy", "battleship", [-1500, -300], 1);
+      sim.addShip(enemy);
+      parent.heading = Math.PI - 0.001;
+      parent.velocity = [35, 20];
+      craft.heading = 0;
+      const heading = parent.heading;
+      if (reverse) sim.ships.reverse();
+      sim.update(1 / 60);
+      expect(parent.angularVelocity).toBeCloseTo(normalizeAngle(parent.heading - heading) * 60);
+      expect(Math.abs(parent.angularVelocity ?? 0)).toBeGreaterThan(0);
+      expect(craft.pos).toEqual(shieldHavenSlotPosition(parent, lease.slotId));
+      expect(craft.velocity).toEqual(shieldHavenSlotVelocity(parent, lease.slotId));
+      expect(Math.abs(normalizeAngle(craft.heading))).toBeLessThanOrEqual(
+        craft.turnRate / 60 + 1e-9,
+      );
+      expect(craft.havenState).toBe("tethered");
+      expect(parent.havenGuestCount).toBe(1);
+      expect(craft.capitalManeuver).toBeUndefined();
+      return { pos: craft.pos, velocity: craft.velocity, heading: craft.heading };
+    };
+    expect(run(false)).toEqual(run(true));
+  });
+
+  it("permits parent and sibling shield overlap without repulsor or separation ejection", () => {
+    const { sim, parent, craft, lease } = dockedSimulation("corvette");
+    craft.shieldCurrent = craft.shieldMax * 0.5;
+    const sibling = guest("sibling", "corvette");
+    sibling.shieldCurrent = sibling.shieldMax * 0.5;
+    sibling.hullCurrent = sibling.hullMax * 0.2;
+    sim.addShip(sibling);
+    const siblingLease = sim.shieldHaven.request(sibling, sim.ships, 0);
+    if (!siblingLease) throw new Error("Expected sibling reservation");
+    sibling.pos = shieldHavenSlotPosition(parent, siblingLease.slotId);
+    sim.shieldHaven.attachGuests(sim.ships, 1 / 60);
+    expect(vecDistance(craft.pos, sibling.pos)).toBeLessThan(
+      activeShieldRadius(craft) + activeShieldRadius(sibling),
+    );
+    expect(calculateSeparation(craft, sim.ships)).toEqual([0, 0]);
+    for (let frame = 0; frame < 120; frame++) {
+      sim.update(1 / 60);
+      expect(craft.pos).toEqual(shieldHavenSlotPosition(parent, lease.slotId));
+      expect(sibling.pos).toEqual(shieldHavenSlotPosition(parent, siblingLease.slotId));
+      expect(vecDistance(craft.pos, parent.pos)).toBeGreaterThanOrEqual(
+        havenHullClearance(craft, parent),
+      );
+      expect(vecDistance(craft.pos, sibling.pos)).toBeGreaterThanOrEqual(craft.size + sibling.size);
+    }
+    expect(parent.havenGuestCount).toBe(2);
+  });
+
+  it.each(["parent", "sibling"] as const)(
+    "enforces hull exclusion for an approaching guest overlapping its %s",
+    (overlap) => {
+      const { sim, parent, craft } = dockedSimulation();
+      const arriving = guest("arriving");
+      sim.addShip(arriving);
+      sim.shieldHaven.request(arriving, sim.ships, 0);
+      const obstacle = overlap === "parent" ? parent : craft;
+      arriving.pos = [...obstacle.pos];
+      expect(sharesShieldHaven(arriving, obstacle)).toBe(true);
+      expect(
+        vecDistance([0, 0], calculateSeparation(arriving, [arriving, obstacle])),
+      ).toBeGreaterThan(0);
+      sim.update(1 / 60);
+      expect(vecDistance(arriving.pos, obstacle.pos) + 1e-6).toBeGreaterThanOrEqual(
+        havenHullClearance(arriving, obstacle),
+      );
+      expect(craft.havenState).toBe("tethered");
+    },
+  );
+
+  it("keeps unrelated friendly ships outside the standard shield repulsor", () => {
+    const { sim, craft } = dockedSimulation();
+    const unrelated = ship("unrelated", "corvette", [craft.pos[0], craft.pos[1] - 30]);
+    sim.addShip(unrelated);
+    expect(sharesShieldHaven(craft, unrelated)).toBe(false);
+    sim.update(1 / 60);
+    expect(vecDistance(craft.pos, unrelated.pos) + 1e-6).toBeGreaterThanOrEqual(
+      activeShieldRadius(craft) + activeShieldRadius(unrelated) + 20,
+    );
+  });
+
+  it("flies a reserved corridor through the umbrella and captures without hull penetration", () => {
+    const parent = ship("parent", "battleship");
+    const craft = guest();
+    const sim = new ClientCombatSimulation();
+    sim.addShip(parent);
+    sim.addShip(craft);
+    let entered = false;
+    let largestStep = 0;
+    for (let frame = 0; frame < 1200 && craft.havenState !== "tethered"; frame++) {
+      const previous: Vector2 = [...craft.pos];
+      sim.update(1 / 60);
+      largestStep = Math.max(largestStep, vecDistance(previous, craft.pos));
+      expect(vecDistance(craft.pos, parent.pos) + 1e-6).toBeGreaterThanOrEqual(
+        havenHullClearance(craft, parent),
+      );
+      if (vecDistance(craft.pos, parent.pos) < shieldEnvelopeRadius(parent)) entered = true;
+    }
+    expect(entered).toBe(true);
+    expect(craft.havenState).toBe("tethered");
+    expect(largestStep).toBeLessThan(craft.maxSpeed / 60 + 2);
+    expect(parent.havenGuestCount).toBe(1);
+  });
+
+  it("uses the authoritative healthy-parent reservation instead of a collapsed legacy haven", () => {
+    const craft = guest();
+    craft.pos = [0, 0];
+    craft.safeHavenId = "collapsed";
+    const collapsed = ship("collapsed", "cruiser", [0, 350]);
+    collapsed.shieldCurrent = 0;
+    const parent = ship("parent", "cruiser", [-900, 0]);
+    const sim = new ClientCombatSimulation();
+    for (const s of [craft, collapsed, parent]) sim.addShip(s);
+    sim.update(1 / 60);
+    expect(craft.havenState).toBe("approaching");
+    expect(craft.havenParentId).toBe(parent.id);
+    expect(craft.safeHavenId).toBe(parent.id);
+    expect(craft.velocity[0]).toBeLessThan(0);
+  });
+});
+
+describe("bounded release corridors and telemetry", () => {
+  it.each(["recovered", "emergency"] as const)(
+    "releases on %s with bounded acceleration and no repulsor snapping",
+    (reason) => {
+      const { sim, parent, craft } = dockedSimulation();
+      if (reason === "recovered") craft.shieldCurrent = craft.shieldMax * 0.75;
+      else parent.shieldCurrent = parent.shieldMax * 0.09;
+      let lastVelocity: Vector2 = [...craft.velocity];
+      let lastPos: Vector2 = [...craft.pos];
+      let cleared = false;
+      for (let frame = 0; frame < 240; frame++) {
+        sim.update(1 / 60);
+        expect(vecDistance(lastVelocity, craft.velocity)).toBeLessThanOrEqual(
+          havenAcceleration(craft) / 60 + 1e-6,
+        );
+        expect(vecDistance(lastPos, craft.pos)).toBeLessThanOrEqual(
+          vecDistance([0, 0], craft.velocity) / 60 + 1e-6,
+        );
+        expect(craft.pos[1]).toBeLessThan(lastPos[1]);
+        expect(vecDistance(craft.pos, parent.pos)).toBeGreaterThanOrEqual(
+          havenHullClearance(craft, parent),
+        );
+        expect(sim.shieldHaven.getLease(craft.id)).toBeNull();
+        expect(parent.havenGuestCount).toBe(0);
+        if (craft.havenState === "none") {
+          expect(craft.havenParentId).toBeNull();
+          expect(craft.havenSlotId).toBeNull();
+          expect(craft.fighterPhase).toBe("rejoin");
+          expect(vecDistance(craft.pos, parent.pos)).toBeGreaterThan(
+            shieldEnvelopeRadius(parent) + shieldEnvelopeRadius(craft) + 20,
+          );
+          cleared = true;
+          break;
+        }
+        expect(craft.havenState).toBe("releasing");
+        expect(craft.havenParentId).toBe(parent.id);
+        lastVelocity = [...craft.velocity];
+        lastPos = [...craft.pos];
+      }
+      expect(cleared).toBe(true);
+    },
+  );
+
+  it("reports seeking without capacity and resets all attachment telemetry between rounds", () => {
+    const unassigned = guest("unassigned");
+    const system = new ShieldHavenSystem();
+    system.update([unassigned], 0);
+    expect(unassigned.havenState).toBe("seeking");
+    expect(unassigned.havenParentId).toBeNull();
+    expect(unassigned.havenSlotId).toBeNull();
+    const { sim, parent, craft } = dockedSimulation();
+    sim.continueBattleWithRemnants();
+    expect(craft.havenState).toBe("none");
+    expect(craft.havenParentId).toBeNull();
+    expect(craft.havenSlotId).toBeNull();
+    expect(parent.havenGuestCount).toBe(0);
   });
 });
 

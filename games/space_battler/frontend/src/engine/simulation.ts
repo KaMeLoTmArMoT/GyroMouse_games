@@ -54,7 +54,7 @@ import {
   vecSub,
 } from "./math2d";
 import { activeShieldRadius, shieldEnvelopeRadius } from "./shieldGeometry";
-import { ShieldHavenSystem } from "./shieldHaven";
+import { havenHullClearance, ShieldHavenSystem, sharesShieldHaven } from "./shieldHaven";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
 import {
   isHeavyTorpedo,
@@ -223,6 +223,10 @@ export class ClientCombatSimulation {
   }
 
   addShip(ship: ShipState): void {
+    ship.havenParentId ??= null;
+    ship.havenSlotId ??= null;
+    ship.havenState ??= "none";
+    ship.havenGuestCount ??= 0;
     this.ships.push(ship);
     if (ship.isAlive) this.emitAudioEvent("warp_ingress", ship.pos, ship.team, ship.id);
   }
@@ -380,7 +384,10 @@ export class ClientCombatSimulation {
     this.ensureFighterWings(aliveShips);
     this.updateFighterWings(aliveShips);
     const navigationTargets = new Map<string, ShipState | null>();
-    const movements = new Map<string, { pos: Vector2; velocity: Vector2; heading: number }>();
+    const movements = new Map<
+      string,
+      { pos: Vector2; velocity: Vector2; heading: number; angularVelocity: number }
+    >();
     // Allocate small focus squads in stable order, independent of the render/storage order.
     const previousTargets = new Map(aliveShips.map((ship) => [ship.id, ship.navigationTargetId]));
     for (const ship of aliveShips) ship.navigationTargetId = undefined;
@@ -398,12 +405,19 @@ export class ClientCombatSimulation {
       const target = navigationTargets.get(ship.id) ?? null;
       const previous = { pos: ship.pos, velocity: ship.velocity, heading: ship.heading };
       this.updateShipMovement(ship, target, aliveShips, dt);
-      movements.set(ship.id, { pos: ship.pos, velocity: ship.velocity, heading: ship.heading });
+      movements.set(ship.id, {
+        pos: ship.pos,
+        velocity: ship.velocity,
+        heading: ship.heading,
+        angularVelocity: normalizeAngle(ship.heading - previous.heading) / dt,
+      });
       Object.assign(ship, previous);
     }
     for (const ship of aliveShips) Object.assign(ship, movements.get(ship.id));
-    this.resolveShipCollisions(aliveShips, dt);
+    this.resolveShipCollisions(aliveShips, dt, false);
     this.resolveCruiserClearance(aliveShips);
+    this.shieldHaven.attachGuests(aliveShips, dt);
+    this.resolveShipCollisions(aliveShips, dt, true);
 
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
@@ -1073,6 +1087,7 @@ export class ClientCombatSimulation {
     aliveShips: ShipState[],
     dt: number,
   ): void {
+    if (this.shieldHaven.moveGuest(ship, aliveShips, dt)) return;
     let targetHeading = ship.heading;
     let desiredSpeed = 0;
     let thrusterVelocity: Vector2 | null = null;
@@ -1168,8 +1183,8 @@ export class ClientCombatSimulation {
     ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
   }
 
-  private resolveShipCollisions(aliveShips: ShipState[], dt: number): void {
-    const contacts = new Set<string>();
+  private resolveShipCollisions(aliveShips: ShipState[], dt: number, tetheredPass: boolean): void {
+    const contacts = tetheredPass ? new Set(this.contacts) : new Set<string>();
     const getShipMass = (hull: string): number => {
       switch (hull) {
         case "dreadnought":
@@ -1192,6 +1207,9 @@ export class ClientCombatSimulation {
         const a = aliveShips[i];
         const b = aliveShips[j];
         if (!a.isAlive || !b.isAlive) continue;
+        const tetherA = a.havenState === "tethered";
+        const tetherB = b.havenState === "tethered";
+        if ((tetherA || tetherB) !== tetheredPass) continue;
         if (a.team === b.team && a.hullClass === "cruiser" && b.hullClass === "cruiser") continue;
         const d = vecDistance(a.pos, b.pos);
         if (this.observer && a.team !== b.team) this.observer.onProximity(a, b, d);
@@ -1199,7 +1217,8 @@ export class ClientCombatSimulation {
         const shieldA = activeShieldRadius(a);
         const shieldB = activeShieldRadius(b);
         const minBubbleDist = shieldA + shieldB;
-        const repulsorZone = minBubbleDist + 20;
+        const nested = sharesShieldHaven(a, b);
+        const repulsorZone = nested ? havenHullClearance(a, b) : minBubbleDist + 20;
         const pair = [a.id, b.id].sort().join(":");
         if (d < repulsorZone + 5 && this.contacts.has(pair)) contacts.add(pair);
 
@@ -1211,8 +1230,16 @@ export class ClientCombatSimulation {
           const massB = getShipMass(b.hullClass);
           const totalMass = massA + massB;
 
-          const pushRatioA = massB / totalMass;
-          const pushRatioB = massA / totalMass;
+          // Tethers are kinematic for unrelated contacts. Hull penetration breaks the
+          // offending attachment so exclusion can correct it without moving its parent.
+          if (nested) {
+            if (tetherA && (tetherB || a.havenParentId === b.id)) this.shieldHaven.release(a.id);
+            if (tetherB && (tetherA || b.havenParentId === a.id)) this.shieldHaven.release(b.id);
+          }
+          const fixedA = a.havenState === "tethered" || (nested && b.havenParentId === a.id);
+          const fixedB = b.havenState === "tethered" || (nested && a.havenParentId === b.id);
+          const pushRatioA = fixedA ? 0 : fixedB ? 1 : massB / totalMass;
+          const pushRatioB = fixedB ? 0 : fixedA ? 1 : massA / totalMass;
 
           // Cancel only closing normal velocity so hulls slide tangentially past each other
           const relVel = vecSub(a.velocity, b.velocity);

@@ -1,6 +1,15 @@
 import type { ShipState, Vector2 } from "../types/combat";
-import { rotatePoint, vecAdd, vecDistance, vecScale } from "./math2d";
-import { isCapitalShip } from "./shieldGeometry";
+import {
+  clamp,
+  normalizeAngle,
+  rotatePoint,
+  vecAdd,
+  vecDistance,
+  vecNormalize,
+  vecScale,
+  vecSub,
+} from "./math2d";
+import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 
 // Normalized parent-local coordinates: +x forward, -y port. Side stations clear
 // the narrow capital hull while remaining well inside its 1.68x umbrella.
@@ -28,6 +37,56 @@ export function shieldHavenSlotPosition(parent: ShipState, slotId: ShieldHavenSl
   return vecAdd(parent.pos, rotatePoint(local, parent.heading));
 }
 
+export function shieldHavenSlotVelocity(parent: ShipState, slotId: ShieldHavenSlotId): Vector2 {
+  const r = vecSub(shieldHavenSlotPosition(parent, slotId), parent.pos);
+  return vecAdd(parent.velocity, vecScale([-r[1], r[0]], parent.angularVelocity ?? 0));
+}
+
+/** Only authoritative reservations/attachments grant nested shield access. */
+export function sharesShieldHaven(a: ShipState, b: ShipState): boolean {
+  if (a.team !== b.team) return false;
+  const active = (ship: ShipState) =>
+    !!ship.havenParentId &&
+    !!ship.havenSlotId &&
+    (ship.havenState === "approaching" ||
+      ship.havenState === "tethered" ||
+      ship.havenState === "releasing");
+  return (
+    (active(a) && a.havenParentId === b.id) ||
+    (active(b) && b.havenParentId === a.id) ||
+    (active(a) && active(b) && a.havenParentId === b.havenParentId)
+  );
+}
+
+/** Conservative support bounds: narrow capital ellipse and circular guest hulls. */
+export function havenHullClearance(a: ShipState, b: ShipState): number {
+  const normal: Vector2 =
+    vecDistance(a.pos, b.pos) > 1e-6
+      ? vecNormalize(vecSub(a.pos, b.pos))
+      : [0, a.id < b.id ? -1 : 1];
+  const support = (ship: ShipState) => {
+    if (!isCapitalShip(ship)) return ship.size;
+    const local = rotatePoint(normal, -ship.heading);
+    return ship.size * Math.hypot(local[0], local[1] * 0.75);
+  };
+  return support(a) + support(b);
+}
+
+export function havenAcceleration(ship: ShipState): number {
+  return ship.hullClass === "strike_craft" ? 240 : 110;
+}
+
+function boundedVector(vector: Vector2, max: number): Vector2 {
+  const length = vecDistance([0, 0], vector);
+  return length > max ? vecScale(vector, max / length) : vector;
+}
+
+function resetHaven(ship: ShipState): void {
+  ship.havenParentId = null;
+  ship.havenSlotId = null;
+  ship.havenState = "none";
+}
+
 function eligibleGuest(ship: ShipState): boolean {
   return (
     ship.isAlive &&
@@ -50,22 +109,49 @@ function eligibleParent(guest: ShipState, parent: ShipState): boolean {
 /** Fixed-step, atomic leases. Allocation order never depends on fleet storage order. */
 export class ShieldHavenSystem {
   private leases = new Map<string, ShieldHavenLease>();
+  private ships = new Map<string, ShipState>();
 
   getLease(guestId: string): ShieldHavenLease | null {
     return this.leases.get(guestId) ?? null;
   }
 
   release(guestId: string): void {
+    const guest = this.ships.get(guestId);
+    const lease = this.leases.get(guestId);
+    const parent = lease && this.ships.get(lease.parentId);
+    if (guest) {
+      if (
+        lease &&
+        parent &&
+        guest.isAlive &&
+        (guest.havenState === "tethered" ||
+          vecDistance(guest.pos, parent.pos) < shieldEnvelopeRadius(parent) + guest.size + 25)
+      ) {
+        guest.havenState = "releasing";
+      } else if (guest.havenState !== "releasing") resetHaven(guest);
+    }
     this.leases.delete(guestId);
+    this.updateGuestCounts();
   }
 
   clear(): void {
+    for (const ship of this.ships.values()) {
+      resetHaven(ship);
+      ship.havenGuestCount = 0;
+    }
     this.leases.clear();
+    this.ships.clear();
   }
 
   /** Remove unsafe leases immediately after combat, without starting new episodes. */
   cleanup(ships: readonly ShipState[]): void {
     const byId = new Map(ships.map((ship) => [ship.id, ship]));
+    for (const ship of ships) {
+      this.ships.set(ship.id, ship);
+      ship.havenState ??= "none";
+      ship.havenParentId ??= null;
+      ship.havenSlotId ??= null;
+    }
     for (const [guestId, lease] of this.leases) {
       const guest = byId.get(guestId);
       const parent = byId.get(lease.parentId);
@@ -79,11 +165,21 @@ export class ShieldHavenSystem {
       )
         this.release(guestId);
     }
+    for (const [id, ship] of this.ships) {
+      if (!byId.has(id) || !ship.isAlive) {
+        resetHaven(ship);
+        this.ships.delete(id);
+      } else if (ship.havenState === "releasing" && !byId.get(ship.havenParentId ?? "")?.isAlive) {
+        resetHaven(ship);
+      }
+    }
+    this.updateGuestCounts();
   }
 
   request(guest: ShipState, ships: readonly ShipState[], time: number): ShieldHavenLease | null {
     this.cleanup(ships);
     if (!eligibleGuest(guest)) return null;
+    if (guest.havenState === "releasing") return null;
     const existing = this.getLease(guest.id);
     if (existing) return existing;
     const newHullDamage =
@@ -93,6 +189,7 @@ export class ShieldHavenSystem {
       if (!newHullDamage && guest.shieldCurrent > 0) return null;
       guest.recoveryStarted = time;
     }
+    guest.havenState = "seeking";
     const parents = ships
       .filter(
         (parent) => eligibleParent(guest, parent) && parent.shieldCurrent > parent.shieldMax * 0.15,
@@ -111,6 +208,10 @@ export class ShieldHavenSystem {
       if (!slot) continue;
       const lease = Object.freeze({ guestId: guest.id, parentId: parent.id, slotId: slot });
       this.leases.set(guest.id, lease);
+      guest.havenParentId = parent.id;
+      guest.havenSlotId = slot;
+      guest.havenState = "approaching";
+      guest.safeHavenId = parent.id;
       return lease;
     }
     return null;
@@ -120,6 +221,7 @@ export class ShieldHavenSystem {
     this.cleanup(ships);
     for (const guest of [...ships].sort((a, b) => a.id.localeCompare(b.id))) {
       if (!eligibleGuest(guest)) continue;
+      if (guest.havenState === "releasing") continue;
       if (
         guest.recoveryStarted !== undefined &&
         guest.recoveryStarted < time &&
@@ -132,5 +234,111 @@ export class ShieldHavenSystem {
       }
       this.request(guest, ships, time);
     }
+    this.updateGuestCounts();
+  }
+
+  private updateGuestCounts(): void {
+    for (const ship of this.ships.values()) ship.havenGuestCount = 0;
+    for (const lease of this.leases.values()) {
+      if (this.ships.get(lease.guestId)?.havenState !== "tethered") continue;
+      const parent = this.ships.get(lease.parentId);
+      if (parent) parent.havenGuestCount = (parent.havenGuestCount ?? 0) + 1;
+    }
+  }
+
+  /** Owns guest flight while reserved, attached, or traversing the release corridor. */
+  moveGuest(guest: ShipState, ships: readonly ShipState[], dt: number): boolean {
+    const lease = this.getLease(guest.id);
+    const parent = ships.find((ship) => ship.id === guest.havenParentId);
+    const slotId = lease?.slotId ?? (guest.havenSlotId as ShieldHavenSlotId | null);
+    if (!parent || !slotId || !SHIELD_HAVEN_SLOTS[slotId]) return false;
+    if (guest.havenState === "tethered") return true;
+    if (guest.havenState !== "approaching" && guest.havenState !== "releasing") return false;
+
+    const side = Math.sign(SHIELD_HAVEN_SLOTS[slotId][1]);
+    const outward = rotatePoint([0, side], parent.heading);
+    let desired: Vector2;
+    if (guest.havenState === "releasing") {
+      // Keep the shield exemption until beyond the repulsor, not merely the hull.
+      const clear = shieldEnvelopeRadius(parent) + shieldEnvelopeRadius(guest) + 30;
+      if (vecDistance(guest.pos, parent.pos) >= clear) {
+        resetHaven(guest);
+        if (guest.hullClass === "strike_craft") guest.fighterPhase = "rejoin";
+        guest.pos = vecAdd(guest.pos, vecScale(guest.velocity, dt));
+        return true;
+      }
+      desired = vecAdd(parent.velocity, vecScale(outward, guest.maxSpeed * 0.65));
+    } else {
+      const local = rotatePoint(vecSub(guest.pos, parent.pos), -parent.heading);
+      const slot = shieldHavenSlotPosition(parent, slotId);
+      const aft = -parent.size - guest.size - 30;
+      const sideClearance = parent.size * 1.05;
+      // Route wrong-side arrivals around the stern before entering the side corridor.
+      const waypoint: Vector2 =
+        local[1] * side < sideClearance - 3
+          ? local[0] > aft + 3
+            ? [aft, local[1]]
+            : [local[0], side * sideClearance]
+          : rotatePoint(vecSub(slot, parent.pos), -parent.heading);
+      const delta = vecSub(vecAdd(parent.pos, rotatePoint(waypoint, parent.heading)), guest.pos);
+      const distance = vecDistance([0, 0], delta);
+      desired = vecAdd(
+        shieldHavenSlotVelocity(parent, slotId),
+        boundedVector(
+          vecScale(delta, 1.5),
+          Math.min(guest.maxSpeed, Math.sqrt(2 * havenAcceleration(guest) * distance) * 0.75),
+        ),
+      );
+    }
+    guest.velocity = vecAdd(
+      guest.velocity,
+      boundedVector(vecSub(desired, guest.velocity), havenAcceleration(guest) * dt),
+    );
+    const heading =
+      guest.havenState === "releasing" ? Math.atan2(outward[1], outward[0]) : parent.heading;
+    guest.heading = normalizeAngle(
+      guest.heading +
+        clamp(normalizeAngle(heading - guest.heading), -guest.turnRate * dt, guest.turnRate * dt),
+    );
+    guest.pos = vecAdd(guest.pos, vecScale(guest.velocity, dt));
+    return true;
+  }
+
+  /** Run after parent motion/collisions so storage order cannot introduce tether drift. */
+  attachGuests(ships: readonly ShipState[], dt: number): void {
+    for (const lease of this.leases.values()) {
+      const guest = ships.find((ship) => ship.id === lease.guestId);
+      const parent = ships.find((ship) => ship.id === lease.parentId);
+      if (!guest || !parent) continue;
+      const pos = shieldHavenSlotPosition(parent, lease.slotId);
+      const velocity = shieldHavenSlotVelocity(parent, lease.slotId);
+      const wasTethered = guest.havenState === "tethered";
+      if (guest.havenState !== "tethered") {
+        if (vecDistance(guest.pos, pos) > 2 || vecDistance(guest.velocity, velocity) > 8) continue;
+        const candidate = { ...guest, pos };
+        if (
+          ships.some(
+            (peer) =>
+              peer.id !== guest.id &&
+              peer.isAlive &&
+              vecDistance(pos, peer.pos) < havenHullClearance(candidate, peer),
+          )
+        )
+          continue;
+        guest.havenState = "tethered";
+      }
+      guest.pos = pos;
+      guest.velocity = velocity;
+      if (wasTethered)
+        guest.heading = normalizeAngle(
+          guest.heading +
+            clamp(
+              normalizeAngle(parent.heading - guest.heading),
+              -guest.turnRate * dt,
+              guest.turnRate * dt,
+            ),
+        );
+    }
+    this.updateGuestCounts();
   }
 }

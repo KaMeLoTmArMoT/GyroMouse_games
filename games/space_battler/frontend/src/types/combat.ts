@@ -14,6 +14,7 @@ export type TargetPriority = "capitals" | "screen_and_defend" | "strike_craft" |
 export type EngagementStance = "max_range" | "optimal_range" | "brawl";
 export type WingPhase = "staging" | "attack" | "egress" | "rejoin";
 export type FighterPhase = WingPhase | "intercept" | "recover";
+export type HavenState = "none" | "seeking" | "approaching" | "tethered" | "releasing";
 
 export type Vector2 = [number, number];
 
@@ -75,6 +76,7 @@ export interface ShipState {
   pos: Vector2;
   velocity: Vector2;
   heading: number; // radians
+  angularVelocity?: number; // Authoritative heading change per fixed step, in rad/s.
   maxSpeed: number;
   turnRate: number;
   size: number;
@@ -113,6 +115,10 @@ export interface ShipState {
   dogfightTargetId?: string;
   lastThreatTime?: number;
   recoveryStarted?: number;
+  havenParentId?: string | null;
+  havenSlotId?: string | null;
+  havenState?: HavenState;
+  havenGuestCount?: number; // Currently tethered guests, excluding reservations.
   nextRecoveryAt?: number;
   recoveredHull?: number;
   lastMissionShotTime?: number;
