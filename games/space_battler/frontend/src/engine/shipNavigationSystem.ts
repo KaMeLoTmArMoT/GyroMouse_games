@@ -7,6 +7,7 @@ import {
   ARENA_RADIUS,
   arenaVelocity,
   capitalIntent,
+  debrisAvoidanceVelocity,
   escortVelocity,
   limitVelocity,
   separation,
@@ -103,7 +104,10 @@ export function updateShipNavigation(
   target: ShipState | null,
   aliveShips: ShipState[],
   dt: number,
-  context: Pick<ClientCombatSimulation, "shieldHaven" | "orders" | "timeElapsed" | "projectiles">,
+  context: Pick<
+    ClientCombatSimulation,
+    "shieldHaven" | "orders" | "timeElapsed" | "projectiles" | "ships"
+  >,
   fighterCycle: FighterMissionSystem["updateCycle"],
 ): void {
   if (context.shieldHaven.moveGuest(ship, aliveShips, dt)) return;
@@ -209,6 +213,16 @@ export function updateShipNavigation(
       rangePhase = undefined;
     }
   }
+  const intendedVelocity: Vector2 = thrusterVelocity ?? [
+    Math.cos(targetHeading) * desiredSpeed,
+    Math.sin(targetHeading) * desiredSpeed,
+  ];
+  const debrisVelocity = debrisAvoidanceVelocity(ship, intendedVelocity, context.ships);
+  const avoidingDebris = vecDistance(debrisVelocity, intendedVelocity) > 1e-6;
+  if (avoidingDebris) {
+    thrusterVelocity = debrisVelocity;
+    targetHeading = Math.atan2(debrisVelocity[1], debrisVelocity[0]);
+  }
   if (thrusterVelocity) {
     thrusterVelocity = arenaVelocity(ship, thrusterVelocity);
   } else if (vecDistance([0, 0], ship.pos) > ARENA_RADIUS) {
@@ -270,7 +284,7 @@ export function updateShipNavigation(
         controlledVelocity = vecSub(controlledVelocity, vecScale(toward, closing - safeClosing));
     }
   }
-  if (rangePhase && !evadingOrdnance && !maintainingStandoff) {
+  if (rangePhase && !evadingOrdnance && !maintainingStandoff && !avoidingDebris) {
     const flight = SHIP_DOCTRINES[ship.hullClass].flight;
     if (flight.kind === "capital" || flight.kind === "skirmish")
       controlledVelocity = clampLateralVelocity(

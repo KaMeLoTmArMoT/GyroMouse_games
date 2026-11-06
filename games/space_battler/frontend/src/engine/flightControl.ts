@@ -42,6 +42,96 @@ import { type CapitalFlightDoctrine, SHIP_DOCTRINES } from "./shipDoctrines";
 // Keep simulation callers on the existing API while sharing the underlying behavior blocks.
 export { calculateSeparation, calculateSeparation as separation, limitVelocity };
 
+// Individual envelopes leave a slit open only above diameter + 15 units.
+export function debrisAvoidanceVelocity(
+  ship: ShipState,
+  desired: Vector2,
+  ships: ShipState[],
+): Vector2 {
+  const horizon = 2.5;
+  const wrecks = ships.filter((peer) => peer.isAlive && peer.isDebris);
+  const heavy = ["cruiser", "battleship", "carrier", "dreadnought"].includes(ship.hullClass);
+  const groups: ShipState[][] = [];
+  const pending = new Set(wrecks);
+  for (const wreck of wrecks) {
+    if (!pending.delete(wreck)) continue;
+    const group = [wreck];
+    if (heavy) {
+      for (let i = 0; i < group.length; i++) {
+        for (const peer of pending) {
+          const member = group[i];
+          const now = vecDistance(member.pos, peer.pos);
+          const projected = vecDistance(
+            vecAdd(member.pos, vecScale(member.velocity, horizon)),
+            vecAdd(peer.pos, vecScale(peer.velocity, horizon)),
+          );
+          if (Math.min(now, projected) > member.size + peer.size + ship.size * 2 + 15) continue;
+          pending.delete(peer);
+          group.push(peer);
+        }
+      }
+    }
+    groups.push(group);
+  }
+  let result = desired;
+  let strongest = 0;
+  for (const group of groups) {
+    const center = vecScale(
+      group.reduce((sum, wreck) => vecAdd(sum, wreck.pos), [0, 0]),
+      1 / group.length,
+    );
+    const velocity = vecScale(
+      group.reduce((sum, wreck) => vecAdd(sum, wreck.velocity), [0, 0]),
+      1 / group.length,
+    );
+    // Enclose both present and projected extents, including differential wreck drift.
+    const radius =
+      Math.max(
+        ...group.map(
+          (wreck) =>
+            wreck.size +
+            Math.max(
+              vecDistance(wreck.pos, center),
+              vecDistance(
+                vecAdd(wreck.pos, vecScale(wreck.velocity, horizon)),
+                vecAdd(center, vecScale(velocity, horizon)),
+              ),
+            ),
+        ),
+      ) +
+      ship.size +
+      7.5;
+    const displacement = vecSub(center, ship.pos);
+    const distance = Math.hypot(...displacement);
+    if (distance < 1e-6) continue;
+    const toward = vecScale(displacement, 1 / distance);
+    // Check actual momentum as well as intended thrust, so stationary ships evade incoming wrecks.
+    for (const motion of [ship.velocity, desired]) {
+      const relative = vecSub(velocity, motion);
+      const speedSquared = vecDot(relative, relative);
+      const time =
+        speedSquared > 1e-6 ? clamp(-vecDot(displacement, relative) / speedSquared, 0, horizon) : 0;
+      const closest = vecAdd(displacement, vecScale(relative, time));
+      const miss = Math.hypot(...closest);
+      if (miss >= radius || (time === 0 && distance > radius)) continue;
+      const urgency = (1 - miss / radius) * (1 - time / (horizon * 2));
+      if (urgency <= strongest) continue;
+      strongest = urgency;
+      const tangent: Vector2 = [-toward[1], toward[0]];
+      const sideOffset = vecDot(closest, tangent);
+      const side = Math.abs(sideOffset) > 1e-6 ? -Math.sign(sideOffset) : 1;
+      const lateral = Math.min(ship.maxSpeed, (radius - miss + 15) / Math.max(0.5, time));
+      const closing = vecDot(vecSub(desired, velocity), toward);
+      const safeClosing = Math.max(0, (distance - radius) / horizon);
+      result = vecAdd(
+        vecSub(desired, vecScale(toward, Math.max(0, closing - safeClosing))),
+        vecScale(tangent, side * lateral),
+      );
+    }
+  }
+  return limitVelocity(result, ship.maxSpeed);
+}
+
 export let ARENA_RADIUS = 1900;
 export let ARENA_HARD_PULL_RADIUS = 2200;
 

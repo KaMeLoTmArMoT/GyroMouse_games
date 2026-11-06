@@ -71,7 +71,7 @@ export class CollisionContactSolver {
         const nested = sharesShieldHaven(a, b);
         const hullClearance = nested ? havenHullClearance(a, b) : a.size + b.size;
         const repulsorZone = debrisContact
-          ? hullClearance + 20
+          ? hullClearance + 7.5
           : nested
             ? hullClearance
             : Math.max(

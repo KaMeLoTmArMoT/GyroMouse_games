@@ -8,6 +8,7 @@ import {
   arenaVelocity,
   capitalIntent,
   configureArena,
+  debrisAvoidanceVelocity,
   escortVelocity,
   spinalEscape,
 } from "../src/engine/flightControl";
@@ -20,6 +21,7 @@ import {
 } from "../src/engine/flightCycles";
 import { normalizeAngle, rotatePoint, vecDistance, vecDot } from "../src/engine/math2d";
 import { SHIP_DOCTRINES } from "../src/engine/shipDoctrines";
+import { updateShipNavigation } from "../src/engine/shipNavigationSystem";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { EngagementStance, HullClass, Vector2 } from "../src/types/combat";
 
@@ -28,6 +30,99 @@ function ship(hullClass: HullClass, team = 0) {
   result.pos = [0, 0];
   return result;
 }
+
+describe("predictive kinetic wreck routing", () => {
+  it("evades an oncoming wreck using thrust before any collision solver runs", () => {
+    const craft = ship("strike_craft");
+    const wreck = ship("cruiser");
+    wreck.id = "wreck";
+    wreck.isDebris = true;
+    wreck.size = 30;
+    wreck.pos = [400, 0];
+    wreck.velocity = [-160, 0];
+    const sim = new ClientCombatSimulation();
+    sim.addShip(craft);
+    sim.addShip(wreck);
+    for (let tick = 0; tick < 150; tick++) {
+      updateShipNavigation(craft, null, [craft], 1 / 60, sim, () => ({ heading: 0, speed: 0 }));
+      wreck.pos[0] += wreck.velocity[0] / 60;
+      expect(vecDistance(craft.pos, wreck.pos)).toBeGreaterThan(craft.size + wreck.size + 7.5);
+    }
+    expect(Math.abs(craft.pos[1])).toBeGreaterThan(craft.size + wreck.size);
+    expect(wreck.velocity).toEqual([-160, 0]);
+  });
+
+  it.each(["strike_craft", "corvette", "tender", "missile_frigate"] as const)(
+    "leaves a diameter-plus-15 corridor open for %s",
+    (hull) => {
+      const craft = ship(hull);
+      const wrecks = [-1, 1].map((side) => {
+        const wreck = ship("cruiser");
+        wreck.id = `wreck_${side}`;
+        wreck.isDebris = true;
+        wreck.size = 30;
+        wreck.pos = [craft.maxSpeed, side * (30 + craft.size + 8)];
+        wreck.velocity = [0, 0];
+        return wreck;
+      });
+      craft.velocity = [craft.maxSpeed, 0];
+      expect(debrisAvoidanceVelocity(craft, craft.velocity, wrecks)).toEqual(craft.velocity);
+      for (const wreck of wrecks) wreck.pos[1] *= 0.8;
+      expect(Math.abs(debrisAvoidanceVelocity(craft, craft.velocity, wrecks)[1])).toBeGreaterThan(
+        0,
+      );
+    },
+  );
+
+  it.each(["cruiser", "battleship", "carrier", "dreadnought"] as const)(
+    "routes %s outside a connected multi-wreck field instead of between wrecks",
+    (hull) => {
+      const capital = ship(hull);
+      const wrecks = [-1, 1].map((side) => {
+        const wreck = ship("cruiser");
+        wreck.id = `wreck_${side}`;
+        wreck.isDebris = true;
+        wreck.size = 30;
+        wreck.pos = [capital.size + 110 + capital.maxSpeed, side * 60];
+        wreck.velocity = [0, 0];
+        return wreck;
+      });
+      capital.velocity = [capital.maxSpeed, 0];
+      const routed = debrisAvoidanceVelocity(capital, capital.velocity, wrecks);
+      expect(routed[1]).toBeGreaterThan(0);
+      expect(routed[0]).toBeLessThan(capital.maxSpeed);
+      expect(debrisAvoidanceVelocity(capital, capital.velocity, [...wrecks].reverse())).toEqual(
+        routed,
+      );
+      for (let tick = 0; tick < 1800; tick++) {
+        const desired = debrisAvoidanceVelocity(capital, [capital.maxSpeed, 0], wrecks);
+        for (const axis of [0, 1] as const) {
+          capital.velocity[axis] += Math.max(
+            -110 / 60,
+            Math.min(110 / 60, desired[axis] - capital.velocity[axis]),
+          );
+          capital.pos[axis] += capital.velocity[axis] / 60;
+        }
+        for (const wreck of wrecks)
+          expect(vecDistance(capital.pos, wreck.pos)).toBeGreaterThan(capital.size + wreck.size);
+      }
+      expect(capital.pos[0]).toBeGreaterThan(wrecks[0].pos[0]);
+    },
+  );
+
+  it("ignores expired wrecks and receding safe trajectories", () => {
+    const craft = ship("strike_craft");
+    const wreck = ship("cruiser");
+    wreck.isDebris = true;
+    wreck.pos = [400, 0];
+    wreck.velocity = [200, 0];
+    const desired: Vector2 = [100, 0];
+    expect(debrisAvoidanceVelocity(craft, desired, [wreck])).toEqual(desired);
+    wreck.velocity = [-200, 0];
+    wreck.isAlive = false;
+    expect(debrisAvoidanceVelocity(craft, desired, [wreck])).toEqual(desired);
+  });
+});
 
 describe("escort physical capital clearance", () => {
   it.each(["corvette", "missile_frigate"] as const)(
