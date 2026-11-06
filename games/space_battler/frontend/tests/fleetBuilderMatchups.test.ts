@@ -75,7 +75,7 @@ function renderBuilder() {
   if (!panel || typeof panel.type !== "function") throw new Error("Active fleet panel not found");
   hooks.scope = `panel:${(panel.props as unknown as { team: string }).team}`;
   hooks.index = 0;
-  return (panel.type as (props: ElementProps) => ReactNode)(panel.props);
+  return [tree, (panel.type as (props: ElementProps) => ReactNode)(panel.props)];
 }
 
 function button(tree: ReactNode, label: string): Element {
@@ -84,6 +84,12 @@ function button(tree: ReactNode, label: string): Element {
   );
   if (!result) throw new Error(`Button not found: ${label}`);
   return result;
+}
+
+function expectRoster(tree: ReactNode, team: "Blue" | "Red", count: number) {
+  expect(text(tree)).toContain(`${team} Active Roster`);
+  const builder = elements(renderApp()).find((element) => element.type === FleetBuilder);
+  expect(team === "Blue" ? builder?.props.blueSlots : builder?.props.redSlots).toHaveLength(count);
 }
 
 function enlist(tree: ReactNode, hullName: string) {
@@ -150,24 +156,24 @@ describe("fleet builder matchups", () => {
   it("loads a complete scenario, edits only the active side, and launches the edited fleets", () => {
     selectMatchup("scenario:1bb-vs-27sc");
     let tree = renderBuilder();
-    expect(text(tree)).toContain("Blue Active Roster (1 hulls)");
+    expectRoster(tree, "Blue", 1);
     button(tree, "Opposing Force (Red)").props.onClick();
     tree = renderBuilder();
-    expect(text(tree)).toContain("Red Active Roster (27 hulls)");
+    expectRoster(tree, "Red", 27);
     expect(text(tree)).toContain("3,240 / 30,000 CR");
     button(tree, "Clear All").props.onClick();
     tree = renderBuilder();
-    expect(text(tree)).toContain("Red Active Roster (0 hulls)");
+    expectRoster(tree, "Red", 0);
     expect(button(tree, "Engage Fleet Simulator").props.disabled).toBe(true);
     expect(selector(tree, "Opposing Fleet Presets").props.value).toBe("custom");
     expect(selector(tree, "Tactical Scenarios").props.value).toBe("custom");
 
     enlist(tree, "Sovereign Battleship");
     tree = renderBuilder();
-    expect(text(tree)).toContain("Red Active Roster (1 hulls)");
+    expectRoster(tree, "Red", 1);
     button(tree, "Terran Task Force (Blue)").props.onClick();
     tree = renderBuilder();
-    expect(text(tree)).toContain("Blue Active Roster (1 hulls)");
+    expectRoster(tree, "Blue", 1);
     expect(selector(tree, "Tactical Scenarios").props.value).toBe("custom");
     button(tree, "Engage Fleet Simulator").props.onClick();
     const canvas = elements(renderApp()).find((element) => element.type === TacticalCanvas);
@@ -181,13 +187,13 @@ describe("fleet builder matchups", () => {
     selectMatchup("scenario:1bb-vs-27sc");
     selectMatchup("test_3_cruisers");
     let tree = renderBuilder();
-    expect(text(tree)).toContain("Blue Active Roster (1 hulls)");
+    expectRoster(tree, "Blue", 1);
     button(tree, "Opposing Force (Red)").props.onClick();
     tree = renderBuilder();
-    expect(text(tree)).toContain("Red Active Roster (3 hulls)");
+    expectRoster(tree, "Red", 3);
     button(tree, "Mirror Fleet").props.onClick();
     tree = renderBuilder();
-    expect(text(tree)).toContain("Red Active Roster (1 hulls)");
+    expectRoster(tree, "Red", 1);
     expect(selector(tree, "Opposing Fleet Presets").props.value).toBe("custom");
     const builder = elements(renderApp()).find((element) => element.type === FleetBuilder);
     expect(builder?.props.redSlots).toEqual(builder?.props.blueSlots);
@@ -195,22 +201,22 @@ describe("fleet builder matchups", () => {
     button(tree, "Clear All").props.onClick();
     button(renderBuilder(), "Terran Task Force (Blue)").props.onClick();
     tree = renderBuilder();
-    expect(text(tree)).toContain("Blue Active Roster (1 hulls)");
+    expectRoster(tree, "Blue", 1);
     expect(selector(tree, "Tactical Scenarios").props.value).toBe("custom");
   });
 
   it("distinguishes scenario IDs from presets and marks a Blue scenario edit as custom", () => {
     selectMatchup("scenario:combined");
     let tree = renderBuilder();
-    expect(text(tree)).toContain("Blue Active Roster (10 hulls)");
+    expectRoster(tree, "Blue", 10);
     button(tree, "Enlist in Group 1").props.onClick();
     tree = renderBuilder();
     expect(selector(tree, "Tactical Scenarios").props.value).toBe("custom");
     selectMatchup("combined");
     tree = renderBuilder();
-    expect(text(tree)).toContain("Blue Active Roster (11 hulls)");
+    expectRoster(tree, "Blue", 11);
     button(tree, "Opposing Force (Red)").props.onClick();
-    expect(text(renderBuilder())).toContain("Red Active Roster (9 hulls)");
+    expectRoster(renderBuilder(), "Red", 9);
   });
 
   it("restores an empty custom Red fleet after reload", () => {
@@ -228,7 +234,7 @@ describe("fleet builder matchups", () => {
     expect(selector(tree, "Tactical Scenarios").props.value).toBe("custom");
     button(tree, "Opposing Force (Red)").props.onClick();
     tree = renderBuilder();
-    expect(text(tree)).toContain("Red Active Roster (0 hulls)");
+    expectRoster(tree, "Red", 0);
     expect(button(tree, "Engage Fleet Simulator").props.disabled).toBe(true);
   });
 });

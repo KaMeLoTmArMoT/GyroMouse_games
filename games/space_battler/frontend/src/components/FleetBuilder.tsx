@@ -114,17 +114,6 @@ export const GROUP_THEMES: Record<
   },
 };
 
-const RED_THEME = {
-  border: "border-red-900/40",
-  bg: "bg-red-950/50",
-  text: "text-red-400",
-  badgeBg: "bg-red-950/50",
-  badgeText: "text-red-300",
-  activeBg: "bg-red-900/70",
-  activeText: "text-rose-300",
-  glow: "shadow-red-950/40",
-};
-
 const HULL_SIZE_ORDER: Record<HullClass, number> = {
   dreadnought: 0,
   carrier: 1,
@@ -412,20 +401,82 @@ export function RosterCountInput({
 
 export function FleetBuilder(props: FleetBuilderProps) {
   const [activeTeam, setActiveTeam] = useState<"blue" | "red">("blue");
+  const selectedScenario = SCENARIOS.find((s) => `scenario:${s.id}` === props.enemyPresetId);
+  const selectedPreset = FLEET_PRESETS.find((p) => p.id === props.enemyPresetId);
   return (
-    <div className="flex-1 flex gap-2 p-3 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
-      <FleetBuilderPanel
-        {...props}
-        team={activeTeam}
-        activeTeam={activeTeam}
-        setActiveTeam={setActiveTeam}
-      />
-      <FleetBuilderPanel
-        {...props}
-        team={activeTeam === "blue" ? "red" : "blue"}
-        activeTeam={activeTeam}
-        setActiveTeam={setActiveTeam}
-      />
+    <div className="flex-1 flex flex-col gap-2 p-3 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
+      <div className="flex-1 min-h-0 flex gap-2 overflow-hidden">
+        <FleetBuilderPanel
+          {...props}
+          team={activeTeam}
+          activeTeam={activeTeam}
+          setActiveTeam={setActiveTeam}
+        />
+        <FleetBuilderPanel
+          {...props}
+          team={activeTeam === "blue" ? "red" : "blue"}
+          activeTeam={activeTeam}
+          setActiveTeam={setActiveTeam}
+        />
+      </div>
+      <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 shrink-0 select-text">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            Opposing Fleet Presets
+            <select
+              value={selectedPreset ? props.enemyPresetId : "custom"}
+              onChange={(e) => props.onSelectEnemyPreset(e.target.value)}
+              className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
+            >
+              <option value="custom">
+                {selectedScenario ? "Select a preset" : "Custom Fleet"}
+              </option>
+              {FLEET_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.budget} CR)
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            Tactical Scenarios
+            <select
+              value={selectedScenario ? props.enemyPresetId : "custom"}
+              onChange={(e) => props.onSelectEnemyPreset(e.target.value)}
+              className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
+            >
+              <option value="custom">
+                {selectedPreset ? "Select a scenario" : "Custom Fleet"}
+              </option>
+              {SCENARIOS.map((scenario) => (
+                <option key={scenario.id} value={`scenario:${scenario.id}`}>
+                  {scenario.label.replace(/\bSC\b/g, "Fighters")}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={props.blueSlots.length === 0 || props.redSlots.length === 0}
+            onClick={props.onStartBattle}
+            className={`w-full py-3 rounded-xl font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 transition-all ${
+              props.blueSlots.length > 0 && props.redSlots.length > 0
+                ? activeTeam === "red"
+                  ? "bg-red-700 hover:bg-red-600 text-white shadow-lg shadow-red-950/40 cursor-pointer"
+                  : "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-500/20 cursor-pointer"
+                : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
+            }`}
+          >
+            <Swords className="w-4 h-4" /> Engage Fleet Simulator
+          </button>
+        </div>
+        <p className="text-[11px] text-zinc-500 italic mt-1 select-text">
+          {selectedPreset?.description ??
+            (selectedScenario
+              ? "Loads the suggested Blue and Red fleets for this matchup."
+              : "Edit either fleet in the hangar to build your own matchup.")}
+        </p>
+      </div>
     </div>
   );
 }
@@ -436,9 +487,6 @@ function FleetBuilderPanel({
   onUpdateBlueSlots,
   onUpdateRedSlots,
   budgetLimit,
-  enemyPresetId,
-  onSelectEnemyPreset,
-  onStartBattle,
   team,
   activeTeam,
   setActiveTeam,
@@ -459,9 +507,6 @@ function FleetBuilderPanel({
   const [selectedCarrierId, setSelectedCarrierId] = useState<string | null>(null);
   const carriers = slots.filter((slot) => slot.hullClass === "carrier");
   const selectedCarrier = carriers.find((slot) => slot.id === selectedCarrierId) ?? carriers[0];
-  const selectedScenario = SCENARIOS.find((s) => `scenario:${s.id}` === enemyPresetId);
-  const selectedPreset = FLEET_PRESETS.find((p) => p.id === enemyPresetId);
-
   const currentCost = slots.reduce((acc, slot) => acc + fleetSlotCost(slot), 0);
   const remainingBudget = budgetLimit - currentCost;
 
@@ -593,11 +638,11 @@ function FleetBuilderPanel({
               <GroupPreview group={groupPreview.active} team={previewTeam} />
             )}
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex flex-nowrap gap-1 overflow-x-auto pb-1">
             {[1, 2, 3, 4, 5].map((g) => {
               const count = groupCounts[g] || 0;
               const isSelected = selectedGroup === g;
-              const theme = redTeam ? RED_THEME : GROUP_THEMES[g] || GROUP_THEMES[1];
+              const theme = GROUP_THEMES[g] || GROUP_THEMES[1];
               return (
                 <button
                   key={g}
@@ -607,7 +652,7 @@ function FleetBuilderPanel({
                   onMouseLeave={groupPreview.hide}
                   onFocus={() => groupPreview.show(g)}
                   onBlur={groupPreview.hide}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer flex items-center gap-2 border ${
+                  className={`px-2 py-1 rounded-lg text-[11px] font-mono whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 border ${
                     isSelected
                       ? `${theme.activeBg} ${theme.activeText} font-bold ${theme.glow} shadow-md border-transparent`
                       : count > 0
@@ -618,13 +663,7 @@ function FleetBuilderPanel({
                   <span className="flex items-center gap-1.5">
                     <span
                       className={`w-2 h-2 rounded-full ${
-                        isSelected
-                          ? redTeam
-                            ? "bg-red-400"
-                            : "bg-zinc-950"
-                          : count > 0
-                            ? theme.activeBg
-                            : "bg-zinc-700"
+                        isSelected ? "bg-zinc-950" : count > 0 ? theme.activeBg : "bg-zinc-700"
                       }`}
                     />
                     GRP {g}
@@ -632,9 +671,7 @@ function FleetBuilderPanel({
                   <span
                     className={`px-1.5 py-0.2 rounded text-[11px] font-bold ${
                       isSelected
-                        ? redTeam
-                          ? "bg-red-950/50 text-red-300"
-                          : "bg-zinc-950/30 text-zinc-950"
+                        ? "bg-zinc-950/30 text-zinc-950"
                         : count > 0
                           ? `${theme.badgeBg} ${theme.badgeText}`
                           : "bg-zinc-800 text-zinc-600"
@@ -671,9 +708,7 @@ function FleetBuilderPanel({
               [],
             );
             const isInspecting = shipPreview.active === hull;
-            const activeTheme = redTeam
-              ? RED_THEME
-              : GROUP_THEMES[selectedGroup] || GROUP_THEMES[1];
+            const activeTheme = GROUP_THEMES[selectedGroup] || GROUP_THEMES[1];
 
             return (
               <div
@@ -823,33 +858,23 @@ function FleetBuilderPanel({
       {/* Right: Full-Height Roster & Enemy Preset Selector */}
       <div className="w-full md:w-96 min-[1536px]:w-80 md:shrink-0 flex flex-col gap-2 min-h-0 md:h-full">
         {/* Budget Bar */}
-        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 select-text">
-          {(isActive ? (["blue", "red"] as const) : [team]).map((budgetTeam) => {
-            const cost = (budgetTeam === "blue" ? blueSlots : redSlots).reduce(
-              (total, slot) => total + fleetSlotCost(slot),
-              0,
-            );
-            return (
-              <div key={budgetTeam} className="space-y-1">
-                <div className="flex justify-between items-center text-xs font-mono">
-                  <span className="text-zinc-400">
-                    {budgetTeam === "blue" ? "Blue" : "Red"} Budget
-                  </span>
-                  <span
-                    className={`font-bold ${cost > budgetLimit || budgetTeam === "red" ? "text-red-400" : "text-cyan-400"}`}
-                  >
-                    {cost.toLocaleString("en-US")} / {budgetLimit.toLocaleString("en-US")} CR
-                  </span>
-                </div>
-                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all ${cost > budgetLimit ? "bg-red-500" : budgetTeam === "red" ? "bg-red-700" : "bg-cyan-400"}`}
-                    style={{ width: `${Math.min(100, (cost / budgetLimit) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
+        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 select-text">
+          <div className="space-y-1">
+            <div className="flex justify-between items-center text-xs font-mono">
+              <span className="text-zinc-400">{redTeam ? "Red" : "Blue"} Budget</span>
+              <span
+                className={`font-bold ${currentCost > budgetLimit || redTeam ? "text-red-400" : "text-cyan-400"}`}
+              >
+                {currentCost.toLocaleString("en-US")} / {budgetLimit.toLocaleString("en-US")} CR
+              </span>
+            </div>
+            <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${currentCost > budgetLimit ? "bg-red-500" : redTeam ? "bg-red-700" : "bg-cyan-400"}`}
+                style={{ width: `${Math.min(100, (currentCost / budgetLimit) * 100)}%` }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Selected Fleet Roster - Stretches to fill available height cleanly! */}
@@ -859,18 +884,18 @@ function FleetBuilderPanel({
           <div
             className={`pb-3 border-b shrink-0 space-y-2 ${redTeam ? "border-red-900/40" : "border-zinc-800"}`}
           >
-            <div>
+            <div className="flex items-center justify-between gap-1">
               <span
                 className={`text-xs font-semibold uppercase tracking-wider select-all block ${redTeam ? "text-red-400" : "text-zinc-400"}`}
               >
-                {team === "blue" ? "Blue" : "Red"} Active Roster ({slots.length} hulls)
+                {team === "blue" ? "Blue" : "Red"} Active Roster
               </span>
               {slots.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-1">
+                <div className="flex gap-1 overflow-x-auto shrink-0">
                   {[1, 2, 3, 4, 5]
                     .filter((g) => groupCounts[g] && groupCounts[g] > 0)
                     .map((g) => {
-                      const theme = redTeam ? RED_THEME : GROUP_THEMES[g];
+                      const theme = GROUP_THEMES[g];
                       return (
                         <span
                           key={g}
@@ -938,8 +963,7 @@ function FleetBuilderPanel({
                 });
 
                 return sortedStacks.map((stack, idx) => {
-                  const groupTheme = GROUP_THEMES[stack.groupId] || GROUP_THEMES[1];
-                  const theme = redTeam ? { ...RED_THEME, name: groupTheme.name } : groupTheme;
+                  const theme = GROUP_THEMES[stack.groupId] || GROUP_THEMES[1];
                   const isFirstOfGroup =
                     idx === 0 || sortedStacks[idx - 1].groupId !== stack.groupId;
                   const unitCost = HULL_SPECS[stack.hullClass].cost;
@@ -1158,70 +1182,6 @@ function FleetBuilderPanel({
             </div>
           )}
         </div>
-
-        {/* Adversary Preset Selector */}
-        {isActive && (
-          <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 shrink-0 select-text">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-              Opposing Fleet Presets
-              <select
-                value={selectedPreset ? enemyPresetId : "custom"}
-                onChange={(e) => onSelectEnemyPreset(e.target.value)}
-                className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
-              >
-                <option value="custom">
-                  {selectedScenario ? "Select a preset" : "Custom Fleet"}
-                </option>
-                {FLEET_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.budget} CR)
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-              Tactical Scenarios
-              <select
-                value={selectedScenario ? enemyPresetId : "custom"}
-                onChange={(e) => onSelectEnemyPreset(e.target.value)}
-                className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
-              >
-                <option value="custom">
-                  {selectedPreset ? "Select a scenario" : "Custom Fleet"}
-                </option>
-                {SCENARIOS.map((scenario) => (
-                  <option key={scenario.id} value={`scenario:${scenario.id}`}>
-                    {scenario.label.replace(/\bSC\b/g, "Fighters")}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="text-[11px] text-zinc-500 italic mt-1 select-text">
-              {selectedPreset?.description ??
-                (selectedScenario
-                  ? "Loads the suggested Blue and Red fleets for this matchup."
-                  : "Edit either fleet in the hangar to build your own matchup.")}
-            </p>
-          </div>
-        )}
-
-        {/* Start Button */}
-        {isActive && (
-          <button
-            type="button"
-            disabled={blueSlots.length === 0 || redSlots.length === 0}
-            onClick={onStartBattle}
-            className={`w-full py-3.5 rounded-xl font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 transition-all shrink-0 ${
-              blueSlots.length > 0 && redSlots.length > 0
-                ? redTeam
-                  ? "bg-red-700 hover:bg-red-600 text-white shadow-lg shadow-red-950/40 cursor-pointer"
-                  : "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-500/20 cursor-pointer"
-                : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-            }`}
-          >
-            <Swords className="w-4 h-4" /> Engage Fleet Simulator
-          </button>
-        )}
       </div>
       {doctrineHull && (
         <DoctrineDialog
