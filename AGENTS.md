@@ -18,6 +18,15 @@ STRICTLY FORBIDDEN: NEVER add mouse movement/cursor tilt controls (e.g. `mouseEn
 ## Testing & Validation
 No test runner configured — validate changes manually via `npm run dev` and visual check in browser.
 
+## Cross-Agent Bridge (CAB) Non-Blocking Execution
+When delegating tasks via CAB (`cab.cmd`):
+- Run tasks with non-blocking execution via `run_command` with low wait timeout (`WaitMsBeforeAsync: 500` or `1000`) so the orchestrator does not block synchronously waiting on long sub-agent execution.
+- Command format:
+  `cab.cmd exec --engine opencode --model <model> --effort <effort> --dir . -m "<task description>"`
+- Background tasks are tracked via `manage_task` (status/kill) without busy-polling; wait for reactive notifications.
+- When performing balance exploration or parameter sweeps, avoid brute-force grid sweeps with high iteration counts (e.g. 25k ticks) that risk 10-minute timeouts; use bisection, golden-section search, or targeted headless benchmarks instead.
+
+
 ## Gotchas
 - Rapier3D physics requires `setSleeping(false)` on marble body or it freezes on low input.
 - Re-Center calibration hotkey is `KeyC` (letter `C`). Do NOT assign `Space` for calibration as it's used in games (firing/dropping cargo).
