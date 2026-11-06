@@ -36,7 +36,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { escortCapitalStandoff } from "./shieldGeometry";
+import { escortCapitalStandoff, isCapitalShip } from "./shieldGeometry";
 import { type CapitalFlightDoctrine, SHIP_DOCTRINES } from "./shipDoctrines";
 
 // Keep simulation callers on the existing API while sharing the underlying behavior blocks.
@@ -146,6 +146,45 @@ export function orbitVelocity(ship: ShipState, target: ShipState, radius = 300):
   });
   // Limited feed-forward prevents mutually chasing velocities from saturating both ships.
   return vecAdd(vecScale(target.velocity, 0.35), approach.velocity);
+}
+
+export function supportVelocity(ship: ShipState, ships: ShipState[]): Vector2 {
+  const doctrine = SHIP_DOCTRINES[ship.hullClass].flight;
+  if (doctrine.kind !== "support") return [0, 0];
+  const allies = ships.filter(
+    (peer) =>
+      peer.isAlive &&
+      peer.team === ship.team &&
+      peer.id !== ship.id &&
+      peer.hullClass !== "tender" &&
+      (isCapitalShip(peer) || peer.shieldCurrent < peer.shieldMax),
+  );
+  const anchor = allies.sort(
+    (a, b) =>
+      Number(b.shieldCurrent < b.shieldMax) - Number(a.shieldCurrent < a.shieldMax) ||
+      vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) ||
+      a.id.localeCompare(b.id),
+  )[0];
+  const enemies = ships
+    .filter((peer) => peer.isAlive && peer.team !== ship.team)
+    .sort(
+      (a, b) =>
+        vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) || a.id.localeCompare(b.id),
+    );
+  const threat = enemies[0];
+  const isolated = !anchor || vecDistance(ship.pos, anchor.pos) > 1000;
+  const damaged = ship.hullCurrent / ship.hullMax < (doctrine.retreat.hullRatio ?? 0);
+  if ((isolated || damaged) && threat) {
+    const away = vecNormalize(vecSub(ship.pos, threat.pos));
+    const retreat = vecScale(away, ship.maxSpeed);
+    return anchor
+      ? vecAdd(
+          vecScale(retreat, 0.75),
+          vecScale(vecNormalize(vecSub(anchor.pos, ship.pos)), ship.maxSpeed * 0.25),
+        )
+      : retreat;
+  }
+  return anchor ? orbitVelocity(ship, anchor, doctrine.desiredDistance) : [0, 0];
 }
 
 export function escortVelocity(

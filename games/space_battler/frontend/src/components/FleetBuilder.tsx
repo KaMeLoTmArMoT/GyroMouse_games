@@ -131,6 +131,7 @@ const HULL_SIZE_ORDER: Record<HullClass, number> = {
   battleship: 1,
   cruiser: 2,
   missile_frigate: 2.5,
+  tender: 2.6,
   corvette: 3,
   strike_craft: 4,
 };
@@ -172,6 +173,7 @@ export function ShipSilhouette({
         "M1.25 0 L.75 -.35 L.35 -.42 L.12 -.68 L-.82 -.68 L-1.08 -.48 L-1.08 .48 L-.82 .68 L.12 .68 L.35 .42 L.75 .35 Z",
       strike_craft: "M1.1 0 L-.7 -.55 L-.5 -.2 L-.85 0 L-.5 .2 L-.7 .55 Z",
       corvette: "M1.15 0 L.4 -.45 L-.5 -.58 L-.95 -.32 L-.75 0 L-.95 .32 L-.5 .58 L.4 .45 Z",
+      tender: "M1.15 0 L.4 -.45 L-.5 -.58 L-.95 -.32 L-.75 0 L-.95 .32 L-.5 .58 L.4 .45 Z",
       cruiser:
         "M1.22 0 L.6 -.38 L.2 -.38 L-.65 -.5 L-1.1 -.28 L-1.1 .28 L-.65 .5 L.2 .38 L.6 .38 Z",
       battleship:
@@ -186,6 +188,7 @@ export function ShipSilhouette({
       strike_craft:
         "M.85 -.6884 Q.15 -.1252 -.65 -.3505 L-.35 0 L-.65 .3505 Q.15 .1252 .85 .6884 Q.55 0 .85 -.6884 Z",
       corvette: "M1.15 0 Q.25 -.7916 -.75 -.548 Q-.45 0 -.75 .548 Q.25 .7916 1.15 0 Z",
+      tender: "M1.15 0 Q.25 -.7916 -.75 -.548 Q-.45 0 -.75 .548 Q.25 .7916 1.15 0 Z",
       cruiser:
         "M1.22 -.2411 L.9 0 L1.22 .2411 Q.35 .5479 -.85 .3945 Q-1.1 0 -.85 -.3945 Q.35 -.5479 1.22 -.2411 Z",
       battleship: "M1.28 0 Q.5 -.892 -1.15 -.6559 Q-.4 0 -1.15 .6559 Q.5 .892 1.28 0 Z",
@@ -201,6 +204,7 @@ export function ShipSilhouette({
         "M-.58 -.16 H.5 V.16 H-.58 Z M-.7 -.48 H.1 M-.7 .48 H.1 M-.46 -.1 H.28 L.42 0 L.28 .1 H-.46",
       strike_craft: "M.8 0 L.4 -.12 L.25 0 L.4 .12 Z M-.1 -.12 L-.55 -.35 M-.1 .12 L-.55 .35",
       corvette: "M.8 0 L.4 -.2 L.15 0 L.4 .2 Z M.1 -.3 L-.5 -.4 M.1 .3 L-.5 .4",
+      tender: "M-.2 -.25 V.25 M-.45 0 H.05",
       cruiser:
         "M.75 0 L-.7 0 M.2 -.22 L-.6 -.3 M.2 .22 L-.6 .3 M-.4 -.14 L-.65 -.14 L-.65 .14 L-.4 .14 Z",
       battleship:
@@ -212,6 +216,7 @@ export function ShipSilhouette({
     1: {
       carrier:
         "M.65 0 C.3 -.22 -.45 -.22 -.6 0 C-.45 .22 .3 .22 .65 0 M-.7 -.48 H.1 M-.7 .48 H.1 M-.75 -.25 Q.3 -.32 .94 0 Q.3 .32 -.75 .25",
+      tender: "M-.2 -.25 V.25 M-.45 0 H.05",
       strike_craft:
         "M.65 -.45 Q.05 -.1 -.4 -.22 M.65 .45 Q.05 .1 -.4 .22 M.6 0 Q.4 -.1 .25 0 Q.4 .1 .6 0 Z",
       corvette:
@@ -448,6 +453,7 @@ export function FleetBuilder({
       dreadnought: { total: 0, group: 0 },
       cruiser: { total: 0, group: 0 },
       missile_frigate: { total: 0, group: 0 },
+      tender: { total: 0, group: 0 },
       corvette: { total: 0, group: 0 },
       strike_craft: { total: 0, group: 0 },
     },

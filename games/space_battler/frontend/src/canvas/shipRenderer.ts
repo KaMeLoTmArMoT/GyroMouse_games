@@ -205,6 +205,7 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: 
             battleship: -0.36,
             dreadnought: -0.15,
             missile_frigate: 0.55,
+            tender: 0.5,
             carrier: -0.15,
           }[ship.hullClass]
         : {
@@ -214,6 +215,7 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: 
             battleship: -0.16,
             dreadnought: -0.15,
             missile_frigate: 0.55,
+            tender: 0.3,
             carrier: -0.15,
           }[ship.hullClass];
     ctx.globalAlpha = baseAlpha * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(time / 100)));
@@ -428,6 +430,7 @@ function drawTerranHull(
       ctx.closePath();
       break;
 
+    case "tender":
     case "corvette":
       // Terran Aegis: angular escort with armored side sponsons
       ctx.moveTo(s * 1.15, 0);
@@ -564,6 +567,7 @@ function drawAlienHull(
       ctx.closePath();
       break;
 
+    case "tender":
     case "corvette":
       // Alien Sentinel: predatory stingray / manta silhouette
       ctx.moveTo(s * 1.15, 0);
@@ -1410,6 +1414,7 @@ function renderTurret(
     battleship: 1.7,
     dreadnought: 1.45,
     missile_frigate: 0.8,
+    tender: 1,
     carrier: 1.25,
   }[ship.hullClass];
   ctx.scale(classScale, classScale);

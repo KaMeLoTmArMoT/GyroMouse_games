@@ -22,6 +22,8 @@ function shipMass(hull: ShipState["hullClass"]): number {
       return 30;
     case "missile_frigate":
       return 15;
+    case "tender":
+      return 20;
     case "corvette":
       return 8;
     default:

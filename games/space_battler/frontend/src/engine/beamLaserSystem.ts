@@ -26,6 +26,7 @@ export interface ActiveBeam {
   from: Vector2;
   to: Vector2;
   ownerTeam: number;
+  color?: string;
 }
 
 export type BeamFireCallback = (

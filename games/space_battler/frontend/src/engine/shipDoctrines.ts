@@ -47,6 +47,7 @@ export type FlightDoctrine =
   | CapitalFlightDoctrine
   | SkirmishFlightDoctrine
   | { kind: "escort"; retreat: RetreatThresholds }
+  | { kind: "support"; desiredDistance: number; retreat: RetreatThresholds }
   | { kind: "fighter" };
 
 export interface ShipDoctrine {
@@ -182,6 +183,17 @@ export const SHIP_DOCTRINES: Record<HullClass, ShipDoctrine> = {
       { name: "Disengage / Arc Reposition", trigger: "Salvo complete or reload > 2.5s" },
       { name: "Re-arm & Acquire", trigger: "Reload < 1s" },
     ],
+  },
+  tender: {
+    flight: { kind: "support", desiredDistance: 425, retreat: { hullRatio: 0.35 } },
+    standoff: "350–500u allied support tether",
+    targetPriority: "Damaged allied non-tenders and friendly capitals; flak intercepts threats",
+    states: [
+      { name: "Allied Standoff Orbit" },
+      { name: "Harmonic Restoration", trigger: "Damaged ally within 500u; capacitor ready" },
+      { name: "Defensive Retreat", trigger: "Isolated or hull below 35%" },
+    ],
+    note: "Never advances to brawl with enemy battlelines. Harmonic channels cannot restore tenders.",
   },
   corvette: {
     flight: { kind: "escort", retreat: { shieldRatio: 0.4 } },

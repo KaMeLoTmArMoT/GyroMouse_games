@@ -205,6 +205,7 @@ export class ShipWeaponSystem {
     if (!ship.isAlive) return;
     const parent = weapon.shieldMultiplier > 0 ? context.shieldHaven.protectedParent(ship) : null;
     if (parent && rawDamage > 0) {
+      const overflowMultiplier = context.shieldHaven.overflowMultiplier(parent);
       const before = context.observer
         ? [parent.shieldCurrent, parent.armorCurrent, parent.hullCurrent]
         : null;
@@ -216,6 +217,7 @@ export class ShipWeaponSystem {
         context.observer?.onDamage(parent, attackerId, mountId, weapon.weaponType, before);
       if (impactOrigin) context.onWeaponImpact?.(parent, impactOrigin, true, false, false);
       rawDamage = absorbed >= shieldDamage ? 0 : rawDamage - absorbed / weapon.shieldMultiplier;
+      rawDamage *= overflowMultiplier;
       if (rawDamage <= 0) return;
     }
     if (!context.observer && !context.onWeaponImpact) {
@@ -298,6 +300,7 @@ export class ShipWeaponSystem {
   destroyShip(ship: ShipState, attackerTeam?: number): void {
     if (!ship.isAlive) return;
     ship.isAlive = false;
+    this.context.shieldHaven.refreshAmplification();
     this.context.shieldHaven.releaseGuests(ship.id);
     this.context.stats[ship.team].shipsLost += 1;
     this.context.onShipDestroyed?.(ship);

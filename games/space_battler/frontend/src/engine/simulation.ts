@@ -22,6 +22,7 @@ import type { CombatObserver } from "./combatTelemetry";
 import { FighterMissionSystem, type FighterWingVisual } from "./fighterMissionSystem";
 import { acquireMountTarget } from "./fireControl";
 import { redeployFleetRemnants } from "./fleetBuilder";
+import { HarmonicShieldSystem } from "./harmonicShieldSystem";
 import { normalizeAngle } from "./math2d";
 import { type FlakBurstCallback, ProjectileEngine } from "./projectileEngine";
 import { ShieldHavenSystem } from "./shieldHaven";
@@ -36,6 +37,7 @@ const FIXED_STEP = 1 / 60;
 
 export class ClientCombatSimulation {
   readonly shieldHaven = new ShieldHavenSystem();
+  readonly harmonicShields = new HarmonicShieldSystem();
   ships: ShipState[] = [];
   get projectiles(): ProjectileState[] {
     return this.projectileEngine.projectiles;
@@ -216,6 +218,7 @@ export class ClientCombatSimulation {
     this.projectiles = [];
     this.activeBeams = [];
     this.beamLaserSystem.clear();
+    this.harmonicShields.clear();
     this.shieldHaven.clear();
     this.fighterMissions.clear();
     this.contactSolver.clear();
@@ -268,6 +271,8 @@ export class ClientCombatSimulation {
         this.observer?.onShieldRegen(ship, ship.shieldCurrent - before);
       }
     }
+    // Reaching full shields ends support before subsequent impacts can reopen the deficit.
+    this.harmonicShields.cleanup(this.ships, this.timeElapsed - dt);
     const aliveShips = this.ships.filter((s) => s.isAlive);
     this.previousPositions = new Map(aliveShips.map((ship) => [ship.id, [...ship.pos] as Vector2]));
     this.ensureFighterWings(aliveShips);
@@ -309,11 +314,13 @@ export class ClientCombatSimulation {
       Object.assign(ship, previous);
     }
     for (const ship of aliveShips) Object.assign(ship, movements.get(ship.id));
+    this.shieldHaven.refreshAmplification(this.ships);
     const repulsorSteps = new Map<string, number>();
     this.resolveShipCollisions(aliveShips, dt, false, repulsorSteps);
     this.contactSolver.resolveCruiserClearance(aliveShips);
     this.shieldHaven.attachGuests(aliveShips, dt);
     this.resolveShipCollisions(aliveShips, dt, true, repulsorSteps);
+    this.shieldHaven.refreshAmplification(this.ships);
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
     const missileLocks: Array<{ targetId: string; weapon: TurretMountState["weapon"] }> = [];
@@ -355,9 +362,19 @@ export class ClientCombatSimulation {
       }
     }
     for (const fire of shots) fire();
-    this.activeBeams = this.beamLaserSystem.collectActiveBeams();
     this.updateProjectiles(dt, aliveShips);
+    this.harmonicShields.update(
+      this.ships,
+      this.timeElapsed,
+      dt,
+      this.onBeamFire,
+      (recipient, amount) => this.observer?.onShieldRegen(recipient, amount),
+    );
     this.shieldHaven.cleanup(this.ships);
+    this.activeBeams = [
+      ...this.beamLaserSystem.collectActiveBeams(),
+      ...this.harmonicShields.collectActiveBeams(),
+    ];
     const cutoff = this.timeElapsed - 2.5;
     for (const team of [0, 1]) {
       this.stats[team].recentDamageWindow = this.stats[team].recentDamageWindow.filter(

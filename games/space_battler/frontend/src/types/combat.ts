@@ -9,6 +9,7 @@ export type HullClass =
   | "dreadnought"
   | "cruiser"
   | "missile_frigate"
+  | "tender"
   | "corvette"
   | "strike_craft";
 export type TargetPriority = "capitals" | "screen_and_defend" | "strike_craft" | "nearest";
@@ -120,6 +121,7 @@ export interface ShipState {
   havenSlotId?: string | null;
   havenState?: HavenState;
   havenGuestCount?: number; // Currently tethered guests, excluding reservations.
+  havenRadiusMultiplier?: number; // Strongest live tender aura, refreshed at fixed-step boundaries.
   nextRecoveryAt?: number;
   recoveredHull?: number;
   lastMissionShotTime?: number;

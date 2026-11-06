@@ -112,6 +112,32 @@ export class ShieldHavenSystem {
   private leases = new Map<string, ShieldHavenLease>();
   private ships = new Map<string, ShipState>();
 
+  private hasTenderAura(parent: ShipState, ships: Iterable<ShipState>): boolean {
+    if (!parent.isAlive || !isCapitalShip(parent)) return false;
+    for (const donor of ships) {
+      if (
+        donor.isAlive &&
+        donor.hullClass === "tender" &&
+        donor.team === parent.team &&
+        vecDistance(donor.pos, parent.pos) <= 500
+      )
+        return true;
+    }
+    return false;
+  }
+
+  /** One strongest aura, shared by hitboxes, repulsors, rendering and haven corridors. */
+  refreshAmplification(ships: Iterable<ShipState> = this.ships.values()): void {
+    const fleet = [...ships];
+    for (const ship of fleet)
+      ship.havenRadiusMultiplier = this.hasTenderAura(ship, fleet) ? 1.2 : 1;
+  }
+
+  /** Snapshot before shield damage releases the guest's authoritative lease. */
+  overflowMultiplier(parent: ShipState): number {
+    return this.hasTenderAura(parent, this.ships.values()) ? 0.9 : 1;
+  }
+
   getLease(guestId: string): ShieldHavenLease | null {
     return this.leases.get(guestId) ?? null;
   }
@@ -159,6 +185,7 @@ export class ShieldHavenSystem {
     for (const ship of this.ships.values()) {
       resetHaven(ship);
       ship.havenGuestCount = 0;
+      ship.havenRadiusMultiplier = 1;
     }
     this.leases.clear();
     this.ships.clear();
@@ -166,6 +193,7 @@ export class ShieldHavenSystem {
 
   /** Remove unsafe leases immediately after combat, without starting new episodes. */
   cleanup(ships: readonly ShipState[]): void {
+    this.refreshAmplification(ships);
     const byId = new Map(ships.map((ship) => [ship.id, ship]));
     for (const ship of ships) {
       this.ships.set(ship.id, ship);

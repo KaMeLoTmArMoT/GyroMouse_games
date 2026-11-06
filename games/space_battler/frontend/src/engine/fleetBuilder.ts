@@ -123,6 +123,7 @@ export function buildFleetFromSlots(
     dreadnought: 0,
     cruiser: 0,
     missile_frigate: 0,
+    tender: 0,
     corvette: 0,
     strike_craft: 0,
   };
@@ -194,6 +195,7 @@ function buildGroup(
   const battleships = slots.filter((s) => s.hullClass === "battleship");
   const dreadnoughts = slots.filter((s) => s.hullClass === "dreadnought");
   const frigates = slots.filter((s) => s.hullClass === "missile_frigate");
+  const tenders = slots.filter((s) => s.hullClass === "tender");
   const cruisers = slots.filter((s) => s.hullClass === "cruiser");
   const corvettes = slots.filter((s) => s.hullClass === "corvette");
   const fighters = slots.filter((s) => s.hullClass === "strike_craft");
@@ -235,7 +237,7 @@ function buildGroup(
       hullCurrent: profile.hullMax,
       cost: profile.cost,
       isAlive: true,
-      ...(slot.carrierAnchorId || slot.hullClass === "corvette"
+      ...(slot.carrierAnchorId || slot.hullClass === "corvette" || slot.hullClass === "tender"
         ? {
             flagshipId:
               slot.carrierAnchorId ??
@@ -276,6 +278,12 @@ function buildGroup(
     addShip(slot, idx, "cr", `Vanguard CR-0${counts.cruiser + idx + 1}`, [
       (heading === 0 ? 1 : -1) * 60,
       sign * (expandedSpacing ? 250 + Math.floor(idx / 2) * 155 : 140 + Math.floor(idx / 2) * 110),
+    ]);
+  });
+  tenders.forEach((slot, idx) => {
+    addShip(slot, idx, "td", `Оберіг TD-${counts.tender + idx + 1}`, [
+      (heading === 0 ? -1 : 1) * 425,
+      (idx - (tenders.length - 1) / 2) * 120,
     ]);
   });
   // 3. Corvette escort columns; shield clearance is applied after assembly.
@@ -337,6 +345,7 @@ function buildGroup(
   counts.carrier += carriers.length;
   counts.dreadnought += dreadnoughts.length;
   counts.missile_frigate += frigates.length;
+  counts.tender += tenders.length;
   counts.cruiser += cruisers.length;
   counts.corvette += corvettes.length;
   counts.strike_craft += fighters.length;

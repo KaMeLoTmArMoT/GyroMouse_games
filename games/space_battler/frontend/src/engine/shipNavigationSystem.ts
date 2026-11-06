@@ -11,6 +11,7 @@ import {
   limitVelocity,
   separation,
   spinalEscape,
+  supportVelocity,
 } from "./flightControl";
 import type { RangePhase } from "./flightCycles";
 import {
@@ -110,7 +111,13 @@ export function updateShipNavigation(
   let thrusterVelocity: Vector2 | null = null;
   let rangePhase: RangePhase | undefined;
   let evadingOrdnance = false;
-  if (ship.hullClass === "corvette") {
+  if (ship.hullClass === "tender") {
+    thrusterVelocity = limitVelocity(
+      vecAdd(supportVelocity(ship, aliveShips), separation(ship, aliveShips)),
+      ship.maxSpeed,
+    );
+    targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
+  } else if (ship.hullClass === "corvette") {
     const orbit = escortVelocity(ship, target, aliveShips);
     const avoid = vecAdd(
       separation(ship, aliveShips),
