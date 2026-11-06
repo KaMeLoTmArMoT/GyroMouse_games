@@ -36,6 +36,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { escortCapitalStandoff } from "./shieldGeometry";
 import { type CapitalFlightDoctrine, SHIP_DOCTRINES } from "./shipDoctrines";
 
 // Keep simulation callers on the existing API while sharing the underlying behavior blocks.
@@ -180,7 +181,7 @@ export function escortVelocity(
   const sortie = clamp((shieldRatio - 0.4) / 0.3, 0, 1);
   const tether = 380 + sortie * 220;
   const closeOffset: Vector2 = [
-    120 - Math.floor(index / 2) * 45,
+    Math.max(45, 120 - Math.floor(index / 2) * 45),
     side * (150 + Math.floor(index / 2) * 45),
   ];
   // Healthy pickets occupy a forward/lateral screen even when capitals fight at long range.
@@ -188,13 +189,13 @@ export function escortVelocity(
     vecNormalize([1, side * (0.5 + Math.floor(index / 2) * 0.15)]),
     550,
   );
-  const station = vecAdd(
-    anchor.pos,
-    rotatePoint(
-      vecAdd(vecScale(closeOffset, 1 - sortie), vecScale(screenOffset, sortie)),
-      anchor.heading,
-    ),
+  // Keep every recovery/screen station forward-lateral, outside both hulls and rear exhaust.
+  const offset = vecAdd(vecScale(closeOffset, 1 - sortie), vecScale(screenOffset, sortie));
+  const stationOffset = vecScale(
+    vecNormalize(offset),
+    Math.max(vecDistance([0, 0], offset), escortCapitalStandoff(ship, anchor)),
   );
+  const station = vecAdd(anchor.pos, rotatePoint(stationOffset, anchor.heading));
   const doctrine = SHIP_DOCTRINES[ship.hullClass].flight;
   if (doctrine.kind === "escort") {
     const retreat = LowHealthRetreatBlock(ship, anchor, station, doctrine.retreat);
@@ -397,7 +398,10 @@ export function capitalIntent(
       const combined = vecAdd(evasiveVelocity, sep);
       return {
         ...intent,
-        velocity: vecDistance([0, 0], sep) > 1e-4 ? limitVelocity(combined, ship.maxSpeed) : evasiveVelocity,
+        velocity:
+          vecDistance([0, 0], sep) > 1e-4
+            ? limitVelocity(combined, ship.maxSpeed)
+            : evasiveVelocity,
         evadingOrdnance: true,
       };
     }

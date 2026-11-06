@@ -27,3 +27,12 @@ export function shieldRepulsorRadius(ship: ShipState): number {
 export function capitalSeparationDistance(a: ShipState, b: ShipState): number {
   return isCapitalShip(a) && isCapitalShip(b) ? (a.team === b.team ? 300 : 420) : 0;
 }
+
+/** Physical escort buffer is independent of shield charge and applies to either pair order. */
+export function escortCapitalStandoff(a: ShipState, b: ShipState): number {
+  const escort = (ship: ShipState) =>
+    ship.hullClass === "corvette" || ship.hullClass === "missile_frigate";
+  return (escort(a) && isCapitalShip(b)) || (escort(b) && isCapitalShip(a))
+    ? Math.max(220, a.size + b.size + 90)
+    : 0;
+}

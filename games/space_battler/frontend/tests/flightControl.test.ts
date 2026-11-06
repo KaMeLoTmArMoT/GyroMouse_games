@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mountPosition } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
-import { clampLateralVelocity } from "../src/engine/flightBehaviors";
+import { calculateSeparation, clampLateralVelocity } from "../src/engine/flightBehaviors";
 import {
   ARENA_HARD_PULL_RADIUS,
   ARENA_RADIUS,
@@ -18,7 +18,7 @@ import {
   reduceSkirmishCycle,
   type SkirmishCycle,
 } from "../src/engine/flightCycles";
-import { normalizeAngle, vecDistance, vecDot } from "../src/engine/math2d";
+import { normalizeAngle, rotatePoint, vecDistance, vecDot } from "../src/engine/math2d";
 import { SHIP_DOCTRINES } from "../src/engine/shipDoctrines";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { EngagementStance, HullClass, Vector2 } from "../src/types/combat";
@@ -28,6 +28,75 @@ function ship(hullClass: HullClass, team = 0) {
   result.pos = [0, 0];
   return result;
 }
+
+describe("escort physical capital clearance", () => {
+  it.each(["corvette", "missile_frigate"] as const)(
+    "keeps every %s recovery and screen station outside oversized hulls and rear exhaust",
+    (hull) => {
+      for (const capitalHull of ["cruiser", "battleship", "dreadnought"] as const) {
+        const anchor = ship(capitalHull);
+        for (const size of [anchor.size, 240]) {
+          anchor.size = size;
+          for (const heading of [0, Math.PI / 2, Math.PI]) {
+            anchor.heading = heading;
+            for (const index of [0, 1, 4, 5, 10, 11]) {
+              const escort = ship(hull);
+              escort.id = `escort_${index}`;
+              escort.flagshipId = anchor.id;
+              for (const charge of [0, 0.4, 0.55, 1]) {
+                escort.shieldCurrent = escort.shieldMax * charge;
+                const velocity = escortVelocity(escort, null, [anchor, escort]);
+                // A stationary anchor and escort at the origin expose the formation station.
+                const offset: Vector2 = [velocity[0] / 0.6, velocity[1] / 0.6];
+                expect(Math.hypot(...offset)).toBeGreaterThanOrEqual(
+                  Math.max(220, anchor.size + escort.size + 90) - 1e-8,
+                );
+                const local = rotatePoint(offset, -heading);
+                expect(local[0]).toBeGreaterThan(0);
+                expect(Math.abs(local[1])).toBeGreaterThan(escort.size);
+              }
+            }
+          }
+        }
+      }
+    },
+  );
+
+  it.each(["corvette", "missile_frigate"] as const)(
+    "brakes %s before the buffer even with collapsed shields, in either pair order",
+    (hull) => {
+      const escort = ship(hull);
+      const anchor = ship("dreadnought");
+      anchor.size = 240;
+      anchor.shieldCurrent = 0;
+      escort.shieldCurrent = 0;
+      const clearance = Math.max(220, escort.size + anchor.size + 90);
+      escort.pos = [clearance + 45, 0];
+      expect(calculateSeparation(escort, [anchor, escort])[0]).toBeGreaterThan(0);
+      escort.pos = [clearance, 0];
+      expect(calculateSeparation(escort, [anchor, escort])[0]).toBeGreaterThan(escort.maxSpeed);
+      expect(calculateSeparation(anchor, [escort, anchor])[0]).toBeLessThan(-anchor.maxSpeed);
+      anchor.team = 1;
+      expect(calculateSeparation(escort, [anchor, escort])[0]).toBeGreaterThan(escort.maxSpeed);
+    },
+  );
+
+  it("keeps a recovering picket outside the buffer throughout station acquisition", () => {
+    const escort = ship("corvette");
+    const anchor = ship("battleship");
+    escort.flagshipId = anchor.id;
+    escort.shieldCurrent = escort.shieldMax * 0.39;
+    const clearance = Math.max(220, escort.size + anchor.size + 90);
+    escort.pos = [clearance, 0];
+    const simulation = new ClientCombatSimulation();
+    simulation.addShip(anchor);
+    simulation.addShip(escort);
+    for (let frame = 0; frame < 600; frame++) {
+      simulation.update(1 / 60);
+      expect(vecDistance(escort.pos, anchor.pos)).toBeGreaterThanOrEqual(clearance - 1e-6);
+    }
+  });
+});
 
 describe("predictive arena steering", () => {
   it.each(["strike_craft", "missile_frigate"] as const)(

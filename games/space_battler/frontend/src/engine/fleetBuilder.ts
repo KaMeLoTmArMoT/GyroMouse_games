@@ -1,6 +1,7 @@
 // Assembly builder for translating abstract compositions into concrete positioned ShipStates
 
 import type { HullClass, ShipState, Vector2 } from "../types/combat";
+import { clamp } from "./math2d";
 import { shieldEnvelopeRadius } from "./shieldGeometry";
 import { HULL_PROFILES, instantiateTurrets } from "./shipProfiles";
 
@@ -8,6 +9,66 @@ export interface FleetSlot {
   id: string;
   hullClass: HullClass;
   groupId: number;
+}
+
+/** Re-form survivors without replacing ship identities or repairing persistent hull damage. */
+export function redeployFleetRemnants(ships: ShipState[]): void {
+  for (const team of [0, 1]) {
+    const survivors = ships.filter((ship) => ship.team === team);
+    const formation = buildFleetFromSlots(
+      survivors,
+      team,
+      team === 0 ? -1100 : 1100,
+      team === 0 ? 0 : Math.PI,
+    );
+    const remaining = [...survivors];
+    const originalIds = new Map<string, string>();
+    for (const spawn of formation) {
+      const index = remaining.findIndex(
+        (ship) => ship.groupId === spawn.groupId && ship.hullClass === spawn.hullClass,
+      );
+      const [ship] = remaining.splice(index, 1);
+      originalIds.set(spawn.id, ship.id);
+      ship.pos = spawn.pos;
+      ship.velocity = [0, 0];
+      ship.heading = spawn.heading;
+      ship.shieldCurrent = ship.shieldMax;
+      ship.shieldDelayTimer = 0;
+      ship.flagshipId = spawn.flagshipId;
+      // These describe the previous engagement, whose clock is about to reset.
+      ship.fighterPhase = undefined;
+      ship.wingIndex = undefined;
+      ship.wingSlot = undefined;
+      ship.safeHavenId = undefined;
+      ship.safeHavenTimer = undefined;
+      ship.lastSelectedSector = undefined;
+      ship.dogfightTargetId = undefined;
+      ship.lastThreatTime = undefined;
+      ship.recoveryStarted = undefined;
+      ship.nextRecoveryAt = undefined;
+      ship.recoveredHull = undefined;
+      ship.lastMissionShotTime = undefined;
+      ship.capitalManeuver = undefined;
+      ship.broadsideCycle = undefined;
+      ship.skirmishCycle = undefined;
+      ship.maneuverTargetId = undefined;
+      ship.navigationTargetId = undefined;
+      ship.broadsideSide = undefined;
+      ship.lastManeuverShot = undefined;
+      ship.escapeSide = undefined;
+      ship.escapeUntil = undefined;
+      for (const turret of ship.turrets) {
+        turret.cooldownTimer = 0;
+        turret.currentLocalAngle = clamp(0, ...turret.baseArc);
+        turret.currentTargetId = null;
+        turret.currentTargetKind = undefined;
+        turret.lastFiredTime = undefined;
+      }
+    }
+    for (const ship of survivors) {
+      if (ship.flagshipId) ship.flagshipId = originalIds.get(ship.flagshipId);
+    }
+  }
 }
 
 // Blue fleet offsets; the opposing fleet mirrors these along the x axis.
