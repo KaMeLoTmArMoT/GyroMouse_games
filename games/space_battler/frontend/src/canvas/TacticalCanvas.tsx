@@ -307,7 +307,7 @@ export function TacticalCanvas({
           }
 
           // Draw haven conduits beneath ship hulls.
-          renderHavenTethers(ctx, sim.ships, sim.timeElapsed);
+          renderHavenTethers(ctx, sim.ships, sim.timeElapsed, selectedShipId);
 
           // Draw Ships
           const ingressGates = new Map(

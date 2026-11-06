@@ -666,12 +666,13 @@ describe("mount eligibility and projectile contracts", () => {
     const owner = ship("cruiser", 0, [-500, 0]);
     const target = stationary(ship("battleship", 1, [0, 0]));
     target.turrets = [];
-    const missile = projectile(owner, [-80, 0], [1200, 0], 1);
+    const startX = -shieldEnvelopeRadius(target) - 15;
+    const missile = projectile(owner, [startX, 0], [1200, 0], 1);
     missile.lifetime = 1 / 120;
     const sim = simulate([target]);
     sim.projectiles = [missile];
     sim.update(1 / 60);
-    expect(missile.pos).toEqual([-70, 0]);
+    expect(missile.pos).toEqual([startX + 10, 0]);
     expect(missile.lifetime).toBe(0);
     expect(sim.projectiles).toEqual([]);
     expect(target.shieldCurrent).toBe(target.shieldMax);
@@ -704,6 +705,75 @@ describe("mount eligibility and projectile contracts", () => {
     expect(sweptHit([-20, 0], [20, 0], 5)).toBeCloseTo(0.375);
   });
 
+  it.each(["battleship", "missile_frigate"] as const)(
+    "hits the active %s shield surface and reports the swept boundary",
+    (hull) => {
+      for (const [ownerHull, weaponIndex] of [
+        ["battleship", 0],
+        ["cruiser", 1],
+        ["missile_frigate", 0],
+      ] as const) {
+        const owner = ship(ownerHull, 0, [-500, 0]);
+        const target = stationary(ship(hull, 1, [0, 0]));
+        target.turrets = [];
+        target.shieldCurrent = 1;
+        const radius = shieldEnvelopeRadius(target);
+        const shot = projectile(owner, [-radius - 10, 0], [6000, 0], weaponIndex);
+        const sim = simulate([target]);
+        const impacts: Vector2[] = [];
+        sim.onWeaponImpact = (_ship, origin, shield) => {
+          expect(shield).toBe(true);
+          impacts.push([...origin]);
+        };
+        sim.projectiles = [shot];
+        sim.update(1 / 60);
+        expect(sim.projectiles).toHaveLength(0);
+        expect(shot.pos[0]).toBeCloseTo(-radius);
+        expect(impacts).toEqual([shot.pos]);
+        expect(target.shieldCurrent).toBe(0);
+      }
+    },
+  );
+
+  it("passes through a depleted shield envelope before hitting the hull", () => {
+    const owner = ship("cruiser", 0, [-500, 0]);
+    const target = stationary(ship("battleship", 1, [0, 0]));
+    target.shieldCurrent = 0;
+    target.turrets = [];
+    const radius = shieldEnvelopeRadius(target);
+    const shot = projectile(owner, [-radius - 1, 0], [600, 0], 1);
+    const sim = simulate([target]);
+    const impacts: Vector2[] = [];
+    sim.onWeaponImpact = (_ship, origin, shield) => {
+      expect(shield).toBe(false);
+      impacts.push([...origin]);
+    };
+    sim.projectiles = [shot];
+    sim.update(1 / 60);
+    expect(sim.projectiles).toHaveLength(1);
+    expect(impacts).toHaveLength(0);
+    advance(sim, 0.1);
+    expect(sim.projectiles).toHaveLength(0);
+    expect(shot.pos[0]).toBeCloseTo(-target.size);
+    expect(impacts).toEqual([shot.pos]);
+  });
+
+  it.each([850, 1600])("uses full lateral evasion thrust with a target at %i units", (distance) => {
+    const frigate = ship("missile_frigate", 0, [0, 0]);
+    frigate.turrets = [];
+    const enemy = stationary(ship("cruiser", 1, [distance, 0]));
+    const incoming = projectile(enemy, [500, 0], [-300, 0], 1);
+    enemy.turrets = [];
+    const sim = simulate([frigate, enemy]);
+    sim.projectiles = [incoming];
+    advance(sim, 0.5);
+    expect(Math.abs(frigate.velocity[1])).toBeCloseTo(55, 1);
+    expect(Math.abs(frigate.pos[1])).toBeGreaterThan(13);
+    advance(sim, 1.5);
+    expect(frigate.shieldCurrent).toBe(frigate.shieldMax);
+    expect(frigate.hullCurrent).toBe(frigate.hullMax);
+  });
+
   it("preserves the torpedo hull multiplier at impact", () => {
     const owner = ship("cruiser", 0, [-500, 0]);
     const target = stationary(ship("battleship", 1, [0, 0]));
@@ -729,7 +799,7 @@ describe("mount eligibility and projectile contracts", () => {
       flak.blastRadius,
     ].map((surface, i) => {
       const target = stationary(ship("strike_craft", 1, [0, 0]));
-      target.pos[0] = target.size + surface;
+      target.pos[0] = shieldEnvelopeRadius(target) + surface;
       target.id = `flak_target_${i}`;
       target.turrets = [];
       return target;

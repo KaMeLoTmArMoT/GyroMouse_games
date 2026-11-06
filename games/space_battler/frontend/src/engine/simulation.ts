@@ -1106,6 +1106,7 @@ export class ClientCombatSimulation {
     let desiredSpeed = 0;
     let thrusterVelocity: Vector2 | null = null;
     let rangePhase: RangePhase | undefined;
+    let evadingOrdnance = false;
     if (ship.hullClass === "corvette") {
       const orbit = escortVelocity(ship, target, aliveShips);
       const avoid = vecAdd(
@@ -1135,6 +1136,7 @@ export class ClientCombatSimulation {
       targetHeading = intent.heading;
       thrusterVelocity = intent.velocity;
       rangePhase = intent.rangePhase;
+      evadingOrdnance = intent.evadingOrdnance ?? false;
     }
 
     if (thrusterVelocity) {
@@ -1184,7 +1186,7 @@ export class ClientCombatSimulation {
         ? vecSub(newVelocity, vecScale(vecNormalize(ship.pos), 600 * dt))
         : newVelocity;
     let controlledVelocity = containedVelocity;
-    if (rangePhase) {
+    if (rangePhase && !evadingOrdnance) {
       const flight = SHIP_DOCTRINES[ship.hullClass].flight;
       if (flight.kind === "capital" || flight.kind === "skirmish")
         controlledVelocity = clampLateralVelocity(
@@ -1623,11 +1625,21 @@ export class ClientCombatSimulation {
         const t = sweptHit(
           vecSub(start, old),
           vecSub(end, finish),
-          ship.size + (flak?.triggerRadius ?? 0),
+          activeShieldRadius(ship) + (flak?.triggerRadius ?? 0),
         );
-        if (t !== null && t < first) {
-          first = t;
-          victim = ship;
+        if (t !== null) {
+          const distToShip = vecDistance(start, old);
+          const isBetter =
+            t < first ||
+            (t === first &&
+              (ship.id === p.targetId ||
+                (victim !== null &&
+                  distToShip <
+                    vecDistance(start, this.previousPositions.get(victim.id) ?? victim.pos))));
+          if (isBetter) {
+            first = t;
+            victim = ship;
+          }
         }
       }
       if (flak || pointDefenseMode(p.weapon) === "rotary") {
@@ -1687,10 +1699,9 @@ export class ClientCombatSimulation {
     if (!profile) return;
     for (const ship of aliveShips) {
       if (!ship.isAlive || ship.team === flak.ownerTeam) continue;
-      const surface = Math.max(
-        0,
-        vecDistance(flak.pos, positions.get(ship.id) ?? ship.pos) - ship.size,
-      );
+      const dist = vecDistance(flak.pos, positions.get(ship.id) ?? ship.pos);
+      const shield = activeShieldRadius(ship);
+      const surface = dist >= shield ? dist - shield : Math.max(0, dist - ship.size);
       const falloff = clamp(
         (profile.blastRadius - surface) / (profile.blastRadius - profile.triggerRadius),
         0,

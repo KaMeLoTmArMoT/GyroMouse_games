@@ -384,6 +384,16 @@ export function capitalIntent(
       }
     }
     const velocity = vecAdd(intent.velocity, calculateSeparation(ship, ships));
+    const evasiveVelocity = OrdnanceAvoidanceBlock(
+      ship,
+      projectiles,
+      ships,
+      time,
+      "torpedo",
+      velocity,
+    );
+    if (evasiveVelocity !== velocity)
+      return { ...intent, velocity: evasiveVelocity, evadingOrdnance: true };
     return {
       ...intent,
       velocity: limitVelocity(

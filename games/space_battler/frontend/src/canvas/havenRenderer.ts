@@ -39,6 +39,7 @@ export function renderHavenTethers(
   ctx: CanvasRenderingContext2D,
   ships: readonly ShipState[],
   time: number,
+  selectedShipId?: string | null,
 ): void {
   const byId = new Map(ships.map((ship) => [ship.id, ship]));
   for (const guest of ships) {
@@ -47,6 +48,7 @@ export function renderHavenTethers(
       if (
         parent?.isAlive &&
         isCapitalShip(parent) &&
+        (selectedShipId === guest.id || selectedShipId === parent.id) &&
         Object.hasOwn(SHIELD_HAVEN_SLOTS, guest.havenSlotId)
       ) {
         renderGuidance(ctx, guest, parent, guest.havenSlotId as ShieldHavenSlotId, time, "#67e8f9");

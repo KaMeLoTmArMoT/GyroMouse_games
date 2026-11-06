@@ -23,6 +23,7 @@ export interface FlightIntent {
   heading: number;
   velocity: Vector2;
   rangePhase: RangePhase;
+  evadingOrdnance?: boolean;
 }
 
 export function limitVelocity(velocity: Vector2, max: number): Vector2 {
@@ -259,7 +260,12 @@ function torpedoEscape(
   projectiles: ProjectileState[],
   side: number,
   velocity: Vector2,
+  time: number,
 ): Vector2 {
+  const skirmisher = ship.hullClass === "missile_frigate";
+  const retained = skirmisher && (ship.escapeUntil ?? 0) > time;
+  let closestArrival = Infinity;
+  let escapeVelocity: Vector2 | null = null;
   for (const missile of projectiles) {
     if (
       missile.ownerTeam === ship.team ||
@@ -271,15 +277,29 @@ function torpedoEscape(
     const relative = vecSub(ship.pos, missile.pos);
     const closing = vecSub(ship.velocity, missile.velocity);
     const arrival = -vecDot(relative, closing) / Math.max(1, vecDot(closing, closing));
-    if (arrival <= 0 || arrival > Math.min(1.5, missile.lifetime)) continue;
+    if (arrival <= 0 || arrival > Math.min(skirmisher ? 2 : 1.5, missile.lifetime)) continue;
     const closest = vecAdd(relative, vecScale(closing, arrival));
-    if (vecDistance([0, 0], closest) > ship.size + 25) continue;
+    if (!retained && vecDistance([0, 0], closest) > activeShieldRadius(ship) + 25) continue;
     const direction = vecNormalize(missile.velocity);
     const lateral: Vector2 = [-direction[1], direction[0]];
-    const escapeSign = Math.sign(vecDot(relative, lateral)) || side;
-    velocity = vecAdd(velocity, vecScale(lateral, escapeSign * ship.maxSpeed * 2));
+    const escapeSign = retained
+      ? (ship.escapeSide ?? side)
+      : Math.sign(vecDot(relative, lateral)) || side;
+    if (skirmisher) {
+      if (arrival < closestArrival) {
+        closestArrival = arrival;
+        escapeVelocity = vecScale(lateral, escapeSign * ship.maxSpeed);
+        // Finish the jink instead of cancelling as soon as lateral thrust predicts a miss.
+        if (!retained) {
+          ship.escapeSide = escapeSign;
+          ship.escapeUntil = time + Math.min(arrival, 0.75);
+        }
+      }
+    } else {
+      velocity = vecAdd(velocity, vecScale(lateral, escapeSign * ship.maxSpeed * 2));
+    }
   }
-  return velocity;
+  return escapeVelocity ?? velocity;
 }
 
 // Predict the finite gimbal corridor before firing, and also avoid shells already in flight.
@@ -292,7 +312,13 @@ export function OrdnanceAvoidanceBlock(
   velocity: Vector2 = [0, 0],
 ): Vector2 {
   if (mode === "torpedo")
-    return torpedoEscape(ship, projectiles, ship.broadsideSide ?? 1, velocity);
+    return torpedoEscape(
+      ship,
+      projectiles,
+      ship.skirmishCycle?.side ?? ship.broadsideSide ?? 1,
+      velocity,
+      time,
+    );
   let avoidance: Vector2 = [0, 0];
   let beamAvoidance: Vector2 = [0, 0];
   let closestBeam = Infinity;

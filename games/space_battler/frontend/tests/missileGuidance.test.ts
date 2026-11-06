@@ -18,11 +18,22 @@ function ship(hullClass: HullClass, team: number, pos: Vector2) {
 
 describe("guided ordnance", () => {
   it.each([false, true])("reacquires the closest forward hostile (heavy=%s)", (heavy) => {
-    const weapon = heavy ? HULL_PROFILES.cruiser.turrets[1].weapon : HULL_PROFILES.missile_frigate.turrets[0].weapon;
+    const weapon = heavy
+      ? HULL_PROFILES.cruiser.turrets[1].weapon
+      : HULL_PROFILES.missile_frigate.turrets[0].weapon;
     const projectile: ProjectileState = {
-      id: "guided", weaponType: "missile", weapon: { ...weapon }, damage: weapon.damage,
-      ownerId: "owner", ownerTeam: 0, pos: [0, 0], velocity: [360, 0], lifetime: 5,
-      targetId: "destroyed", hp: projectileMaxHp(weapon), maxHp: projectileMaxHp(weapon),
+      id: "guided",
+      weaponType: "missile",
+      weapon: { ...weapon },
+      damage: weapon.damage,
+      ownerId: "owner",
+      ownerTeam: 0,
+      pos: [0, 0],
+      velocity: [360, 0],
+      lifetime: 5,
+      targetId: "destroyed",
+      hp: projectileMaxHp(weapon),
+      maxHp: projectileMaxHp(weapon),
     };
     const sim = new ClientCombatSimulation();
     const closest = ship("battleship", 1, [600, 200]);
@@ -40,7 +51,12 @@ describe("guided ordnance", () => {
   });
 
   it("launches two central missiles and two flanking missiles", () => {
-    const owner = buildFleetFromSlots([{ id: "fixture", hullClass: "missile_frigate", groupId: 1 }], 0, 0, 0)[0];
+    const owner = buildFleetFromSlots(
+      [{ id: "fixture", hullClass: "missile_frigate", groupId: 1 }],
+      0,
+      0,
+      0,
+    )[0];
     owner.pos = [0, 0];
     owner.maxSpeed = owner.turnRate = 0;
     for (const mount of owner.turrets) mount.cooldownTimer = 0;
@@ -78,18 +94,100 @@ describe("guided ordnance", () => {
 });
 
 describe("expanded fleet doctrine", () => {
-  it.each(["dreadnought", "battleship", "cruiser"] as const)("approaches bow-first with %s", (hull) => {
-    const owner = ship(hull, 0, [0, 0]);
+  it.each([false, true])("jinks at full speed across incoming missiles (heavy=%s)", (heavy) => {
+    const owner = ship("missile_frigate", 0, [0, 0]);
+    owner.maxSpeed = HULL_PROFILES.missile_frigate.speed;
     const target = ship("battleship", 1, [1600, 0]);
-    const intent = capitalIntent(owner, target, [owner, target], { groupId: 1, priority: "nearest", stance: "optimal_range" });
-    expect(intent.heading).toBeCloseTo(0);
+    const weapon = heavy
+      ? HULL_PROFILES.cruiser.turrets[1].weapon
+      : HULL_PROFILES.missile_frigate.turrets[0].weapon;
+    const missile: ProjectileState = {
+      id: "incoming",
+      weaponType: "missile",
+      weapon,
+      damage: weapon.damage,
+      ownerId: target.id,
+      ownerTeam: 1,
+      pos: [400, 400],
+      velocity: [-200, -200],
+      lifetime: 3,
+      targetId: owner.id,
+      hp: projectileMaxHp(weapon),
+      maxHp: projectileMaxHp(weapon),
+    };
+    const intent = capitalIntent(
+      owner,
+      target,
+      [owner, target],
+      {
+        groupId: 1,
+        priority: "nearest",
+        stance: "optimal_range",
+      },
+      0,
+      [missile],
+    );
+    expect(intent.rangePhase).toBe("approach");
+    expect(intent.evadingOrdnance).toBe(true);
+    expect(Math.hypot(...intent.velocity)).toBeCloseTo(owner.maxSpeed);
+    expect(
+      intent.velocity[0] * missile.velocity[0] + intent.velocity[1] * missile.velocity[1],
+    ).toBeCloseTo(0);
   });
+
+  it.each(["friendly", "receding", "distant", "miss", "dead", "expired", "short fuel"])(
+    "keeps its normal course for a %s missile",
+    (condition) => {
+      const owner = ship("missile_frigate", 0, [0, 0]);
+      owner.maxSpeed = HULL_PROFILES.missile_frigate.speed;
+      const target = ship("battleship", 1, [1600, 0]);
+      const weapon = HULL_PROFILES.missile_frigate.turrets[0].weapon;
+      const missile: ProjectileState = {
+        id: "incoming",
+        weaponType: "missile",
+        weapon,
+        damage: weapon.damage,
+        ownerId: target.id,
+        ownerTeam: condition === "friendly" ? 0 : 1,
+        pos: [condition === "distant" ? 601 : 600, condition === "miss" ? 200 : 0],
+        velocity: [condition === "receding" ? 300 : -300, 0],
+        lifetime: condition === "expired" ? 0 : condition === "short fuel" ? 1 : 3,
+        targetId: owner.id,
+        hp: condition === "dead" ? 0 : 18,
+        maxHp: 18,
+      };
+      const order = { groupId: 1, priority: "nearest", stance: "optimal_range" } as const;
+      const normal = capitalIntent(owner, target, [owner, target], order);
+      const intent = capitalIntent(owner, target, [owner, target], order, 0, [missile]);
+      expect(intent.evadingOrdnance).not.toBe(true);
+      expect(intent.velocity).toEqual(normal.velocity);
+    },
+  );
+
+  it.each(["dreadnought", "battleship", "cruiser"] as const)(
+    "approaches bow-first with %s",
+    (hull) => {
+      const owner = ship(hull, 0, [0, 0]);
+      const target = ship("battleship", 1, [1600, 0]);
+      const intent = capitalIntent(owner, target, [owner, target], {
+        groupId: 1,
+        priority: "nearest",
+        stance: "optimal_range",
+      });
+      expect(intent.heading).toBeCloseTo(0);
+    },
+  );
 
   it("covers all 36 ordered matchups and prices curated fleets correctly", () => {
     expect(SCENARIOS.filter((scenario) => scenario.tags.includes("golden"))).toHaveLength(36);
     for (const id of ["ironclad_line", "missile_wall"]) {
       const preset = FLEET_PRESETS.find((entry) => entry.id === id)!;
-      expect(preset.budget).toBe(preset.composition.reduce((sum, entry) => sum + HULL_PROFILES[entry.hullClass].cost * entry.count, 0));
+      expect(preset.budget).toBe(
+        preset.composition.reduce(
+          (sum, entry) => sum + HULL_PROFILES[entry.hullClass].cost * entry.count,
+          0,
+        ),
+      );
     }
   });
 });
