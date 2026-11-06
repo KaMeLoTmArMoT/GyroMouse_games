@@ -1,15 +1,60 @@
-import type React from "react";
+import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   calculateMaxAffordable,
   clampTargetCount,
+  FleetBuilder,
   RosterCountInput,
   ShipSilhouette,
   updateSlotsForStackCount,
 } from "../src/components/FleetBuilder";
 import { GroupPreview, useDelayedPreview } from "../src/components/FleetPreviews";
 import { buildFleetFromSlots, type FleetSlot, GROUP_ANCHORS } from "../src/engine/fleetBuilder";
+
+describe("FleetBuilder presentation", () => {
+  it("orders the catalog, groups weapons, and offers independent selectors and carrier controls", () => {
+    hooks.value = "";
+    hooks.refs = [];
+    hooks.refIndex = 0;
+    const markup = renderToStaticMarkup(
+      React.createElement(FleetBuilder, {
+        blueSlots: [
+          { id: "carrier1", hullClass: "carrier", groupId: 1 },
+          { id: "carrier2", hullClass: "carrier", groupId: 2 },
+        ],
+        redSlots: [{ id: "red", hullClass: "corvette", groupId: 1 }],
+        onUpdateBlueSlots: vi.fn(),
+        onUpdateRedSlots: vi.fn(),
+        budgetLimit: 20000,
+        enemyPresetId: "custom",
+        onSelectEnemyPreset: vi.fn(),
+        onStartBattle: vi.fn(),
+      }),
+    );
+    const names = [
+      "Bastion Artillery Dreadnought",
+      "Oceanic Fleet Carrier",
+      "Leviathan Battleship",
+      "Vanguard Cruiser",
+      '"Оберіг" EW Shield Tender',
+      "Quiver Missile Frigate",
+      "Aegis Corvette",
+      "Raider Interceptor",
+    ];
+    const positions = names.map((name) => markup.indexOf(name.replaceAll('"', "&quot;")));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(markup).toContain("×4");
+    expect(markup).toContain("×3");
+    expect(markup).toContain("Opposing Fleet Presets");
+    expect(markup).toContain("Tactical Scenarios");
+    expect(markup).toContain('aria-label="blue carrier"');
+    expect(markup).toContain("Blue Active Roster");
+    expect(markup).toContain("Red Active Roster");
+    expect(markup).not.toContain("fabrication are not yet simulated");
+  });
+});
 
 const hooks = vi.hoisted(() => ({
   value: "",

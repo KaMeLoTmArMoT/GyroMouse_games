@@ -126,14 +126,14 @@ const RED_THEME = {
 };
 
 const HULL_SIZE_ORDER: Record<HullClass, number> = {
-  carrier: -1,
   dreadnought: 0,
-  battleship: 1,
-  cruiser: 2,
-  missile_frigate: 2.5,
-  tender: 2.6,
-  corvette: 3,
-  strike_craft: 4,
+  carrier: 1,
+  battleship: 2,
+  cruiser: 3,
+  tender: 4,
+  missile_frigate: 5,
+  corvette: 6,
+  strike_craft: 7,
 };
 
 export const HULL_SPECS = Object.fromEntries(
@@ -155,7 +155,7 @@ export const HULL_SPECS = Object.fromEntries(
 ) as Record<HullClass, HullSpecData>;
 
 const HULL_CATALOG = (Object.keys(HULL_SPECS) as HullClass[]).sort(
-  (a, b) => Number(a === "carrier") - Number(b === "carrier"),
+  (a, b) => HULL_SIZE_ORDER[a] - HULL_SIZE_ORDER[b],
 );
 
 export function ShipSilhouette({
@@ -410,7 +410,27 @@ export function RosterCountInput({
   );
 }
 
-export function FleetBuilder({
+export function FleetBuilder(props: FleetBuilderProps) {
+  const [activeTeam, setActiveTeam] = useState<"blue" | "red">("blue");
+  return (
+    <div className="flex-1 flex gap-2 p-3 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
+      <FleetBuilderPanel
+        {...props}
+        team={activeTeam}
+        activeTeam={activeTeam}
+        setActiveTeam={setActiveTeam}
+      />
+      <FleetBuilderPanel
+        {...props}
+        team={activeTeam === "blue" ? "red" : "blue"}
+        activeTeam={activeTeam}
+        setActiveTeam={setActiveTeam}
+      />
+    </div>
+  );
+}
+
+function FleetBuilderPanel({
   blueSlots,
   redSlots,
   onUpdateBlueSlots,
@@ -419,16 +439,26 @@ export function FleetBuilder({
   enemyPresetId,
   onSelectEnemyPreset,
   onStartBattle,
-}: FleetBuilderProps) {
-  const [activeTeam, setActiveTeam] = useState<"blue" | "red">("blue");
-  const redTeam = activeTeam === "red";
+  team,
+  activeTeam,
+  setActiveTeam,
+}: FleetBuilderProps & {
+  team: "blue" | "red";
+  activeTeam: "blue" | "red";
+  setActiveTeam: (team: "blue" | "red") => void;
+}) {
+  const isActive = team === activeTeam;
+  const redTeam = team === "red";
   const previewTeam = redTeam ? 1 : 0;
   const [selectedGroup, setSelectedGroup] = useState<number>(1);
   const [doctrineHull, setDoctrineHull] = useState<HullClass | null>(null);
   const shipPreview = useDelayedPreview<HullClass>(250);
   const groupPreview = useDelayedPreview<number>(200);
-  const slots = activeTeam === "blue" ? blueSlots : redSlots;
-  const onUpdateSlots = activeTeam === "blue" ? onUpdateBlueSlots : onUpdateRedSlots;
+  const slots = team === "blue" ? blueSlots : redSlots;
+  const onUpdateSlots = team === "blue" ? onUpdateBlueSlots : onUpdateRedSlots;
+  const [selectedCarrierId, setSelectedCarrierId] = useState<string | null>(null);
+  const carriers = slots.filter((slot) => slot.hullClass === "carrier");
+  const selectedCarrier = carriers.find((slot) => slot.id === selectedCarrierId) ?? carriers[0];
   const selectedScenario = SCENARIOS.find((s) => `scenario:${s.id}` === enemyPresetId);
   const selectedPreset = FLEET_PRESETS.find((p) => p.id === enemyPresetId);
 
@@ -509,9 +539,15 @@ export function FleetBuilder({
   };
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row gap-4 p-3 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
+    <div
+      className={
+        isActive
+          ? "flex-1 min-w-0 flex flex-col md:flex-row gap-2 overflow-hidden"
+          : "hidden min-[1536px]:flex w-80 shrink-0 overflow-hidden"
+      }
+    >
       {/* Left: Ship Catalog & Group Selection */}
-      <div className="flex-1 min-w-0 space-y-3 overflow-y-auto pr-2">
+      <div className={isActive ? "flex-1 min-w-0 space-y-2 overflow-y-auto pr-1" : "hidden"}>
         <div>
           <h2 className="text-lg font-semibold tracking-wide flex items-center gap-2 select-text">
             <Shield className={`w-5 h-5 ${redTeam ? "text-red-400" : "text-cyan-400"}`} /> Fleet
@@ -613,11 +649,27 @@ export function FleetBuilder({
         </div>
 
         {/* Ship Catalog */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {HULL_CATALOG.map((hull) => {
             const spec = HULL_SPECS[hull];
             const canAfford = remainingBudget >= spec.cost;
             const counts = hullCounts[hull];
+            const groupedWeapons = spec.weapons.reduce<(HullWeaponSpec & { count: number })[]>(
+              (groups, weapon) => {
+                const match = groups.find(
+                  (group) =>
+                    group.name === weapon.name &&
+                    group.type === weapon.type &&
+                    group.damage === weapon.damage &&
+                    group.range === weapon.range &&
+                    group.cooldown === weapon.cooldown,
+                );
+                if (match) match.count++;
+                else groups.push({ ...weapon, count: 1 });
+                return groups;
+              },
+              [],
+            );
             const isInspecting = shipPreview.active === hull;
             const activeTheme = redTeam
               ? RED_THEME
@@ -626,7 +678,7 @@ export function FleetBuilder({
             return (
               <div
                 key={hull}
-                className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between select-text relative ${
+                className={`p-2 rounded-xl border transition-all flex flex-col justify-between select-text relative ${
                   isInspecting
                     ? redTeam
                       ? "border-red-900/40 bg-zinc-900/90 shadow-md shadow-red-950/40"
@@ -653,6 +705,12 @@ export function FleetBuilder({
                           className={`text-[11px] uppercase font-mono ${redTeam ? "text-red-300" : "text-cyan-300"}`}
                         >
                           {spec.role}
+                        </span>
+                        <span
+                          className="ml-2 text-[10px] font-mono text-zinc-500"
+                          title="Hull size"
+                        >
+                          SIZE {HULL_PROFILES[hull].size}u
                         </span>
                       </div>
                     </div>
@@ -683,23 +741,8 @@ export function FleetBuilder({
 
                   <p className="text-xs text-zinc-300 mt-1.5 select-text">{spec.desc}</p>
                   {hull === "tender" && (
-                    <div className="mt-1.5 text-[11px] text-zinc-300">
-                      <div className="flex flex-wrap gap-1 font-mono">
-                        <span className="rounded border border-cyan-800/70 px-1.5 py-0.5 text-cyan-300">
-                          HARMONIC 65 SP/s · 500u
-                        </span>
-                        <span className="rounded border border-cyan-800/70 px-1.5 py-0.5 text-cyan-300">
-                          HAVEN +20%
-                        </span>
-                        <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-zinc-400">
-                          ECM IN RESEARCH
-                        </span>
-                      </div>
-                      <p className="mt-1 text-zinc-400">
-                        Provides focused 65 SP/s harmonic shield beam to allies within 500u, +20%
-                        capital haven radius, and point-defense flak. Note: ECM electronic warfare
-                        pulse currently under research and calibration.
-                      </p>
+                    <div className="text-[10px] text-cyan-300">
+                      HARMONIC 65 SP/s · 500u · HAVEN +20% · ECM IN RESEARCH
                     </div>
                   )}
                   <button
@@ -713,7 +756,7 @@ export function FleetBuilder({
 
                   {/* Compact Stats Row */}
                   <div className="grid grid-cols-4 gap-1 mt-1.5 pt-1.5 border-t border-zinc-800/80 text-[11px] font-mono">
-                    <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
+                    <div className="bg-zinc-950/60 p-0.5 rounded border border-zinc-800/60 text-center">
                       <span className="text-zinc-400 block">SHIELD</span>
                       <span
                         className={`font-semibold ${redTeam ? "text-red-400" : "text-cyan-400"}`}
@@ -721,15 +764,15 @@ export function FleetBuilder({
                         {spec.shield}
                       </span>
                     </div>
-                    <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
+                    <div className="bg-zinc-950/60 p-0.5 rounded border border-zinc-800/60 text-center">
                       <span className="text-zinc-400 block">ARMOR</span>
                       <span className="text-amber-400 font-semibold">{spec.armor}</span>
                     </div>
-                    <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
+                    <div className="bg-zinc-950/60 p-0.5 rounded border border-zinc-800/60 text-center">
                       <span className="text-zinc-400 block">HULL</span>
                       <span className="text-emerald-400 font-semibold">{spec.hull}</span>
                     </div>
-                    <div className="bg-zinc-950/60 p-1.5 rounded border border-zinc-800/60 text-center">
+                    <div className="bg-zinc-950/60 p-0.5 rounded border border-zinc-800/60 text-center">
                       <span className="text-zinc-400 block">SPEED</span>
                       <span className="text-zinc-300 font-semibold">{spec.speed} u/s</span>
                     </div>
@@ -752,12 +795,17 @@ export function FleetBuilder({
                       Armament Loadout
                     </div>
                     <div className="space-y-0.5">
-                      {spec.weapons.map((w) => (
+                      {groupedWeapons.map((w) => (
                         <div
                           key={`${w.mountId ?? w.name}`}
                           className="flex justify-between items-center text-zinc-300"
                         >
-                          <span className="truncate pr-2">{w.name}</span>
+                          <span className="flex min-w-0 pr-2">
+                            <span className="truncate">{w.name}</span>
+                            {w.count > 1 && (
+                              <span className="ml-1 shrink-0 text-zinc-400">×{w.count}</span>
+                            )}
+                          </span>
                           <span
                             className={`font-semibold shrink-0 ${redTeam ? "text-red-400" : "text-cyan-400"}`}
                           >
@@ -790,11 +838,11 @@ export function FleetBuilder({
       </div>
 
       {/* Right: Full-Height Roster & Enemy Preset Selector */}
-      <div className="w-full md:w-96 md:shrink-0 flex flex-col gap-4 min-h-0 md:h-full">
+      <div className="w-full md:w-96 min-[1536px]:w-80 md:shrink-0 flex flex-col gap-2 min-h-0 md:h-full">
         {/* Budget Bar */}
         <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 select-text">
           <div className="flex justify-between items-center text-xs font-mono">
-            <span className="text-zinc-400">{activeTeam === "blue" ? "Blue" : "Red"} Budget</span>
+            <span className="text-zinc-400">{team === "blue" ? "Blue" : "Red"} Budget</span>
             <span
               className={
                 remainingBudget < 0 || redTeam
@@ -824,7 +872,7 @@ export function FleetBuilder({
               <span
                 className={`text-xs font-semibold uppercase tracking-wider select-all block ${redTeam ? "text-red-400" : "text-zinc-400"}`}
               >
-                {activeTeam === "blue" ? "Blue" : "Red"} Active Roster ({slots.length} hulls)
+                {team === "blue" ? "Blue" : "Red"} Active Roster ({slots.length} hulls)
               </span>
               {slots.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-1">
@@ -866,7 +914,7 @@ export function FleetBuilder({
             </div>
           </div>
 
-          <div key={activeTeam} className="flex-1 overflow-y-auto space-y-2 py-3 pr-1">
+          <div key={team} className="flex-1 overflow-y-auto space-y-2 py-3 pr-1">
             {slots.length === 0 ? (
               <div className="h-full flex items-center justify-center text-center p-6 text-xs text-zinc-600 select-text">
                 Fleet is currently empty. Enlist vessels from the hangar.
@@ -1024,18 +1072,35 @@ export function FleetBuilder({
               })()
             )}
           </div>
-          {slots.some((slot) => slot.hullClass === "carrier") && (
+          {selectedCarrier && (
             <div className="overflow-y-auto border-t border-zinc-800 pt-3 space-y-3">
-              {slots
-                .filter((slot) => slot.hullClass === "carrier")
-                .map((slot, index) => (
+              {(() => {
+                const slot = selectedCarrier;
+                return (
                   <div
                     key={slot.id}
                     className="rounded-lg border border-zinc-700 bg-zinc-950 p-3 space-y-2 text-xs"
                   >
                     <div className="font-semibold text-zinc-200">
-                      Carrier {index + 1} · Group {slot.groupId} · {fleetSlotCost(slot)} CR
+                      Carrier · Group {slot.groupId} · {fleetSlotCost(slot)} CR
                     </div>
+                    {carriers.length > 1 && (
+                      <label className="block text-zinc-400">
+                        Select carrier
+                        <select
+                          aria-label={`${team} carrier`}
+                          value={slot.id}
+                          onChange={(event) => setSelectedCarrierId(event.target.value)}
+                          className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 p-1 text-zinc-200"
+                        >
+                          {carriers.map((carrier, index) => (
+                            <option key={carrier.id} value={carrier.id}>
+                              #{index + 1} · Group {carrier.groupId}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <label className="block text-zinc-400">
                       Strike wing
                       <select
@@ -1096,43 +1161,50 @@ export function FleetBuilder({
                         ))}
                       </select>
                     </label>
-                    <p className="text-zinc-500">
-                      Selected craft deploy alongside the carrier. Docking and planned +2 craft /
-                      20s fabrication are not yet simulated.
-                    </p>
                   </div>
-                ))}
+                );
+              })()}
             </div>
           )}
         </div>
 
         {/* Adversary Preset Selector */}
-        {activeTeam === "blue" && (
+        {isActive && (
           <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 shrink-0 select-text">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-              Select Opposing Red Force
-            </div>
-            <select
-              value={enemyPresetId}
-              onChange={(e) => onSelectEnemyPreset(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
-            >
-              <option value="custom">Custom (Build Opposing Fleet)</option>
-              <optgroup label="Opposing Fleet Presets">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              Opposing Fleet Presets
+              <select
+                value={selectedPreset ? enemyPresetId : "custom"}
+                onChange={(e) => onSelectEnemyPreset(e.target.value)}
+                className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
+              >
+                <option value="custom">
+                  {selectedScenario ? "Select a preset" : "Custom Fleet"}
+                </option>
                 {FLEET_PRESETS.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.budget} CR)
                   </option>
                 ))}
-              </optgroup>
-              <optgroup label="Tactical Scenarios (Load Both Fleets)">
+              </select>
+            </label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              Tactical Scenarios
+              <select
+                value={selectedScenario ? enemyPresetId : "custom"}
+                onChange={(e) => onSelectEnemyPreset(e.target.value)}
+                className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
+              >
+                <option value="custom">
+                  {selectedPreset ? "Select a scenario" : "Custom Fleet"}
+                </option>
                 {SCENARIOS.map((scenario) => (
                   <option key={scenario.id} value={`scenario:${scenario.id}`}>
                     {scenario.label.replace(/\bSC\b/g, "Fighters")}
                   </option>
                 ))}
-              </optgroup>
-            </select>
+              </select>
+            </label>
             <p className="text-[11px] text-zinc-500 italic mt-1 select-text">
               {selectedPreset?.description ??
                 (selectedScenario
@@ -1143,20 +1215,22 @@ export function FleetBuilder({
         )}
 
         {/* Start Button */}
-        <button
-          type="button"
-          disabled={blueSlots.length === 0 || redSlots.length === 0}
-          onClick={onStartBattle}
-          className={`w-full py-3.5 rounded-xl font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 transition-all shrink-0 ${
-            blueSlots.length > 0 && redSlots.length > 0
-              ? redTeam
-                ? "bg-red-700 hover:bg-red-600 text-white shadow-lg shadow-red-950/40 cursor-pointer"
-                : "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-500/20 cursor-pointer"
-              : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-          }`}
-        >
-          <Swords className="w-4 h-4" /> Engage Fleet Simulator
-        </button>
+        {isActive && (
+          <button
+            type="button"
+            disabled={blueSlots.length === 0 || redSlots.length === 0}
+            onClick={onStartBattle}
+            className={`w-full py-3.5 rounded-xl font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 transition-all shrink-0 ${
+              blueSlots.length > 0 && redSlots.length > 0
+                ? redTeam
+                  ? "bg-red-700 hover:bg-red-600 text-white shadow-lg shadow-red-950/40 cursor-pointer"
+                  : "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-500/20 cursor-pointer"
+                : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
+            }`}
+          >
+            <Swords className="w-4 h-4" /> Engage Fleet Simulator
+          </button>
+        )}
       </div>
       {doctrineHull && (
         <DoctrineDialog
