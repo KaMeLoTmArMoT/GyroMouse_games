@@ -217,7 +217,8 @@ export function updateShipNavigation(
     Math.cos(targetHeading) * desiredSpeed,
     Math.sin(targetHeading) * desiredSpeed,
   ];
-  const debrisVelocity = debrisAvoidanceVelocity(ship, intendedVelocity, context.ships);
+  const allShips = context.ships ?? aliveShips;
+  const debrisVelocity = debrisAvoidanceVelocity(ship, intendedVelocity, allShips);
   const avoidingDebris = vecDistance(debrisVelocity, intendedVelocity) > 1e-6;
   if (avoidingDebris) {
     thrusterVelocity = debrisVelocity;

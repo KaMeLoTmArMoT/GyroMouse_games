@@ -129,7 +129,7 @@ export function debrisAvoidanceVelocity(
       );
     }
   }
-  return limitVelocity(result, ship.maxSpeed);
+  return strongest > 0 ? limitVelocity(result, ship.maxSpeed) : desired;
 }
 
 export let ARENA_RADIUS = 1900;
