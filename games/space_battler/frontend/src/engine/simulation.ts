@@ -15,6 +15,12 @@ import type {
   WeaponType,
   WingPhase,
 } from "../types/combat";
+import {
+  type ActiveBeam,
+  type BeamChannel,
+  type BeamFireCallback,
+  BeamLaserSystem,
+} from "./beamLaserSystem";
 import type { CombatObserver } from "./combatTelemetry";
 import {
   acquireMountTarget,
@@ -68,14 +74,7 @@ import {
   projectileMaxHp,
 } from "./shipProfiles";
 
-export type BeamFireCallback = (
-  from: Vector2,
-  to: Vector2,
-  color: string,
-  width: number,
-  ownerTeam: number,
-  channeled?: boolean,
-) => void;
+export type { ActiveBeam, BeamFireCallback } from "./beamLaserSystem";
 export type FlakBurstCallback = (pos: Vector2, radius: number, ownerTeam: number) => void;
 
 const FIGHTER_STANDOFF = 520;
@@ -113,24 +112,6 @@ export interface FighterWingVisual {
 }
 const FIXED_STEP = 1 / 60;
 const MAX_REPULSOR_STEP = 4;
-const BEAM_TICK_FRAMES = 6;
-const BEAM_TICKS = 12;
-
-interface BeamChannel {
-  ship: ShipState;
-  turret: TurretMountState;
-  target: ShipState | ProjectileState;
-  kind: "ship" | "missile";
-  weapon: WeaponDefinition;
-  frames: number;
-}
-
-export interface ActiveBeam {
-  id: string;
-  from: Vector2;
-  to: Vector2;
-  ownerTeam: number;
-}
 
 export class ClientCombatSimulation {
   readonly shieldHaven = new ShieldHavenSystem();
@@ -144,7 +125,35 @@ export class ClientCombatSimulation {
   private accumulator = 0;
   private contacts = new Set<string>();
   private previousPositions = new Map<string, Vector2>();
-  private beamChannels = new Map<TurretMountState, BeamChannel>();
+  private readonly beamLaserSystem = new BeamLaserSystem({
+    getTime: () => this.timeElapsed,
+    getProjectiles: () => this.projectiles,
+    updateTurretAim: (turret, dt, ship, targetPos) =>
+      this.updateTurretAim(turret, dt, ship, targetPos),
+    applyShipDamage: (channel, damage, origin) =>
+      this.applyDamage(
+        channel.target as ShipState,
+        damage,
+        channel.weapon,
+        channel.ship.team,
+        channel.ship.id,
+        channel.turret.id,
+        origin,
+        channel,
+      ),
+    damageMissile: (channel, damage) =>
+      this.damageProjectile(
+        channel.target as ProjectileState,
+        damage,
+        channel.ship.team,
+        "beam battery",
+        channel.ship,
+      ),
+    onBeamFire: (...args) => this.onBeamFire?.(...args),
+  });
+  private get beamChannels(): Map<TurretMountState, BeamChannel> {
+    return this.beamLaserSystem.channels;
+  }
   private damageTotals = [0, 0];
   private shieldTotals = [0, 0];
   onBeamFire: BeamFireCallback | null = null;
@@ -325,7 +334,7 @@ export class ClientCombatSimulation {
     }
     this.projectiles = [];
     this.activeBeams = [];
-    this.beamChannels.clear();
+    this.beamLaserSystem.clear();
     this.shieldHaven.clear();
     this.fighterWings = [];
     this.contacts.clear();
@@ -432,29 +441,8 @@ export class ClientCombatSimulation {
       for (const turret of ship.turrets) {
         const channel = this.beamChannels.get(turret);
         if (channel) {
-          const target = channel.target;
-          const live =
-            channel.kind === "ship"
-              ? (target as ShipState).isAlive
-              : (target as ProjectileState).hp > 0 &&
-                (target as ProjectileState).lifetime > 0 &&
-                this.projectiles.includes(target as ProjectileState);
-          if (
-            !live ||
-            vecDistance(mountPosition(ship, turret), target.pos) > channel.weapon.range ||
-            !inMountArc(ship, turret, target.pos)
-          ) {
-            this.finishBeam(turret);
-            continue;
-          }
-          turret.currentTargetId = target.id;
-          turret.currentTargetKind = channel.kind;
-          const aimed = this.updateTurretAim(turret, dt, ship, target.pos);
-          if (!aimed) {
-            this.finishBeam(turret);
-            continue;
-          }
-          shots.push(() => this.updateBeam(channel, aimed));
+          if (this.beamLaserSystem.prepareBeam(channel, dt))
+            shots.push(() => this.updateBeam(channel, true));
           continue;
         }
         const solution = acquireMountTarget(
@@ -487,15 +475,7 @@ export class ClientCombatSimulation {
     }
     for (const fire of shots) fire();
 
-    for (const [turret, channel] of this.beamChannels) {
-      if (
-        !channel.ship.isAlive ||
-        (channel.kind === "ship" && !(channel.target as ShipState).isAlive) ||
-        (channel.kind === "missile" && (channel.target as ProjectileState).hp <= 0)
-      )
-        this.finishBeam(turret);
-    }
-    this.activeBeams = [...this.beamChannels.values()].map((channel) => this.beamVisual(channel));
+    this.activeBeams = this.beamLaserSystem.collectActiveBeams();
 
     // 4. Projectiles & Collision Resolution
     this.updateProjectiles(dt, aliveShips);
@@ -1426,22 +1406,7 @@ export class ClientCombatSimulation {
     // Other zero-speed weapons retain their existing instantaneous hitscan behavior.
     if (isBeam) {
       if (turret.weapon.weaponType === "beam_laser" && beamTarget) {
-        this.beamChannels.set(turret, {
-          ship,
-          turret,
-          target: beamTarget,
-          kind: targetShip ? "ship" : "missile",
-          weapon: { ...turret.weapon },
-          frames: 0,
-        });
-        this.onBeamFire?.(
-          spawnPos,
-          beamTarget.pos,
-          ship.team === 0 ? "#38bdf8" : "#ef4444",
-          2.8,
-          ship.team,
-          true,
-        );
+        this.beamLaserSystem.startBeam(ship, turret, beamTarget, targetShip ? "ship" : "missile");
         return;
       }
       if (targetShip) {
@@ -1520,50 +1485,8 @@ export class ClientCombatSimulation {
       );
   }
 
-  private beamVisual(channel: BeamChannel): ActiveBeam {
-    const { ship, turret, target, kind } = channel;
-    const angle = ship.heading + turret.currentLocalAngle;
-    const from = vecAdd(mountPosition(ship, turret), [
-      Math.cos(angle) * turret.barrelLength,
-      Math.sin(angle) * turret.barrelLength,
-    ]);
-    const radius = kind === "ship" ? activeShieldRadius(target as ShipState) : 0;
-    const direction = vecNormalize(vecSub(from, target.pos));
-    const to = vecAdd(
-      target.pos,
-      vecScale(direction, Math.min(radius, vecDistance(from, target.pos))),
-    );
-    return { id: `${ship.id}:${turret.id}`, from, to, ownerTeam: ship.team };
-  }
-
-  private finishBeam(turret: TurretMountState): void {
-    this.beamChannels.delete(turret);
-    turret.cooldownTimer = turret.weapon.cooldown;
-    turret.lastFiredTime = this.timeElapsed;
-  }
-
   private updateBeam(channel: BeamChannel, aimed: boolean): void {
-    channel.frames++;
-    if (aimed && channel.frames % BEAM_TICK_FRAMES === 0) {
-      const { ship, turret, target, weapon } = channel;
-      const damage = weapon.damage / BEAM_TICKS;
-      if (channel.kind === "ship") {
-        this.applyDamage(
-          target as ShipState,
-          damage,
-          weapon,
-          ship.team,
-          ship.id,
-          turret.id,
-          mountPosition(ship, turret),
-          channel,
-        );
-      } else {
-        const missile = target as ProjectileState;
-        this.damageProjectile(missile, damage, ship.team, "beam battery", ship);
-      }
-    }
-    if (channel.frames >= BEAM_TICK_FRAMES * BEAM_TICKS) this.finishBeam(channel.turret);
+    this.beamLaserSystem.updateBeam(channel, aimed);
   }
 
   private updateProjectiles(dt: number, aliveShips: ShipState[]): void {
