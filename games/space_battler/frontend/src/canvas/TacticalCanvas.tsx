@@ -11,6 +11,7 @@ import {
 } from "../engine/simulation";
 import type { ShipState } from "../types/combat";
 import { VisualEffectsManager } from "./effects";
+import { renderHavenSlots, renderHavenTethers } from "./havenRenderer";
 import {
   renderBeam,
   renderProjectile,
@@ -305,6 +306,9 @@ export function TacticalCanvas({
             renderProjectile(ctx, proj);
           }
 
+          // Draw haven conduits beneath ship hulls.
+          renderHavenTethers(ctx, sim.ships, sim.timeElapsed);
+
           // Draw Ships
           const ingressGates = new Map(
             effectsRef.current.warpGates.map((gate) => [gate.shipId, gate]),
@@ -333,6 +337,7 @@ export function TacticalCanvas({
           if (selectedShipId) {
             const selectedShip = sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
             if (selectedShip) {
+              renderHavenSlots(ctx, selectedShip, sim.ships, sim.shieldHaven);
               drawTacticalTrajectory(ctx, selectedShip, sim, wings);
             }
           }

@@ -115,6 +115,26 @@ export class ShieldHavenSystem {
     return this.leases.get(guestId) ?? null;
   }
 
+  protectedParent(guest: ShipState): ShipState | null {
+    const lease = this.getLease(guest.id);
+    const parent = lease && this.ships.get(lease.parentId);
+    return guest.havenState === "tethered" &&
+      guest.havenParentId === lease?.parentId &&
+      guest.havenSlotId === lease?.slotId &&
+      eligibleGuest(guest) &&
+      parent &&
+      eligibleParent(guest, parent) &&
+      parent.shieldCurrent > 0
+      ? parent
+      : null;
+  }
+
+  releaseGuests(parentId: string): void {
+    for (const [guestId, lease] of this.leases) {
+      if (lease.parentId === parentId) this.release(guestId);
+    }
+  }
+
   release(guestId: string): void {
     const guest = this.ships.get(guestId);
     const lease = this.leases.get(guestId);

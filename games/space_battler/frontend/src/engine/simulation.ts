@@ -1733,6 +1733,21 @@ export class ClientCombatSimulation {
     impactOrigin?: Vector2,
     channel?: BeamChannel,
   ): void {
+    if (!ship.isAlive) return;
+    const parent = weapon.shieldMultiplier > 0 ? this.shieldHaven.protectedParent(ship) : null;
+    if (parent && rawDamage > 0) {
+      const before = this.observer
+        ? [parent.shieldCurrent, parent.armorCurrent, parent.hullCurrent]
+        : null;
+      this.resetShieldDelay(parent);
+      const shieldDamage = rawDamage * weapon.shieldMultiplier;
+      const absorbed = this.applyShieldDamage(parent, shieldDamage);
+      this.recordAttackerDamage(attackerTeam, absorbed);
+      if (before) this.observer?.onDamage(parent, attackerId, mountId, weapon.weaponType, before);
+      if (impactOrigin) this.onWeaponImpact?.(parent, impactOrigin, true, false, false);
+      rawDamage = absorbed >= shieldDamage ? 0 : rawDamage - absorbed / weapon.shieldMultiplier;
+      if (rawDamage <= 0) return;
+    }
     if (!this.observer && !this.onWeaponImpact) {
       this.applyDamageInternal(ship, rawDamage, weapon, attackerTeam, channel);
       return;
@@ -1757,33 +1772,19 @@ export class ClientCombatSimulation {
   ): void {
     if (!ship.isAlive) return;
 
-    const delay =
-      ship.shieldRechargeDelay ??
-      (ship.hullClass === "battleship" ? 1.5 : ship.hullClass === "cruiser" ? 1.2 : 3.5);
-    ship.shieldDelayTimer = delay;
+    this.resetShieldDelay(ship);
     let remaining = rawDamage;
     let totalAbsorbedOrDealt = 0;
 
     if (ship.shieldCurrent > 0) {
       const shieldDmg = remaining * weapon.shieldMultiplier;
-      const shieldAbsorbed = Math.min(ship.shieldCurrent, shieldDmg);
-      if (shieldAbsorbed > 0) {
-        this.onShieldHit?.([...ship.pos], Math.min(1, shieldAbsorbed / 100));
-      }
-      if (ship.shieldCurrent >= shieldDmg) {
-        ship.shieldCurrent -= shieldDmg;
-        this.shieldTotals[ship.team] += shieldDmg;
-        this.stats[ship.team].shieldDamageAbsorbed = Math.round(this.shieldTotals[ship.team]);
-        totalAbsorbedOrDealt += shieldDmg;
+      const absorbed = this.applyShieldDamage(ship, shieldDmg);
+      totalAbsorbedOrDealt += absorbed;
+      if (absorbed >= shieldDmg) {
         this.recordAttackerDamage(attackerTeam, totalAbsorbedOrDealt);
         return;
       }
-      const absorbed = ship.shieldCurrent;
-      this.shieldTotals[ship.team] += absorbed;
-      this.stats[ship.team].shieldDamageAbsorbed = Math.round(this.shieldTotals[ship.team]);
-      totalAbsorbedOrDealt += absorbed;
       remaining -= absorbed / weapon.shieldMultiplier;
-      ship.shieldCurrent = 0;
     }
 
     if (ship.armorCurrent > 0 && remaining > 0) {
@@ -1814,9 +1815,26 @@ export class ClientCombatSimulation {
     this.recordAttackerDamage(attackerTeam, totalAbsorbedOrDealt);
   }
 
+  private resetShieldDelay(ship: ShipState): void {
+    ship.shieldDelayTimer =
+      ship.shieldRechargeDelay ??
+      (ship.hullClass === "battleship" ? 1.5 : ship.hullClass === "cruiser" ? 1.2 : 3.5);
+  }
+
+  private applyShieldDamage(ship: ShipState, damage: number): number {
+    const absorbed = Math.min(ship.shieldCurrent, damage);
+    ship.shieldCurrent -= absorbed;
+    this.shieldTotals[ship.team] += absorbed;
+    this.stats[ship.team].shieldDamageAbsorbed = Math.round(this.shieldTotals[ship.team]);
+    if (absorbed > 0) this.onShieldHit?.([...ship.pos], Math.min(1, absorbed / 100));
+    if (ship.shieldCurrent <= 0) this.shieldHaven.releaseGuests(ship.id);
+    return absorbed;
+  }
+
   private destroyShip(ship: ShipState, attackerTeam?: number): void {
     if (!ship.isAlive) return;
     ship.isAlive = false;
+    this.shieldHaven.releaseGuests(ship.id);
     this.stats[ship.team].shipsLost += 1;
     this.onShipDestroyed?.(ship);
     const killerName = attackerTeam === 0 ? "Terran fleet" : "Alien swarm";

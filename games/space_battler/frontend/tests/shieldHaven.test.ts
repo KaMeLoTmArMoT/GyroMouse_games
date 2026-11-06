@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { CombatTelemetry } from "../src/engine/combatTelemetry";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { calculateSeparation } from "../src/engine/flightBehaviors";
 import { normalizeAngle, vecDistance } from "../src/engine/math2d";
@@ -14,7 +15,7 @@ import {
   shieldHavenSlotVelocity,
 } from "../src/engine/shieldHaven";
 import { ClientCombatSimulation } from "../src/engine/simulation";
-import type { HullClass, ShipState, Vector2 } from "../src/types/combat";
+import type { HullClass, ShipState, Vector2, WeaponType } from "../src/types/combat";
 
 function ship(id: string, hullClass: HullClass, pos: Vector2 = [0, 0], team = 0): ShipState {
   const result = buildFleetFromSlots([{ id, hullClass, groupId: 1 }], team, pos[0], 0)[0];
@@ -106,6 +107,188 @@ function dockedSimulation(hull: "strike_craft" | "corvette" = "strike_craft") {
   expect(craft.havenState).toBe("tethered");
   return { sim, parent, craft, lease };
 }
+
+function havenAttack(sim: ClientCombatSimulation, craft: ShipState, type: WeaponType) {
+  const attacker = buildFleetFromSlots(
+    [{ id: "attacker", hullClass: "battleship", groupId: 1 }],
+    1,
+    0,
+    Math.PI / 2,
+  )[0];
+  attacker.pos = [craft.pos[0], craft.pos[1] - 500];
+  const turret = attacker.turrets[0];
+  attacker.turrets = [turret];
+  turret.offset = [0, 0];
+  turret.currentLocalAngle = 0;
+  turret.baseArc = [-Math.PI, Math.PI];
+  turret.currentTargetId = craft.id;
+  turret.weapon = {
+    ...turret.weapon,
+    weaponType: type,
+    damage: type === "beam_laser" ? 72 : 6,
+    range: 1000,
+    projectileSpeed: type === "beam_laser" ? 0 : 100,
+    shieldMultiplier: 2,
+    armorMultiplier: 1,
+    hullMultiplier: 1,
+    flak:
+      type === "point_defense"
+        ? { lifetime: 1, triggerRadius: 0, blastRadius: 1, missileDamage: 0 }
+        : undefined,
+  };
+  sim.addShip(attacker);
+  const impact = () => {
+    sim["fireWeapon"](attacker, turret, craft.pos, craft);
+    if (type === "beam_laser") {
+      const channel = sim["beamChannels"].get(turret);
+      if (!channel) throw new Error("Expected guest beam channel");
+      for (let frame = 0; frame < 6; frame++) sim["updateBeam"](channel, true);
+      expect(channel.target).toBe(craft);
+      expect(sim["beamChannels"].get(turret)).toBe(channel);
+    } else {
+      const shot = sim.projectiles[sim.projectiles.length - 1];
+      shot.pos = [...craft.pos];
+      shot.velocity = [0, 0];
+      sim["updateProjectiles"](1 / 60, sim.ships);
+      expect(shot.targetId).toBe(craft.id);
+    }
+    expect(turret.currentTargetId).toBe(craft.id);
+  };
+  return { attacker, turret, impact };
+}
+
+describe("tethered guest damage absorption", () => {
+  const weapons = ["railgun", "beam_laser", "missile", "point_defense"] as const;
+
+  it.each(weapons)("absorbs the entire %s hit on a healthy parent", (type) => {
+    const { sim, parent, craft } = dockedSimulation("corvette");
+    craft.shieldCurrent = 20;
+    const before = [craft.shieldCurrent, craft.armorCurrent, craft.hullCurrent];
+    const parentShield = parent.shieldCurrent;
+    const { impact } = havenAttack(sim, craft, type);
+    impact();
+    expect(parent.shieldCurrent).toBe(parentShield - 12);
+    expect([craft.shieldCurrent, craft.armorCurrent, craft.hullCurrent]).toEqual(before);
+    expect(parent.armorCurrent).toBe(parent.armorMax);
+    expect(parent.hullCurrent).toBe(parent.hullMax);
+    expect(parent.shieldDelayTimer).toBeGreaterThan(0);
+    expect(craft.havenState).toBe("tethered");
+    expect(sim.stats[0].shieldDamageAbsorbed).toBe(12);
+    expect(sim.stats[1].damageDealt).toBe(12);
+  });
+
+  it.each(weapons)("spills the unabsorbed %s damage through guest layers", (type) => {
+    const { sim, parent, craft } = dockedSimulation("corvette");
+    parent.shieldCurrent = 4;
+    craft.shieldCurrent = 3;
+    craft.armorCurrent = 2;
+    craft.armorRating = 0;
+    const hull = craft.hullCurrent;
+    const { attacker, turret, impact } = havenAttack(sim, craft, type);
+    const telemetry = new CombatTelemetry(sim.ships);
+    sim.observer = telemetry;
+    sim.onShieldHit = vi.fn();
+    sim.onWeaponImpact = vi.fn();
+    impact();
+    expect(parent.shieldCurrent).toBe(0);
+    expect(parent.armorCurrent).toBe(parent.armorMax);
+    expect(parent.hullCurrent).toBe(parent.hullMax);
+    expect(craft.shieldCurrent).toBe(0);
+    expect(craft.armorCurrent).toBe(0);
+    expect(craft.hullCurrent).toBe(hull - 0.5);
+    expect(sim.stats[0].shieldDamageAbsorbed).toBe(7);
+    expect(sim.stats[1].damageDealt).toBe(10);
+    expect(sim.stats[1].recentDamageWindow.reduce((sum, event) => sum + event.damage, 0)).toBe(9.5);
+    expect(telemetry.report().damage).toEqual([
+      {
+        sourceId: attacker.id,
+        mountId: turret.id,
+        targetId: parent.id,
+        weapon: type,
+        shield: 4,
+        armor: 0,
+        hull: 0,
+      },
+      {
+        sourceId: attacker.id,
+        mountId: turret.id,
+        targetId: craft.id,
+        weapon: type,
+        shield: 3,
+        armor: 2,
+        hull: 0.5,
+      },
+    ]);
+    expect(sim.onShieldHit).toHaveBeenCalledWith(parent.pos, 0.04);
+    expect(sim.onWeaponImpact).toHaveBeenCalledWith(parent, expect.any(Array), true, false, false);
+    expect(sim.onWeaponImpact).toHaveBeenCalledWith(craft, expect.any(Array), true, true, true);
+  });
+
+  it("immediately releases every tethered guest on exact parent shield collapse", () => {
+    const { sim, parent, craft } = dockedSimulation();
+    const siblings = Array.from({ length: 5 }, (_, i) => guest(`sibling_${i}`));
+    for (const sibling of siblings) {
+      sim.addShip(sibling);
+      const lease = sim.shieldHaven.request(sibling, sim.ships, 0);
+      if (!lease) throw new Error("Expected sibling lease");
+      sibling.pos = shieldHavenSlotPosition(parent, lease.slotId);
+    }
+    sim.shieldHaven.attachGuests(sim.ships, 1 / 60);
+    expect(parent.havenGuestCount).toBe(6);
+    parent.shieldCurrent = 12;
+    const { impact } = havenAttack(sim, craft, "railgun");
+    impact();
+    expect(parent.shieldCurrent).toBe(0);
+    expect(parent.havenGuestCount).toBe(0);
+    for (const tethered of [craft, ...siblings]) {
+      expect(tethered.havenState).toBe("releasing");
+      expect(sim.shieldHaven.getLease(tethered.id)).toBeNull();
+    }
+    expect(craft.hullCurrent).toBe(craft.hullMax);
+  });
+
+  it.each(["zero-shield", "destroyed", "zero-hull"] as const)(
+    "does not protect a guest with a %s parent",
+    (state) => {
+      const { sim, parent, craft } = dockedSimulation("corvette");
+      if (state === "zero-shield") parent.shieldCurrent = 0;
+      if (state === "destroyed") parent.isAlive = false;
+      if (state === "zero-hull") parent.hullCurrent = 0;
+      const shield = parent.shieldCurrent;
+      craft.shieldCurrent = 20;
+      const { impact } = havenAttack(sim, craft, "railgun");
+      impact();
+      expect(parent.shieldCurrent).toBe(shield);
+      expect(craft.shieldCurrent).toBe(8);
+    },
+  );
+
+  it.each(["approaching", "releasing", "unleased"] as const)(
+    "does not grant umbrella protection to an %s guest",
+    (state) => {
+      const { sim, parent, craft } = dockedSimulation("corvette");
+      if (state === "unleased") {
+        sim.shieldHaven.release(craft.id);
+        craft.havenState = "tethered";
+      } else craft.havenState = state;
+      craft.shieldCurrent = 20;
+      const shield = parent.shieldCurrent;
+      const { impact } = havenAttack(sim, craft, "railgun");
+      impact();
+      expect(parent.shieldCurrent).toBe(shield);
+      expect(craft.shieldCurrent).toBe(8);
+    },
+  );
+
+  it("releases guests immediately when a direct parent hit collapses its shield", () => {
+    const { sim, parent, craft } = dockedSimulation();
+    parent.shieldCurrent = 12;
+    const { impact } = havenAttack(sim, parent, "railgun");
+    impact();
+    expect(craft.havenState).toBe("releasing");
+    expect(sim.shieldHaven.getLease(craft.id)).toBeNull();
+  });
+});
 
 describe("moving-slot attachment and relationship-aware collisions", () => {
   it.each(["battleship", "dreadnought", "cruiser"] as const)(
