@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { SHIELD_HAVEN_SLOTS } from "../engine/shieldHaven";
 import { SHIP_DOCTRINES } from "../engine/shipDoctrines";
 import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { HullClass } from "../types/combat";
@@ -15,7 +16,28 @@ export function DoctrineDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const doctrine = SHIP_DOCTRINES[hull];
+  const flight = doctrine.flight;
   const profile = HULL_PROFILES[hull];
+  const primary =
+    flight.kind === "capital"
+      ? profile.turrets.find((turret) =>
+          flight.primaryMount === "spinal"
+            ? turret.isSpinalGimbal
+            : turret.weapon.weaponType === "missile",
+        )
+      : undefined;
+  const offensiveMounts = profile.turrets.filter(
+    (turret) => turret.weapon.weaponType !== "point_defense",
+  );
+  const primaryRange =
+    primary?.weapon.range ?? Math.max(0, ...offensiveMounts.map((turret) => turret.weapon.range));
+  const secondaryRange =
+    Math.max(
+      0,
+      ...offensiveMounts
+        .filter((turret) => turret !== primary)
+        .map((turret) => turret.weapon.range),
+    ) || primaryRange;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -56,15 +78,85 @@ export function DoctrineDialog({
         </header>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
-            <dt className="text-zinc-500 uppercase">Standoff / station</dt>
-            <dd className={`mt-1 ${redTeam ? "text-red-300" : "text-cyan-300"}`}>
-              {doctrine.standoff}
-            </dd>
+            <dt className="text-zinc-500 uppercase">Flight kind</dt>
+            <dd className={`mt-1 ${redTeam ? "text-red-300" : "text-cyan-300"}`}>{flight.kind}</dd>
           </div>
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
             <dt className="text-zinc-500 uppercase">Speed</dt>
             <dd className={`mt-1 ${redTeam ? "text-red-300" : "text-cyan-300"}`}>
               {profile.speed} u/s
+            </dd>
+          </div>
+          {flight.kind === "capital" ? (
+            <>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <dt className="text-zinc-500 uppercase">Standoff threshold</dt>
+                <dd className="mt-1 text-zinc-200">
+                  {"distance" in flight.standoffThreshold
+                    ? `${flight.standoffThreshold.distance}u`
+                    : `Standoff + ${flight.standoffThreshold.margin}u`}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <dt className="text-zinc-500 uppercase">Optimal standoff (full shields)</dt>
+                <dd className="mt-1 text-zinc-200">
+                  {Math.min(secondaryRange * 0.9, flight.optimalDistanceLimit)}u · limit{" "}
+                  {flight.optimalDistanceLimit}u
+                </dd>
+                <dd className="mt-1 text-zinc-500">Varies with stance and low shields.</dd>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <dt className="text-zinc-500 uppercase">Brawl distance</dt>
+                <dd className="mt-1 text-zinc-200">{flight.brawlDistance}u</dd>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <dt className="text-zinc-500 uppercase">Broadside arc offset</dt>
+                <dd className="mt-1 text-zinc-200">
+                  {Math.round((flight.broadside.arcOffset * 180) / Math.PI)}°
+                </dd>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 sm:col-span-2">
+                <dt className="text-zinc-500 uppercase">Formation weaving</dt>
+                <dd className="mt-1 text-zinc-200">
+                  {flight.formationWeave ? "Enabled with eligible formation peers" : "Disabled"}
+                </dd>
+              </div>
+            </>
+          ) : flight.kind === "skirmish" ? (
+            <>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <dt className="text-zinc-500 uppercase">Desired distance</dt>
+                <dd className="mt-1 text-zinc-200">{flight.desiredDistance}u</dd>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <dt className="text-zinc-500 uppercase">Breakoff angle</dt>
+                <dd className="mt-1 text-zinc-200">
+                  {Math.round((flight.breakoffAngle * 180) / Math.PI)}°
+                </dd>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <dt className="text-zinc-500 uppercase">Reload breakoff trigger</dt>
+                <dd className="mt-1 text-zinc-200">&gt; {flight.breakoffReload.toFixed(1)}s</dd>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <dt className="text-zinc-500 uppercase">Reacquire trigger</dt>
+                <dd className="mt-1 text-zinc-200">&lt; {flight.reacquireReload.toFixed(1)}s</dd>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 sm:col-span-2">
+              <dt className="text-zinc-500 uppercase">Standoff / station</dt>
+              <dd className="mt-1 text-zinc-200">{doctrine.standoff}</dd>
+            </div>
+          )}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 sm:col-span-2">
+            <dt className="text-zinc-500 uppercase">Shield Haven eligibility</dt>
+            <dd className="mt-1 text-zinc-200">
+              {flight.kind === "capital"
+                ? `Haven provider · ${Object.keys(SHIELD_HAVEN_SLOTS).length} slots${hull === "cruiser" ? " · strike craft only" : ""}`
+                : hull === "missile_frigate"
+                  ? "Not eligible for Haven"
+                  : "Haven protected · under 30% hull or broken shields"}
             </dd>
           </div>
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 sm:col-span-2">

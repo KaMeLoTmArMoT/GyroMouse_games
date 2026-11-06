@@ -22,6 +22,8 @@ import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
 import { FLEET_PRESETS } from "./engine/fleetPresets";
 import { normalizeAngle } from "./engine/math2d";
 import { type FleetComposition, SCENARIOS } from "./engine/scenarios";
+import { isCapitalShip } from "./engine/shieldGeometry";
+import { SHIELD_HAVEN_SLOTS } from "./engine/shieldHaven";
 import { ClientCombatSimulation } from "./engine/simulation";
 
 const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
@@ -310,6 +312,19 @@ export default function App() {
   };
 
   const selectedShip = sim.ships.find((s) => s.id === selectedShipId);
+  const havenGuests =
+    selectedShip && isCapitalShip(selectedShip)
+      ? sim.ships.filter(
+          (ship) =>
+            ship.isAlive &&
+            ship.havenState === "tethered" &&
+            ship.havenParentId === selectedShip.id &&
+            sim.shieldHaven.getLease(ship.id)?.parentId === selectedShip.id,
+        )
+      : [];
+  const havenParent = selectedShip?.havenParentId
+    ? sim.ships.find((ship) => ship.id === selectedShip.havenParentId)
+    : undefined;
   const selectedProjectile = sim.projectiles.find((p) => p.id === selectedProjectileId);
   const projectileTarget = selectedProjectile
     ? sim.ships.find((s) => s.id === selectedProjectile.targetId && s.isAlive)
@@ -960,6 +975,72 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+
+                    {isCapitalShip(selectedShip) ? (
+                      <div className="rounded-lg border border-cyan-900/70 bg-cyan-950/20 p-2.5 text-[10px] font-mono space-y-1.5">
+                        <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-cyan-400">
+                          <Shield className="w-3.5 h-3.5" /> Shield Haven Umbrella
+                        </div>
+                        <div className="text-zinc-300">
+                          1.68x Envelope{" "}
+                          {selectedShip.isAlive && selectedShip.shieldCurrent > 0
+                            ? "Active"
+                            : "Inactive"}
+                        </div>
+                        <div className="text-zinc-300">
+                          Docked Guests: {havenGuests.length} /{" "}
+                          {Object.keys(SHIELD_HAVEN_SLOTS).length}
+                        </div>
+                        {havenGuests.map((guest) => (
+                          <div key={guest.id} className="flex justify-between gap-2 text-zinc-400">
+                            <span>
+                              {guest.name} ({guest.hullClass})
+                            </span>
+                            <span className="text-cyan-300 text-right">
+                              {Math.round(
+                                (guest.shieldCurrent / Math.max(1, guest.shieldMax)) * 100,
+                              )}
+                              % ·{" "}
+                              {guest.shieldCurrent >= guest.shieldMax
+                                ? "Full"
+                                : guest.shieldDelayTimer > 0
+                                  ? `Delay ${guest.shieldDelayTimer.toFixed(1)}s`
+                                  : guest.shieldRegen > 0
+                                    ? "Recharging"
+                                    : "Not recharging"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : selectedShip.havenState && selectedShip.havenState !== "none" ? (
+                      <div className="rounded-lg border border-cyan-900/70 bg-cyan-950/20 p-2.5 text-[10px] font-mono space-y-1.5">
+                        <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-cyan-400">
+                          <Shield className="w-3.5 h-3.5" /> Haven Status
+                        </div>
+                        <div className="text-zinc-300">
+                          {selectedShip.havenState === "tethered"
+                            ? `Tethered (Slot: ${selectedShip.havenSlotId ?? "Unknown"})`
+                            : selectedShip.havenState.charAt(0).toUpperCase() +
+                              selectedShip.havenState.slice(1)}
+                        </div>
+                        {selectedShip.havenParentId && (
+                          <div className="text-zinc-400">
+                            Parent:{" "}
+                            {havenParent
+                              ? `${havenParent.name} (${havenParent.id})`
+                              : selectedShip.havenParentId}
+                          </div>
+                        )}
+                        <div className="text-cyan-300">
+                          Shield Recovery:{" "}
+                          {Math.round(
+                            (selectedShip.shieldCurrent / Math.max(1, selectedShip.shieldMax)) *
+                              100,
+                          )}
+                          % / 75%
+                        </div>
+                      </div>
+                    ) : null}
 
                     {/* Active Hardpoints with Live Cooldown Indicators */}
                     <div className="pt-2 border-t border-zinc-800/80 select-text">
