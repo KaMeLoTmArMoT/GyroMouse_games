@@ -26,6 +26,7 @@ import {
   sweptHit,
 } from "./fireControl";
 import { buildFleetFromSlots } from "./fleetBuilder";
+import { clampLateralVelocity } from "./flightBehaviors";
 import {
   ARENA_HARD_PULL_RADIUS,
   ARENA_RADIUS,
@@ -40,6 +41,7 @@ import {
   separation,
   spinalEscape,
 } from "./flightControl";
+import type { RangePhase } from "./flightCycles";
 import {
   clamp,
   normalizeAngle,
@@ -51,6 +53,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { SHIP_DOCTRINES } from "./shipDoctrines";
 import {
   isHeavyTorpedo,
   pointDefenseMode,
@@ -289,6 +292,8 @@ export class ClientCombatSimulation {
         ship.recoveredHull = undefined;
         ship.lastMissionShotTime = undefined;
         ship.capitalManeuver = undefined;
+        ship.broadsideCycle = undefined;
+        ship.skirmishCycle = undefined;
         ship.maneuverTargetId = undefined;
         ship.navigationTargetId = undefined;
         ship.broadsideSide = undefined;
@@ -542,7 +547,10 @@ export class ClientCombatSimulation {
       if (
         firedTarget &&
         mainGun?.lastFiredTime !== undefined &&
-        mainGun.lastFiredTime !== ship.lastManeuverShot
+        mainGun.lastFiredTime !==
+          (ship.hullClass === "missile_frigate"
+            ? ship.skirmishCycle?.lastSalvoShot
+            : (ship.broadsideCycle?.lastShot ?? ship.lastManeuverShot))
       )
         return firedTarget;
     } else if (order.priority === "strike_craft") {
@@ -1080,6 +1088,7 @@ export class ClientCombatSimulation {
     let targetHeading = ship.heading;
     let desiredSpeed = 0;
     let thrusterVelocity: Vector2 | null = null;
+    let rangePhase: RangePhase | undefined;
     if (ship.hullClass === "corvette") {
       const orbit = escortVelocity(ship, target, aliveShips);
       const avoid = vecAdd(
@@ -1108,6 +1117,7 @@ export class ClientCombatSimulation {
       );
       targetHeading = intent.heading;
       thrusterVelocity = intent.velocity;
+      rangePhase = intent.rangePhase;
     }
 
     if (thrusterVelocity) {
@@ -1135,12 +1145,10 @@ export class ClientCombatSimulation {
 
     if (thrusterVelocity) desiredSpeed = vecDot(thrusterVelocity, forwardVector);
     const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
-    let newLateralSpeed = thrusterVelocity
+    const newLateralSpeed = thrusterVelocity
       ? currentLateralSpeed +
         clamp(vecDot(thrusterVelocity, rightVector) - currentLateralSpeed, -110 * dt, 110 * dt)
       : currentLateralSpeed * Math.max(0, 1 - dt * lateralDamping);
-    if (ship.hullClass === "cruiser")
-      newLateralSpeed = clamp(newLateralSpeed, -ship.maxSpeed * 0.35, ship.maxSpeed * 0.35);
 
     const forwardAccel = ship.hullClass === "strike_craft" ? 240.0 : 110.0;
     const speedError = desiredSpeed - currentForwardSpeed;
@@ -1157,7 +1165,18 @@ export class ClientCombatSimulation {
       vecDistance([0, 0], ship.pos) > ARENA_HARD_PULL_RADIUS
         ? vecSub(newVelocity, vecScale(vecNormalize(ship.pos), 600 * dt))
         : newVelocity;
-    ship.velocity = limitVelocity(containedVelocity, ship.maxSpeed);
+    let controlledVelocity = containedVelocity;
+    if (rangePhase) {
+      const flight = SHIP_DOCTRINES[ship.hullClass].flight;
+      if (flight.kind === "capital" || flight.kind === "skirmish")
+        controlledVelocity = clampLateralVelocity(
+          ship,
+          controlledVelocity,
+          flight.lateralSpeedRatio,
+          rangePhase,
+        );
+    }
+    ship.velocity = limitVelocity(controlledVelocity, ship.maxSpeed);
     ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
   }
 

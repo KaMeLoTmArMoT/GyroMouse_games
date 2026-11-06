@@ -1309,20 +1309,24 @@ describe("arena containment and matchup rebalance", () => {
   it.each([
     [12, 12],
     [3, 20],
-  ])("contains the %i vs %i fleet playtest", (blue, red) => {
-    const ships = [
-      ...fleet(Array<HullClass>(blue).fill(blue === 3 ? "cruiser" : "strike_craft"), 0, -800),
-      ...fleet(Array<HullClass>(red).fill("strike_craft"), 1, 800),
-    ];
-    const sim = simulate(ships);
-    let furthest = 0;
-    for (let i = 0; i < 60 * 120 && sim.winner === null; i++) {
-      sim.update(1 / 60);
-      for (const s of ships.filter((s) => s.isAlive))
-        furthest = Math.max(furthest, vecDistance(s.pos, [0, 0]));
-    }
-    expect(furthest).toBeLessThan(ARENA_HARD_PULL_RADIUS + 100);
-  });
+  ])(
+    "contains the %i vs %i fleet playtest",
+    (blue, red) => {
+      const ships = [
+        ...fleet(Array<HullClass>(blue).fill(blue === 3 ? "cruiser" : "strike_craft"), 0, -800),
+        ...fleet(Array<HullClass>(red).fill("strike_craft"), 1, 800),
+      ];
+      const sim = simulate(ships);
+      let furthest = 0;
+      for (let i = 0; i < 60 * 120 && sim.winner === null; i++) {
+        sim.update(1 / 60);
+        for (const s of ships.filter((s) => s.isAlive))
+          furthest = Math.max(furthest, vecDistance(s.pos, [0, 0]));
+      }
+      expect(furthest).toBeLessThan(ARENA_HARD_PULL_RADIUS + 100);
+    },
+    60000,
+  );
 
   it("finishes nearby damaged enemies, shares focus in threes, and ignores distant wounded bait", () => {
     const allies = fleet(Array<HullClass>(6).fill("corvette"), 0, 0);

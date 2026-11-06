@@ -15,6 +15,7 @@ import {
   BroadsideWeaveBlock,
   calculateSeparation,
   clampLateralVelocity,
+  type FlightIntent,
   formationVelocity,
   HitAndRunSkirmishBlock,
   LowHealthRetreatBlock,
@@ -23,6 +24,7 @@ import {
   StandoffApproachBlock,
   salvoReload,
 } from "./flightBehaviors";
+import { classifyRange, reduceBroadsideCycle, reduceSkirmishCycle } from "./flightCycles";
 import {
   clamp,
   normalizeAngle,
@@ -222,19 +224,6 @@ function updateBroadsideManeuver(
   aimBearing: number,
   doctrine: CapitalFlightDoctrine,
 ): void {
-  const newShot = gun?.lastFiredTime !== undefined && gun.lastFiredTime !== ship.lastManeuverShot;
-  if (ship.maneuverTargetId !== target.id) {
-    ship.maneuverTargetId = target.id;
-    ship.capitalManeuver = "bow_acquire";
-    const slot = Number(ship.id.split("_").at(-1)) || 0;
-    ship.broadsideSide ??= slot % 2 === 0 ? 1 : -1;
-    ship.lastManeuverShot = gun?.lastFiredTime;
-  }
-  if (newShot) {
-    ship.lastManeuverShot = gun?.lastFiredTime;
-    ship.capitalManeuver = "broadside_hold";
-    if (doctrine.broadside.alternateAfterShot) ship.broadsideSide = -(ship.broadsideSide ?? 1);
-  }
   const returnTime =
     Math.abs(normalizeAngle(aimBearing - ship.heading)) / Math.max(ship.turnRate, 0.01);
   const delta = vecSub(target.pos, ship.pos);
@@ -242,11 +231,32 @@ function updateBroadsideManeuver(
   const relative = vecSub(target.velocity, ship.velocity);
   const bearingRate =
     Math.abs(delta[0] * relative[1] - delta[1] * relative[0]) / Math.max(1, distance * distance);
-  if (
-    ship.capitalManeuver === "broadside_hold" &&
-    (!gun || gun.cooldownTimer <= returnTime + 0.25 + bearingRate * 2)
-  )
-    ship.capitalManeuver = "bow_reacquire";
+  const slot = Number(ship.id.split("_").at(-1)) || 0;
+  const initialSide = ship.broadsideSide ?? (slot % 2 === 0 ? 1 : -1);
+  // Import legacy capital state once, then expose reducer output to existing callers.
+  const previous =
+    ship.broadsideCycle ??
+    (ship.maneuverTargetId
+      ? {
+          phase: ship.capitalManeuver ?? "bow_acquire",
+          targetId: ship.maneuverTargetId,
+          side: initialSide,
+          lastShot: ship.lastManeuverShot,
+        }
+      : undefined);
+  const cycle = reduceBroadsideCycle(previous, {
+    targetId: target.id,
+    initialSide,
+    lastShot: gun?.lastFiredTime,
+    cooldown: gun?.cooldownTimer ?? 0,
+    reacquireTime: returnTime + 0.25 + bearingRate * 2,
+    alternateAfterShot: doctrine.broadside.alternateAfterShot,
+  });
+  ship.broadsideCycle = cycle;
+  ship.capitalManeuver = cycle.phase;
+  ship.maneuverTargetId = cycle.targetId;
+  ship.broadsideSide = cycle.side;
+  ship.lastManeuverShot = cycle.lastShot;
 }
 
 function standoffDistance(
@@ -292,7 +302,7 @@ export function capitalIntent(
   order: GroupOrder,
   time = 0,
   projectiles: ProjectileState[] = [],
-): { heading: number; velocity: Vector2 } {
+): FlightIntent {
   const flight = SHIP_DOCTRINES[ship.hullClass].flight;
   // Non-capital callers historically used the cruiser movement envelope.
   const doctrine =
@@ -303,30 +313,48 @@ export function capitalIntent(
   const aimBearing = interceptBearing(ship, target, gun);
   if (doctrine.kind === "skirmish") {
     const tubes = ship.turrets.filter((t) => t.weapon.weaponType === "missile");
-    const salvo = salvoReload(ship, tubes);
+    const salvo = salvoReload(tubes, ship.skirmishCycle?.lastSalvoShot);
+    const slot = Number(ship.id.split("_").at(-1)) || 0;
+    ship.skirmishCycle = reduceSkirmishCycle(ship.skirmishCycle, {
+      targetId: target.id,
+      initialSide: slot % 2 === 0 ? 1 : -1,
+      reload: salvo.reloadRatio * salvo.reloadDuration,
+      salvoComplete: salvo.salvoComplete,
+      lastShot: salvo.lastShot,
+      breakoffReload: doctrine.breakoffReload,
+      reacquireReload: doctrine.reacquireReload,
+    });
     const intent = HitAndRunSkirmishBlock(
       ship,
       target,
-      salvo.reloadRatio,
       doctrine.breakoffAngle,
       ship.maxSpeed * doctrine.breakoffSpeedRatio,
-      { doctrine, salvo, aimBearing },
+      { doctrine, engagementRange: gun?.weapon.range ?? doctrine.desiredDistance },
     );
+    const velocity = vecAdd(intent.velocity, calculateSeparation(ship, ships));
     return {
-      heading: intent.heading,
+      ...intent,
       velocity: limitVelocity(
-        vecAdd(intent.velocity, calculateSeparation(ship, ships)),
+        intent.rangePhase === "approach"
+          ? clampLateralVelocity(
+              { heading: intent.heading, maxSpeed: ship.maxSpeed },
+              velocity,
+              doctrine.lateralSpeedRatio,
+              intent.rangePhase,
+            )
+          : velocity,
         ship.maxSpeed,
       ),
     };
   }
   updateBroadsideManeuver(ship, target, gun, aimBearing, doctrine);
-  const side = ship.broadsideSide ?? 1;
+  const side = ship.broadsideCycle?.side ?? 1;
   const radius = standoffDistance(ship, gun, order, doctrine);
   const threshold = doctrine.standoffThreshold;
   const standoffThreshold =
     "distance" in threshold ? threshold.distance : radius + threshold.margin;
-  const closing = vecDistance(ship.pos, target.pos) > standoffThreshold;
+  const rangePhase = classifyRange(vecDistance(ship.pos, target.pos), standoffThreshold);
+  const closing = rangePhase === "approach";
   const boundary = clamp((vecDistance([0, 0], ship.pos) - (ARENA_RADIUS - 200)) / 200, 0, 1);
   const line =
     doctrine.formationWeave &&
@@ -343,9 +371,11 @@ export function capitalIntent(
     });
   const slot = Number(ship.id.split("_").at(-1)) || 0;
   const phase = time * 0.35 + slot * 2.1;
-  const lateralBias = line
-    ? ship.maxSpeed * 0.25 * Math.cos(phase)
-    : boundary * ship.maxSpeed * 0.6 * side;
+  const lateralBias = closing
+    ? 0
+    : line
+      ? ship.maxSpeed * 0.25 * Math.cos(phase)
+      : boundary * ship.maxSpeed * 0.6 * side;
   const approach = StandoffApproachBlock(ship, target, radius, lateralBias, {
     ...doctrine.approach,
     standoffThreshold,
@@ -355,7 +385,7 @@ export function capitalIntent(
   });
   const weaving =
     !approach.closing &&
-    (doctrine.broadside.continuous || ship.capitalManeuver === "broadside_hold");
+    (doctrine.broadside.continuous || ship.broadsideCycle?.phase === "broadside_hold");
   const intent = weaving
     ? BroadsideWeaveBlock(ship, target, doctrine.broadside.arcOffset, side, standoffThreshold, {
         bearing:
@@ -364,14 +394,19 @@ export function capitalIntent(
         lateralBias,
       })
     : approach;
-  let velocity = clampLateralVelocity(
-    ship,
-    vecAdd(intent.velocity, calculateSeparation(ship, ships)),
-    doctrine.lateralSpeedRatio,
-  );
+  let velocity = vecAdd(intent.velocity, calculateSeparation(ship, ships));
+  if (rangePhase === "engage")
+    velocity = clampLateralVelocity(ship, velocity, doctrine.lateralSpeedRatio);
   if (doctrine.avoidTorpedoes)
     velocity = OrdnanceAvoidanceBlock(ship, projectiles, ships, time, "torpedo", velocity);
-  return { heading: intent.heading, velocity: limitVelocity(velocity, ship.maxSpeed) };
+  if (rangePhase === "approach")
+    velocity = clampLateralVelocity(
+      { heading: intent.heading, maxSpeed: ship.maxSpeed },
+      velocity,
+      doctrine.lateralSpeedRatio,
+      rangePhase,
+    );
+  return { ...intent, velocity: limitVelocity(velocity, ship.maxSpeed) };
 }
 
 export function dogfightTarget(

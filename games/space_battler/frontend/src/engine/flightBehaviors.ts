@@ -1,5 +1,6 @@
 import type { ProjectileState, ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { fullCircle, mountPosition } from "./fireControl";
+import { classifyRange, type RangePhase } from "./flightCycles";
 import {
   clamp,
   normalizeAngle,
@@ -15,6 +16,7 @@ import type { RetreatThresholds, SkirmishFlightDoctrine, StandoffSettings } from
 export interface FlightIntent {
   heading: number;
   velocity: Vector2;
+  rangePhase: RangePhase;
 }
 
 export function limitVelocity(velocity: Vector2, max: number): Vector2 {
@@ -22,13 +24,23 @@ export function limitVelocity(velocity: Vector2, max: number): Vector2 {
   return speed > max ? vecScale(velocity, max / speed) : velocity;
 }
 
-// Apply after composing steering and separation so collision corrections share the drift cap.
-export function clampLateralVelocity(ship: ShipState, velocity: Vector2, ratio: number): Vector2 {
+// Use the final heading after turning; approach drift is also bounded by forward speed.
+export function clampLateralVelocity(
+  ship: Pick<ShipState, "heading" | "maxSpeed">,
+  velocity: Vector2,
+  ratio: number,
+  rangePhase: RangePhase = "engage",
+): Vector2 {
   const forward: Vector2 = [Math.cos(ship.heading), Math.sin(ship.heading)];
   const right: Vector2 = [-forward[1], forward[0]];
+  const forwardSpeed = vecDot(velocity, forward);
+  const lateralLimit =
+    rangePhase === "approach"
+      ? Math.min(ship.maxSpeed * ratio, Math.abs(forwardSpeed) * Math.tan(Math.PI / 18))
+      : ship.maxSpeed * ratio;
   return vecAdd(
-    vecScale(forward, vecDot(velocity, forward)),
-    vecScale(right, clamp(vecDot(velocity, right), -ship.maxSpeed * ratio, ship.maxSpeed * ratio)),
+    vecScale(forward, forwardSpeed),
+    vecScale(right, clamp(vecDot(velocity, right), -lateralLimit, lateralLimit)),
   );
 }
 
@@ -91,8 +103,10 @@ export function StandoffApproachBlock(
   );
   if (radial < 0) radial *= settings.reverseScale ?? 1;
   radial += settings.radialBias ?? 0;
-  const closing = distance > settings.standoffThreshold;
+  const rangePhase = classifyRange(distance, settings.standoffThreshold);
+  const closing = rangePhase === "approach";
   return {
+    rangePhase,
     heading: normalizeAngle(closing ? Math.atan2(delta[1], delta[0]) : settings.aimBearing),
     velocity: relativeVelocity(ship, target, radial, lateralBias, settings.direction),
     closing,
@@ -111,6 +125,7 @@ export function BroadsideWeaveBlock(
   const weaving = vecDistance(ship.pos, target.pos) <= weavingDistance;
   const lateral = (weaving ? ship.maxSpeed * 0.3 * side : 0) + motion.lateralBias;
   return {
+    rangePhase: classifyRange(vecDistance(ship.pos, target.pos), weavingDistance),
     heading: normalizeAngle(motion.bearing - (weaving ? side * arcOffset : 0)),
     velocity: relativeVelocity(ship, target, motion.radialSpeed, lateral),
   };
@@ -123,7 +138,10 @@ export interface SalvoReloadState {
   salvoComplete: boolean;
 }
 
-export function salvoReload(ship: ShipState, mounts: TurretMountState[]): SalvoReloadState {
+export function salvoReload(
+  mounts: TurretMountState[],
+  lastSalvoShot = -Infinity,
+): SalvoReloadState {
   const reload = mounts.length ? Math.min(...mounts.map((t) => t.cooldownTimer)) : 0;
   const reloadDuration = Math.max(1, ...mounts.map((t) => t.weapon.cooldown));
   return {
@@ -131,50 +149,43 @@ export function salvoReload(ship: ShipState, mounts: TurretMountState[]): SalvoR
     reloadDuration,
     lastShot: Math.max(...mounts.map((t) => t.lastFiredTime ?? -Infinity)),
     salvoComplete:
-      reload > 0 &&
-      mounts.every((t) => (t.lastFiredTime ?? -Infinity) > (ship.lastManeuverShot ?? -Infinity)),
+      reload > 0 && mounts.every((t) => (t.lastFiredTime ?? -Infinity) > lastSalvoShot),
   };
 }
 
 export function HitAndRunSkirmishBlock(
   ship: ShipState,
   target: ShipState,
-  reloadRatio: number,
   breakoffAngle: number,
   breakoffSpeed: number,
   settings: {
     doctrine: SkirmishFlightDoctrine;
-    salvo: SalvoReloadState;
-    aimBearing: number;
+    engagementRange: number;
   },
 ): FlightIntent {
-  const { doctrine, salvo, aimBearing } = settings;
-  const slot = Number(ship.id.split("_").at(-1)) || 0;
-  ship.broadsideSide ??= slot % 2 === 0 ? 1 : -1;
-  ship.maneuverTargetId = target.id;
-  if (salvo.salvoComplete || reloadRatio > doctrine.breakoffReload / salvo.reloadDuration) {
-    ship.capitalManeuver = "broadside_hold";
-    ship.lastManeuverShot = salvo.lastShot;
-  }
-  if (
-    ship.capitalManeuver === "broadside_hold" &&
-    reloadRatio < doctrine.reacquireReload / salvo.reloadDuration
-  )
-    ship.capitalManeuver = "bow_reacquire";
-  ship.capitalManeuver ??= "bow_acquire";
-  const side = ship.broadsideSide;
-  if (ship.capitalManeuver !== "broadside_hold")
+  const { doctrine, engagementRange } = settings;
+  const rangePhase = classifyRange(vecDistance(ship.pos, target.pos), engagementRange);
+  const delta = vecSub(target.pos, ship.pos);
+  const bearing = Math.atan2(delta[1], delta[0]);
+  const side = ship.skirmishCycle?.side ?? 1;
+  if (rangePhase === "approach" || ship.skirmishCycle?.phase !== "breakoff")
     return StandoffApproachBlock(
       ship,
       target,
       doctrine.desiredDistance,
-      side * ship.maxSpeed * doctrine.lateralSpeedRatio,
-      { ...doctrine.approach, standoffThreshold: Infinity, aimBearing },
+      rangePhase === "approach" ? 0 : side * ship.maxSpeed * doctrine.lateralSpeedRatio,
+      {
+        ...doctrine.approach,
+        standoffThreshold: engagementRange,
+        aimBearing: bearing,
+      },
     );
-  const delta = vecSub(target.pos, ship.pos);
-  const bearing = Math.atan2(delta[1], delta[0]);
   const heading = normalizeAngle(bearing + side * breakoffAngle);
-  return { heading, velocity: vecScale([Math.cos(heading), Math.sin(heading)], breakoffSpeed) };
+  return {
+    rangePhase,
+    heading,
+    velocity: vecScale([Math.cos(heading), Math.sin(heading)], breakoffSpeed),
+  };
 }
 
 export function formationVelocity(ship: ShipState, anchor: ShipState, station: Vector2): Vector2 {

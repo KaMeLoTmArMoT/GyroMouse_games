@@ -1,5 +1,7 @@
 // Combat simulation types matching deterministic contracts
 
+import type { BroadsideCycle, SkirmishCycle } from "../engine/flightCycles";
+
 export type WeaponType = "beam_laser" | "railgun" | "plasma" | "missile" | "point_defense";
 export type HullClass =
   | "battleship"
@@ -115,6 +117,8 @@ export interface ShipState {
   recoveredHull?: number;
   lastMissionShotTime?: number;
   capitalManeuver?: "bow_acquire" | "broadside_hold" | "bow_reacquire";
+  broadsideCycle?: BroadsideCycle;
+  skirmishCycle?: SkirmishCycle;
   maneuverTargetId?: string;
   navigationTargetId?: string;
   broadsideSide?: number;

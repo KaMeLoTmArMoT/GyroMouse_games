@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { mountPosition } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
+import { clampLateralVelocity } from "../src/engine/flightBehaviors";
 import { capitalIntent, escortVelocity, spinalEscape } from "../src/engine/flightControl";
+import {
+  type BroadsideCycle,
+  classifyRange,
+  reduceBroadsideCycle,
+  reduceSkirmishCycle,
+  type SkirmishCycle,
+} from "../src/engine/flightCycles";
 import { normalizeAngle, vecDistance, vecDot } from "../src/engine/math2d";
 import { SHIP_DOCTRINES } from "../src/engine/shipDoctrines";
 import { ClientCombatSimulation } from "../src/engine/simulation";
@@ -231,7 +239,7 @@ describe("missile frigate hit-and-run", () => {
     let fastestRetreat = 0;
     for (let tick = 0; tick < 1200; tick++) {
       sim.update(1 / 60);
-      if (frigate.capitalManeuver !== "broadside_hold") continue;
+      if (frigate.skirmishCycle?.phase !== "breakoff") continue;
       retreatStart ??= [...frigate.pos];
       openedDistance = Math.max(
         openedDistance,
@@ -244,6 +252,257 @@ describe("missile frigate hit-and-run", () => {
     expect(openedDistance).toBeGreaterThan(100);
     expect(fastestRetreat).toBeGreaterThan(99);
     expect(Math.abs(frigate.pos[1])).toBeGreaterThan(100);
+  });
+});
+
+describe("flight behavior contracts", () => {
+  const order = { groupId: 1, priority: "nearest", stance: "optimal_range" } as const;
+
+  it("classifies the engagement boundary inclusively", () => {
+    expect(classifyRange(1050.001, 1050)).toBe("approach");
+    expect(classifyRange(1050, 1050)).toBe("engage");
+    expect(classifyRange(1049, 1050)).toBe("engage");
+  });
+
+  it.each(["battleship", "dreadnought", "cruiser", "missile_frigate"] as const)(
+    "%s approaches the direct target bearing despite battery, reload, fleet and boundary biases",
+    (hull) => {
+      const approaching = ship(hull);
+      const target = ship("battleship", 1);
+      const wingmate = ship(hull);
+      wingmate.id = "wingmate";
+      approaching.pos = [1900, 0];
+      approaching.heading = -1.4;
+      target.pos = [3900, 700];
+      target.velocity = [0, 100];
+      wingmate.pos = [1900, 10];
+      for (const mount of approaching.turrets) {
+        mount.lastFiredTime = 10;
+        mount.cooldownTimer = 10;
+      }
+      approaching.maneuverTargetId = target.id;
+      approaching.capitalManeuver = "broadside_hold";
+      approaching.broadsideSide = -1;
+      const bearing = Math.atan2(700, 2000);
+      for (const time of [0, 3, 1000]) {
+        const intent = capitalIntent(
+          approaching,
+          target,
+          [approaching, target, wingmate],
+          order,
+          time,
+        );
+        expect(intent.rangePhase).toBe("approach");
+        expect(normalizeAngle(intent.heading - bearing)).toBeCloseTo(0, 12);
+        const forward = vecDot(intent.velocity, [Math.cos(bearing), Math.sin(bearing)]);
+        const lateral = vecDot(intent.velocity, [-Math.sin(bearing), Math.cos(bearing)]);
+        const doctrine = SHIP_DOCTRINES[hull].flight;
+        if (doctrine.kind !== "capital" && doctrine.kind !== "skirmish")
+          throw new Error("Missing doctrine");
+        expect(Math.abs(lateral)).toBeLessThanOrEqual(
+          Math.min(
+            approaching.maxSpeed * doctrine.lateralSpeedRatio,
+            Math.abs(forward) * Math.tan(Math.PI / 18),
+          ) + 1e-8,
+        );
+      }
+    },
+  );
+
+  it.each(["battleship", "dreadnought", "cruiser", "missile_frigate"] as const)(
+    "%s clamps inherited drift in the post-turn frame after arena corrections",
+    (hull) => {
+      const approaching = ship(hull);
+      const target = ship("battleship", 1);
+      approaching.pos = [2300, 500];
+      approaching.heading = Math.PI / 4;
+      approaching.velocity = [0, approaching.maxSpeed];
+      target.pos = [4500, 500];
+      target.maxSpeed = target.turnRate = 0;
+      target.turrets = [];
+      approaching.turrets = [];
+      const sim = new ClientCombatSimulation();
+      sim.addShip(approaching);
+      sim.addShip(target);
+      const doctrine = SHIP_DOCTRINES[hull].flight;
+      if (doctrine.kind !== "capital" && doctrine.kind !== "skirmish")
+        throw new Error("Missing doctrine");
+      for (let tick = 0; tick < 120; tick++) {
+        const oldHeading = approaching.heading;
+        sim.update(1 / 60);
+        if (tick === 0) expect(approaching.heading).not.toBe(oldHeading);
+        const forward = vecDot(approaching.velocity, [
+          Math.cos(approaching.heading),
+          Math.sin(approaching.heading),
+        ]);
+        const lateral = vecDot(approaching.velocity, [
+          -Math.sin(approaching.heading),
+          Math.cos(approaching.heading),
+        ]);
+        expect(Math.abs(lateral)).toBeLessThanOrEqual(
+          Math.min(
+            approaching.maxSpeed * doctrine.lateralSpeedRatio,
+            Math.abs(forward) * Math.tan(Math.PI / 18),
+          ) + 1e-8,
+        );
+      }
+    },
+  );
+
+  it("permits no lateral-only approach and bounds reverse drift as well", () => {
+    const fixture = { heading: 0, maxSpeed: 100 };
+    expect(clampLateralVelocity(fixture, [0, 100], 0.35, "approach")).toEqual([0, 0]);
+    expect(clampLateralVelocity(fixture, [-10, 100], 0.35, "approach")[1]).toBeCloseTo(
+      10 * Math.tan(Math.PI / 18),
+    );
+    expect(clampLateralVelocity(fixture, [100, 100], 0.1, "approach")[1]).toBe(10);
+  });
+
+  it("reduces staggered skirmish reloads deterministically without mutating prior states", () => {
+    const base = {
+      targetId: "target",
+      initialSide: -1,
+      reload: 0,
+      salvoComplete: false,
+      lastShot: 1,
+      breakoffReload: 2.5,
+      reacquireReload: 1,
+    };
+    const run = () => {
+      let state: SkirmishCycle | undefined;
+      return [
+        {},
+        { lastShot: 1.4 },
+        { reload: 4.8, salvoComplete: true, lastShot: 1.6 },
+        { targetId: "replacement", reload: 2, lastShot: 1.6 },
+        { reload: 1, lastShot: 1.6 },
+        { reload: 0.9, lastShot: 1.6 },
+        { reload: 0, lastShot: 6 },
+        { reload: 4.8, salvoComplete: true, lastShot: 6.6 },
+      ].map((input) => {
+        const previous = state && Object.freeze(state);
+        state = reduceSkirmishCycle(previous, { ...base, ...input });
+        return state;
+      });
+    };
+    const states = run();
+    expect(run()).toEqual(states);
+    expect(states.map((state) => state.phase)).toEqual([
+      "acquire",
+      "acquire",
+      "breakoff",
+      "breakoff",
+      "breakoff",
+      "reacquire",
+      "reacquire",
+      "breakoff",
+    ]);
+    expect(states[3].targetId).toBe("replacement");
+    expect(states[5].lastSalvoShot).toBe(1.6);
+    expect(states[7].lastSalvoShot).toBe(6.6);
+    expect(reduceSkirmishCycle(undefined, { ...base, reload: 3 }).phase).toBe("breakoff");
+  });
+
+  it("reduces capital shots, side alternation, reacquisition and target changes independently", () => {
+    const input = {
+      targetId: "target",
+      initialSide: 1,
+      lastShot: undefined as number | undefined,
+      cooldown: 5,
+      reacquireTime: 1,
+      alternateAfterShot: true,
+    };
+    const acquire = Object.freeze(reduceBroadsideCycle(undefined, input));
+    const hold = Object.freeze(reduceBroadsideCycle(acquire, { ...input, lastShot: 2 }));
+    expect(acquire.phase).toBe("bow_acquire");
+    expect(hold.phase).toBe("broadside_hold");
+    expect(hold.side).toBe(-1);
+    expect(reduceBroadsideCycle(hold, { ...input, lastShot: 2 })).toEqual(hold);
+    expect(reduceBroadsideCycle(hold, { ...input, lastShot: 2, cooldown: 1 }).phase).toBe(
+      "bow_reacquire",
+    );
+    expect(
+      reduceBroadsideCycle(hold, { ...input, targetId: "replacement", lastShot: 2 }).phase,
+    ).toBe("bow_acquire");
+  });
+
+  it("keeps skirmish state separate from legacy and dedicated capital maneuver state", () => {
+    const frigate = ship("missile_frigate");
+    const target = ship("battleship", 1);
+    target.pos = [1200, 0];
+    const capitalState: BroadsideCycle = Object.freeze({
+      phase: "broadside_hold",
+      targetId: "unrelated",
+      side: -1,
+      lastShot: 500,
+    });
+    frigate.broadsideCycle = capitalState;
+    frigate.capitalManeuver = "broadside_hold";
+    frigate.maneuverTargetId = "unrelated";
+    frigate.broadsideSide = -1;
+    frigate.lastManeuverShot = 500;
+    for (const tube of frigate.turrets) {
+      tube.lastFiredTime = 1;
+      tube.cooldownTimer = 4.8;
+    }
+    capitalIntent(frigate, target, [frigate, target], order);
+    expect(frigate.skirmishCycle).toMatchObject({ phase: "breakoff", lastSalvoShot: 1, side: 1 });
+    expect(frigate.broadsideCycle).toBe(capitalState);
+    expect([
+      frigate.capitalManeuver,
+      frigate.maneuverTargetId,
+      frigate.broadsideSide,
+      frigate.lastManeuverShot,
+    ]).toEqual(["broadside_hold", "unrelated", -1, 500]);
+    const capital = ship("cruiser");
+    capital.skirmishCycle = frigate.skirmishCycle;
+    const skirmishState = capital.skirmishCycle;
+    capitalIntent(capital, target, [capital, target], order);
+    expect(capital.skirmishCycle).toBe(skirmishState);
+  });
+
+  it("tunes cruiser broadside behavior without changing other hull intents or cycles", () => {
+    const target = ship("battleship", 1);
+    target.pos = [900, 0];
+    const sample = (hull: HullClass) => {
+      const fixture = ship(hull);
+      if (hull === "corvette" || hull === "strike_craft") {
+        const sim = new ClientCombatSimulation();
+        sim.addShip(fixture);
+        sim.addShip(ship("battleship", 1));
+        sim.ships[1].pos = [900, 0];
+        for (let tick = 0; tick < 10; tick++) sim.update(1 / 60);
+        return {
+          intent: { heading: fixture.heading, velocity: fixture.velocity },
+          broadside: fixture.broadsideCycle,
+          skirmish: fixture.skirmishCycle,
+        };
+      }
+      fixture.maneuverTargetId = target.id;
+      fixture.capitalManeuver = "broadside_hold";
+      for (const turret of fixture.turrets) turret.cooldownTimer = 5;
+      const intent = capitalIntent(fixture, target, [fixture, target], order);
+      return { intent, broadside: fixture.broadsideCycle, skirmish: fixture.skirmishCycle };
+    };
+    const hulls = [
+      "battleship",
+      "dreadnought",
+      "missile_frigate",
+      "corvette",
+      "strike_craft",
+    ] as const;
+    const before = hulls.map(sample);
+    const cruiserBefore = sample("cruiser");
+    const doctrine = SHIP_DOCTRINES.cruiser.flight;
+    if (doctrine.kind !== "capital") throw new Error("Missing cruiser doctrine");
+    const original = doctrine.broadside;
+    try {
+      doctrine.broadside = { ...original, arcOffset: Math.PI / 2, continuous: true };
+      expect(sample("cruiser").intent.heading).not.toBe(cruiserBefore.intent.heading);
+      expect(hulls.map(sample)).toEqual(before);
+    } finally {
+      doctrine.broadside = original;
+    }
   });
 });
 
