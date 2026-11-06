@@ -211,10 +211,13 @@ export function escortVelocity(
     anchor = capitals[0];
     ship.flagshipId = anchor?.id;
   }
-  if (!anchor)
-    return target
-      ? orbitVelocity(ship, target, target.hullClass === "cruiser" ? 230 : 300)
-      : [0, 0];
+  const engagementDistance =
+    target?.hullClass === "corvette"
+      ? Math.max(300, ...ship.turrets.map((t) => t.weapon.range * 0.8))
+      : target?.hullClass === "cruiser"
+        ? 230
+        : 300;
+  if (!anchor) return target ? orbitVelocity(ship, target, engagementDistance) : [0, 0];
   const index = Number(ship.id.split("_").at(-1)) || 0;
   const side = index % 2 === 0 ? 1 : -1;
   const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
@@ -249,7 +252,73 @@ export function escortVelocity(
     vecDistance(ship.pos, anchor.pos) > tether
   )
     return stationVelocity;
-  return vecAdd(vecScale(stationVelocity, 0.65), vecScale(orbitVelocity(ship, target), 0.35));
+  if (vecDistance(ship.pos, target.pos) < engagementDistance)
+    return orbitVelocity(ship, target, engagementDistance);
+  return vecAdd(
+    vecScale(stationVelocity, 0.65),
+    vecScale(orbitVelocity(ship, target, engagementDistance), 0.35),
+  );
+}
+
+function damageStandoffWeight(ship: ShipState): number {
+  const shield = ship.shieldCurrent / Math.max(1, ship.shieldMax);
+  const hull = ship.hullCurrent / Math.max(1, ship.hullMax);
+  return shield <= 0 || hull < 0.4 ? 1 : 0;
+}
+
+// Predict shared corridors before hull separation must brake a head-on encounter.
+function skirmishSpacing(ship: ShipState, ships: ShipState[]): Vector2 {
+  let spacing: Vector2 = [0, 0];
+  for (const peer of ships) {
+    if (!peer.isAlive || peer.id === ship.id) continue;
+    const delta = vecSub(peer.pos, ship.pos);
+    const distance = vecDistance([0, 0], delta);
+    if (distance < 1e-6 || distance > 600) continue;
+    const direction = vecScale(delta, 1 / distance);
+    const relative = vecSub(peer.velocity, ship.velocity);
+    const arrival = clamp(-vecDot(delta, relative) / Math.max(1, vecDot(relative, relative)), 0, 3);
+    const clearance = ship.size + peer.size + 100;
+    const miss = vecDistance([0, 0], vecAdd(delta, vecScale(relative, arrival)));
+    if (peer.team === ship.team) {
+      if (distance < clearance * 2)
+        spacing = vecSub(
+          spacing,
+          vecScale(direction, ship.maxSpeed * 0.4 * (1 - distance / (clearance * 2))),
+        );
+    } else if (arrival > 0 && miss < clearance) {
+      // Reciprocal bearings produce opposite world-space offsets: both pass to their right.
+      spacing = vecAdd(
+        spacing,
+        vecScale([-direction[1], direction[0]], ship.maxSpeed * 0.5 * (1 - miss / clearance)),
+      );
+    }
+  }
+  return spacing;
+}
+
+function defensiveStandoff(
+  ship: ShipState,
+  ships: ShipState[],
+  velocity: Vector2,
+  radius: number,
+): Vector2 {
+  const damaged = damageStandoffWeight(ship) > 0;
+  let corrected = velocity;
+  for (const enemy of ships) {
+    if (!enemy.isAlive || enemy.team === ship.team || (!damaged && !isCapitalShip(enemy))) continue;
+    const distance = vecDistance(ship.pos, enemy.pos);
+    if (distance < 1e-6) continue;
+    const toward = vecScale(vecSub(enemy.pos, ship.pos), 1 / distance);
+    const closing = Math.max(0, vecDot(vecSub(ship.velocity, enemy.velocity), toward));
+    const longRange = ship.hullClass === "battleship" && enemy.hullClass === "dreadnought";
+    const minimum = damaged || longRange ? radius : 500;
+    const predictedDistance = distance - closing * (closing / 220 + 0.5);
+    if (predictedDistance >= minimum) continue;
+    const retreat = clamp((minimum - predictedDistance) * 0.7, 0, ship.maxSpeed * 0.65);
+    const inward = vecDot(corrected, toward);
+    if (inward > -retreat) corrected = vecSub(corrected, vecScale(toward, inward + retreat));
+  }
+  return corrected;
 }
 
 export function spinalEscape(
@@ -345,8 +414,10 @@ function standoffDistance(
         ? doctrine.brawlDistance
         : Math.min(secondaryRange * 0.9, doctrine.optimalDistanceLimit);
   const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
-  return (
-    nominal + (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0)
+  return Math.max(
+    nominal +
+      (order.stance === "optimal_range" ? 60 * clamp((0.35 - shieldRatio) / 0.35, 0, 1) : 0),
+    primaryRange * 0.9 * damageStandoffWeight(ship),
   );
 }
 
@@ -382,10 +453,17 @@ export function capitalIntent(
     const tubes = ship.turrets.filter((t) => t.weapon.weaponType === "missile");
     const salvo = salvoReload(tubes, ship.skirmishCycle?.lastSalvoShot);
     const slot = Number(ship.id.split("_").at(-1)) || 0;
+    const leader = ships
+      .filter(
+        (peer) => peer.isAlive && peer.team === ship.team && peer.hullClass === ship.hullClass,
+      )
+      .sort((a, b) => a.id.localeCompare(b.id))[0];
+    const leaderSlot = leader ? Number(leader.id.split("_").at(-1)) || 0 : slot;
+    const cooperativeSide = leaderSlot % 2 === 0 ? 1 : -1;
     const previousPhase = ship.skirmishCycle?.phase;
     ship.skirmishCycle = reduceSkirmishCycle(ship.skirmishCycle, {
       targetId: target.id,
-      initialSide: slot % 2 === 0 ? 1 : -1,
+      initialSide: cooperativeSide,
       reload: salvo.reloadRatio * salvo.reloadDuration,
       salvoComplete: salvo.salvoComplete,
       lastShot: salvo.lastShot,
@@ -411,7 +489,16 @@ export function capitalIntent(
       target,
       doctrine.breakoffAngle,
       ship.maxSpeed * doctrine.breakoffSpeedRatio,
-      { doctrine, engagementRange: gun?.weapon.range ?? doctrine.desiredDistance },
+      {
+        doctrine: {
+          ...doctrine,
+          desiredDistance: Math.max(
+            doctrine.desiredDistance,
+            (gun?.weapon.range ?? doctrine.desiredDistance) * 0.9 * damageStandoffWeight(ship),
+          ),
+        },
+        engagementRange: gun?.weapon.range ?? doctrine.desiredDistance,
+      },
     );
     if (ship.skirmishCycle.phase === "breakoff" && intent.rangePhase !== "approach") {
       const corrected = arenaVelocity(ship, intent.velocity);
@@ -427,7 +514,15 @@ export function capitalIntent(
         };
       }
     }
-    const velocity = vecAdd(intent.velocity, calculateSeparation(ship, ships));
+    const velocity = defensiveStandoff(
+      ship,
+      ships,
+      vecAdd(
+        vecAdd(intent.velocity, skirmishSpacing(ship, ships)),
+        calculateSeparation(ship, ships),
+      ),
+      Math.max(doctrine.desiredDistance, (gun?.weapon.range ?? 0) * 0.9),
+    );
     const evasiveVelocity = OrdnanceAvoidanceBlock(
       ship,
       projectiles,
@@ -441,31 +536,49 @@ export function capitalIntent(
       const combined = vecAdd(evasiveVelocity, sep);
       return {
         ...intent,
-        velocity:
-          vecDistance([0, 0], sep) > 1e-4
-            ? limitVelocity(combined, ship.maxSpeed)
-            : evasiveVelocity,
+        velocity: limitVelocity(
+          defensiveStandoff(
+            ship,
+            ships,
+            vecDistance([0, 0], sep) > 1e-4 ? combined : evasiveVelocity,
+            Math.max(doctrine.desiredDistance, (gun?.weapon.range ?? 0) * 0.9),
+          ),
+          ship.maxSpeed,
+        ),
         evadingOrdnance: true,
       };
     }
     return {
       ...intent,
       velocity: limitVelocity(
-        intent.rangePhase === "approach"
-          ? clampLateralVelocity(
-              { heading: intent.heading, maxSpeed: ship.maxSpeed },
-              velocity,
-              doctrine.lateralSpeedRatio,
-              intent.rangePhase,
-            )
-          : velocity,
+        defensiveStandoff(
+          ship,
+          ships,
+          intent.rangePhase === "approach"
+            ? clampLateralVelocity(
+                { heading: intent.heading, maxSpeed: ship.maxSpeed },
+                velocity,
+                doctrine.lateralSpeedRatio,
+                intent.rangePhase,
+              )
+            : velocity,
+          Math.max(doctrine.desiredDistance, (gun?.weapon.range ?? 0) * 0.9),
+        ),
         ship.maxSpeed,
       ),
     };
   }
   updateBroadsideManeuver(ship, target, gun, aimBearing, doctrine);
   const side = ship.broadsideCycle?.side ?? 1;
-  const radius = standoffDistance(ship, gun, order, doctrine);
+  const radius = Math.max(
+    standoffDistance(ship, gun, order, doctrine),
+    ship.hullClass === "battleship" &&
+      ships.some(
+        (enemy) => enemy.isAlive && enemy.team !== ship.team && enemy.hullClass === "dreadnought",
+      )
+      ? (gun?.weapon.range ?? 0) * 0.85
+      : 0,
+  );
   const threshold = doctrine.standoffThreshold;
   const standoffThreshold =
     "distance" in threshold ? threshold.distance : radius + threshold.margin;
@@ -522,7 +635,10 @@ export function capitalIntent(
       doctrine.lateralSpeedRatio,
       rangePhase,
     );
-  return { ...intent, velocity: limitVelocity(velocity, ship.maxSpeed) };
+  return {
+    ...intent,
+    velocity: limitVelocity(defensiveStandoff(ship, ships, velocity, radius), ship.maxSpeed),
+  };
 }
 
 export function dogfightTarget(

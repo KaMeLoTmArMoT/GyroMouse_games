@@ -111,6 +111,7 @@ export function updateShipNavigation(
   let thrusterVelocity: Vector2 | null = null;
   let rangePhase: RangePhase | undefined;
   let evadingOrdnance = false;
+  let maintainingStandoff = false;
   if (ship.hullClass === "tender") {
     thrusterVelocity = limitVelocity(
       vecAdd(supportVelocity(ship, aliveShips), separation(ship, aliveShips)),
@@ -147,6 +148,21 @@ export function updateShipNavigation(
     thrusterVelocity = intent.velocity;
     rangePhase = intent.rangePhase;
     evadingOrdnance = intent.evadingOrdnance ?? false;
+    // Translational escape must not be clipped by the focused target's bow-ingress envelope.
+    maintainingStandoff = aliveShips.some((enemy) => {
+      if (!enemy.isAlive || enemy.team === ship.team) return false;
+      const damaged = ship.shieldCurrent <= 0 || ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4;
+      const longRange = ship.hullClass === "battleship" && enemy.hullClass === "dreadnought";
+      const distance =
+        damaged || longRange
+          ? Math.max(500, ...ship.turrets.map((turret) => turret.weapon.range * 0.9))
+          : 500;
+      return (
+        (damaged || isCapitalShip(enemy)) &&
+        vecDistance(ship.pos, enemy.pos) < distance &&
+        vecDot(intent.velocity, vecSub(enemy.pos, ship.pos)) < 0
+      );
+    });
   }
   if (thrusterVelocity) {
     thrusterVelocity = arenaVelocity(ship, thrusterVelocity);
@@ -186,7 +202,7 @@ export function updateShipNavigation(
       ? vecSub(newVelocity, vecScale(vecNormalize(ship.pos), 600 * dt))
       : newVelocity;
   let controlledVelocity = containedVelocity;
-  if (rangePhase && !evadingOrdnance) {
+  if (rangePhase && !evadingOrdnance && !maintainingStandoff) {
     const flight = SHIP_DOCTRINES[ship.hullClass].flight;
     if (flight.kind === "capital" || flight.kind === "skirmish")
       controlledVelocity = clampLateralVelocity(
