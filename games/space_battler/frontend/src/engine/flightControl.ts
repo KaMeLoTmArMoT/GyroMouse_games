@@ -392,8 +392,15 @@ export function capitalIntent(
       "torpedo",
       velocity,
     );
-    if (evasiveVelocity !== velocity)
-      return { ...intent, velocity: evasiveVelocity, evadingOrdnance: true };
+    if (evasiveVelocity !== velocity) {
+      const sep = calculateSeparation(ship, ships);
+      const combined = vecAdd(evasiveVelocity, sep);
+      return {
+        ...intent,
+        velocity: vecDistance([0, 0], sep) > 1e-4 ? limitVelocity(combined, ship.maxSpeed) : evasiveVelocity,
+        evadingOrdnance: true,
+      };
+    }
     return {
       ...intent,
       velocity: limitVelocity(
