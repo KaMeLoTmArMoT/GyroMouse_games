@@ -148,23 +148,52 @@ export function orbitVelocity(ship: ShipState, target: ShipState, radius = 300):
   return vecAdd(vecScale(target.velocity, 0.35), approach.velocity);
 }
 
-export function supportVelocity(ship: ShipState, ships: ShipState[]): Vector2 {
+export function tenderRescueTarget(ship: ShipState, ships: ShipState[]): ShipState | undefined {
+  return ships
+    .filter(
+      (peer) =>
+        peer.isAlive &&
+        !peer.isDocked &&
+        peer.team === ship.team &&
+        peer.id !== ship.id &&
+        peer.hullClass !== "tender" &&
+        vecDistance(ship.pos, peer.pos) <= 800 &&
+        (peer.shieldCurrent <= 0 ||
+          (peer.shieldDelayTimer > 0 && peer.shieldCurrent < peer.shieldMax * 0.4)),
+    )
+    .sort(
+      (a, b) =>
+        Number(b.shieldCurrent <= 0) - Number(a.shieldCurrent <= 0) ||
+        a.hullCurrent / Math.max(1, a.hullMax) - b.hullCurrent / Math.max(1, b.hullMax) ||
+        vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) ||
+        a.id.localeCompare(b.id),
+    )[0];
+}
+
+export function supportVelocity(
+  ship: ShipState,
+  ships: ShipState[],
+  rescueTarget = tenderRescueTarget(ship, ships),
+): Vector2 {
   const doctrine = SHIP_DOCTRINES[ship.hullClass].flight;
   if (doctrine.kind !== "support") return [0, 0];
   const allies = ships.filter(
     (peer) =>
       peer.isAlive &&
+      !peer.isDocked &&
       peer.team === ship.team &&
       peer.id !== ship.id &&
       peer.hullClass !== "tender" &&
-      (isCapitalShip(peer) || peer.shieldCurrent < peer.shieldMax),
+      (peer.hullClass !== "strike_craft" || peer.shieldCurrent < peer.shieldMax),
   );
-  const anchor = allies.sort(
-    (a, b) =>
-      Number(b.shieldCurrent < b.shieldMax) - Number(a.shieldCurrent < a.shieldMax) ||
-      vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) ||
-      a.id.localeCompare(b.id),
-  )[0];
+  const anchor =
+    rescueTarget ??
+    allies.sort(
+      (a, b) =>
+        Number(b.shieldCurrent < b.shieldMax) - Number(a.shieldCurrent < a.shieldMax) ||
+        vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) ||
+        a.id.localeCompare(b.id),
+    )[0];
   const enemies = ships
     .filter((peer) => peer.isAlive && peer.team !== ship.team)
     .sort(
@@ -172,7 +201,7 @@ export function supportVelocity(ship: ShipState, ships: ShipState[]): Vector2 {
         vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) || a.id.localeCompare(b.id),
     );
   const threat = enemies[0];
-  const isolated = !anchor || vecDistance(ship.pos, anchor.pos) > 1000;
+  const isolated = !anchor;
   const damaged = ship.hullCurrent / ship.hullMax < (doctrine.retreat.hullRatio ?? 0);
   if ((isolated || damaged) && threat) {
     const away = vecNormalize(vecSub(ship.pos, threat.pos));
@@ -184,7 +213,12 @@ export function supportVelocity(ship: ShipState, ships: ShipState[]): Vector2 {
         )
       : retreat;
   }
-  return anchor ? orbitVelocity(ship, anchor, doctrine.desiredDistance) : [0, 0];
+  if (!anchor) return [0, 0];
+  const forward = threat
+    ? vecNormalize(vecSub(threat.pos, anchor.pos))
+    : ([Math.cos(anchor.heading), Math.sin(anchor.heading)] as Vector2);
+  const station = vecSub(anchor.pos, vecScale(forward, doctrine.desiredDistance));
+  return formationVelocity(ship, anchor, station);
 }
 
 export function escortVelocity(

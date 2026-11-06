@@ -12,6 +12,7 @@ import {
   separation,
   spinalEscape,
   supportVelocity,
+  tenderRescueTarget,
 } from "./flightControl";
 import type { RangePhase } from "./flightCycles";
 import {
@@ -112,10 +113,18 @@ export function updateShipNavigation(
   let rangePhase: RangePhase | undefined;
   let evadingOrdnance = false;
   let maintainingStandoff = false;
+  let thrustMultiplier = 1;
   if (ship.hullClass === "tender") {
+    const rescueTarget = tenderRescueTarget(ship, aliveShips);
+    if (
+      rescueTarget &&
+      vecDistance(ship.pos, rescueTarget.pos) > 450 &&
+      ship.hullCurrent / Math.max(1, ship.hullMax) >= 0.35
+    )
+      thrustMultiplier = 1.35;
     thrusterVelocity = limitVelocity(
-      vecAdd(supportVelocity(ship, aliveShips), separation(ship, aliveShips)),
-      ship.maxSpeed,
+      vecAdd(supportVelocity(ship, aliveShips, rescueTarget), separation(ship, aliveShips)),
+      ship.maxSpeed * thrustMultiplier,
     );
     targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
   } else if (ship.hullClass === "corvette") {
@@ -165,6 +174,41 @@ export function updateShipNavigation(
       );
     });
   }
+  if (
+    ship.hullClass !== "tender" &&
+    ship.hullClass !== "strike_craft" &&
+    ship.shieldCurrent <= 0 &&
+    ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4 &&
+    !evadingOrdnance
+  ) {
+    const tender = aliveShips
+      .filter(
+        (peer) =>
+          peer.isAlive &&
+          !peer.isDocked &&
+          peer.team === ship.team &&
+          peer.hullClass === "tender" &&
+          vecDistance(ship.pos, peer.pos) <= 800,
+      )
+      .sort((a, b) => vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos))[0];
+    if (tender) {
+      const distance = vecDistance(ship.pos, tender.pos);
+      const toward = vecNormalize(vecSub(tender.pos, ship.pos));
+      const rendezvous = vecAdd(
+        tender.velocity,
+        vecScale(toward, clamp((distance - 400) * 0.6, 0, ship.maxSpeed * 0.6)),
+      );
+      thrusterVelocity = limitVelocity(
+        vecAdd(vecScale(thrusterVelocity ?? ship.velocity, 0.3), vecScale(rendezvous, 0.7)),
+        ship.maxSpeed,
+      );
+      // Do not let a breakoff thrust carry the wounded hull out of beam range.
+      const outward = vecDot(vecSub(thrusterVelocity, tender.velocity), toward);
+      if (outward < 0) thrusterVelocity = vecSub(thrusterVelocity, vecScale(toward, outward));
+      targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
+      rangePhase = undefined;
+    }
+  }
   if (thrusterVelocity) {
     thrusterVelocity = arenaVelocity(ship, thrusterVelocity);
   } else if (vecDistance([0, 0], ship.pos) > ARENA_RADIUS) {
@@ -176,7 +220,11 @@ export function updateShipNavigation(
     desiredSpeed = vecDistance([0, 0], inward);
   }
   const angleDiff = normalizeAngle(targetHeading - ship.heading);
-  const turnStep = clamp(angleDiff, -ship.turnRate * dt, ship.turnRate * dt);
+  const turnStep = clamp(
+    angleDiff,
+    -ship.turnRate * thrustMultiplier * dt,
+    ship.turnRate * thrustMultiplier * dt,
+  );
   ship.heading = normalizeAngle(ship.heading + turnStep);
   const forwardVector: Vector2 = [Math.cos(ship.heading), Math.sin(ship.heading)];
   const rightVector: Vector2 = [-Math.sin(ship.heading), Math.cos(ship.heading)];
@@ -187,9 +235,13 @@ export function updateShipNavigation(
   const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
   const newLateralSpeed = thrusterVelocity
     ? currentLateralSpeed +
-      clamp(vecDot(thrusterVelocity, rightVector) - currentLateralSpeed, -110 * dt, 110 * dt)
+      clamp(
+        vecDot(thrusterVelocity, rightVector) - currentLateralSpeed,
+        -110 * thrustMultiplier * dt,
+        110 * thrustMultiplier * dt,
+      )
     : currentLateralSpeed * Math.max(0, 1 - dt * lateralDamping);
-  const forwardAccel = ship.hullClass === "strike_craft" ? 240.0 : 110.0;
+  const forwardAccel = (ship.hullClass === "strike_craft" ? 240.0 : 110.0) * thrustMultiplier;
   const speedError = desiredSpeed - currentForwardSpeed;
   const forwardStep = clamp(speedError, -forwardAccel * dt, forwardAccel * dt);
   const newForwardSpeed = currentForwardSpeed + forwardStep;
@@ -228,6 +280,6 @@ export function updateShipNavigation(
         rangePhase,
       );
   }
-  ship.velocity = limitVelocity(controlledVelocity, ship.maxSpeed);
+  ship.velocity = limitVelocity(controlledVelocity, ship.maxSpeed * thrustMultiplier);
   ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
 }

@@ -189,11 +189,12 @@ export const SHIP_DOCTRINES: Record<HullClass, ShipDoctrine> = {
     standoff: "350–500u allied support tether",
     targetPriority: "Damaged allied non-tenders and friendly capitals; flak intercepts threats",
     states: [
-      { name: "Allied Standoff Orbit" },
+      { name: "Battleline Advance (425u Rear Station)" },
+      { name: "Rescue Pursuit", trigger: "Ally within 800u has depleted shields or heavy fire" },
       { name: "Harmonic Restoration", trigger: "Damaged ally within 500u; capacitor ready" },
-      { name: "Defensive Retreat", trigger: "Isolated or hull below 35%" },
+      { name: "Defensive Retreat", trigger: "No live allied anchor or hull below 35%" },
     ],
-    note: "Never advances to brawl with enemy battlelines. Harmonic channels cannot restore tenders.",
+    note: "Advances behind friendly frontliners; rescue pursuit temporarily boosts speed and thruster agility by 35%. Harmonic channels cannot restore tenders.",
   },
   corvette: {
     flight: { kind: "escort", retreat: { shieldRatio: 0.4 } },

@@ -10,6 +10,7 @@ import {
   shieldRepulsorRadius,
 } from "../src/engine/shieldGeometry";
 import { ShieldHavenSystem, shieldHavenSlotPosition } from "../src/engine/shieldHaven";
+import { updateShipNavigation } from "../src/engine/shipNavigationSystem";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass, ShipState, Vector2 } from "../src/types/combat";
 
@@ -313,16 +314,74 @@ describe("tender fleet and support flight", () => {
     expect(fleetSlotCost({ id: "tender", hullClass: "tender", groupId: 1 })).toBe(1250);
   });
 
-  it("orbits allies at 425u and retreats away from enemies when isolated or damaged", () => {
+  it("holds a rear station at 425u and retreats away from enemies when isolated or damaged", () => {
     const donor = ship("donor", "tender", [-425, 0]);
     const parent = ship("parent", "battleship");
     const enemy = ship("enemy", "battleship", [1000, 0], 1);
     const orbit = supportVelocity(donor, [donor, parent, enemy]);
     expect(orbit[0]).toBeCloseTo(0);
-    expect(Math.abs(orbit[1])).toBeGreaterThan(0);
+    expect(orbit[1]).toBeCloseTo(0);
     expect(supportVelocity(donor, [donor, enemy])[0]).toBeLessThan(0);
     donor.hullCurrent = 200;
     expect(supportVelocity(donor, [donor, parent, enemy])[0]).toBeLessThan(0);
+  });
+
+  it("advances with healthy frigates instead of retreating at the opening", () => {
+    const donor = ship("donor", "tender", [-600, 0]);
+    const frigates = [-200, 0, 200].map((y, index) =>
+      ship(`frigate_${index}`, "missile_frigate", [0, y]),
+    );
+    const enemies = frigates.map((ally, index) =>
+      ship(`enemy_${index}`, "missile_frigate", [1800, ally.pos[1]], 1),
+    );
+    enemies.push(ship("enemy_tender", "tender", [2200, 0], 1));
+    expect(supportVelocity(donor, [donor, ...frigates, ...enemies])[0]).toBeGreaterThan(0);
+    donor.pos = [-1200, 0];
+    expect(supportVelocity(donor, [donor, ...frigates, ...enemies])[0]).toBeGreaterThan(0);
+  });
+
+  it.each(["depleted", "heavy fire"])(
+    "boosts pursuit for %s and releases it on recovery",
+    (damage) => {
+      const donor = ship("donor", "tender", [-700, 0]);
+      donor.heading = 0;
+      const ally = ship("ally", "missile_frigate");
+      ally.shieldCurrent = damage === "depleted" ? 0 : ally.shieldMax * 0.3;
+      ally.shieldDelayTimer = 3;
+      const sim = new ClientCombatSimulation();
+      const move = (dt: number) =>
+        updateShipNavigation(donor, null, [donor, ally], dt, sim, () => ({ heading: 0, speed: 0 }));
+      move(0.1);
+      expect(donor.velocity[0]).toBeCloseTo(110 * 1.35 * 0.1);
+      move(1);
+      expect(donor.velocity[0]).toBeCloseTo(donor.maxSpeed * 1.35);
+      expect(donor.maxSpeed).toBe(75);
+      ally.shieldCurrent = ally.shieldMax;
+      ally.shieldDelayTimer = 0;
+      move(0.1);
+      expect(Math.hypot(...donor.velocity)).toBeLessThanOrEqual(donor.maxSpeed);
+    },
+  );
+
+  it("brakes a critically wounded frigate into a nearby live Tender's beam range", () => {
+    const donor = ship("donor", "tender");
+    const ally = ship("ally", "missile_frigate", [700, 0]);
+    ally.heading = 0;
+    ally.velocity = [ally.maxSpeed, 0];
+    ally.shieldCurrent = 0;
+    ally.hullCurrent = ally.hullMax * 0.3;
+    const enemy = ship("enemy", "missile_frigate", [2000, 0], 1);
+    const sim = new ClientCombatSimulation();
+    const move = () =>
+      updateShipNavigation(ally, enemy, [donor, ally, enemy], 0.1, sim, () => ({
+        heading: 0,
+        speed: 0,
+      }));
+    const initialSpeed = ally.velocity[0];
+    move();
+    expect(ally.velocity[0]).toBeLessThan(initialSpeed);
+    for (let frame = 0; frame < 200; frame++) move();
+    expect(vecDistance(donor.pos, ally.pos)).toBeLessThan(500);
   });
 
   it("maintains a live allied tether in the simulation even under a brawl order", () => {
