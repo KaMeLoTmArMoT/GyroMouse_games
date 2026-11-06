@@ -94,7 +94,14 @@ export class HarmonicShieldSystem {
         };
         this.cycles.set(donor.id, cycle);
         occupied.add(recipient.id);
-        onBeamFire?.(donor.pos, recipient.pos, "#38bdf8", 2.8, donor.team, true);
+        onBeamFire?.(
+          donor.pos,
+          recipient.pos,
+          donor.team === 0 ? "#22d3ee" : "#f43f5e",
+          2.8,
+          donor.team,
+          true,
+        );
       }
       if (!cycle.recipient) continue;
       const recipient = cycle.recipient;
@@ -117,7 +124,8 @@ export class HarmonicShieldSystem {
               from: [...donor.pos],
               to: [...recipient.pos],
               ownerTeam: donor.team,
-              color: "#38bdf8",
+              color: donor.team === 0 ? "#22d3ee" : "#f43f5e",
+              harmonic: true,
             },
           ]
         : [],

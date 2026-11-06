@@ -27,6 +27,7 @@ export interface ActiveBeam {
   to: Vector2;
   ownerTeam: number;
   color?: string;
+  harmonic?: boolean;
 }
 
 export type BeamFireCallback = (

@@ -173,7 +173,8 @@ export function ShipSilhouette({
         "M1.25 0 L.75 -.35 L.35 -.42 L.12 -.68 L-.82 -.68 L-1.08 -.48 L-1.08 .48 L-.82 .68 L.12 .68 L.35 .42 L.75 .35 Z",
       strike_craft: "M1.1 0 L-.7 -.55 L-.5 -.2 L-.85 0 L-.5 .2 L-.7 .55 Z",
       corvette: "M1.15 0 L.4 -.45 L-.5 -.58 L-.95 -.32 L-.75 0 L-.95 .32 L-.5 .58 L.4 .45 Z",
-      tender: "M1.15 0 L.4 -.45 L-.5 -.58 L-.95 -.32 L-.75 0 L-.95 .32 L-.5 .58 L.4 .45 Z",
+      tender:
+        "M1.04 0 L.58 -.4 L.25 -.5 L.08 -.82 L-.55 -.82 L-.66 -.48 L-.82 -.34 L-.82 .34 L-.66 .48 L-.55 .82 L.08 .82 L.25 .5 L.58 .4 Z",
       cruiser:
         "M1.22 0 L.6 -.38 L.2 -.38 L-.65 -.5 L-1.1 -.28 L-1.1 .28 L-.65 .5 L.2 .38 L.6 .38 Z",
       battleship:
@@ -188,7 +189,8 @@ export function ShipSilhouette({
       strike_craft:
         "M.85 -.6884 Q.15 -.1252 -.65 -.3505 L-.35 0 L-.65 .3505 Q.15 .1252 .85 .6884 Q.55 0 .85 -.6884 Z",
       corvette: "M1.15 0 Q.25 -.7916 -.75 -.548 Q-.45 0 -.75 .548 Q.25 .7916 1.15 0 Z",
-      tender: "M1.15 0 Q.25 -.7916 -.75 -.548 Q-.45 0 -.75 .548 Q.25 .7916 1.15 0 Z",
+      tender:
+        "M.92 0 C.65 -.25 .1 -.68 -.58 -.52 C-.92 -.36 -.85 -.14 -.8 0 C-.85 .14 -.92 .36 -.58 .52 C.1 .68 .65 .25 .92 0 Z M-.5 -.38 C-.25 -.82 .55 -.95 .85 -.68 C.5 -.81 .05 -.65 -.18 -.38 Z M-.5 .38 C-.25 .82 .55 .95 .85 .68 C.5 .81 .05 .65 -.18 .38 Z",
       cruiser:
         "M1.22 -.2411 L.9 0 L1.22 .2411 Q.35 .5479 -.85 .3945 Q-1.1 0 -.85 -.3945 Q.35 -.5479 1.22 -.2411 Z",
       battleship: "M1.28 0 Q.5 -.892 -1.15 -.6559 Q-.4 0 -1.15 .6559 Q.5 .892 1.28 0 Z",
@@ -204,7 +206,8 @@ export function ShipSilhouette({
         "M-.58 -.16 H.5 V.16 H-.58 Z M-.7 -.48 H.1 M-.7 .48 H.1 M-.46 -.1 H.28 L.42 0 L.28 .1 H-.46",
       strike_craft: "M.8 0 L.4 -.12 L.25 0 L.4 .12 Z M-.1 -.12 L-.55 -.35 M-.1 .12 L-.55 .35",
       corvette: "M.8 0 L.4 -.2 L.15 0 L.4 .2 Z M.1 -.3 L-.5 -.4 M.1 .3 L-.5 .4",
-      tender: "M-.2 -.25 V.25 M-.45 0 H.05",
+      tender:
+        "M.42 0 L.25 -.32 H-.3 L-.48 0 L-.3 .32 H.25 Z M-.55 -.66 H.03 M-.55 .66 H.03 M.52 0 H.67",
       cruiser:
         "M.75 0 L-.7 0 M.2 -.22 L-.6 -.3 M.2 .22 L-.6 .3 M-.4 -.14 L-.65 -.14 L-.65 .14 L-.4 .14 Z",
       battleship:
@@ -216,7 +219,7 @@ export function ShipSilhouette({
     1: {
       carrier:
         "M.65 0 C.3 -.22 -.45 -.22 -.6 0 C-.45 .22 .3 .22 .65 0 M-.7 -.48 H.1 M-.7 .48 H.1 M-.75 -.25 Q.3 -.32 .94 0 Q.3 .32 -.75 .25",
-      tender: "M-.2 -.25 V.25 M-.45 0 H.05",
+      tender: "M.48 0 C.3 -.3 -.3 -.3 -.48 0 C-.3 .3 .3 .3 .48 0 Z M.52 0 H.67",
       strike_craft:
         "M.65 -.45 Q.05 -.1 -.4 -.22 M.65 .45 Q.05 .1 -.4 .22 M.6 0 Q.4 -.1 .25 0 Q.4 .1 .6 0 Z",
       corvette:
@@ -655,7 +658,7 @@ export function FleetBuilder({
                     </div>
                     <div className="text-right flex flex-col items-end">
                       <span className="text-xs font-mono font-bold text-zinc-200 block select-all">
-                        {spec.cost} CR
+                        {spec.cost.toLocaleString("en-US")} CR
                       </span>
                       <div className="flex items-center gap-1.5 mt-1">
                         <span
@@ -679,6 +682,26 @@ export function FleetBuilder({
                   </div>
 
                   <p className="text-xs text-zinc-300 mt-1.5 select-text">{spec.desc}</p>
+                  {hull === "tender" && (
+                    <div className="mt-1.5 text-[11px] text-zinc-300">
+                      <div className="flex flex-wrap gap-1 font-mono">
+                        <span className="rounded border border-cyan-800/70 px-1.5 py-0.5 text-cyan-300">
+                          HARMONIC 65 SP/s · 500u
+                        </span>
+                        <span className="rounded border border-cyan-800/70 px-1.5 py-0.5 text-cyan-300">
+                          HAVEN +20%
+                        </span>
+                        <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-zinc-400">
+                          ECM IN RESEARCH
+                        </span>
+                      </div>
+                      <p className="mt-1 text-zinc-400">
+                        Provides focused 65 SP/s harmonic shield beam to allies within 500u, +20%
+                        capital haven radius, and point-defense flak. Note: ECM electronic warfare
+                        pulse currently under research and calibration.
+                      </p>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => setDoctrineHull(hull)}

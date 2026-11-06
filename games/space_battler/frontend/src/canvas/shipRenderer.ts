@@ -68,9 +68,23 @@ export function renderShip(
   if (hasFighterHazard(ship)) drawCoolantTrail(ctx, ship, time);
 
   if (isBlue) {
-    drawTerranHull(ctx, ship, primaryColor, hullDarkColor, accentColor);
+    drawTerranHull(
+      ctx,
+      ship,
+      primaryColor,
+      hullDarkColor,
+      accentColor,
+      ship.hullClass === "tender" ? time : undefined,
+    );
   } else {
-    drawAlienHull(ctx, ship, primaryColor, hullDarkColor, accentColor);
+    drawAlienHull(
+      ctx,
+      ship,
+      primaryColor,
+      hullDarkColor,
+      accentColor,
+      ship.hullClass === "tender" ? time : undefined,
+    );
   }
 
   drawHullDamage(ctx, ship, decals);
@@ -394,6 +408,108 @@ export function renderCarrierHull(
   ctx.restore();
 }
 
+function drawTenderHull(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  edge: string,
+  dark: string,
+  time = 0,
+): void {
+  const s = ship.size;
+  const alien = ship.team === 1;
+  ctx.save();
+  ctx.fillStyle = dark;
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1, s * 0.035);
+  ctx.beginPath();
+  if (alien) {
+    ctx.moveTo(s * 0.92, 0);
+    ctx.bezierCurveTo(s * 0.65, -s * 0.25, s * 0.1, -s * 0.68, -s * 0.58, -s * 0.52);
+    ctx.bezierCurveTo(-s * 0.92, -s * 0.36, -s * 0.85, -s * 0.14, -s * 0.8, 0);
+    ctx.bezierCurveTo(-s * 0.85, s * 0.14, -s * 0.92, s * 0.36, -s * 0.58, s * 0.52);
+    ctx.bezierCurveTo(s * 0.1, s * 0.68, s * 0.65, s * 0.25, s * 0.92, 0);
+  } else {
+    ctx.moveTo(s * 1.04, 0);
+    ctx.lineTo(s * 0.58, -s * 0.4);
+    ctx.lineTo(s * 0.25, -s * 0.5);
+    ctx.lineTo(s * 0.08, -s * 0.82);
+    ctx.lineTo(-s * 0.55, -s * 0.82);
+    ctx.lineTo(-s * 0.66, -s * 0.48);
+    ctx.lineTo(-s * 0.82, -s * 0.34);
+    ctx.lineTo(-s * 0.82, s * 0.34);
+    ctx.lineTo(-s * 0.66, s * 0.48);
+    ctx.lineTo(-s * 0.55, s * 0.82);
+    ctx.lineTo(s * 0.08, s * 0.82);
+    ctx.lineTo(s * 0.25, s * 0.5);
+    ctx.lineTo(s * 0.58, s * 0.4);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    if (alien) {
+      // Curved resonance antennae remain within the 1.4x shield envelope.
+      ctx.moveTo(-s * 0.5, side * s * 0.38);
+      ctx.bezierCurveTo(
+        -s * 0.25,
+        side * s * 0.82,
+        s * 0.55,
+        side * s * 0.95,
+        s * 0.85,
+        side * s * 0.68,
+      );
+      ctx.bezierCurveTo(
+        s * 0.5,
+        side * s * 0.81,
+        s * 0.05,
+        side * s * 0.65,
+        -s * 0.18,
+        side * s * 0.38,
+      );
+    } else {
+      ctx.moveTo(-s * 0.55, side * s * 0.75);
+      ctx.lineTo(s * 0.03, side * s * 0.75);
+      ctx.lineTo(s * 0.03, side * s * 0.57);
+      ctx.lineTo(-s * 0.55, side * s * 0.57);
+    }
+    ctx.closePath();
+    ctx.fillStyle = alien ? "#7f1d1d" : "#1e3a52";
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = alien ? "#fb7185" : "#7dd3fc";
+    ctx.beginPath();
+    ctx.arc(-s * 0.82, side * s * 0.25, s * 0.055, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Armored command citadel; the actual flak turret is drawn at its authoritative mount.
+  ctx.fillStyle = alien ? "#581c2b" : "#334155";
+  ctx.beginPath();
+  if (alien) {
+    ctx.ellipse(0, 0, s * 0.48, s * 0.3, 0, 0, Math.PI * 2);
+  } else {
+    ctx.moveTo(s * 0.42, 0);
+    ctx.lineTo(s * 0.25, -s * 0.32);
+    ctx.lineTo(-s * 0.3, -s * 0.32);
+    ctx.lineTo(-s * 0.48, 0);
+    ctx.lineTo(-s * 0.3, s * 0.32);
+    ctx.lineTo(s * 0.25, s * 0.32);
+    ctx.closePath();
+  }
+  ctx.fill();
+  ctx.stroke();
+  const pulse = 0.7 + 0.3 * Math.sin(time * 3);
+  ctx.shadowColor = alien ? "#f43f5e" : "#22d3ee";
+  ctx.shadowBlur = s * (0.12 + pulse * 0.18);
+  ctx.fillStyle = alien ? "#fb7185" : "#67e8f9";
+  ctx.globalAlpha *= 0.65 + pulse * 0.35;
+  ctx.beginPath();
+  ctx.arc(s * 0.57, 0, s * (0.09 + pulse * 0.02), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawTerranHull(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
@@ -402,6 +518,10 @@ function drawTerranHull(
   accentColor: string,
   previewTime?: number,
 ): void {
+  if (ship.hullClass === "tender") {
+    drawTenderHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
+    return;
+  }
   if (ship.hullClass === "carrier") {
     renderCarrierHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
     return;
@@ -430,7 +550,6 @@ function drawTerranHull(
       ctx.closePath();
       break;
 
-    case "tender":
     case "corvette":
       // Terran Aegis: angular escort with armored side sponsons
       ctx.moveTo(s * 1.15, 0);
@@ -538,6 +657,10 @@ function drawAlienHull(
   accentColor: string,
   previewTime?: number,
 ): void {
+  if (ship.hullClass === "tender") {
+    drawTenderHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
+    return;
+  }
   if (ship.hullClass === "carrier") {
     renderCarrierHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
     return;
@@ -567,7 +690,6 @@ function drawAlienHull(
       ctx.closePath();
       break;
 
-    case "tender":
     case "corvette":
       // Alien Sentinel: predatory stingray / manta silhouette
       ctx.moveTo(s * 1.15, 0);

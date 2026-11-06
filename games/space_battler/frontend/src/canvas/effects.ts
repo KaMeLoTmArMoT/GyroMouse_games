@@ -24,6 +24,11 @@ export function engineNozzles(ship: ShipState): Vector2[] {
         [-0.82, -0.25],
         [-0.82, 0.25],
       ];
+    case "tender":
+      return [
+        [-0.82, -0.25],
+        [-0.82, 0.25],
+      ];
     case "strike_craft":
       return blue
         ? [
@@ -108,6 +113,7 @@ export interface LaserBeamEffect {
   remainingDuration: number;
   maxDuration: number;
   active?: boolean;
+  harmonic?: boolean;
 }
 
 export interface ShieldImpactEffect {
@@ -332,6 +338,7 @@ export class VisualEffectsManager {
           ownerTeam: beam.ownerTeam,
           remainingDuration: 0.16,
           maxDuration: 0.16,
+          harmonic: beam.harmonic,
         };
         this.beams.push(effect);
       }

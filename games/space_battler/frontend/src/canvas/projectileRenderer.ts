@@ -13,7 +13,13 @@ export function renderBeam(
   const shimmer = 0.85 + 0.15 * Math.sin(time * 24);
   ctx.save();
   ctx.globalAlpha = alpha * shimmer;
-  ctx.strokeStyle = beam.ownerTeam === 0 ? "#0284c7" : "#991b1b";
+  ctx.strokeStyle = beam.harmonic
+    ? beam.ownerTeam === 0
+      ? "#38bdf8"
+      : "#c084fc"
+    : beam.ownerTeam === 0
+      ? "#0284c7"
+      : "#991b1b";
   ctx.shadowColor = beam.color;
   ctx.shadowBlur = 12;
   ctx.lineWidth = beam.width * 4;
@@ -24,6 +30,17 @@ export function renderBeam(
   ctx.strokeStyle = beam.color;
   ctx.lineWidth = beam.width;
   ctx.stroke();
+  if (beam.harmonic) {
+    ctx.fillStyle = beam.ownerTeam === 0 ? "#a5f3fc" : "#e9d5ff";
+    for (let i = 0; i < 3; i++) {
+      const phase = (time * 0.8 + i / 3) % 1;
+      const x = beam.from[0] + (beam.to[0] - beam.from[0]) * phase;
+      const y = beam.from[1] + (beam.to[1] - beam.from[1]) * phase;
+      ctx.beginPath();
+      ctx.arc(x, y, beam.width * 1.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   const radius = 8 + 2 * Math.sin(time * 31);
   const glow = ctx.createRadialGradient(beam.to[0], beam.to[1], 0, beam.to[0], beam.to[1], radius);
   glow.addColorStop(0, "#ffffff");

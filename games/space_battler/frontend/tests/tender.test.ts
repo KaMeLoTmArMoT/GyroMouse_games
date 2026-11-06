@@ -115,15 +115,22 @@ describe("harmonic shield restoration", () => {
     },
   );
 
-  it("caps overheal, discards unused throughput and provides cyan channel visuals for either team", () => {
-    const donor = ship("donor", "tender", [0, 0], 1);
-    const recipient = ship("recipient", "cruiser", [400, 0], 1);
+  it.each([
+    [0, "#22d3ee"],
+    [1, "#f43f5e"],
+  ] as const)("caps overheal and uses team %i channel visuals", (team, color) => {
+    const donor = ship("donor", "tender", [0, 0], team);
+    const recipient = ship("recipient", "cruiser", [400, 0], team);
     recipient.shieldCurrent -= 2;
     const system = new HarmonicShieldSystem();
     const callback = vi.fn();
     system.update([donor, recipient], 1 / 60, 1 / 60, callback);
-    expect(callback).toHaveBeenCalledWith(donor.pos, recipient.pos, "#38bdf8", 2.8, 1, true);
-    expect(system.collectActiveBeams()[0]).toMatchObject({ color: "#38bdf8", ownerTeam: 1 });
+    expect(callback).toHaveBeenCalledWith(donor.pos, recipient.pos, color, 2.8, team, true);
+    expect(system.collectActiveBeams()[0]).toMatchObject({
+      color,
+      ownerTeam: team,
+      harmonic: true,
+    });
     system.update([donor, recipient], 2 / 60, 1 / 60);
     expect(recipient.shieldCurrent).toBe(recipient.shieldMax);
     recipient.shieldCurrent = 0;
