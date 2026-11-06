@@ -2,7 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { CombatTelemetry } from "../src/engine/combatTelemetry";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { calculateSeparation } from "../src/engine/flightBehaviors";
-import { normalizeAngle, vecDistance } from "../src/engine/math2d";
+import * as flightControl from "../src/engine/flightControl";
+import {
+  normalizeAngle,
+  rotatePoint,
+  vecAdd,
+  vecDistance,
+  vecDot,
+  vecSub,
+} from "../src/engine/math2d";
 import {
   activeShieldRadius,
   shieldEnvelopeRadius,
@@ -426,6 +434,51 @@ describe("tethered guest damage absorption", () => {
 });
 
 describe("moving-slot attachment and relationship-aware collisions", () => {
+  it.each(["corridor", "stern-waypoint", "capture"] as const)(
+    "turns toward the approach vector until final slot capture (%s)",
+    (stage) => {
+      const parent = ship("parent", "battleship");
+      parent.heading = 0;
+      const craft = guest();
+      const system = new ShieldHavenSystem();
+      const ships = [parent, craft];
+      const lease = system.request(craft, ships, 0);
+      if (!lease) throw new Error("Expected reservation");
+      const slot = shieldHavenSlotPosition(parent, lease.slotId);
+      craft.pos =
+        stage === "stern-waypoint"
+          ? [-parent.size - craft.size - 10, 100]
+          : [slot[0] + (stage === "capture" ? 20 : 150), slot[1]];
+      craft.heading = Math.PI / 2;
+      system.moveGuest(craft, ships, 1 / 60);
+      expect(craft.heading).toBeCloseTo(
+        Math.PI / 2 + ((stage === "capture" ? -1 : 1) * craft.turnRate) / 60,
+      );
+    },
+  );
+
+  it.each(["strike_craft", "corvette"] as const)(
+    "limits reverse %s haven propulsion while turning toward the slot",
+    (hull) => {
+      const parent = ship("parent", "battleship");
+      parent.heading = 0;
+      const craft = guest("guest", hull);
+      const system = new ShieldHavenSystem();
+      const ships = [parent, craft];
+      const lease = system.request(craft, ships, 0);
+      if (!lease) throw new Error("Expected reservation");
+      const slot = shieldHavenSlotPosition(parent, lease.slotId);
+      craft.pos = [slot[0] + 300, slot[1]];
+      craft.heading = 0;
+      craft.turnRate = 0;
+      for (let frame = 0; frame < 60; frame++) {
+        system.moveGuest(craft, ships, 1 / 60);
+        expect(craft.velocity[0]).toBeGreaterThanOrEqual(-craft.maxSpeed * 0.35 - 1e-8);
+      }
+      expect(craft.velocity[0]).toBeCloseTo(-craft.maxSpeed * 0.35);
+    },
+  );
+
   it.each(["battleship", "dreadnought", "cruiser"] as const)(
     "matches all six moving %s slots under linear movement and both rotation directions",
     (hull) => {
@@ -840,6 +893,68 @@ describe("recovery episode lifecycle", () => {
 });
 
 describe("simulation-owned haven allocation", () => {
+  it.each(["recover", "seeking"] as const)(
+    "turns a %s fighter nose-first toward the parent-local retreat waypoint",
+    (state) => {
+      const parent = ship("parent", "battleship", [-900, 350]);
+      parent.heading = Math.PI / 2;
+      const craft = guest();
+      craft.pos = [0, 0];
+      craft.heading = 0;
+      const enemy = ship("enemy", "battleship", [1500, 0], 1);
+      const sim = new ClientCombatSimulation();
+      for (const s of [parent, craft, enemy]) sim.addShip(s);
+      sim["ensureFighterWings"](sim.ships);
+      craft.fighterPhase = state === "recover" ? "recover" : "attack";
+      craft.havenState = state === "seeking" ? "seeking" : "none";
+      const retreat = vecAdd(parent.pos, rotatePoint([-parent.size - 55, 0], parent.heading));
+      const delta = vecSub(retreat, craft.pos);
+      const expectedHeading = Math.atan2(delta[1], delta[0]);
+      const maneuver = sim["updateFighterCycle"](craft, enemy, 1 / 60, sim.ships);
+      expect(Math.abs(normalizeAngle(maneuver.heading - expectedHeading))).toBeLessThanOrEqual(
+        Math.PI / 8,
+      );
+      expect(maneuver.speed).toBeGreaterThan(0);
+      sim["updateShipMovement"](craft, enemy, sim.ships, 1 / 60);
+      expect(craft.heading).toBeCloseTo(craft.turnRate / 60);
+      for (let frame = 0; frame < 60; frame++) {
+        sim["updateShipMovement"](craft, enemy, sim.ships, 1 / 60);
+      }
+      expect(vecDot(craft.velocity, vecSub(retreat, craft.pos))).toBeGreaterThan(0);
+      expect(
+        vecDot(craft.velocity, [Math.cos(craft.heading), Math.sin(craft.heading)]),
+      ).toBeGreaterThan(0);
+    },
+  );
+
+  it.each(["battleship", "dreadnought", "cruiser", "missile_frigate", "corvette"] as const)(
+    "caps %s reverse thrust at 35 percent while retaining full forward thrust",
+    (hull) => {
+      const capitalIntent = vi.spyOn(flightControl, "capitalIntent");
+      const escortVelocity = vi.spyOn(flightControl, "escortVelocity");
+      try {
+        for (const direction of [-1, 1]) {
+          const craft = ship("craft", hull);
+          craft.heading = 0;
+          craft.turnRate = 0;
+          const enemy = ship("enemy", "battleship", [1500, 0], 1);
+          const sim = new ClientCombatSimulation();
+          const velocity: Vector2 = [direction * craft.maxSpeed, 0];
+          capitalIntent.mockReturnValue({ heading: 0, velocity, rangePhase: "approach" });
+          escortVelocity.mockReturnValue(velocity);
+          for (let frame = 0; frame < 120; frame++) {
+            sim["updateShipMovement"](craft, enemy, [craft, enemy], 1 / 60);
+            expect(craft.velocity[0]).toBeGreaterThanOrEqual(-craft.maxSpeed * 0.35 - 1e-8);
+          }
+          expect(craft.velocity[0]).toBeCloseTo(craft.maxSpeed * (direction < 0 ? -0.35 : 1));
+        }
+      } finally {
+        capitalIntent.mockRestore();
+        escortVelocity.mockRestore();
+      }
+    },
+  );
+
   it("detects broken shields before regen and preserves ordinary fallback for the seventh request", () => {
     const parent = ship("parent", "battleship");
     const guests = Array.from({ length: 7 }, (_, i) => {

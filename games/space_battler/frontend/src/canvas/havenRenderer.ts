@@ -7,6 +7,34 @@ import {
 } from "../engine/shieldHaven";
 import type { ShipState } from "../types/combat";
 
+function isIncoming(guest: ShipState): boolean {
+  return guest.isAlive && (guest.havenState === "seeking" || guest.havenState === "approaching");
+}
+
+function renderGuidance(
+  ctx: CanvasRenderingContext2D,
+  guest: ShipState,
+  parent: ShipState,
+  slot: ShieldHavenSlotId,
+  time: number,
+  color: string,
+): void {
+  const [x, y] = shieldHavenSlotPosition(parent, slot);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.65 + 0.15 * Math.sin(time * 4);
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 6;
+  ctx.lineWidth = 1.4;
+  ctx.setLineDash([7, 5]);
+  ctx.lineDashOffset = -time * 12;
+  ctx.beginPath();
+  ctx.moveTo(guest.pos[0], guest.pos[1]);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function renderHavenTethers(
   ctx: CanvasRenderingContext2D,
   ships: readonly ShipState[],
@@ -14,6 +42,16 @@ export function renderHavenTethers(
 ): void {
   const byId = new Map(ships.map((ship) => [ship.id, ship]));
   for (const guest of ships) {
+    if (isIncoming(guest) && guest.havenParentId && guest.havenSlotId) {
+      const parent = byId.get(guest.havenParentId);
+      if (
+        parent?.isAlive &&
+        isCapitalShip(parent) &&
+        Object.hasOwn(SHIELD_HAVEN_SLOTS, guest.havenSlotId)
+      ) {
+        renderGuidance(ctx, guest, parent, guest.havenSlotId as ShieldHavenSlotId, time, "#67e8f9");
+      }
+    }
     if (!guest.isAlive || guest.havenState !== "tethered" || !guest.havenParentId) continue;
     const parent = byId.get(guest.havenParentId);
     if (!parent?.isAlive) continue;
@@ -49,14 +87,20 @@ export function renderHavenSlots(
   parent: ShipState,
   ships: readonly ShipState[],
   haven: ShieldHavenSystem,
+  time: number,
 ): void {
   if (!parent.isAlive || !isCapitalShip(parent)) return;
-  const occupied = new Set(
-    ships
-      .map((ship) => haven.getLease(ship.id))
-      .filter((lease) => lease?.parentId === parent.id)
-      .map((lease) => lease?.slotId),
-  );
+  const occupied = new Set<ShieldHavenSlotId>();
+  const incoming = new Map<ShieldHavenSlotId, ShipState>();
+  for (const guest of ships) {
+    const lease = haven.getLease(guest.id);
+    if (lease?.parentId !== parent.id) continue;
+    occupied.add(lease.slotId);
+    if (isIncoming(guest)) incoming.set(lease.slotId, guest);
+  }
+  for (const [slot, guest] of incoming) {
+    renderGuidance(ctx, guest, parent, slot, time, "#fbbf24");
+  }
   ctx.save();
   ctx.strokeStyle = parent.team === 0 ? "#67e8f9" : "#fb7185";
   ctx.shadowColor = ctx.strokeStyle;
@@ -70,6 +114,19 @@ export function renderHavenSlots(
     ctx.beginPath();
     ctx.arc(x, y, 6, 0, Math.PI * 2);
     ctx.stroke();
+    if (incoming.has(slot)) {
+      ctx.save();
+      ctx.strokeStyle = "#fbbf24";
+      ctx.shadowColor = "#fbbf24";
+      ctx.shadowBlur = 8;
+      ctx.globalAlpha = 0.7 + 0.2 * Math.sin(time * 4);
+      ctx.setLineDash([3, 3]);
+      ctx.lineDashOffset = -time * 6;
+      ctx.beginPath();
+      ctx.arc(x, y, 10 + Math.sin(time * 4), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
   ctx.restore();
 }

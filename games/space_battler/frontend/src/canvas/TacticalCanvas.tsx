@@ -337,7 +337,7 @@ export function TacticalCanvas({
           if (selectedShipId) {
             const selectedShip = sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
             if (selectedShip) {
-              renderHavenSlots(ctx, selectedShip, sim.ships, sim.shieldHaven);
+              renderHavenSlots(ctx, selectedShip, sim.ships, sim.shieldHaven, sim.timeElapsed);
               drawTacticalTrajectory(ctx, selectedShip, sim, wings);
             }
           }

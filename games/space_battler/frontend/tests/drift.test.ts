@@ -27,6 +27,19 @@ function baseline(): GoldenBaseline {
 }
 
 describe("anti-drift guardrails", () => {
+  it.each(["pd1", "pd2"])(
+    "buffs corvette %s ship damage without changing missile interception",
+    (id) => {
+      const weapon = HULL_PROFILES.corvette.turrets.find((turret) => turret.id === id)?.weapon;
+      expect(weapon).toMatchObject({
+        shieldMultiplier: 0.35,
+        armorMultiplier: 0.45,
+        hullMultiplier: 0.45,
+        flak: { lifetime: 0.32, triggerRadius: 15, blastRadius: 30, missileDamage: 18 },
+      });
+    },
+  );
+
   it("isolates direct gun DPS from fighter mission cycles and measures the fixed salvo and defenses", () => {
     const fixtures = runLayerA();
     const codes = { battleship: "bb", cruiser: "cr", strike_craft: "sc" } as const;

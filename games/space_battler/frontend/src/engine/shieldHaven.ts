@@ -5,6 +5,7 @@ import {
   rotatePoint,
   vecAdd,
   vecDistance,
+  vecDot,
   vecNormalize,
   vecScale,
   vecSub,
@@ -278,6 +279,7 @@ export class ShieldHavenSystem {
     const side = Math.sign(SHIELD_HAVEN_SLOTS[slotId][1]);
     const outward = rotatePoint([0, side], parent.heading);
     let desired: Vector2;
+    let targetHeading = Math.atan2(outward[1], outward[0]);
     if (guest.havenState === "releasing") {
       // Keep the shield exemption until beyond the repulsor, not merely the hull.
       const clear = shieldEnvelopeRadius(parent) + shieldEnvelopeRadius(guest) + 30;
@@ -302,6 +304,10 @@ export class ShieldHavenSystem {
           : rotatePoint(vecSub(slot, parent.pos), -parent.heading);
       const delta = vecSub(vecAdd(parent.pos, rotatePoint(waypoint, parent.heading)), guest.pos);
       const distance = vecDistance([0, 0], delta);
+      targetHeading =
+        distance < 35 && vecDistance(guest.pos, slot) < 35
+          ? parent.heading
+          : Math.atan2(delta[1], delta[0]);
       desired = vecAdd(
         shieldHavenSlotVelocity(parent, slotId),
         boundedVector(
@@ -310,15 +316,23 @@ export class ShieldHavenSystem {
         ),
       );
     }
+    guest.heading = normalizeAngle(
+      guest.heading +
+        clamp(
+          normalizeAngle(targetHeading - guest.heading),
+          -guest.turnRate * dt,
+          guest.turnRate * dt,
+        ),
+    );
+    const forward: Vector2 = [Math.cos(guest.heading), Math.sin(guest.heading)];
+    const forwardSpeed = vecDot(desired, forward);
+    desired = vecAdd(
+      desired,
+      vecScale(forward, Math.max(0, -guest.maxSpeed * 0.35 - forwardSpeed)),
+    );
     guest.velocity = vecAdd(
       guest.velocity,
       boundedVector(vecSub(desired, guest.velocity), havenAcceleration(guest) * dt),
-    );
-    const heading =
-      guest.havenState === "releasing" ? Math.atan2(outward[1], outward[0]) : parent.heading;
-    guest.heading = normalizeAngle(
-      guest.heading +
-        clamp(normalizeAngle(heading - guest.heading), -guest.turnRate * dt, guest.turnRate * dt),
     );
     guest.pos = vecAdd(guest.pos, vecScale(guest.velocity, dt));
     return true;

@@ -870,7 +870,7 @@ export class ClientCombatSimulation {
     const isDamaged = this.fighterNeedsCover(ship);
     const wing = this.fighterWings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
     if (!wing) return { heading: ship.heading, speed: 0 };
-    const phase = ship.fighterPhase ?? wing.phase;
+    const phase = ship.havenState === "seeking" ? "recover" : (ship.fighterPhase ?? wing.phase);
     const liningUp =
       phase === "attack" &&
       ship.turrets.some(
@@ -928,7 +928,13 @@ export class ClientCombatSimulation {
       case "recover": {
         const peelSign = wing.index % 2 === 0 ? 1 : -1;
         intentTarget = safeHaven
-          ? vecAdd(safeHaven.pos, rotatePoint([-safeHaven.size - 55, slot * 28], wing.heading))
+          ? vecAdd(
+              safeHaven.pos,
+              rotatePoint(
+                [-safeHaven.size - 55, slot * 28],
+                phase === "recover" ? safeHaven.heading : wing.heading,
+              ),
+            )
           : vecAdd(rallySlot, rotatePoint([0, peelSign * 150], wing.heading));
         break;
       }
@@ -964,7 +970,10 @@ export class ClientCombatSimulation {
       );
 
       // A. Interest score: progress towards intent goal
-      const interestScore = vecDot(candidateDir, intentDir);
+      // Recovery values the eventual sanctuary bearing even when it requires a full turn.
+      const interestDir: Vector2 =
+        phase === "recover" ? [Math.cos(sectorAngle), Math.sin(sectorAngle)] : candidateDir;
+      const interestScore = vecDot(interestDir, intentDir);
 
       // B. Threat & missile danger: predict closest approach of incoming missiles
       let dangerScore = 0;
@@ -1152,6 +1161,7 @@ export class ClientCombatSimulation {
     const currentLateralSpeed = vecDot(ship.velocity, rightVector);
 
     if (thrusterVelocity) desiredSpeed = vecDot(thrusterVelocity, forwardVector);
+    desiredSpeed = Math.max(desiredSpeed, -ship.maxSpeed * 0.35);
     const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
     const newLateralSpeed = thrusterVelocity
       ? currentLateralSpeed +
