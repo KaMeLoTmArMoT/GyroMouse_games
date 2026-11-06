@@ -1,50 +1,43 @@
-# Space Battler — Tactical Roadmap & Feature Backlog
+# Space Battler — Tactical Roadmap & Architecture
 
-Last Updated: 2026-11-05
-Status: Grand Scale Production Baseline Active (All 215 Vitest tests passing, 0 Drift alerts)
-
----
-
-## 1. Recently Completed & Calibrated Systems
-
-- **Ship Doctrine Cards & Interactive State Machine Overlays (UI)**:
-  - Canonical structured data in `src/engine/shipDoctrines.ts` detailing state flows, operational parameters, and transition triggers for all 6 hulls.
-  - Interactive `[Doctrine & States]` badge on each ship card in Fleet Builder opening a sleek modal diagram ([`DoctrineDialog.tsx`](file:///g:/programming/GyroMouse_games/games/space_battler/frontend/src/components/DoctrineDialog.tsx)).
-- **Missile Frigate "Fire-and-Run" Skirmish Doctrine**:
-  - Frigates approach to 1200u for coordinated salvo delivery, then break off at 150° and full 100u/s speed to relocate/kite along an arc while reloading.
-  - 4 missile tubes fire with exact spatial fan-out offsets (+5°, -5°, +30°, -30°) and agile 2.5 rad/s homing.
-- **In-Flight Ordnance Retargeting**:
-  - Missiles/torpedoes whose primary target dies scan a 60° forward seeker cone to immediately reacquire the nearest living hostile.
-- **Compact Fleet Builder UI (Single-Screen Zero-Scroll)**:
-  - Removed clutter text, compressed card margins and button padding so all 6 ships fit without page scrolling.
-  - Hides the adversary dropdown when customizing the Opposing Red Force.
-- **Roster Expansion: Bastion Dreadnought & Quiver Missile Frigate (Activated)**: 
-  - `dreadnought` (3600 CR): 4 heavy 380mm artillery batteries utilizing 3-of-4 broadside architecture (bow, port, starboard, wrapped aft arc), deep armor, and bespoke 2.5D hull & turret visuals.
-  - `missile_frigate` (700 CR): 4 light missile tubes delivering shield-breaking kinetic swarms, 1150u standoff doctrine, exposed launch cells and sensor mast art.
-- **Custom Dual Fleet Builder & Scenario Selector (UI)**: Full two-fleet customization (`Custom Opposing Fleet`), Blue/Red editor tab switcher, one-click Curated & Extreme scenario presets (`Three Knives`, `Needle Cloud`, `1 BB vs 27 Fighters`, etc.), and a "Mirror Fleet" cloning action.
-- **Predictive Turret Slewing & Optimistic Aiming**: Turrets outside current firing arc pre-emptively slew to sector limits facing the ship's active target, eliminating acquisition delay upon broadside turn.
-- **Calibrate Script Refactoring & Single Source of Truth**: Replaced legacy text-patching in `bench/calibrate.ts` with direct overrides against canonical `shipProfiles.ts` (`HULL_PROFILES`).
-- **2.5D Ship Previews & Laser Avoidance**: Debounced rotating 2.5D hull previews on icon hover with depth shading; small craft calculate capital beam laser arcs + turn rate for predictive evasive maneuvers.
-- **Fighter Heatmap Dispersal, Flanking Ducts & Audio Synthesis (B.15)**: 200u quadratic repulsion between wing centers, alternating center/±40° attack corridors, wounded retreat (<30% HP) under capital ship umbrellas, and Web Audio procedural combat sound cues (`torpedo_launch`, `flak_burst`, `laser_intercept`, `warp_ingress`, `fighter_egress`).
-- **Refined Heavy Torpedo Defense Matrix & Echelon Visuals (B.16)**: 120 HP heavy torpedoes, flak casing degradation (18 dmg), rotary PD bursts (15 dmg), laser PD beams, 3-tier turret target priority, live integrity bar & damage FX, echelon wave pills, and retreat coolant leak trails.
-- **Clickable Smart Projectile Telemetry HUD (B.13)**: Click guided torpedoes/missiles to inspect tracking reticle, 60° seeker cone, target pursuit line, and live fuel/speed sidebar card.
-- **3-Echelon Staggered Strike Wings & Fuel Limits (B.14)**: 10-craft wings split into 4+3+3 echelons launching every 1.7s (102 frames) to maintain shield suppression; torpedoes capped at 8s fuel to prevent orbiting.
-- **Warp Gate Transition & Ingress FX**: Shimmering neon spatial rift aperture expanding and collapsing on match start and remnant rematch with team-coded particles.
-- **Beam Laser Post-Channel Cooldown & Fighter Strike Run Fix**: Laser cooldown strictly starts after 1.2s beam completion/cutoff; strike craft engagement starts at $\le 600\text{u}$ so all 30 craft deliver first-pass payloads.
-- **300s Stalemate Horizon & Remnant Continuation (B.6)**: 300s draw limit (`winner = -1`), post-match «Продовжити бій» rematch button resetting surviving ships to mirrored spawns with preserved hull/armor damage and full shields.
-- **Single Source of Truth (`shipProfiles.ts`)**: Unified canonical hull/weapon profiles (`HULL_PROFILES`), eliminating magic number duplication across fleet builder, UI catalog, and drift test suites.
-- **Sustained Channeled Beam Lasers (B.3)**: 1.2s continuous beam channel with 12 discrete 0.1s damage ticks, target tracking, early cutoff, shimmering impact flares, and calibrated DPS.
-- **Capital Standoff Envelopes & Cruiser Drift Fix (B.9)**: Dynamic weapon-derived standoffs ($1500\text{u}$ / $1100\text{u}$ / $750\text{u}$); cruisers fly bow-first during approach with lateral drift clamped, broadside-weaving only in firing range.
-- **4-Layer Anti-Drift Architecture (`bench/drift.ts`, B.10)**: Layer A isolated sentinels (DPS $\pm 3\%$, 10-missile flak, shield recharge) + Layer B 16-scenario 4-seed panel (duration $\pm 10\%$, HP $\pm 5\text{ pp}$); verified in $5.5\text{s}$.
-- **Tactical Group Spatial Spawns (B.11)**: Wings Alpha, Bravo, Charlie, Delta, Echo spawn at distinct spatial anchors with inter-group distance > intra-group spacing.
-- **Layer-Specific Hit FX & Damage Decals (B.12)**: Electric blue ripples for shields, molten sparks for armor, explosive fireball/debris for hull; trailing smoke $<50\%$ armor, heavy plumes + red hazard strobes $<30\%$ hull, and scorch decals.
-- **Picket Sortie Doctrine & 90% Flak Interception Cap (B.8 & B.2)**: Corvettes sortie to 550u screen (tether 600u) when shields $>70\%$ and fall back below 40%; flak has deterministic 90% interception cap allowing ~10% torpedoes through.
+Last Updated: 2026-11-06
+Status: Production Baseline Active (227 Vitest tests passing, 0 Drift alerts)
 
 ---
 
-## 2. Priority Feature Backlog (Pending Activation)
+## 1. Recently Completed Milestones
 
-- **Remaining Roster Expansion Candidates**:
-  - Torpedo Bomber / Heavy Gunship (dedicated anti-capital strike craft).
-  - Shield Tender / EW Support (localized shield recharge aura).
-  - Plasma Assault Corvette (short-range brawler).
+- **DRY / Behavior Blocks Phase 1**: Extracted `flightBehaviors.ts` (`StandoffApproachBlock`, `BroadsideWeaveBlock`, `HitAndRunSkirmishBlock`, `LowHealthRetreatBlock`, `calculateSeparation`).
+- **Flak Balance Tuning**: Refined corvette flak interception (`triggerRadius: 15`, `blastRadius: 30`, spread `0.035 rad`) to let missile/torpedo swarms break through.
+- **2D/2.5D Silhouette Parity**: Rewrote SVG `ShipSilhouette` to 100% mathematical parity with `shipRenderer.ts` across all 6 Terran and 6 Alien hulls.
+- **Anti-Overkill Targeting**: Capped missile lock allocations per hull (`strike_craft: 2`, `corvette: 6`, `cruiser: 14`, capital: unlimited) to prevent salvo waste.
+- **Compact UI & Ship Doctrine Dialog**: Single-screen zero-scroll fleet builder and interactive state machine modal.
+- **Roster Expansion (Dreadnought & Missile Frigate)**: Bastion Dreadnought (3600 CR, 3-of-4 broadsides) and Quiver Missile Frigate (700 CR, fire-and-run kiting).
+
+---
+
+## 2. Active Roadmap: DRY/OOP Behavior Pipeline & Shield Haven
+
+### Phase 1: Behavior Contracts & Reducer Extraction (Sol)
+- Decouple heading decisions from velocity calculations.
+- Extract dedicated state reducers: `BroadsideCycle` and `SkirmishCycle` (eliminates re-using capital maneuver states).
+- Implement explicit range-phase classification (`approach` vs `engage`) to guarantee zero 45° crab-walking.
+- Single movement integrator enforcing post-turn lateral drift constraints.
+
+### Phase 2: Shield Geometry & Haven Anchor Allocation (Sol + Terra)
+- Authoritative shield scaling (`1.68x` for Battleship, Dreadnought, Cruiser; `1.4x` for small craft).
+- Geometry fit validation for 6 docking slots (`port-forward/mid/aft`, `starboard-forward/mid/aft`).
+- Simulation-owned `ShieldHavenSystem` with deterministic atomic leasing and hysteresis (<30% HP / broken shields enter; >=75% shield release; <10% parent shield emergency release).
+
+### Phase 3: Moving-Slot Attachment & Collision Bypass (Sol)
+- Rotating slot velocity matching $V_i = V_p + \omega \times r_i$.
+- Relationship-aware collision exemptions (allow shield overlap for tethered guests while strictly prohibiting hull overlap).
+- Bounded ejection corridors on emergency release.
+
+### Phase 4: Umbrella Damage Absorption & Visuals (Sol + Terra)
+- Parent shield absorbs incoming external attacks directed at tethered craft.
+- Visual FX (tether beams, shield haven connection lines, impact ripples) in `TacticalCanvas.tsx` and `shipRenderer.ts`.
+
+### Phase 5: Dynamic Doctrine UI Synchronization (Terra)
+- Dynamic resolver `resolveDoctrine(definition, loadout, order)` feeding `DoctrineDialog.tsx`.
+- Real-time structural parameters and state transitions directly rendered from code without authored text duplication.
