@@ -3,7 +3,11 @@ import { CombatTelemetry } from "../src/engine/combatTelemetry";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { calculateSeparation } from "../src/engine/flightBehaviors";
 import { normalizeAngle, vecDistance } from "../src/engine/math2d";
-import { activeShieldRadius, shieldEnvelopeRadius } from "../src/engine/shieldGeometry";
+import {
+  activeShieldRadius,
+  shieldEnvelopeRadius,
+  shieldRepulsorRadius,
+} from "../src/engine/shieldGeometry";
 import {
   havenAcceleration,
   havenHullClearance,
@@ -50,6 +54,24 @@ describe("authoritative shield geometry", () => {
     (hull) => {
       const light = ship("light", hull);
       expect(shieldEnvelopeRadius(light)).toBeCloseTo(light.size * 1.4);
+    },
+  );
+
+  it.each(["battleship", "dreadnought", "cruiser", "corvette"] as const)(
+    "inflates the %s repulsor continuously from zero charge while retaining its hitbox",
+    (hull) => {
+      const parent = ship("parent", hull);
+      parent.shieldCurrent = 0;
+      expect(shieldRepulsorRadius(parent)).toBe(parent.size);
+      parent.shieldCurrent = parent.shieldMax * 0.0001;
+      expect(shieldRepulsorRadius(parent) - parent.size).toBeLessThan(0.01);
+      expect(activeShieldRadius(parent)).toBe(shieldEnvelopeRadius(parent));
+      parent.shieldCurrent = parent.shieldMax * 0.5;
+      expect(shieldRepulsorRadius(parent)).toBeCloseTo(
+        (parent.size + shieldEnvelopeRadius(parent)) / 2,
+      );
+      parent.shieldCurrent = parent.shieldMax;
+      expect(shieldRepulsorRadius(parent)).toBe(shieldEnvelopeRadius(parent));
     },
   );
 
@@ -156,6 +178,119 @@ function havenAttack(sim: ClientCombatSimulation, craft: ShipState, type: Weapon
   };
   return { attacker, turret, impact };
 }
+
+describe("capital tactical separation and soft contacts", () => {
+  it.each(["battleship", "dreadnought", "cruiser"] as const)(
+    "starts %s separation at 420u hostile and 300u friendly even without shields",
+    (hull) => {
+      const capital = ship("capital", hull);
+      const peer = ship("peer", hull, [400, 0], 1);
+      capital.shieldCurrent = peer.shieldCurrent = 0;
+      expect(calculateSeparation(capital, [capital, peer])[0]).toBeLessThan(0);
+      peer.pos = [420, 0];
+      expect(calculateSeparation(capital, [capital, peer])).toEqual([0, 0]);
+      peer.team = capital.team;
+      expect(calculateSeparation(capital, [capital, peer])).toEqual([0, 0]);
+      peer.pos = [280, 0];
+      expect(calculateSeparation(capital, [capital, peer])[0]).toBeLessThan(0);
+      peer.pos = [300, 0];
+      expect(calculateSeparation(capital, [capital, peer])).toEqual([0, 0]);
+    },
+  );
+
+  it.each([0, 1])(
+    "restores capital standoff against team %s without ramming or launching",
+    (team) => {
+      const a = ship("a", "battleship");
+      const b = ship("b", "battleship", [240, 0], team);
+      a.velocity = [20, 0];
+      b.velocity = [-20, 0];
+      const sim = new ClientCombatSimulation();
+      sim.addShip(a);
+      sim.addShip(b);
+      for (let frame = 0; frame < 30; frame++) {
+        const previous = [a.pos, b.pos];
+        sim["resolveShipCollisions"]([a, b], 1 / 60, false);
+        expect(vecDistance(previous[0], a.pos)).toBeLessThanOrEqual(4 + 1e-6);
+        expect(vecDistance(previous[1], b.pos)).toBeLessThanOrEqual(4 + 1e-6);
+      }
+      expect(vecDistance(a.pos, b.pos)).toBeCloseTo(team === 0 ? 300 : 420);
+      expect(a.velocity).toEqual([0, 0]);
+      expect(b.velocity).toEqual([0, 0]);
+      expect(a.shieldCurrent).toBe(a.shieldMax);
+      expect(b.shieldCurrent).toBe(b.shieldMax);
+    },
+  );
+
+  it("does not eject a neighboring frigate when a capital shield regenerates from zero", () => {
+    const capital = ship("capital", "battleship");
+    const escort = ship("escort", "missile_frigate");
+    capital.shieldCurrent = 0;
+    capital.shieldRegen = capital.shieldMax * 0.1;
+    escort.pos = [capital.size + shieldRepulsorRadius(escort) + 20, 0];
+    const previous: Vector2 = [...escort.pos];
+    const sim = new ClientCombatSimulation();
+    sim.addShip(capital);
+    sim.addShip(escort);
+    sim.update(1 / 60);
+    expect(capital.shieldCurrent).toBeGreaterThan(0);
+    expect(vecDistance(previous, escort.pos)).toBeLessThan(1);
+    expect(vecDistance([0, 0], escort.velocity)).toBeLessThan(2);
+  });
+
+  it("shares a single soft-displacement budget across crowded contacts", () => {
+    const capital = ship("capital", "battleship");
+    const peers = Array.from({ length: 3 }, (_, i) =>
+      ship(`peer_${i}`, "dreadnought", [
+        200 * Math.cos(((i - 1) * Math.PI) / 3),
+        200 * Math.sin(((i - 1) * Math.PI) / 3),
+      ]),
+    );
+    const ships = [capital, ...peers];
+    const previous = ships.map((s) => s.pos);
+    const sim = new ClientCombatSimulation();
+    sim["resolveShipCollisions"](ships, 1 / 60, false);
+    ships.forEach((s, i) => {
+      expect(vecDistance(previous[i], s.pos)).toBeLessThanOrEqual(4 + 1e-6);
+    });
+  });
+
+  it("caps a sudden full shield refill without imparting outward velocity", () => {
+    const capital = ship("capital", "battleship");
+    const escort = ship("escort", "missile_frigate");
+    capital.shieldCurrent = 0;
+    escort.pos = [capital.size + shieldRepulsorRadius(escort) + 20, 0];
+    const previous = [capital.pos, escort.pos];
+    capital.shieldCurrent = capital.shieldMax;
+    const sim = new ClientCombatSimulation();
+    sim["resolveShipCollisions"]([capital, escort], 1 / 60, false);
+    expect(vecDistance(previous[0], capital.pos)).toBeLessThanOrEqual(4);
+    expect(vecDistance(previous[1], escort.pos)).toBeLessThanOrEqual(4);
+    expect(escort.pos[0]).toBeGreaterThan(previous[1][0]);
+    expect(capital.velocity).toEqual([0, 0]);
+    expect(escort.velocity).toEqual([0, 0]);
+  });
+
+  it("keeps the friendly cruiser clearance pass from bypassing the soft cap", () => {
+    const a = ship("a", "cruiser");
+    const b = ship("b", "cruiser", [100, 0]);
+    const sim = new ClientCombatSimulation();
+    sim.addShip(a);
+    sim.addShip(b);
+    sim.update(1 / 60);
+    expect(vecDistance([0, 0], a.pos)).toBeLessThanOrEqual(4);
+    expect(vecDistance([100, 0], b.pos)).toBeLessThanOrEqual(4);
+    expect(vecDistance(a.pos, b.pos)).toBeGreaterThan(100);
+  });
+
+  it("preserves immediate physical exclusion for coincident capital hulls", () => {
+    const a = ship("a", "battleship");
+    const b = ship("b", "dreadnought");
+    const sim = new ClientCombatSimulation();
+    sim["resolveShipCollisions"]([a, b], 1 / 60, false);
+    expect(vecDistance(a.pos, b.pos)).toBeGreaterThanOrEqual(a.size + b.size);
+  });
+});
 
 describe("tethered guest damage absorption", () => {
   const weapons = ["railgun", "beam_laser", "missile", "point_defense"] as const;
@@ -401,12 +536,16 @@ describe("moving-slot attachment and relationship-aware collisions", () => {
     },
   );
 
-  it("keeps unrelated friendly ships outside the standard shield repulsor", () => {
+  it("moves unrelated friendly ships out of the shield repulsor with bounded steps", () => {
     const { sim, craft } = dockedSimulation();
     const unrelated = ship("unrelated", "corvette", [craft.pos[0], craft.pos[1] - 30]);
     sim.addShip(unrelated);
     expect(sharesShieldHaven(craft, unrelated)).toBe(false);
-    sim.update(1 / 60);
+    for (let frame = 0; frame < 12; frame++) {
+      const previous: Vector2 = [...unrelated.pos];
+      sim["resolveShipCollisions"]([craft, unrelated], 1 / 60, true);
+      expect(vecDistance(previous, unrelated.pos)).toBeLessThanOrEqual(4 + 1e-6);
+    }
     expect(vecDistance(craft.pos, unrelated.pos) + 1e-6).toBeGreaterThanOrEqual(
       activeShieldRadius(craft) + activeShieldRadius(unrelated) + 20,
     );

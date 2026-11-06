@@ -53,7 +53,12 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { activeShieldRadius, shieldEnvelopeRadius } from "./shieldGeometry";
+import {
+  activeShieldRadius,
+  capitalSeparationDistance,
+  shieldEnvelopeRadius,
+  shieldRepulsorRadius,
+} from "./shieldGeometry";
 import { havenHullClearance, ShieldHavenSystem, sharesShieldHaven } from "./shieldHaven";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
 import {
@@ -106,9 +111,8 @@ export interface FighterWingVisual {
   targetId: string | null;
   heading: number;
 }
-const CRUISER_CLEARANCE = 100;
-
 const FIXED_STEP = 1 / 60;
+const MAX_REPULSOR_STEP = 4;
 const BEAM_TICK_FRAMES = 6;
 const BEAM_TICKS = 12;
 
@@ -414,10 +418,11 @@ export class ClientCombatSimulation {
       Object.assign(ship, previous);
     }
     for (const ship of aliveShips) Object.assign(ship, movements.get(ship.id));
-    this.resolveShipCollisions(aliveShips, dt, false);
+    const repulsorSteps = new Map<string, number>();
+    this.resolveShipCollisions(aliveShips, dt, false, repulsorSteps);
     this.resolveCruiserClearance(aliveShips);
     this.shieldHaven.attachGuests(aliveShips, dt);
-    this.resolveShipCollisions(aliveShips, dt, true);
+    this.resolveShipCollisions(aliveShips, dt, true, repulsorSteps);
 
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
@@ -1183,7 +1188,12 @@ export class ClientCombatSimulation {
     ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
   }
 
-  private resolveShipCollisions(aliveShips: ShipState[], dt: number, tetheredPass: boolean): void {
+  private resolveShipCollisions(
+    aliveShips: ShipState[],
+    dt: number,
+    tetheredPass: boolean,
+    repulsorSteps = new Map<string, number>(),
+  ): void {
     const contacts = tetheredPass ? new Set(this.contacts) : new Set<string>();
     const getShipMass = (hull: string): number => {
       switch (hull) {
@@ -1210,7 +1220,6 @@ export class ClientCombatSimulation {
         const tetherA = a.havenState === "tethered";
         const tetherB = b.havenState === "tethered";
         if ((tetherA || tetherB) !== tetheredPass) continue;
-        if (a.team === b.team && a.hullClass === "cruiser" && b.hullClass === "cruiser") continue;
         const d = vecDistance(a.pos, b.pos);
         if (this.observer && a.team !== b.team) this.observer.onProximity(a, b, d);
 
@@ -1218,7 +1227,13 @@ export class ClientCombatSimulation {
         const shieldB = activeShieldRadius(b);
         const minBubbleDist = shieldA + shieldB;
         const nested = sharesShieldHaven(a, b);
-        const repulsorZone = nested ? havenHullClearance(a, b) : minBubbleDist + 20;
+        const hullClearance = nested ? havenHullClearance(a, b) : a.size + b.size;
+        const repulsorZone = nested
+          ? hullClearance
+          : Math.max(
+              capitalSeparationDistance(a, b),
+              shieldRepulsorRadius(a) + shieldRepulsorRadius(b) + 20,
+            );
         const pair = [a.id, b.id].sort().join(":");
         if (d < repulsorZone + 5 && this.contacts.has(pair)) contacts.add(pair);
 
@@ -1249,8 +1264,21 @@ export class ClientCombatSimulation {
             b.velocity = vecAdd(b.velocity, vecScale(normal, closingSpeed * pushRatioB));
           }
 
-          // Strong repulsor prevents capitals from overlapping bubbles
-          const correction = repulsorZone - d;
+          // Resolve hull penetration immediately; shield inflation and tactical pressure
+          // share a bounded per-ship budget across every contact in this tick.
+          const hullCorrection = Math.max(0, hullClearance - d);
+          const softCorrection = Math.min(
+            Math.max(0, repulsorZone - d - hullCorrection),
+            pushRatioA > 0
+              ? Math.max(0, MAX_REPULSOR_STEP - (repulsorSteps.get(a.id) ?? 0)) / pushRatioA
+              : Infinity,
+            pushRatioB > 0
+              ? Math.max(0, MAX_REPULSOR_STEP - (repulsorSteps.get(b.id) ?? 0)) / pushRatioB
+              : Infinity,
+          );
+          repulsorSteps.set(a.id, (repulsorSteps.get(a.id) ?? 0) + softCorrection * pushRatioA);
+          repulsorSteps.set(b.id, (repulsorSteps.get(b.id) ?? 0) + softCorrection * pushRatioB);
+          const correction = hullCorrection + softCorrection;
           a.pos = vecAdd(a.pos, vecScale(normal, correction * pushRatioA));
           b.pos = vecSub(b.pos, vecScale(normal, correction * pushRatioB));
 
@@ -1307,10 +1335,7 @@ export class ClientCombatSimulation {
           const a = cruisers[i];
           const b = cruisers[j];
           if (a.team !== b.team) continue;
-          const clearance = Math.max(
-            CRUISER_CLEARANCE,
-            activeShieldRadius(a) + activeShieldRadius(b),
-          );
+          const clearance = a.size + b.size;
           const distance = vecDistance(a.pos, b.pos);
           if (distance >= clearance) continue;
           const normal: Vector2 =

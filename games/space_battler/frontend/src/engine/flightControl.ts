@@ -49,16 +49,39 @@ export function configureArena(radius: number, hardPullRadius: number): void {
   ARENA_HARD_PULL_RADIUS = hardPullRadius;
 }
 
+function arenaAnticipation(distance: number): number {
+  const width = Math.min(550, ARENA_RADIUS);
+  const t = clamp((distance - (ARENA_RADIUS - width)) / width, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 // Preserve tangential motion while smoothly replacing outward thrust with inward steering.
 export function arenaVelocity(ship: ShipState, desired: Vector2): Vector2 {
   const distance = vecDistance([0, 0], ship.pos);
-  if (distance <= ARENA_RADIUS) return desired;
+  if (distance <= ARENA_RADIUS - Math.min(550, ARENA_RADIUS)) return desired;
   const outward = vecScale(ship.pos, 1 / distance);
+  const radial = vecDot(desired, outward);
+  const outwardMotion = Math.max(0, vecDot(ship.velocity, outward));
+  const outwardThrust = Math.max(0, radial);
+  const anticipation = arenaAnticipation(distance);
+  const tangent: Vector2 = [-outward[1], outward[0]];
+  const tangentDirection = vecDot(desired, tangent) || vecDot(ship.velocity, tangent) || 1;
+  let corrected = vecSub(
+    desired,
+    vecScale(outward, anticipation * (outwardThrust + outwardMotion * 0.5)),
+  );
+  corrected = vecAdd(
+    corrected,
+    vecScale(tangent, Math.sign(tangentDirection) * anticipation * outwardThrust * 0.75),
+  );
+  if (distance <= ARENA_RADIUS) return limitVelocity(corrected, ship.maxSpeed);
   const t = clamp((distance - ARENA_RADIUS) / (ARENA_HARD_PULL_RADIUS - ARENA_RADIUS), 0, 1);
   const blend = t * t * (3 - 2 * t);
-  const radial = vecDot(desired, outward);
   return limitVelocity(
-    vecSub(desired, vecScale(outward, blend * (Math.max(0, radial) + ship.maxSpeed))),
+    vecSub(
+      corrected,
+      vecScale(outward, blend * (Math.max(0, vecDot(corrected, outward)) + ship.maxSpeed)),
+    ),
     ship.maxSpeed,
   );
 }
@@ -315,6 +338,7 @@ export function capitalIntent(
     const tubes = ship.turrets.filter((t) => t.weapon.weaponType === "missile");
     const salvo = salvoReload(tubes, ship.skirmishCycle?.lastSalvoShot);
     const slot = Number(ship.id.split("_").at(-1)) || 0;
+    const previousPhase = ship.skirmishCycle?.phase;
     ship.skirmishCycle = reduceSkirmishCycle(ship.skirmishCycle, {
       targetId: target.id,
       initialSide: slot % 2 === 0 ? 1 : -1,
@@ -324,13 +348,41 @@ export function capitalIntent(
       breakoffReload: doctrine.breakoffReload,
       reacquireReload: doctrine.reacquireReload,
     });
-    const intent = HitAndRunSkirmishBlock(
+    if (
+      ship.skirmishCycle.phase === "breakoff" &&
+      previousPhase !== "breakoff" &&
+      arenaAnticipation(vecDistance([0, 0], ship.pos)) > 0
+    ) {
+      const bearing = Math.atan2(target.pos[1] - ship.pos[1], target.pos[0] - ship.pos[0]);
+      const side = ship.skirmishCycle.side;
+      const radial = (angle: number) => vecDot(ship.pos, [Math.cos(angle), Math.sin(angle)]);
+      if (
+        radial(bearing - side * doctrine.breakoffAngle) <
+        radial(bearing + side * doctrine.breakoffAngle)
+      )
+        ship.skirmishCycle.side = -side;
+    }
+    let intent = HitAndRunSkirmishBlock(
       ship,
       target,
       doctrine.breakoffAngle,
       ship.maxSpeed * doctrine.breakoffSpeedRatio,
       { doctrine, engagementRange: gun?.weapon.range ?? doctrine.desiredDistance },
     );
+    if (ship.skirmishCycle.phase === "breakoff" && intent.rangePhase !== "approach") {
+      const corrected = arenaVelocity(ship, intent.velocity);
+      if (vecDistance([0, 0], corrected) > 1e-6) {
+        const heading = Math.atan2(corrected[1], corrected[0]);
+        intent = {
+          ...intent,
+          heading,
+          velocity: vecScale(
+            [Math.cos(heading), Math.sin(heading)],
+            vecDistance([0, 0], intent.velocity),
+          ),
+        };
+      }
+    }
     const velocity = vecAdd(intent.velocity, calculateSeparation(ship, ships));
     return {
       ...intent,

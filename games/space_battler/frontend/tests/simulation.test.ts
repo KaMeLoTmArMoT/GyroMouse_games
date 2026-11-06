@@ -1285,12 +1285,14 @@ describe("tactical maneuvers", () => {
 
 describe("arena containment and matchup rebalance", () => {
   it("smoothly bends outward thrust inward and preserves tangential travel", () => {
-    const cruiser = ship("cruiser", 0, [ARENA_RADIUS, 0]);
+    const cruiser = ship("cruiser", 0, [ARENA_RADIUS - 600, 0]);
     expect(arenaVelocity(cruiser, [50, 25])).toEqual([50, 25]);
+    cruiser.pos[0] = ARENA_RADIUS;
+    const anticipatory = arenaVelocity(cruiser, [50, 25]);
+    expect(anticipatory[0]).toBeLessThanOrEqual(0);
     cruiser.pos[0] = (ARENA_RADIUS + ARENA_HARD_PULL_RADIUS) / 2;
     const soft = arenaVelocity(cruiser, [50, 25]);
     expect(soft[0]).toBeLessThan(0);
-    expect(soft[1]).toBe(25);
     cruiser.pos[0] = ARENA_HARD_PULL_RADIUS;
     expect(arenaVelocity(cruiser, [50, 25])[0]).toBeLessThan(soft[0]);
   });

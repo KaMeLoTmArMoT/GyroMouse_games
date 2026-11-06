@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import { mountPosition } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { clampLateralVelocity } from "../src/engine/flightBehaviors";
-import { capitalIntent, escortVelocity, spinalEscape } from "../src/engine/flightControl";
+import {
+  ARENA_HARD_PULL_RADIUS,
+  ARENA_RADIUS,
+  arenaVelocity,
+  capitalIntent,
+  configureArena,
+  escortVelocity,
+  spinalEscape,
+} from "../src/engine/flightControl";
 import {
   type BroadsideCycle,
   classifyRange,
@@ -20,6 +28,76 @@ function ship(hullClass: HullClass, team = 0) {
   result.pos = [0, 0];
   return result;
 }
+
+describe("predictive arena steering", () => {
+  it.each(["strike_craft", "missile_frigate"] as const)(
+    "turns an outward-moving %s progressively before the edge",
+    (hull) => {
+      const craft = ship(hull);
+      craft.velocity = [craft.maxSpeed, 0];
+      const desired: Vector2 = [craft.maxSpeed, 0];
+      craft.pos = [ARENA_RADIUS - 600, 0];
+      expect(arenaVelocity(craft, desired)).toEqual(desired);
+      craft.pos = [ARENA_RADIUS - 400, 0];
+      const early = arenaVelocity(craft, desired);
+      craft.pos = [ARENA_RADIUS - 100, 0];
+      const near = arenaVelocity(craft, desired);
+      expect(early[0]).toBeLessThan(desired[0]);
+      expect(early[1]).toBeGreaterThan(0);
+      expect(near[0]).toBeLessThan(early[0]);
+      expect(near[0]).toBeLessThan(0);
+      expect(Math.hypot(...near)).toBeLessThanOrEqual(craft.maxSpeed + 1e-8);
+    },
+  );
+
+  it("damps outward momentum without disturbing safe inward or tangential travel", () => {
+    const craft = ship("strike_craft");
+    craft.pos = [ARENA_RADIUS - 100, 0];
+    craft.velocity = [craft.maxSpeed, 0];
+    const braking = arenaVelocity(craft, [0, 50]);
+    expect(braking[0]).toBeLessThan(0);
+    expect(braking[1]).toBe(50);
+    craft.velocity = [-50, 0];
+    expect(arenaVelocity(craft, [-50, 25])).toEqual([-50, 25]);
+    expect(arenaVelocity(craft, [0, 50])).toEqual([0, 50]);
+  });
+
+  it("scales the anticipation zone with the configured arena", () => {
+    const radius = ARENA_RADIUS;
+    const hardRadius = ARENA_HARD_PULL_RADIUS;
+    try {
+      configureArena(1000, 1300);
+      const craft = ship("strike_craft");
+      craft.pos = [800, 0];
+      craft.velocity = [craft.maxSpeed, 0];
+      expect(arenaVelocity(craft, [craft.maxSpeed, 0])[0]).toBeLessThan(craft.maxSpeed);
+    } finally {
+      configureArena(radius, hardRadius);
+    }
+  });
+
+  it("chooses an inward breakoff side and keeps an existing outward arc under correction", () => {
+    const frigate = ship("missile_frigate");
+    const target = ship("battleship", 1);
+    const order = { groupId: 1, priority: "nearest", stance: "optimal_range" } as const;
+    frigate.pos = [ARENA_RADIUS - 100, 0];
+    target.pos = [frigate.pos[0] - 100, -500];
+    for (const tube of frigate.turrets) tube.cooldownTimer = 3;
+    const inward = capitalIntent(frigate, target, [frigate, target], order);
+    expect(frigate.skirmishCycle?.side).toBe(-1);
+    expect(Math.cos(inward.heading)).toBeLessThan(0);
+
+    if (!frigate.skirmishCycle) throw new Error("Missing skirmish cycle");
+    frigate.skirmishCycle.side = 1;
+    frigate.velocity = [frigate.maxSpeed, 0];
+    const corrected = capitalIntent(frigate, target, [frigate, target], order);
+    const doctrine = SHIP_DOCTRINES.missile_frigate.flight;
+    if (doctrine.kind !== "skirmish") throw new Error("Missing skirmish doctrine");
+    const uncorrected = Math.atan2(-500, -100) + doctrine.breakoffAngle;
+    expect(Math.cos(corrected.heading)).toBeLessThan(Math.cos(uncorrected));
+    expect(frigate.skirmishCycle.side).toBe(1);
+  });
+});
 
 describe("capital beam avoidance", () => {
   it.each(["corvette", "strike_craft"] as const)(
