@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { spaceAudio } from "../engine/audioEngine";
 import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
+import { HARMONIC_RANGE } from "../engine/harmonicShieldSystem";
 import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import {
   type ClientCombatSimulation,
@@ -186,6 +187,21 @@ export function TacticalCanvas({
           ctx.scale(cameraRef.current.zoom, cameraRef.current.zoom);
 
           drawTacticalGrid(ctx);
+
+          const selectedTender = sim.ships.find(
+            (ship) => ship.id === selectedShipId && ship.isAlive && ship.hullClass === "tender",
+          );
+          if (selectedTender) {
+            ctx.save();
+            ctx.strokeStyle = selectedTender.team === 0 ? "#22d3ee" : "#f43f5e";
+            ctx.globalAlpha = 0.2;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([8, 8]);
+            ctx.beginPath();
+            ctx.arc(...selectedTender.pos, HARMONIC_RANGE, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
 
           const wings = sim.getFighterWingVisuals();
           drawEchelonIndicators(ctx, wings, sim.ships);

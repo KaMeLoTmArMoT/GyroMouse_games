@@ -56,10 +56,10 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
     hullMax: 2400,
     turrets: (
       [
-        [0, 0],
-        [24, -24],
-        [-24, 24],
-        [-24, -24],
+        [36, 0],
+        [8, -30],
+        [8, 30],
+        [-36, 0],
       ] as Vector2[]
     ).map(
       (offset, index): TurretMountTemplate => ({

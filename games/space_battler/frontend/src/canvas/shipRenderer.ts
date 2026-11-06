@@ -355,18 +355,18 @@ export function renderCarrierHull(
   // Eight lateral tractor recesses, distinct from the central medium-ship deck.
   for (const side of [-1, 1]) {
     for (let i = 0; i < 4; i++) {
-      const x = s * (-0.72 + i * 0.29);
-      const y = side * s * 0.48;
+      const x = s * (-0.62 + i * 0.27);
+      const y = side * s * 0.51;
       ctx.fillStyle = "#020b16";
       ctx.beginPath();
-      ctx.ellipse(x, y, s * 0.115, s * 0.095, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y, s * 0.1, s * 0.075, 0, 0, Math.PI * 2);
       ctx.fill();
       const pulse = 0.35 + 0.2 * Math.sin(time * 3 + i * 0.8);
       ctx.strokeStyle = `rgba(56, 189, 248, ${pulse + 0.25})`;
       ctx.fillStyle = `rgba(56, 189, 248, ${pulse * 0.35})`;
       ctx.lineWidth = s * 0.015;
       ctx.beginPath();
-      ctx.ellipse(x, y, s * 0.09, s * 0.065, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y, s * 0.075, s * 0.05, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -374,7 +374,7 @@ export function renderCarrierHull(
     ctx.fillStyle = alien ? "#3d1c2b" : "#12283c";
     ctx.strokeStyle = primaryColor;
     ctx.beginPath();
-    ctx.ellipse(-s * 0.86, side * s * 0.35, s * 0.23, s * 0.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(-s * 0.94, side * s * 0.3, s * 0.13, s * 0.07, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
@@ -1635,6 +1635,48 @@ function renderTurret(
       break;
     }
     case "point_defense": {
+      if (ship.hullClass === "carrier") {
+        if (turret.weapon.flak) {
+          ctx.beginPath();
+          for (let i = 0; i < 8; i++) {
+            const angle = (Math.PI * (i + 0.5)) / 4;
+            const x = Math.cos(angle) * r * 1.5;
+            const y = Math.sin(angle) * r * 1.5;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          for (const side of [-1, 1]) {
+            const y = side * r * 0.55;
+            ctx.strokeStyle = metal;
+            ctx.lineWidth = r * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(length, y);
+            ctx.stroke();
+            ctx.fillStyle = recess;
+            ctx.fillRect(length - r * 0.45, y - r * 0.3, r * 0.6, r * 0.6);
+          }
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.strokeStyle = metal;
+          ctx.lineWidth = Math.max(0.7, r * 0.25);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(length, 0);
+          ctx.stroke();
+          ctx.fillStyle = lens;
+          ctx.beginPath();
+          ctx.arc(length, 0, r * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+      }
       // Hexagonal traverse ring, paired autocannons, and tracking sensor.
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
