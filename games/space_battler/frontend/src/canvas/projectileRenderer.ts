@@ -53,7 +53,11 @@ export function renderBeam(
   ctx.restore();
 }
 
-export function renderProjectile(ctx: CanvasRenderingContext2D, p: ProjectileState): void {
+export function renderProjectile(
+  ctx: CanvasRenderingContext2D,
+  p: ProjectileState,
+  plumeAlpha = 1,
+): void {
   const [x, y] = p.pos;
   const isBlue = p.ownerTeam === 0;
 
@@ -146,6 +150,7 @@ export function renderProjectile(ctx: CanvasRenderingContext2D, p: ProjectileSta
       ctx.stroke();
 
       ctx.strokeStyle = isBlue ? "#67e8f9" : "#ef4444";
+      ctx.globalAlpha *= plumeAlpha;
       ctx.shadowColor = isBlue ? "#0ea5e9" : "#dc2626";
       ctx.shadowBlur = 8;
       ctx.lineWidth = isBlue ? 2.5 : 4;

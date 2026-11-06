@@ -316,6 +316,7 @@ export function escortVelocity(
   target: ShipState | null,
   ships: ShipState[],
 ): Vector2 {
+  if (target && !withinPursuitTheater(ship, target, ships)) target = null;
   let anchor = ships.find((s) => s.isAlive && s.team === ship.team && s.id === ship.flagshipId);
   if (!anchor) {
     const capitals = ships.filter(
@@ -369,6 +370,16 @@ export function escortVelocity(
     if (retreat) return retreat;
   }
   const stationVelocity = formationVelocity(ship, anchor, station);
+  const pack = corvetteWolfpack(ship, ships);
+  if (target && pack.length >= 2 && vecDistance(ship.pos, anchor.pos) <= 900) {
+    const radius = isCapitalShip(target)
+      ? Math.max(300, escortCapitalStandoff(ship, target))
+      : engagementDistance;
+    const leader = pack[0];
+    const cohesion =
+      ship === leader ? ([0, 0] as Vector2) : vecScale(vecSub(leader.pos, ship.pos), 0.25);
+    return limitVelocity(vecAdd(orbitVelocity(ship, target, radius), cohesion), ship.maxSpeed);
+  }
   if (
     !target ||
     vecDistance(target.pos, anchor.pos) > 600 + sortie * 600 ||
@@ -382,6 +393,91 @@ export function escortVelocity(
     vecScale(stationVelocity, 0.65),
     vecScale(orbitVelocity(ship, target, engagementDistance), 0.35),
   );
+}
+
+export function fleetDefenseAnchor(ship: ShipState, ships: ShipState[]): ShipState | undefined {
+  return ships
+    .filter(
+      (peer) =>
+        peer.isAlive &&
+        !peer.isDocked &&
+        !peer.isDebris &&
+        peer.team === ship.team &&
+        peer.id !== ship.id &&
+        isCapitalShip(peer),
+    )
+    .sort(
+      (a, b) =>
+        Number(b.id === ship.flagshipId) - Number(a.id === ship.flagshipId) ||
+        vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) ||
+        a.id.localeCompare(b.id),
+    )[0];
+}
+
+export function withinPursuitTheater(
+  ship: ShipState,
+  target: ShipState,
+  ships: ShipState[],
+): boolean {
+  const light = target.hullClass === "strike_craft";
+  if (!light) return true;
+  const anchor = fleetDefenseAnchor(ship, ships);
+  if (ship.hullClass === "strike_craft") {
+    const distance = vecDistance(ship.pos, target.pos);
+    const pursued = fighterPursuits.get(ship) ?? new Set<string>();
+    if (distance <= 600) {
+      pursued.add(target.id);
+      fighterPursuits.set(ship, pursued);
+      return true;
+    }
+    return !ship.dogfightTargetId && !pursued.has(target.id);
+  }
+  return (
+    vecDistance(ship.pos, target.pos) <= 600 &&
+    (!anchor || vecDistance(anchor.pos, target.pos) <= 900)
+  );
+}
+
+const fighterPursuits = new WeakMap<ShipState, Set<string>>();
+
+export function corvetteWolfpack(ship: ShipState, ships: ShipState[]): ShipState[] {
+  if (ship.hullClass !== "corvette") return [];
+  const anchor = fleetDefenseAnchor(ship, ships);
+  const escorts = ships
+    .filter(
+      (peer) =>
+        peer.isAlive &&
+        !peer.isDocked &&
+        !peer.isDebris &&
+        peer.team === ship.team &&
+        peer.hullClass === "corvette" &&
+        (!anchor ||
+          (fleetDefenseAnchor(peer, ships)?.id === anchor.id &&
+            vecDistance(peer.pos, anchor.pos) <= 900)),
+    )
+    .sort((a, b) => a.id.localeCompare(b.id));
+  // Reserve one local picket per capital; split remaining pilots into balanced pairs/triples.
+  const hunters = anchor ? escorts.slice(1) : escorts;
+  const index = hunters.indexOf(ship);
+  if (index < 0 || hunters.length < 2) return [];
+  const groups = Math.ceil(hunters.length / 3);
+  let offset = 0;
+  for (let group = 0; group < groups; group++) {
+    const size = Math.ceil((hunters.length - offset) / (groups - group));
+    if (index < offset + size) return hunters.slice(offset, offset + size);
+    offset += size;
+  }
+  return [];
+}
+
+export function fleetReturnVelocity(ship: ShipState, ships: ShipState[]): Vector2 {
+  const anchor = fleetDefenseAnchor(ship, ships);
+  if (!anchor) return vecScale(vecNormalize(vecScale(ship.pos, -1)), ship.maxSpeed * 0.5);
+  const station = vecAdd(
+    anchor.pos,
+    rotatePoint([-250, ship.id < anchor.id ? -300 : 300], anchor.heading),
+  );
+  return limitVelocity(formationVelocity(ship, anchor, station), ship.maxSpeed);
 }
 
 function damageStandoffWeight(ship: ShipState): number {
@@ -622,6 +718,12 @@ export function capitalIntent(
   time = 0,
   projectiles: ProjectileState[] = [],
 ): FlightIntent {
+  if (!withinPursuitTheater(ship, target, ships)) {
+    ship.navigationTargetId = undefined;
+    ship.maneuverTargetId = undefined;
+    const velocity = fleetReturnVelocity(ship, ships);
+    return { heading: Math.atan2(velocity[1], velocity[0]), velocity, rangePhase: "engage" };
+  }
   if (ship.hullClass === "carrier") {
     const delta = vecSub(target.pos, ship.pos);
     return {
@@ -840,7 +942,16 @@ export function dogfightTarget(
   let current: ShipState | null = null;
   let currentScore = -Infinity;
   for (const enemy of ships) {
-    if (!enemy.isAlive || enemy.team === ship.team || enemy.hullClass !== "strike_craft") continue;
+    if (
+      !enemy.isAlive ||
+      enemy.isDocked ||
+      enemy.isDebris ||
+      enemy.team === ship.team ||
+      enemy.hullClass !== "strike_craft" ||
+      vecDistance(ship.pos, enemy.pos) > 600 ||
+      !withinPursuitTheater(ship, enemy, ships)
+    )
+      continue;
     const r = vecSub(enemy.pos, ship.pos);
     const v = vecSub(enemy.velocity, ship.velocity);
     const distance = vecDistance([0, 0], r);
@@ -849,7 +960,7 @@ export function dogfightTarget(
     const threat = distance <= 600 || (t > 0 && approach < 120);
     const retained =
       enemy.id === ship.dogfightTargetId &&
-      distance <= 720 &&
+      distance <= 600 &&
       time - (ship.lastThreatTime ?? 0) < 1;
     if (!threat && !retained) continue;
     const angle = Math.abs(normalizeAngle(Math.atan2(r[1], r[0]) - ship.heading));

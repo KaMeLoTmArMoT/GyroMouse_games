@@ -1,18 +1,29 @@
 import type { ShipState, Vector2 } from "../types/combat";
-import { fighterRecoveryDirection } from "./fighterRecovery";
+import { fighterRecoveryDirection, recoveryApproachVelocity } from "./fighterRecovery";
 import { rotatePoint, vecAdd, vecDistance, vecScale, vecSub } from "./math2d";
-import { shieldEnvelopeRadius } from "./shieldGeometry";
+import { shieldHavenSlotPosition } from "./shieldHaven";
 
 export const HANGAR_TURNAROUND = 4.5;
+export const TRACTOR_DURATION = 0.7;
+export const CATAPULT_DURATION = 0.75;
+export const LAUNCH_BOOST = 180;
+const tractors = new WeakMap<ShipState, { started: number; local: Vector2 }>();
+const launches = new WeakMap<ShipState, { started: number; side: number }>();
+
+export function sharesCarrierCorridor(a: ShipState, b: ShipState): boolean {
+  const guest = (craft: ShipState, carrier: ShipState) =>
+    carrier.hullClass === "carrier" &&
+    craft.flagshipId === carrier.id &&
+    (craft.carrierRecovering === true || launches.has(craft));
+  return a.team === b.team && (guest(a, b) || guest(b, a));
+}
+
+function deckSide(craft: ShipState): number {
+  return (Number(craft.id.split("_").at(-1)) || 0) % 2 === 0 ? 1 : -1;
+}
 
 export function carrierRecoveryPoint(carrier: ShipState, craft: ShipState): Vector2 {
-  return vecAdd(
-    carrier.pos,
-    rotatePoint(
-      [-shieldEnvelopeRadius(carrier) - shieldEnvelopeRadius(craft) - 40, 0],
-      carrier.heading,
-    ),
-  );
+  return shieldHavenSlotPosition(carrier, deckSide(craft) > 0 ? "starboard-aft" : "port-aft");
 }
 
 export function storeCarrierAuxiliaries(ships: ShipState[]): void {
@@ -25,6 +36,8 @@ export function storeCarrierAuxiliaries(ships: ShipState[]): void {
         craft.hullClass === "corvette" ? 0.5 : 1 + Math.floor(fighter++ / 8) * 2.5;
       craft.hangarTurnaroundUntil = undefined;
       craft.carrierRecovering = false;
+      tractors.delete(craft);
+      launches.delete(craft);
       craft.pos = [...carrier.pos];
       craft.velocity = [0, 0];
     }
@@ -45,6 +58,8 @@ export function updateCarrierHangars(ships: ShipState[], time: number): void {
         craft.hullCurrent = 0;
       }
       craft.carrierRecovering = false;
+      tractors.delete(craft);
+      launches.delete(craft);
       continue;
     }
     if (
@@ -55,7 +70,9 @@ export function updateCarrierHangars(ships: ShipState[], time: number): void {
       craft.carrierRecovering = true;
     if (craft.carrierRecovering && !craft.isDocked) {
       craft.fighterPhase = "recover";
-      if (vecDistance(craft.pos, carrierRecoveryPoint(carrier, craft)) <= 35) {
+      const tractor = tractors.get(craft);
+      if (tractor && time + 1e-9 >= tractor.started + TRACTOR_DURATION) {
+        tractors.delete(craft);
         craft.isDocked = true;
         craft.hangarTurnaroundUntil = time + HANGAR_TURNAROUND;
         craft.hangarLaunchAt = undefined;
@@ -66,7 +83,7 @@ export function updateCarrierHangars(ships: ShipState[], time: number): void {
     }
     if (!craft.isDocked) continue;
     craft.pos = [...carrier.pos];
-    craft.velocity = [0, 0];
+    craft.velocity = [...carrier.velocity];
     craft.heading = carrier.heading;
     const launchAt = craft.hangarTurnaroundUntil ?? craft.hangarLaunchAt ?? Infinity;
     if (time + 1e-9 < launchAt) continue;
@@ -82,22 +99,11 @@ export function updateCarrierHangars(ships: ShipState[], time: number): void {
     craft.carrierRecovering = false;
     craft.recoveryStarted = undefined;
     craft.fighterPhase = "staging";
-    const peers = ships.filter(
-      (ship) => ship.flagshipId === carrier.id && ship.hullClass === craft.hullClass,
-    );
-    const slot = peers.indexOf(craft);
-    const side = slot % 2 === 0 ? 1 : -1;
-    craft.pos = vecAdd(
-      carrier.pos,
-      rotatePoint(
-        [
-          craft.hullClass === "corvette" ? 0 : 70 + Math.floor(slot / 2) * 32,
-          side * (shieldEnvelopeRadius(carrier) + shieldEnvelopeRadius(craft) + 45),
-        ],
-        carrier.heading,
-      ),
-    );
-    craft.velocity = [...carrier.velocity];
+    const side = deckSide(craft);
+    craft.pos = shieldHavenSlotPosition(carrier, side > 0 ? "starboard-forward" : "port-forward");
+    craft.heading = carrier.heading;
+    craft.velocity = vecAdd(carrier.velocity, rotatePoint([LAUNCH_BOOST, 0], carrier.heading));
+    launches.set(craft, { started: time, side });
   }
 }
 
@@ -111,10 +117,60 @@ export function moveCarrierRecovery(
   const carrier = ships.find((ship) => ship.id === craft.flagshipId && ship.isAlive);
   if (!carrier) return false;
   const destination = carrierRecoveryPoint(carrier, craft);
-  const delta = vecSub(destination, craft.pos);
+  let tractor = tractors.get(craft);
+  if (
+    !tractor &&
+    vecDistance(craft.pos, destination) <= 60 &&
+    vecDistance(craft.velocity, carrier.velocity) < 40
+  ) {
+    tractor = {
+      started: time,
+      local: rotatePoint(vecSub(craft.pos, carrier.pos), -carrier.heading),
+    };
+    tractors.set(craft, tractor);
+  }
+  if (tractor) {
+    const progress = Math.min(1, (time + dt - tractor.started) / TRACTOR_DURATION);
+    const bay: Vector2 = [-carrier.size * 0.35, deckSide(craft) * carrier.size * 0.45];
+    const local = vecAdd(vecScale(tractor.local, 1 - progress), vecScale(bay, progress));
+    craft.pos = vecAdd(
+      vecAdd(carrier.pos, vecScale(carrier.velocity, dt)),
+      rotatePoint(local, carrier.heading),
+    );
+    craft.velocity = vecAdd(
+      carrier.velocity,
+      rotatePoint(
+        vecScale(vecSub(bay, tractor.local), progress < 1 ? 1 / TRACTOR_DURATION : 0),
+        carrier.heading,
+      ),
+    );
+    craft.heading = carrier.heading;
+    return true;
+  }
   const direction = fighterRecoveryDirection(craft, destination, ships, time);
-  craft.velocity = vecScale(direction, Math.min(craft.maxSpeed, vecDistance([0, 0], delta) / dt));
+  craft.velocity = recoveryApproachVelocity(craft, carrier, destination, direction, dt);
   craft.heading = Math.atan2(direction[1], direction[0]);
+  craft.pos = vecAdd(craft.pos, vecScale(craft.velocity, dt));
+  return true;
+}
+
+export function moveCarrierLaunch(
+  craft: ShipState,
+  ships: ShipState[],
+  dt: number,
+  time: number,
+): boolean {
+  const launch = launches.get(craft);
+  if (!launch) return false;
+  const carrier = ships.find((ship) => ship.id === craft.flagshipId && ship.isAlive);
+  const elapsed = time - launch.started;
+  if (!carrier || craft.isDocked || craft.carrierRecovering || elapsed >= CATAPULT_DURATION) {
+    launches.delete(craft);
+    return false;
+  }
+  const fan = launch.side * 0.35 * Math.max(0, elapsed / CATAPULT_DURATION);
+  craft.heading = carrier.heading + fan;
+  craft.velocity = vecAdd(carrier.velocity, rotatePoint([LAUNCH_BOOST, 0], craft.heading));
   craft.pos = vecAdd(craft.pos, vecScale(craft.velocity, dt));
   return true;
 }

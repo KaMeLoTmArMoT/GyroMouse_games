@@ -1,4 +1,5 @@
 import type { ShipState, Vector2 } from "../types/combat";
+import { sharesCarrierCorridor } from "./carrierHangar";
 import { vecAdd, vecDistance, vecDot, vecNormalize, vecScale, vecSub } from "./math2d";
 import {
   activeShieldRadius,
@@ -61,6 +62,7 @@ export class CollisionContactSolver {
         const a = aliveShips[i];
         const b = aliveShips[j];
         if (!a.isAlive || !b.isAlive) continue;
+        if (sharesCarrierCorridor(a, b)) continue;
         const tetherA = a.havenState === "tethered";
         const tetherB = b.havenState === "tethered";
         if ((tetherA || tetherB) !== tetheredPass) continue;

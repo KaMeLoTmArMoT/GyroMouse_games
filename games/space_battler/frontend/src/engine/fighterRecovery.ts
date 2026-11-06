@@ -2,6 +2,23 @@ import type { ShipState, Vector2 } from "../types/combat";
 import { vecAdd, vecDistance, vecDot, vecNormalize, vecScale, vecSub } from "./math2d";
 import { shieldEnvelopeRadius } from "./shieldGeometry";
 
+export function recoveryApproachVelocity(
+  craft: ShipState,
+  carrier: ShipState,
+  destination: Vector2,
+  direction: Vector2,
+  dt: number,
+): Vector2 {
+  const speed = Math.min(craft.maxSpeed, vecDistance(craft.pos, destination) * 1.5);
+  const desired = vecAdd(carrier.velocity, vecScale(direction, speed));
+  const change = vecSub(desired, craft.velocity);
+  const length = vecDistance([0, 0], change);
+  return vecAdd(
+    craft.velocity,
+    vecScale(change, length > 0 ? Math.min(1, (240 * dt) / length) : 0),
+  );
+}
+
 // Shared by deck recovery and mission egress; fade jinks out on final docking approach.
 export function fighterRecoveryDirection(
   craft: ShipState,

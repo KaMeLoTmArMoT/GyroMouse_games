@@ -7,6 +7,7 @@ import {
   safeRally,
   separation,
   spinalEscape,
+  withinPursuitTheater,
 } from "./flightControl";
 import {
   clamp,
@@ -180,7 +181,9 @@ export class FighterMissionSystem {
       let target = groupTargets.get(groupKey);
       if (!groupTargets.has(groupKey)) {
         target =
-          aliveShips.find((ship) => ship.id === wing.targetId) ??
+          aliveShips.find(
+            (ship) => ship.id === wing.targetId && withinPursuitTheater(leader, ship, aliveShips),
+          ) ??
           findNavigationTarget(
             leader,
             orders.get(wing.groupId) ?? {

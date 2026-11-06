@@ -59,15 +59,20 @@ describe("fighter evasive recovery", () => {
     expect(craft.velocity[0]).toBeGreaterThan(0);
     expect(craft.velocity[1]).toBeGreaterThan(0);
     craft.pos = [0, 0];
+    craft.velocity = [0, 0];
     moveCarrierRecovery(craft, ships, 1 / 60, (Math.PI * 3) / 8);
     expect(craft.velocity[1]).toBeLessThan(0);
     craft.pos = [0, 0];
+    craft.velocity = [0, 0];
     pursuer.pos = [-300, 0];
     moveCarrierRecovery(craft, ships, 1 / 60, Math.PI / 8);
-    expect(craft.velocity[1]).toBe(0);
+    const pad = carrierRecoveryPoint(carrier, craft);
+    expect(craft.velocity[1] / craft.velocity[0]).toBeCloseTo(pad[1] / pad[0]);
     craft.pos = carrierRecoveryPoint(carrier, craft);
+    craft.velocity = [0, 0];
     moveCarrierRecovery(craft, ships, 1 / 60, Math.PI / 8);
-    expect(craft.velocity).toEqual([0, 0]);
+    expect(craft.isDocked).toBeFalsy();
+    expect(vecDistance(craft.pos, pad)).toBeGreaterThan(0);
   });
 
   it("routes near an intervening capital umbrella and ignores capitals outside the return corridor", () => {

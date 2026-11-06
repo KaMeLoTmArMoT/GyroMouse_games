@@ -1,4 +1,5 @@
 import type { GroupOrder, ShipState, Vector2 } from "../types/combat";
+import { moveCarrierLaunch } from "./carrierHangar";
 import type { FighterMissionSystem } from "./fighterMissionSystem";
 import { damagedTargetPriority, squadFocusPriority } from "./fireControl";
 import { clampLateralVelocity } from "./flightBehaviors";
@@ -7,13 +8,16 @@ import {
   ARENA_RADIUS,
   arenaVelocity,
   capitalIntent,
+  corvetteWolfpack,
   debrisAvoidanceVelocity,
   escortVelocity,
+  fleetReturnVelocity,
   limitVelocity,
   separation,
   spinalEscape,
   supportVelocity,
   tenderRescueTarget,
+  withinPursuitTheater,
 } from "./flightControl";
 import type { RangePhase } from "./flightCycles";
 import {
@@ -37,8 +41,49 @@ export function findNavigationTarget(
   previousTargetId?: string,
   wingTargetId?: string | null,
 ): ShipState | null {
-  let enemies = aliveShips.filter((s) => s.isAlive && !s.isDocked && s.team !== ship.team);
+  let enemies = aliveShips.filter(
+    (s) =>
+      s.isAlive &&
+      !s.isDocked &&
+      !s.isDebris &&
+      s.team !== ship.team &&
+      withinPursuitTheater(ship, s, aliveShips),
+  );
   if (enemies.length === 0) return null;
+  if (ship.hullClass === "corvette") {
+    const pack = corvetteWolfpack(ship, aliveShips);
+    const hunter = pack[0] ?? ship;
+    const local = enemies.filter(
+      (enemy) =>
+        vecDistance(hunter.pos, enemy.pos) <= 600 &&
+        withinPursuitTheater(hunter, enemy, aliveShips),
+    );
+    const gunboats = local.filter((enemy) => enemy.hullClass === "corvette");
+    const stragglers = local.filter(
+      (enemy) =>
+        enemy.hullClass === "strike_craft" &&
+        !aliveShips.some(
+          (ally) =>
+            ally.id !== enemy.id &&
+            ally.team === enemy.team &&
+            ally.isAlive &&
+            !ally.isDocked &&
+            !ally.isDebris &&
+            vecDistance(ally.pos, enemy.pos) <= 400,
+        ),
+    );
+    const choices = gunboats.length
+      ? gunboats
+      : pack.length >= 2 && stragglers.length
+        ? stragglers
+        : local.filter(isCapitalShip);
+    if (choices.length)
+      return choices.sort(
+        (a, b) =>
+          vecDistance(hunter.pos, a.pos) - vecDistance(hunter.pos, b.pos) ||
+          a.id.localeCompare(b.id),
+      )[0];
+  }
   if (ship.hullClass === "strike_craft") {
     const wingTarget = enemies.find((enemy) => enemy.id === wingTargetId);
     if (wingTarget) return wingTarget;
@@ -110,6 +155,13 @@ export function updateShipNavigation(
   >,
   fighterCycle: FighterMissionSystem["updateCycle"],
 ): void {
+  if (moveCarrierLaunch(ship, aliveShips, dt, context.timeElapsed)) return;
+  const brokePursuit = target !== null && !withinPursuitTheater(ship, target, aliveShips);
+  if (target && !withinPursuitTheater(ship, target, aliveShips)) {
+    target = null;
+    ship.navigationTargetId = undefined;
+    ship.dogfightTargetId = undefined;
+  }
   if (context.shieldHaven.moveGuest(ship, aliveShips, dt)) return;
   let targetHeading = ship.heading;
   let desiredSpeed = 0;
@@ -180,6 +232,18 @@ export function updateShipNavigation(
           vecDot(intent.velocity, vecSub(enemy.pos, ship.pos)) < 0
         );
       });
+  } else if (
+    brokePursuit ||
+    aliveShips.some(
+      (enemy) =>
+        enemy.team !== ship.team &&
+        enemy.isAlive &&
+        !enemy.isDocked &&
+        enemy.hullClass === "strike_craft",
+    )
+  ) {
+    thrusterVelocity = fleetReturnVelocity(ship, aliveShips);
+    targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
   }
   if (
     ship.hullClass !== "tender" &&

@@ -70,7 +70,10 @@ describe("carrier fleet loadout", () => {
     craft.armorCurrent = craft.armorMax * 0.1;
     craft.shieldCurrent = 0;
     craft.pos = carrierRecoveryPoint(carrier, craft);
+    craft.velocity = [...carrier.velocity];
     advance(sim, 1 / 60);
+    expect(craft.isDocked).toBe(false);
+    advance(sim, 0.7);
     expect(craft.isDocked).toBe(true);
     expect(craft.pos).toEqual(carrier.pos);
     advance(sim, 269 / 60);

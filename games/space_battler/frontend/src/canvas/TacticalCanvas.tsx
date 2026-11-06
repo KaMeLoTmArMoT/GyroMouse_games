@@ -49,11 +49,7 @@ export function TacticalCanvas({
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const hasDraggedRef = useRef(false);
-  const followRef = useRef(Boolean(selectedShipId));
-
-  useEffect(() => {
-    followRef.current = Boolean(selectedShipId);
-  }, [selectedShipId]);
+  const followRef = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: A continued battle reuses the same simulation.
   useEffect(() => {
@@ -140,7 +136,7 @@ export function TacticalCanvas({
           pendingIngressRef.current = false;
           const canvas = canvasRef.current;
           const camera = cameraRef.current;
-          const alive = sim.ships.filter((ship) => ship.isAlive);
+          const alive = sim.ships.filter((ship) => ship.isAlive && !ship.isDocked);
           if (canvas && alive.length > 0) {
             const minX = Math.min(...alive.map((ship) => ship.pos[0] - ship.size * 2));
             const maxX = Math.max(...alive.map((ship) => ship.pos[0] + ship.size * 2));
@@ -155,8 +151,10 @@ export function TacticalCanvas({
             followRef.current = false;
           }
         }
+        const previousProjectiles = sim.projectiles.slice();
         sim.update(dt * speed);
         effectsRef.current.update(dt * speed, sim.ships, sim.projectiles);
+        effectsRef.current.captureExpiredProjectiles(previousProjectiles, sim.projectiles);
         effectsRef.current.updateWarpGates(Math.min(dt, 0.05));
         effectsRef.current.syncBeams(sim.activeBeams);
       }
@@ -325,15 +323,30 @@ export function TacticalCanvas({
           for (const proj of sim.projectiles) {
             renderProjectile(ctx, proj);
           }
+          for (const effect of effectsRef.current.expiredProjectiles) {
+            const alpha = effect.remainingDuration / effect.maxDuration;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            if (effect.projectile.weaponType === "plasma") {
+              const [x, y] = effect.projectile.pos;
+              ctx.translate(x, y);
+              ctx.scale(alpha, alpha);
+              ctx.translate(-x, -y);
+            }
+            renderProjectile(ctx, effect.projectile, alpha * 0.4);
+            ctx.restore();
+          }
 
           // Draw haven conduits beneath ship hulls.
-          renderHavenTethers(ctx, sim.ships, sim.timeElapsed, selectedShipId);
+          const visibleShips = sim.ships.filter((ship) => !ship.isDocked);
+          renderHavenTethers(ctx, visibleShips, sim.timeElapsed, selectedShipId);
 
           // Draw Ships
           const ingressGates = new Map(
             effectsRef.current.warpGates.map((gate) => [gate.shipId, gate]),
           );
           for (const ship of sim.ships) {
+            if (ship.isDocked) continue;
             const gate = ingressGates.get(ship.id);
             ctx.save();
             if (gate) {
@@ -355,10 +368,12 @@ export function TacticalCanvas({
 
           // Draw Selected Ship Billiards Trajectory & Tactical Intent HUD
           if (selectedShipId) {
-            const selectedShip = sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
+            const selectedShip = sim.ships.find(
+              (s) => s.id === selectedShipId && s.isAlive && !s.isDocked,
+            );
             if (selectedShip) {
               if (!selectedShip.isDebris) {
-                renderHavenSlots(ctx, selectedShip, sim.ships, sim.shieldHaven, sim.timeElapsed);
+                renderHavenSlots(ctx, selectedShip, visibleShips, sim.shieldHaven, sim.timeElapsed);
               }
               drawTacticalTrajectory(ctx, selectedShip, sim, wings);
             }
@@ -494,7 +509,7 @@ export function TacticalCanvas({
       let minD = 50; // max click radius
 
       for (const ship of sim.ships) {
-        if (!ship.isAlive) continue;
+        if (!ship.isAlive || ship.isDocked) continue;
         const dx = ship.pos[0] - worldX;
         const dy = ship.pos[1] - worldY;
         const d = Math.sqrt(dx * dx + dy * dy);
@@ -539,13 +554,20 @@ export function TacticalCanvas({
         onSelectProjectile?.(projectile);
         return;
       }
-      followRef.current = Boolean(clickedShip);
+      followRef.current = false;
       onSelectShip?.(clickedShip);
     }
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
-    if (!shipAtPoint(e) && !projectileAtMouse(e, false)) {
+    const shipId = shipAtPoint(e);
+    const ship = sim.ships.find((s) => s.id === shipId && s.isAlive && !s.isDocked);
+    if (ship) {
+      cameraRef.current.x = -ship.pos[0] * cameraRef.current.zoom;
+      cameraRef.current.y = -ship.pos[1] * cameraRef.current.zoom;
+      followRef.current = true;
+      onSelectShip?.(ship.id);
+    } else if (!projectileAtMouse(e, false)) {
       followRef.current = false;
       cameraRef.current.x = 0;
       cameraRef.current.y = 0;
@@ -600,7 +622,7 @@ export function TacticalCanvas({
           {sim.ships.filter((s) => s.team === 1 && s.isAlive).length} Red
         </div>
         <div className="text-[10px] text-zinc-600 mt-1">
-          Click ship or torpedo to inspect | Drag to Pan
+          Click to inspect | Double-click ship to follow | Drag to pan
         </div>
       </div>
     </div>
@@ -619,7 +641,9 @@ function drawEchelonIndicators(
   ships: ShipState[],
 ): void {
   for (const wing of wings) {
-    const members = ships.filter((ship) => ship.isAlive && wing.members.includes(ship.id));
+    const members = ships.filter(
+      (ship) => ship.isAlive && !ship.isDocked && wing.members.includes(ship.id),
+    );
     if (members.length === 0) continue;
     const x = members.reduce((sum, ship) => sum + ship.pos[0], 0) / members.length;
     const y = members.reduce((sum, ship) => sum + ship.pos[1], 0) / members.length;
@@ -721,6 +745,31 @@ function drawTacticalTrajectory(
   const isBlue = ship.team === 0;
   const primaryColor = isBlue ? "#38bdf8" : "#f87171";
   const speed = Math.hypot(ship.velocity[0], ship.velocity[1]);
+  const auxiliaries =
+    ship.hullClass === "carrier"
+      ? sim.ships.filter(
+          (s) =>
+            s.isAlive &&
+            s.flagshipId === ship.id &&
+            (s.hullClass === "strike_craft" || s.hullClass === "corvette"),
+        )
+      : [];
+  if (ship.hullClass === "carrier") {
+    ctx.save();
+    ctx.strokeStyle = primaryColor;
+    ctx.globalAlpha = 0.65;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    for (const craft of auxiliaries) {
+      if (craft.isDocked || !(craft.carrierRecovering || craft.fighterPhase === "recover"))
+        continue;
+      ctx.moveTo(...craft.pos);
+      ctx.lineTo(...ship.pos);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // 1. Target Lock & Engagement Line
   const targetId =
@@ -889,6 +938,16 @@ function drawTacticalTrajectory(
         : `${wing.team === ship.team ? "FRIENDLY" : "INCOMING"} G${wing.groupId} • `;
     return `${affiliation}${echelonLabel(wing)} • ${wing.phase.toUpperCase()}`;
   });
+  if (ship.hullClass === "carrier") {
+    const repairing = auxiliaries.filter(
+      (craft) => craft.isDocked && craft.hangarTurnaroundUntil !== undefined,
+    ).length;
+    const ready = auxiliaries.filter(
+      (craft) => craft.isDocked && craft.hangarTurnaroundUntil === undefined,
+    ).length;
+    const airborne = auxiliaries.filter((craft) => !craft.isDocked).length;
+    wingLines.push(`HANGAR: ${repairing} in repair • ${ready} ready • ${airborne} airborne`);
+  }
   if (ship.hullClass === "strike_craft" && wingLines.length === 0)
     wingLines.push("ECHELON PENDING");
 

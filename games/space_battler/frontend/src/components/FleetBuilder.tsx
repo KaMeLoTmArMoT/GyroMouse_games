@@ -734,7 +734,10 @@ function FleetBuilderPanel({
                         <ShipSilhouette hullClass={hull} team={previewTeam} className="w-7 h-7" />
                       </div>
                       <div className="min-w-0">
-                        <div className="font-semibold text-sm text-zinc-100 select-all">
+                        <div
+                          className="font-semibold text-sm text-zinc-100 select-all truncate"
+                          title={spec.name}
+                        >
                           {spec.name}
                         </div>
                         <span
@@ -745,37 +748,39 @@ function FleetBuilderPanel({
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span
-                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded border font-bold transition-colors ${
-                          counts.group > 0
-                            ? `${activeTheme.bg} ${activeTheme.border} ${activeTheme.text}`
-                            : "bg-zinc-950/60 border-zinc-800 text-zinc-500"
-                        }`}
-                        title={`Assigned to Group ${selectedGroup}`}
-                      >
-                        GRP {selectedGroup}: {counts.group}
-                      </span>
-                      <span
-                        className="text-[10px] font-mono text-zinc-400"
-                        title="Total across all groups"
-                      >
-                        ({counts.total} total)
-                      </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded border font-bold transition-colors ${
+                            counts.group > 0
+                              ? `${activeTheme.bg} ${activeTheme.border} ${activeTheme.text}`
+                              : "bg-zinc-950/60 border-zinc-800 text-zinc-500"
+                          }`}
+                          title={`Assigned to Group ${selectedGroup}`}
+                        >
+                          GRP {selectedGroup}: {counts.group}
+                        </span>
+                        <span
+                          className="text-[10px] font-mono text-zinc-400"
+                          title="Total across all groups"
+                        >
+                          ({counts.total} total)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDoctrineHull(hull)}
+                          aria-label={`View doctrine and stances for ${spec.name}`}
+                          className={`rounded border px-2 py-0.5 text-[11px] font-medium cursor-pointer ${redTeam ? "border-red-900/40 text-red-400 hover:bg-red-950 hover:text-rose-300" : "border-cyan-800/70 text-cyan-400 hover:bg-cyan-950 hover:text-cyan-200"}`}
+                        >
+                          Doctrine &amp; Stances
+                        </button>
+                        <span className="text-right text-xs font-mono font-bold text-zinc-200 select-all whitespace-nowrap">
+                          {spec.cost.toLocaleString("en-US")} CR
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-end gap-2 mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setDoctrineHull(hull)}
-                      aria-label={`View doctrine and stances for ${spec.name}`}
-                      className={`rounded border px-2 py-0.5 text-[11px] font-medium cursor-pointer ${redTeam ? "border-red-900/40 text-red-400 hover:bg-red-950 hover:text-rose-300" : "border-cyan-800/70 text-cyan-400 hover:bg-cyan-950 hover:text-cyan-200"}`}
-                    >
-                      Doctrine &amp; Stances
-                    </button>
-                    <span className="w-20 text-right text-xs font-mono font-bold text-zinc-200 select-all">
-                      {spec.cost.toLocaleString("en-US")} CR
-                    </span>
                   </div>
 
                   {/* Compact Stats Row */}

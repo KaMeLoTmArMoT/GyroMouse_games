@@ -175,6 +175,12 @@ interface ShipExplosionEffect {
   maxDuration: number;
 }
 
+interface ExpiredProjectileEffect {
+  projectile: ProjectileState;
+  remainingDuration: number;
+  maxDuration: number;
+}
+
 export class VisualEffectsManager {
   warpGates: WarpGateEffect[] = [];
   beams: LaserBeamEffect[] = [];
@@ -187,7 +193,28 @@ export class VisualEffectsManager {
   debrisShards: DebrisShard[] = [];
   shipExplosionCores: ShipExplosionEffect[] = [];
   shipShockwaves: ShipExplosionEffect[] = [];
+  expiredProjectiles: ExpiredProjectileEffect[] = [];
   impactDecals = new WeakMap<ShipState, Vector2[]>();
+
+  captureExpiredProjectiles(previous: ProjectileState[], active: ProjectileState[]): void {
+    const activeIds = new Set(active.map((projectile) => projectile.id));
+    for (const projectile of previous) {
+      if (
+        activeIds.has(projectile.id) ||
+        projectile.hp <= 0 ||
+        projectile.lifetime > 0 ||
+        (projectile.weaponType !== "plasma" && projectile.weaponType !== "missile")
+      )
+        continue;
+      const duration = projectile.weaponType === "plasma" ? 0.4 : 1.1;
+      if (this.expiredProjectiles.length >= 500) this.expiredProjectiles.shift();
+      this.expiredProjectiles.push({
+        projectile: { ...projectile, pos: [...projectile.pos], velocity: [...projectile.velocity] },
+        remainingDuration: duration,
+        maxDuration: duration,
+      });
+    }
+  }
 
   addWarpGate(pos: Vector2, heading: number, radius: number, team: number): void {
     this.warpGates.push({
@@ -204,7 +231,7 @@ export class VisualEffectsManager {
   triggerFleetWarpIn(ships: ShipState[]): void {
     this.warpGates = [];
     for (const ship of ships) {
-      if (!ship.isAlive) continue;
+      if (!ship.isAlive || ship.isDocked) continue;
       this.addWarpGate(ship.pos, ship.heading, ship.size * 1.5, ship.team);
       this.warpGates[this.warpGates.length - 1].shipId = ship.id;
     }
@@ -575,6 +602,12 @@ export class VisualEffectsManager {
   }
 
   update(dt: number, ships: ShipState[] = [], projectiles: ProjectileState[] = []): void {
+    this.expiredProjectiles = this.expiredProjectiles.filter((effect) => {
+      effect.remainingDuration -= dt;
+      effect.projectile.pos[0] += effect.projectile.velocity[0] * dt;
+      effect.projectile.pos[1] += effect.projectile.velocity[1] * dt;
+      return effect.remainingDuration > 0;
+    });
     // Beams decay
     this.beams = this.beams.filter((b) => {
       if (!b.active) b.remainingDuration -= dt;
@@ -718,7 +751,7 @@ export class VisualEffectsManager {
     }
 
     for (const ship of ships) {
-      if (!ship.isAlive) continue;
+      if (!ship.isAlive || ship.isDocked) continue;
       const { scarred, burning, critical } = damageState(ship);
       const cos = Math.cos(ship.heading);
       const sin = Math.sin(ship.heading);
