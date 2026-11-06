@@ -12,6 +12,8 @@ const MAX_REPULSOR_STEP = 4;
 
 function shipMass(hull: ShipState["hullClass"]): number {
   switch (hull) {
+    case "carrier":
+      return 150;
     case "dreadnought":
       return 160;
     case "battleship":

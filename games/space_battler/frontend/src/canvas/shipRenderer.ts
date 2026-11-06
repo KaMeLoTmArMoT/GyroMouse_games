@@ -205,6 +205,7 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: 
             battleship: -0.36,
             dreadnought: -0.15,
             missile_frigate: 0.55,
+            carrier: -0.15,
           }[ship.hullClass]
         : {
             strike_craft: 0.57,
@@ -213,6 +214,7 @@ function drawHullDamage(ctx: CanvasRenderingContext2D, ship: ShipState, decals: 
             battleship: -0.16,
             dreadnought: -0.15,
             missile_frigate: 0.55,
+            carrier: -0.15,
           }[ship.hullClass];
     ctx.globalAlpha = baseAlpha * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(time / 100)));
     ctx.shadowColor = "#ff2020";
@@ -238,6 +240,32 @@ function drawEngineGlow(ctx: CanvasRenderingContext2D, ship: ShipState): void {
   ctx.save();
   ctx.globalAlpha *= (0.3 + speed * 0.7) * flicker;
   for (const [x, y] of engineNozzles(ship)) {
+    if (ship.hullClass === "carrier") {
+      const plume = ctx.createLinearGradient(
+        ship.size * x,
+        0,
+        ship.size * (x - 0.65 - speed * 0.4),
+        0,
+      );
+      plume.addColorStop(0, "rgba(186, 230, 253, 0.8)");
+      plume.addColorStop(1, "rgba(56, 189, 248, 0)");
+      ctx.fillStyle = plume;
+      ctx.beginPath();
+      ctx.moveTo(ship.size * x, ship.size * (y - 0.07));
+      ctx.quadraticCurveTo(
+        ship.size * (x - 0.5),
+        ship.size * (y - 0.12 * flicker),
+        ship.size * (x - 0.65 - speed * 0.4),
+        ship.size * y,
+      );
+      ctx.quadraticCurveTo(
+        ship.size * (x - 0.5),
+        ship.size * (y + 0.12 * flicker),
+        ship.size * x,
+        ship.size * (y + 0.07),
+      );
+      ctx.fill();
+    }
     if (ship.hullClass === "missile_frigate") {
       ctx.fillStyle = ship.team === 0 ? "rgba(56, 189, 248, 0.7)" : "rgba(249, 115, 22, 0.7)";
       ctx.beginPath();
@@ -261,6 +289,109 @@ function drawEngineGlow(ctx: CanvasRenderingContext2D, ship: ShipState): void {
   ctx.restore();
 }
 
+/** Team-specific deck geometry; coordinates are local to the hull and face right. */
+export function renderCarrierHull(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  primaryColor: string,
+  secondaryColor: string,
+  time = performance.now() / 1000,
+): void {
+  const s = ship.size;
+  const alien = ship.team !== 0;
+  ctx.save();
+  ctx.beginPath();
+  if (alien) {
+    ctx.moveTo(s * 1.25, 0);
+    ctx.bezierCurveTo(s * 0.9, -s * 0.18, s * 0.45, -s * 0.7, -s * 0.2, -s * 0.67);
+    ctx.bezierCurveTo(-s * 0.65, -s * 0.7, -s * 1.18, -s * 0.57, -s * 1.08, -s * 0.35);
+    ctx.bezierCurveTo(-s * 0.78, -s * 0.18, -s * 0.78, s * 0.18, -s * 1.08, s * 0.35);
+    ctx.bezierCurveTo(-s * 1.18, s * 0.57, -s * 0.65, s * 0.7, -s * 0.2, s * 0.67);
+    ctx.bezierCurveTo(s * 0.45, s * 0.7, s * 0.9, s * 0.18, s * 1.25, 0);
+  } else {
+    ctx.moveTo(s * 1.25, 0);
+    ctx.lineTo(s * 0.75, -s * 0.35);
+    ctx.lineTo(s * 0.35, -s * 0.42);
+    ctx.lineTo(s * 0.12, -s * 0.68);
+    ctx.lineTo(-s * 0.82, -s * 0.68);
+    ctx.lineTo(-s * 1.08, -s * 0.48);
+    ctx.lineTo(-s * 1.08, s * 0.48);
+    ctx.lineTo(-s * 0.82, s * 0.68);
+    ctx.lineTo(s * 0.12, s * 0.68);
+    ctx.lineTo(s * 0.35, s * 0.42);
+    ctx.lineTo(s * 0.75, s * 0.35);
+  }
+  ctx.closePath();
+  const armor = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.7);
+  armor.addColorStop(0, secondaryColor);
+  armor.addColorStop(0.4, alien ? "#71313d" : "#24435b");
+  armor.addColorStop(0.6, secondaryColor);
+  armor.addColorStop(1, "#020617");
+  ctx.fillStyle = armor;
+  ctx.strokeStyle = primaryColor;
+  ctx.lineWidth = Math.max(1, s * 0.018);
+  ctx.shadowColor = primaryColor;
+  ctx.shadowBlur = s * 0.08;
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Eight lateral tractor recesses, distinct from the central medium-ship deck.
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      const x = s * (-0.72 + i * 0.29);
+      const y = side * s * 0.48;
+      ctx.fillStyle = "#020b16";
+      ctx.beginPath();
+      ctx.ellipse(x, y, s * 0.115, s * 0.095, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const pulse = 0.35 + 0.2 * Math.sin(time * 3 + i * 0.8);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${pulse + 0.25})`;
+      ctx.fillStyle = `rgba(56, 189, 248, ${pulse * 0.35})`;
+      ctx.lineWidth = s * 0.015;
+      ctx.beginPath();
+      ctx.ellipse(x, y, s * 0.09, s * 0.065, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // Two integrated aft engine pods.
+    ctx.fillStyle = alien ? "#3d1c2b" : "#12283c";
+    ctx.strokeStyle = primaryColor;
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.86, side * s * 0.35, s * 0.23, s * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#020b16";
+  ctx.strokeStyle = primaryColor;
+  ctx.lineWidth = s * 0.018;
+  ctx.beginPath();
+  if (alien) {
+    ctx.moveTo(s * 0.65, 0);
+    ctx.bezierCurveTo(s * 0.3, -s * 0.22, -s * 0.45, -s * 0.22, -s * 0.6, 0);
+    ctx.bezierCurveTo(-s * 0.45, s * 0.22, s * 0.3, s * 0.22, s * 0.65, 0);
+  } else {
+    ctx.rect(-s * 0.58, -s * 0.16, s * 1.08, s * 0.32);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(125, 211, 252, 0.8)";
+  ctx.lineWidth = s * 0.012;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.46, side * s * 0.1);
+    ctx.lineTo(s * 0.28, side * s * 0.1);
+    ctx.lineTo(s * 0.42, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.75, side * s * 0.25);
+    ctx.bezierCurveTo(-s * 0.2, side * s * 0.3, s * 0.55, side * s * 0.22, s * 0.94, 0);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawTerranHull(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
@@ -269,6 +400,10 @@ function drawTerranHull(
   accentColor: string,
   previewTime?: number,
 ): void {
+  if (ship.hullClass === "carrier") {
+    renderCarrierHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
+    return;
+  }
   if (ship.hullClass === "dreadnought" || ship.hullClass === "missile_frigate") {
     drawNewHull(ctx, ship, false, previewTime);
     return;
@@ -400,6 +535,10 @@ function drawAlienHull(
   accentColor: string,
   previewTime?: number,
 ): void {
+  if (ship.hullClass === "carrier") {
+    renderCarrierHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
+    return;
+  }
   if (ship.hullClass === "dreadnought" || ship.hullClass === "missile_frigate") {
     drawNewHull(ctx, ship, true, previewTime);
     return;
@@ -1271,6 +1410,7 @@ function renderTurret(
     battleship: 1.7,
     dreadnought: 1.45,
     missile_frigate: 0.8,
+    carrier: 1.25,
   }[ship.hullClass];
   ctx.scale(classScale, classScale);
 

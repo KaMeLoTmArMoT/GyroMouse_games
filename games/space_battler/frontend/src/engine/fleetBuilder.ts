@@ -9,6 +9,16 @@ export interface FleetSlot {
   id: string;
   hullClass: HullClass;
   groupId: number;
+  wingSize?: 0 | 8 | 16;
+  escortCount?: 0 | 1 | 2;
+  carrierAnchorId?: string;
+}
+
+export function fleetSlotCost(slot: FleetSlot): number {
+  return (
+    HULL_PROFILES[slot.hullClass].cost +
+    (slot.hullClass === "carrier" ? (slot.wingSize ?? 0) * 120 + (slot.escortCount ?? 0) * 350 : 0)
+  );
 }
 
 /** Re-form survivors without replacing ship identities or repairing persistent hull damage. */
@@ -23,6 +33,14 @@ export function redeployFleetRemnants(ships: ShipState[]): void {
     );
     const remaining = [...survivors];
     const originalIds = new Map<string, string>();
+    const carrierIds = new Set(
+      survivors.filter((ship) => ship.hullClass === "carrier").map((ship) => ship.id),
+    );
+    const carrierAssignments = new Map(
+      survivors
+        .filter((ship) => ship.flagshipId && carrierIds.has(ship.flagshipId))
+        .map((ship) => [ship.id, ship.flagshipId]),
+    );
     for (const spawn of formation) {
       const index = remaining.findIndex(
         (ship) => ship.groupId === spawn.groupId && ship.hullClass === spawn.hullClass,
@@ -67,6 +85,7 @@ export function redeployFleetRemnants(ships: ShipState[]): void {
     }
     for (const ship of survivors) {
       if (ship.flagshipId) ship.flagshipId = originalIds.get(ship.flagshipId);
+      if (carrierAssignments.has(ship.id)) ship.flagshipId = carrierAssignments.get(ship.id);
     }
   }
 }
@@ -99,6 +118,7 @@ export function buildFleetFromSlots(
     groups.set(slot.groupId, group);
   }
   const counts = {
+    carrier: 0,
     battleship: 0,
     dreadnought: 0,
     cruiser: 0,
@@ -145,14 +165,40 @@ function buildGroup(
   expandedSpacing: boolean,
 ): ShipState[] {
   const ships: ShipState[] = [];
+  const carriers = slots.filter((s) => s.hullClass === "carrier");
+  const prefix = team === 0 ? "blue" : "red";
+  const auxiliaries = carriers.flatMap((slot, index) => {
+    const flagshipId = `${prefix}_car_${counts.carrier + index}`;
+    return [
+      ...Array.from(
+        { length: slot.wingSize ?? 0 },
+        (_, i): FleetSlot => ({
+          id: `${slot.id}_wing_${i}`,
+          hullClass: "strike_craft",
+          groupId: slot.groupId,
+          carrierAnchorId: flagshipId,
+        }),
+      ),
+      ...Array.from(
+        { length: slot.escortCount ?? 0 },
+        (_, i): FleetSlot => ({
+          id: `${slot.id}_escort_${i}`,
+          hullClass: "corvette",
+          groupId: slot.groupId,
+          carrierAnchorId: flagshipId,
+        }),
+      ),
+    ];
+  });
+  slots = [...slots, ...auxiliaries];
   const battleships = slots.filter((s) => s.hullClass === "battleship");
   const dreadnoughts = slots.filter((s) => s.hullClass === "dreadnought");
   const frigates = slots.filter((s) => s.hullClass === "missile_frigate");
   const cruisers = slots.filter((s) => s.hullClass === "cruiser");
   const corvettes = slots.filter((s) => s.hullClass === "corvette");
   const fighters = slots.filter((s) => s.hullClass === "strike_craft");
-  const prefix = team === 0 ? "blue" : "red";
   const anchorIds = [
+    ...carriers.map((_, i) => `${prefix}_car_${counts.carrier + i}`),
     ...dreadnoughts.map((_, i) => `${prefix}_dn_${counts.dreadnought + i}`),
     ...battleships.map((_, i) => `${prefix}_bb_${counts.battleship + i}`),
     ...cruisers.map((_, i) => `${prefix}_cr_${counts.cruiser + i}`),
@@ -189,12 +235,22 @@ function buildGroup(
       hullCurrent: profile.hullMax,
       cost: profile.cost,
       isAlive: true,
-      ...(slot.hullClass === "corvette"
-        ? { flagshipId: anchorIds.length ? anchorIds[idx % anchorIds.length] : undefined }
+      ...(slot.carrierAnchorId || slot.hullClass === "corvette"
+        ? {
+            flagshipId:
+              slot.carrierAnchorId ??
+              (anchorIds.length ? anchorIds[idx % anchorIds.length] : undefined),
+          }
         : {}),
       turrets: instantiateTurrets(profile, id, idx),
     });
   };
+  carriers.forEach((slot, idx) => {
+    addShip(slot, idx, "car", `Oceanic CV-${counts.carrier + idx + 1}`, [
+      0,
+      (idx - (carriers.length - 1) / 2) * (expandedSpacing ? 370 : 200),
+    ]);
+  });
   // 1. Battleships (Center Core)
   battleships.forEach((slot, idx) => {
     addShip(slot, idx, "bb", `Leviathan BB-0${counts.battleship + idx + 1}`, [
@@ -278,6 +334,7 @@ function buildGroup(
   const center = ordered.length ? (ordered[0].pos[1] + ordered[ordered.length - 1].pos[1]) / 2 : 0;
   for (const ship of ships) ship.pos[1] -= center;
   counts.battleship += battleships.length;
+  counts.carrier += carriers.length;
   counts.dreadnought += dreadnoughts.length;
   counts.missile_frigate += frigates.length;
   counts.cruiser += cruisers.length;

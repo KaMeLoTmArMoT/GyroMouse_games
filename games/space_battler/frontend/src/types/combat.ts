@@ -4,6 +4,7 @@ import type { BroadsideCycle, SkirmishCycle } from "../engine/flightCycles";
 
 export type WeaponType = "beam_laser" | "railgun" | "plasma" | "missile" | "point_defense";
 export type HullClass =
+  | "carrier"
   | "battleship"
   | "dreadnought"
   | "cruiser"

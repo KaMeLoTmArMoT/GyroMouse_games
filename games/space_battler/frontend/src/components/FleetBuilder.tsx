@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronUp, Copy, Plus, Shield, Swords, Trash2, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { FleetSlot } from "../engine/fleetBuilder";
+import { type FleetSlot, fleetSlotCost } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
 import { SCENARIOS } from "../engine/scenarios";
 import { HULL_PROFILES } from "../engine/shipProfiles";
@@ -126,6 +126,7 @@ const RED_THEME = {
 };
 
 const HULL_SIZE_ORDER: Record<HullClass, number> = {
+  carrier: -1,
   dreadnought: 0,
   battleship: 1,
   cruiser: 2,
@@ -152,6 +153,10 @@ export const HULL_SPECS = Object.fromEntries(
   ]),
 ) as Record<HullClass, HullSpecData>;
 
+const HULL_CATALOG = (Object.keys(HULL_SPECS) as HullClass[]).sort(
+  (a, b) => Number(a === "carrier") - Number(b === "carrier"),
+);
+
 export function ShipSilhouette({
   hullClass,
   team = 0,
@@ -163,6 +168,8 @@ export function ShipSilhouette({
 }) {
   const hulls: Record<0 | 1, Record<HullClass, string>> = {
     0: {
+      carrier:
+        "M1.25 0 L.75 -.35 L.35 -.42 L.12 -.68 L-.82 -.68 L-1.08 -.48 L-1.08 .48 L-.82 .68 L.12 .68 L.35 .42 L.75 .35 Z",
       strike_craft: "M1.1 0 L-.7 -.55 L-.5 -.2 L-.85 0 L-.5 .2 L-.7 .55 Z",
       corvette: "M1.15 0 L.4 -.45 L-.5 -.58 L-.95 -.32 L-.75 0 L-.95 .32 L-.5 .58 L.4 .45 Z",
       cruiser:
@@ -174,6 +181,8 @@ export function ShipSilhouette({
       missile_frigate: "M1.2 0 L.4 -.3 L-.55 -.46 L-.95 -.34 L-.78 0 L-.95 .34 L-.55 .46 L.4 .3 Z",
     },
     1: {
+      carrier:
+        "M1.25 0 C.9 -.18 .45 -.7 -.2 -.67 C-.65 -.7 -1.18 -.57 -1.08 -.35 C-.78 -.18 -.78 .18 -1.08 .35 C-1.18 .57 -.65 .7 -.2 .67 C.45 .7 .9 .18 1.25 0 Z",
       strike_craft:
         "M.85 -.6884 Q.15 -.1252 -.65 -.3505 L-.35 0 L-.65 .3505 Q.15 .1252 .85 .6884 Q.55 0 .85 -.6884 Z",
       corvette: "M1.15 0 Q.25 -.7916 -.75 -.548 Q-.45 0 -.75 .548 Q.25 .7916 1.15 0 Z",
@@ -188,6 +197,8 @@ export function ShipSilhouette({
   };
   const details: Record<0 | 1, Record<HullClass, string>> = {
     0: {
+      carrier:
+        "M-.58 -.16 H.5 V.16 H-.58 Z M-.7 -.48 H.1 M-.7 .48 H.1 M-.46 -.1 H.28 L.42 0 L.28 .1 H-.46",
       strike_craft: "M.8 0 L.4 -.12 L.25 0 L.4 .12 Z M-.1 -.12 L-.55 -.35 M-.1 .12 L-.55 .35",
       corvette: "M.8 0 L.4 -.2 L.15 0 L.4 .2 Z M.1 -.3 L-.5 -.4 M.1 .3 L-.5 .4",
       cruiser:
@@ -199,6 +210,8 @@ export function ShipSilhouette({
       missile_frigate: "M.9 0 L.4 -.13 L.25 0 L.4 .13 Z M.1 -.23 L-.55 -.33 M.1 .23 L-.55 .33",
     },
     1: {
+      carrier:
+        "M.65 0 C.3 -.22 -.45 -.22 -.6 0 C-.45 .22 .3 .22 .65 0 M-.7 -.48 H.1 M-.7 .48 H.1 M-.75 -.25 Q.3 -.32 .94 0 Q.3 .32 -.75 .25",
       strike_craft:
         "M.65 -.45 Q.05 -.1 -.4 -.22 M.65 .45 Q.05 .1 -.4 .22 M.6 0 Q.4 -.1 .25 0 Q.4 .1 .6 0 Z",
       corvette:
@@ -411,7 +424,7 @@ export function FleetBuilder({
   const selectedScenario = SCENARIOS.find((s) => `scenario:${s.id}` === enemyPresetId);
   const selectedPreset = FLEET_PRESETS.find((p) => p.id === enemyPresetId);
 
-  const currentCost = slots.reduce((acc, slot) => acc + HULL_SPECS[slot.hullClass].cost, 0);
+  const currentCost = slots.reduce((acc, slot) => acc + fleetSlotCost(slot), 0);
   const remainingBudget = budgetLimit - currentCost;
 
   // Group counts calculation
@@ -430,6 +443,7 @@ export function FleetBuilder({
       return acc;
     },
     {
+      carrier: { total: 0, group: 0 },
       battleship: { total: 0, group: 0 },
       dreadnought: { total: 0, group: 0 },
       cruiser: { total: 0, group: 0 },
@@ -477,6 +491,12 @@ export function FleetBuilder({
 
   const clearAll = () => {
     onUpdateSlots([]);
+  };
+
+  const updateCarrier = (slot: FleetSlot, changes: Partial<FleetSlot>) => {
+    const updated = { ...slot, ...changes };
+    if (currentCost - fleetSlotCost(slot) + fleetSlotCost(updated) > budgetLimit) return;
+    onUpdateSlots(slots.map((entry) => (entry.id === slot.id ? updated : entry)));
   };
 
   return (
@@ -585,7 +605,7 @@ export function FleetBuilder({
 
         {/* Ship Catalog */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-          {(Object.keys(HULL_SPECS) as HullClass[]).map((hull) => {
+          {HULL_CATALOG.map((hull) => {
             const spec = HULL_SPECS[hull];
             const canAfford = remainingBudget >= spec.cost;
             const counts = hullCounts[hull];
@@ -855,7 +875,12 @@ export function FleetBuilder({
                   const isFirstOfGroup =
                     idx === 0 || sortedStacks[idx - 1].groupId !== stack.groupId;
                   const unitCost = HULL_SPECS[stack.hullClass].cost;
-                  const totalStackCost = stack.count * unitCost;
+                  const totalStackCost = slots
+                    .filter(
+                      (slot) =>
+                        slot.groupId === stack.groupId && slot.hullClass === stack.hullClass,
+                    )
+                    .reduce((total, slot) => total + fleetSlotCost(slot), 0);
                   const canAddOne = remainingBudget >= unitCost;
                   const maxAffordable = calculateMaxAffordable(
                     stack.count,
@@ -970,6 +995,86 @@ export function FleetBuilder({
               })()
             )}
           </div>
+          {slots.some((slot) => slot.hullClass === "carrier") && (
+            <div className="overflow-y-auto border-t border-zinc-800 pt-3 space-y-3">
+              {slots
+                .filter((slot) => slot.hullClass === "carrier")
+                .map((slot, index) => (
+                  <div
+                    key={slot.id}
+                    className="rounded-lg border border-zinc-700 bg-zinc-950 p-3 space-y-2 text-xs"
+                  >
+                    <div className="font-semibold text-zinc-200">
+                      Carrier {index + 1} · Group {slot.groupId} · {fleetSlotCost(slot)} CR
+                    </div>
+                    <label className="block text-zinc-400">
+                      Strike wing
+                      <select
+                        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-zinc-200"
+                        value={slot.wingSize ?? 0}
+                        onChange={(event) =>
+                          updateCarrier(slot, {
+                            wingSize: Number(event.target.value) as 0 | 8 | 16,
+                          })
+                        }
+                      >
+                        {[0, 8, 16].map((size) => (
+                          <option
+                            key={size}
+                            value={size}
+                            disabled={
+                              currentCost -
+                                fleetSlotCost(slot) +
+                                fleetSlotCost({ ...slot, wingSize: size as 0 | 8 | 16 }) >
+                              budgetLimit
+                            }
+                          >
+                            {size === 0
+                              ? "Empty Hangar (0 craft)"
+                              : size === 8
+                                ? "Half Wing (+8 craft)"
+                                : "Full Wing (+16 craft)"}{" "}
+                            · +{size * 120} CR · {3000 + size * 120} CR base
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-zinc-400">
+                      Corvette escorts
+                      <select
+                        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-zinc-200"
+                        value={slot.escortCount ?? 0}
+                        onChange={(event) =>
+                          updateCarrier(slot, {
+                            escortCount: Number(event.target.value) as 0 | 1 | 2,
+                          })
+                        }
+                      >
+                        {[0, 1, 2].map((count) => (
+                          <option
+                            key={count}
+                            value={count}
+                            disabled={
+                              currentCost -
+                                fleetSlotCost(slot) +
+                                fleetSlotCost({ ...slot, escortCount: count as 0 | 1 | 2 }) >
+                              budgetLimit
+                            }
+                          >
+                            {count === 0 ? "No Escort" : `${count}x Escort Corvette`} · +
+                            {count * 350} CR
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="text-zinc-500">
+                      Selected craft deploy alongside the carrier. Docking and planned +2 craft /
+                      20s fabrication are not yet simulated.
+                    </p>
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
 
         {/* Adversary Preset Selector */}

@@ -39,6 +39,58 @@ export interface HullProfile {
 }
 
 export const HULL_PROFILES: Record<HullClass, HullProfile> = {
+  carrier: {
+    name: "Oceanic Fleet Carrier",
+    role: "Fleet Aviation & Mobile Repair",
+    desc: "A fleet aviation capital with a flak turret and three defense lasers.",
+    cost: 3000,
+    size: 84,
+    speed: 32,
+    turnRate: 0.3,
+    turnRateDisplay: "0.30 rad/s",
+    shieldMax: 1600,
+    shieldRegen: 30,
+    shieldRechargeDelay: 3,
+    armorMax: 1200,
+    armorRating: 45,
+    hullMax: 2400,
+    turrets: (
+      [
+        [0, 0],
+        [24, -24],
+        [-24, 24],
+        [-24, -24],
+      ] as Vector2[]
+    ).map(
+      (offset, index): TurretMountTemplate => ({
+        id: index === 0 ? "flak" : `laser${index}`,
+        type: "Point Defense",
+        mountOffset: offset,
+        firingArc: [-Math.PI, Math.PI],
+        trackingSpeed: 6.28,
+        currentLocalAngle: 0,
+        cooldownTimer: index * 0.05,
+        barrelLength: 6,
+        baseRadius: 2.2,
+        weapon: {
+          weaponType: "point_defense",
+          name: index === 0 ? "Flak Turret" : "Light Defense Laser",
+          damage: index === 0 ? 10 : 110,
+          cooldown: index === 0 ? 0.3 : 0,
+          range: 420,
+          projectileSpeed: index === 0 ? 1500 : 0,
+          trackingSpeed: 6.28,
+          shieldMultiplier: 0.35,
+          armorMultiplier: 0.45,
+          hullMultiplier: 0.45,
+          ...(index === 0
+            ? { flak: { lifetime: 0.32, triggerRadius: 15, blastRadius: 30, missileDamage: 18 } }
+            : {}),
+          cost: index === 0 ? 150 : 125,
+        },
+      }),
+    ),
+  },
   battleship: {
     name: "Leviathan Battleship",
     role: "Capital Flagship",

@@ -42,6 +42,7 @@ describe("fleet previews", () => {
       "battleship",
       "dreadnought",
       "missile_frigate",
+      "carrier",
     ] as const) {
       const blue = renderToStaticMarkup(ShipSilhouette({ hullClass, team: 0 }));
       const red = renderToStaticMarkup(ShipSilhouette({ hullClass, team: 1 }));

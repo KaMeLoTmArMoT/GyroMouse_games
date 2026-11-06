@@ -7,6 +7,11 @@ import type { ProjectileState, ShipState, Vector2 } from "../types/combat";
 export function engineNozzles(ship: ShipState): Vector2[] {
   const blue = ship.team === 0;
   switch (ship.hullClass) {
+    case "carrier":
+      return [
+        [-1.04, -0.35],
+        [-1.04, 0.35],
+      ];
     case "dreadnought":
       return [
         [-1.05, -0.3],
@@ -481,6 +486,7 @@ export class VisualEffectsManager {
       cruiser: { particles: 60, shards: 14, duration: 1.4, cores: 3 },
       battleship: { particles: 80, shards: 30, duration: 1.8, cores: 3 },
       dreadnought: { particles: 110, shards: 45, duration: 2.2, cores: 4 },
+      carrier: { particles: 100, shards: 38, duration: 2, cores: 4 },
     };
     const profile = profiles[ship.hullClass] ?? profiles.cruiser;
     const capital = profile.cores > 1;

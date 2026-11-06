@@ -89,6 +89,8 @@ export function runLayerA(): FixtureMetrics {
   for (const hull of HULLS.filter((hull) => hull !== "corvette")) {
     const equipped = HULL_PROFILES[hull].turrets;
     for (let index = 0; index < equipped.length; index++) {
+      // Point defense has separate interception and damage rules, not direct-gun DPS.
+      if (equipped[index].weapon.weaponType === "point_defense") continue;
       const shooter = fixtureShip(hull);
       // Gun fixtures bypass fighter mission-phase gating while keeping the equipped weapon intact.
       shooter.hullClass = "cruiser";

@@ -171,6 +171,7 @@ export function acquireMountTarget(
         s.team === ship.team &&
         s.id !== ship.id &&
         (s.id === ship.flagshipId ||
+          s.hullClass === "carrier" ||
           s.hullClass === "battleship" ||
           s.hullClass === "dreadnought" ||
           s.hullClass === "cruiser"),
@@ -237,6 +238,7 @@ export function acquireMountTarget(
     )
       continue;
     const capital =
+      enemy.hullClass === "carrier" ||
       enemy.hullClass === "battleship" ||
       enemy.hullClass === "dreadnought" ||
       enemy.hullClass === "cruiser";
@@ -287,7 +289,8 @@ export function acquireMountTarget(
           arrival = Math.min(arrival, t);
           if (
             isHeavyTorpedo(missile) &&
-            (defended.hullClass === "battleship" ||
+            (defended.hullClass === "carrier" ||
+              defended.hullClass === "battleship" ||
               defended.hullClass === "dreadnought" ||
               defended.hullClass === "cruiser") &&
             vecDistance(missile.pos, defended.pos) < 300

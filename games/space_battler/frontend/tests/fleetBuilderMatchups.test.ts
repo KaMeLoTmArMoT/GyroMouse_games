@@ -96,6 +96,33 @@ describe("fleet builder matchups", () => {
     });
   });
 
+  it("prices a carrier's selected craft and deploys them in battle", () => {
+    let tree = renderBuilder();
+    button(tree, "Clear All").props.onClick();
+    tree = renderBuilder();
+    const enlist = elements(tree).filter(
+      (element) => element.type === "button" && text(element).includes("Enlist in Group 1"),
+    );
+    enlist.at(-1)?.props.onClick();
+    tree = renderBuilder();
+    expect(text(tree)).toContain("3000 / 20000 CR");
+    const selects = elements(tree).filter((element) => element.type === "select");
+    selects[0].props.onChange({ target: { value: "8" } });
+    tree = renderBuilder();
+    expect(text(tree)).toContain("3960 / 20000 CR");
+    elements(tree).filter((element) => element.type === "select")[1].props.onChange({
+      target: { value: "2" },
+    });
+    tree = renderBuilder();
+    expect(text(tree)).toContain("4660 / 20000 CR");
+    button(tree, "Engage Fleet Simulator").props.onClick();
+    const canvas = elements(renderApp()).find((element) => element.type === TacticalCanvas);
+    const blue = canvas?.props.sim.ships.filter((ship) => ship.team === 0) ?? [];
+    expect(blue.filter((ship) => ship.hullClass === "carrier")).toHaveLength(1);
+    expect(blue.filter((ship) => ship.hullClass === "strike_craft")).toHaveLength(8);
+    expect(blue.filter((ship) => ship.hullClass === "corvette")).toHaveLength(2);
+  });
+
   it("loads a complete scenario, edits only the active side, and launches the edited fleets", () => {
     selectMatchup("scenario:1bb-vs-27sc");
     let tree = renderBuilder();

@@ -159,7 +159,8 @@ export function escortVelocity(
       (s) =>
         s.isAlive &&
         s.team === ship.team &&
-        (s.hullClass === "battleship" ||
+        (s.hullClass === "carrier" ||
+          s.hullClass === "battleship" ||
           s.hullClass === "dreadnought" ||
           s.hullClass === "cruiser"),
     );
@@ -291,7 +292,10 @@ function standoffDistance(
 ): number {
   const offensiveMounts = ship.turrets.filter((t) => t.weapon.weaponType !== "point_defense");
   const primaryRange =
-    gun?.weapon.range ?? Math.max(0, ...offensiveMounts.map((t) => t.weapon.range));
+    gun?.weapon.range ??
+    (ship.hullClass === "carrier"
+      ? 1140
+      : Math.max(0, ...offensiveMounts.map((t) => t.weapon.range)));
   const secondaryRange =
     Math.max(0, ...offensiveMounts.filter((t) => t !== gun).map((t) => t.weapon.range)) ||
     primaryRange;

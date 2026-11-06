@@ -3,6 +3,7 @@ import { clamp } from "./math2d";
 
 export function isCapitalShip(ship: Pick<ShipState, "hullClass">): boolean {
   return (
+    ship.hullClass === "carrier" ||
     ship.hullClass === "battleship" ||
     ship.hullClass === "dreadnought" ||
     ship.hullClass === "cruiser"

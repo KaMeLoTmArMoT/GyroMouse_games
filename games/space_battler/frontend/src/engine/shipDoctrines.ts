@@ -85,6 +85,13 @@ const BATTLESHIP_FLIGHT: CapitalFlightDoctrine = {
 
 // These describe tactical behavior; reactive maneuvers can interrupt the illustrated flow.
 export const SHIP_DOCTRINES: Record<HullClass, ShipDoctrine> = {
+  carrier: {
+    flight: { ...BATTLESHIP_FLIGHT, standoffThreshold: { distance: 1050 } },
+    standoff: "~1025u (optimal stance)",
+    targetPriority: "Nearest enemy by default; point defense prioritizes incoming threats",
+    states: [{ name: "Capital approach and defensive screen" }],
+    note: "Hangar docking and fabrication are not yet simulated.",
+  },
   battleship: {
     flight: BATTLESHIP_FLIGHT,
     standoff: "~1025u (optimal stance)",

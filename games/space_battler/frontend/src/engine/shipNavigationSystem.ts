@@ -23,6 +23,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { isCapitalShip } from "./shieldGeometry";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
 import type { ClientCombatSimulation } from "./simulation";
 
@@ -40,16 +41,14 @@ export function findNavigationTarget(
     if (wingTarget) return wingTarget;
   }
   if (
+    ship.hullClass === "carrier" ||
     ship.hullClass === "battleship" ||
     ship.hullClass === "dreadnought" ||
     ship.hullClass === "missile_frigate" ||
     ship.hullClass === "cruiser" ||
     order.priority === "capitals"
   ) {
-    const capitals = enemies.filter(
-      (s) =>
-        s.hullClass === "cruiser" || s.hullClass === "battleship" || s.hullClass === "dreadnought",
-    );
+    const capitals = enemies.filter(isCapitalShip);
     if (capitals.length > 0) enemies = capitals;
     const mainGun = ship.turrets.find((t) => t.isSpinalGimbal || t.weapon.weaponType === "missile");
     const firedTarget = enemies.find((e) => e.id === mainGun?.currentTargetId);
@@ -69,10 +68,7 @@ export function findNavigationTarget(
     if (crafts.length > 0) enemies = crafts;
   } else if (ship.hullClass === "strike_craft") {
     // Fighter wings default to attack runs against capital hulls.
-    const capitals = enemies.filter(
-      (s) =>
-        s.hullClass === "cruiser" || s.hullClass === "battleship" || s.hullClass === "dreadnought",
-    );
+    const capitals = enemies.filter(isCapitalShip);
     if (capitals.length > 0) enemies = capitals;
   }
   const anchor =
