@@ -249,6 +249,7 @@ describe("tender haven amplification", () => {
       const weapon = {
         ...buildFleetFromSlots([{ id: "weapon", hullClass: "cruiser", groupId: 1 }], 1, 0, 0)[0]
           .turrets[1].weapon,
+        weaponType: "railgun" as const,
         shieldMultiplier: multiplier,
         armorMultiplier: 1,
         hullMultiplier: 1,

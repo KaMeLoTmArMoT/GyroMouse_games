@@ -223,7 +223,10 @@ export class ShipWeaponSystem {
       if (before)
         context.observer?.onDamage(parent, attackerId, mountId, weapon.weaponType, before);
       if (impactOrigin) context.onWeaponImpact?.(parent, impactOrigin, true, false, false);
-      rawDamage = absorbed >= shieldDamage ? 0 : rawDamage - absorbed / weapon.shieldMultiplier;
+      rawDamage =
+        absorbed >= shieldDamage || (absorbed > 0 && weapon.weaponType === "missile")
+          ? 0
+          : rawDamage - absorbed / weapon.shieldMultiplier;
       rawDamage *= overflowMultiplier;
       if (rawDamage <= 0) return;
     }
@@ -258,7 +261,7 @@ export class ShipWeaponSystem {
       const shieldDmg = remaining * weapon.shieldMultiplier;
       const absorbed = this.applyShieldDamage(ship, shieldDmg);
       totalAbsorbedOrDealt += absorbed;
-      if (absorbed >= shieldDmg) {
+      if (absorbed >= shieldDmg || (absorbed > 0 && weapon.weaponType === "missile")) {
         this.recordAttackerDamage(attackerTeam, totalAbsorbedOrDealt);
         return;
       }

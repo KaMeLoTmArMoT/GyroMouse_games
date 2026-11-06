@@ -567,6 +567,53 @@ function fleetBearing(ship: ShipState, target: ShipState, ships: ShipState[]): n
   return Math.atan2(delta[1], delta[0]);
 }
 
+export function carrierStandoffVelocity(ship: ShipState, ships: ShipState[]): Vector2 {
+  const enemies = ships.filter(
+    (peer) => peer.isAlive && !peer.isDocked && !peer.isDebris && peer.team !== ship.team,
+  );
+  if (!enemies.length) return [0, 0];
+  const capitals = ships.filter(
+    (peer) =>
+      peer.isAlive &&
+      !peer.isDocked &&
+      !peer.isDebris &&
+      peer.team === ship.team &&
+      ["battleship", "dreadnought", "cruiser"].includes(peer.hullClass),
+  );
+  const center = (peers: ShipState[]) =>
+    vecScale(
+      peers.reduce<Vector2>((sum, peer) => vecAdd(sum, peer.pos), [0, 0]),
+      1 / peers.length,
+    );
+  const enemyCenter = center(enemies);
+  const anchor = capitals.length ? center(capitals) : enemyCenter;
+  const forward = vecNormalize(vecSub(enemyCenter, capitals.length ? anchor : ship.pos));
+  const direction: Vector2 =
+    vecDistance([0, 0], forward) > 1e-6
+      ? forward
+      : [Math.cos(ship.heading), Math.sin(ship.heading)];
+  const station = vecSub(anchor, vecScale(direction, 1400));
+  const drift = capitals.length
+    ? vecScale(
+        capitals.reduce<Vector2>((sum, peer) => vecAdd(sum, peer.velocity), [0, 0]),
+        1 / capitals.length,
+      )
+    : ([0, 0] as Vector2);
+  let velocity = vecAdd(drift, vecScale(vecSub(station, ship.pos), 0.6));
+  for (const enemy of enemies) {
+    if (!isCapitalShip(enemy)) continue;
+    const distance = vecDistance(ship.pos, enemy.pos);
+    if (distance >= 1500) continue;
+    const toward =
+      distance > 1e-6 ? vecScale(vecSub(enemy.pos, ship.pos), 1 / distance) : direction;
+    const retreatSpeed = Math.min(ship.maxSpeed, Math.max(0, (1400 - distance) * 0.8));
+    const closing = vecDot(vecSub(velocity, enemy.velocity), toward);
+    if (closing > -retreatSpeed)
+      velocity = vecSub(velocity, vecScale(toward, closing + retreatSpeed));
+  }
+  return limitVelocity(vecAdd(velocity, calculateSeparation(ship, ships)), ship.maxSpeed);
+}
+
 export function capitalIntent(
   ship: ShipState,
   target: ShipState,
@@ -575,6 +622,14 @@ export function capitalIntent(
   time = 0,
   projectiles: ProjectileState[] = [],
 ): FlightIntent {
+  if (ship.hullClass === "carrier") {
+    const delta = vecSub(target.pos, ship.pos);
+    return {
+      heading: Math.atan2(delta[1], delta[0]),
+      velocity: carrierStandoffVelocity(ship, ships),
+      rangePhase: "engage",
+    };
+  }
   const flight = SHIP_DOCTRINES[ship.hullClass].flight;
   // Non-capital callers historically used the cruiser movement envelope.
   const doctrine =

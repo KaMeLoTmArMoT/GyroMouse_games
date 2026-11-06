@@ -404,8 +404,8 @@ export function FleetBuilder(props: FleetBuilderProps) {
   const selectedScenario = SCENARIOS.find((s) => `scenario:${s.id}` === props.enemyPresetId);
   const selectedPreset = FLEET_PRESETS.find((p) => p.id === props.enemyPresetId);
   return (
-    <div className="flex-1 flex flex-col gap-2 p-3 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
-      <div className="flex-1 min-h-0 flex gap-2 overflow-hidden">
+    <div className="flex-1 min-w-0 max-w-full box-border flex flex-col gap-2 p-3 overflow-hidden bg-zinc-950 text-zinc-100 select-text">
+      <div className="flex-1 min-w-0 min-h-0 flex gap-2 overflow-hidden">
         <FleetBuilderPanel
           {...props}
           team={activeTeam}
@@ -421,12 +421,12 @@ export function FleetBuilder(props: FleetBuilderProps) {
       </div>
       <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 shrink-0 select-text">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+          <label className="block min-w-0 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
             Opposing Fleet Presets
             <select
               value={selectedPreset ? props.enemyPresetId : "custom"}
               onChange={(e) => props.onSelectEnemyPreset(e.target.value)}
-              className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
+              className="mt-1 w-full min-w-0 max-w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
             >
               <option value="custom">
                 {selectedScenario ? "Select a preset" : "Custom Fleet"}
@@ -438,12 +438,12 @@ export function FleetBuilder(props: FleetBuilderProps) {
               ))}
             </select>
           </label>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+          <label className="block min-w-0 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
             Tactical Scenarios
             <select
               value={selectedScenario ? props.enemyPresetId : "custom"}
               onChange={(e) => props.onSelectEnemyPreset(e.target.value)}
-              className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
+              className="mt-1 w-full min-w-0 max-w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
             >
               <option value="custom">
                 {selectedPreset ? "Select a scenario" : "Custom Fleet"}
@@ -588,7 +588,7 @@ function FleetBuilderPanel({
       className={
         isActive
           ? "flex-1 min-w-0 flex flex-col md:flex-row gap-2 overflow-hidden"
-          : "hidden min-[1536px]:flex w-80 shrink-0 overflow-hidden"
+          : "hidden min-[1536px]:flex w-80 max-w-full min-w-0 shrink overflow-hidden"
       }
     >
       {/* Left: Ship Catalog & Group Selection */}
@@ -856,7 +856,7 @@ function FleetBuilderPanel({
       </div>
 
       {/* Right: Full-Height Roster & Enemy Preset Selector */}
-      <div className="w-full md:w-96 min-[1536px]:w-80 md:shrink-0 flex flex-col gap-2 min-h-0 md:h-full">
+      <div className="w-full md:w-96 min-[1536px]:w-80 max-w-full min-w-0 shrink flex flex-col gap-2 min-h-0 md:h-full">
         {/* Budget Bar */}
         <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 select-text">
           <div className="space-y-1">
@@ -891,7 +891,7 @@ function FleetBuilderPanel({
                 {team === "blue" ? "Blue" : "Red"} Active Roster
               </span>
               {slots.length > 0 && (
-                <div className="flex gap-1 overflow-x-auto shrink-0">
+                <div className="flex min-w-0 gap-1 overflow-x-auto shrink">
                   {[1, 2, 3, 4, 5]
                     .filter((g) => groupCounts[g] && groupCounts[g] > 0)
                     .map((g) => {
@@ -1106,7 +1106,7 @@ function FleetBuilderPanel({
                           aria-label={`${team} carrier`}
                           value={slot.id}
                           onChange={(event) => setSelectedCarrierId(event.target.value)}
-                          className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 p-1 text-zinc-200"
+                          className="mt-1 w-full min-w-0 max-w-full rounded border border-zinc-700 bg-zinc-900 p-1 text-zinc-200"
                         >
                           {carriers.map((carrier, index) => (
                             <option key={carrier.id} value={carrier.id}>
@@ -1119,7 +1119,7 @@ function FleetBuilderPanel({
                     <label className="block text-zinc-400">
                       Strike wing
                       <select
-                        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-zinc-200"
+                        className="mt-1 w-full min-w-0 max-w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-zinc-200"
                         value={slot.wingSize ?? 0}
                         onChange={(event) =>
                           updateCarrier(slot, {
@@ -1151,7 +1151,7 @@ function FleetBuilderPanel({
                     <label className="block text-zinc-400">
                       Corvette escorts
                       <select
-                        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-zinc-200"
+                        className="mt-1 w-full min-w-0 max-w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-zinc-200"
                         value={slot.escortCount ?? 0}
                         onChange={(event) =>
                           updateCarrier(slot, {

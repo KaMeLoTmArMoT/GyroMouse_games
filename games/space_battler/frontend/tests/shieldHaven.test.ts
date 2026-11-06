@@ -320,7 +320,7 @@ describe("tethered guest damage absorption", () => {
     expect(sim.stats[1].damageDealt).toBe(12);
   });
 
-  it.each(weapons)("spills the unabsorbed %s damage through guest layers", (type) => {
+  it.each(weapons)("preserves %s collapse penetration rules through guest layers", (type) => {
     const { sim, parent, craft } = dockedSimulation("corvette");
     parent.shieldCurrent = 4;
     craft.shieldCurrent = 3;
@@ -336,6 +336,15 @@ describe("tethered guest damage absorption", () => {
     expect(parent.shieldCurrent).toBe(0);
     expect(parent.armorCurrent).toBe(parent.armorMax);
     expect(parent.hullCurrent).toBe(parent.hullMax);
+    if (type === "missile") {
+      expect(craft.shieldCurrent).toBe(3);
+      expect(craft.armorCurrent).toBe(2);
+      expect(craft.hullCurrent).toBe(hull);
+      expect(sim.stats[0].shieldDamageAbsorbed).toBe(4);
+      expect(sim.stats[1].damageDealt).toBe(4);
+      expect(craft.havenState).toBe("releasing");
+      return;
+    }
     expect(craft.shieldCurrent).toBe(0);
     expect(craft.armorCurrent).toBe(0);
     expect(craft.hullCurrent).toBe(hull - 0.5);

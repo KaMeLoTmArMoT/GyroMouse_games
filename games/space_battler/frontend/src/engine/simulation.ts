@@ -358,7 +358,7 @@ export class ClientCombatSimulation {
     for (const ship of aliveShips) {
       const target = navigationTargets.get(ship.id) ?? null;
       const previous = { pos: ship.pos, velocity: ship.velocity, heading: ship.heading };
-      if (!moveCarrierRecovery(ship, aliveShips, dt))
+      if (!moveCarrierRecovery(ship, aliveShips, dt, this.timeElapsed))
         this.updateShipMovement(ship, target, aliveShips, dt);
       movements.set(ship.id, {
         pos: ship.pos,

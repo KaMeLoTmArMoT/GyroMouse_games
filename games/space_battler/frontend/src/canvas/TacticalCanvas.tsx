@@ -189,7 +189,11 @@ export function TacticalCanvas({
           drawTacticalGrid(ctx);
 
           const selectedTender = sim.ships.find(
-            (ship) => ship.id === selectedShipId && ship.isAlive && ship.hullClass === "tender",
+            (ship) =>
+              ship.id === selectedShipId &&
+              ship.isAlive &&
+              !ship.isDebris &&
+              ship.hullClass === "tender",
           );
           if (selectedTender) {
             ctx.save();
@@ -353,7 +357,9 @@ export function TacticalCanvas({
           if (selectedShipId) {
             const selectedShip = sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
             if (selectedShip) {
-              renderHavenSlots(ctx, selectedShip, sim.ships, sim.shieldHaven, sim.timeElapsed);
+              if (!selectedShip.isDebris) {
+                renderHavenSlots(ctx, selectedShip, sim.ships, sim.shieldHaven, sim.timeElapsed);
+              }
               drawTacticalTrajectory(ctx, selectedShip, sim, wings);
             }
           }
@@ -691,6 +697,27 @@ function drawTacticalTrajectory(
   sim: ClientCombatSimulation,
   wings: FighterWingVisual[],
 ): void {
+  if (ship.isDebris) {
+    const label = "KINETIC DEBRIS • DRIFTING";
+    const x = ship.pos[0];
+    const y = ship.pos[1] + ship.size + 18;
+    ctx.save();
+    ctx.font = "10px monospace";
+    const width = ctx.measureText(label).width + 16;
+    ctx.fillStyle = "rgba(10, 15, 26, 0.85)";
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x - width / 2, y - 4, width, 18, 4);
+    else ctx.rect(x - width / 2, y - 4, width, 18);
+    ctx.fill();
+    ctx.stroke();
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(label, x, y + 9);
+    ctx.restore();
+    return;
+  }
   const isBlue = ship.team === 0;
   const primaryColor = isBlue ? "#38bdf8" : "#f87171";
   const speed = Math.hypot(ship.velocity[0], ship.velocity[1]);

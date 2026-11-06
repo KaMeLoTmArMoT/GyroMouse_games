@@ -1,5 +1,6 @@
 import type { ShipState, Vector2 } from "../types/combat";
-import { rotatePoint, vecAdd, vecDistance, vecNormalize, vecScale, vecSub } from "./math2d";
+import { fighterRecoveryDirection } from "./fighterRecovery";
+import { rotatePoint, vecAdd, vecDistance, vecScale, vecSub } from "./math2d";
 import { shieldEnvelopeRadius } from "./shieldGeometry";
 
 export const HANGAR_TURNAROUND = 4.5;
@@ -100,16 +101,20 @@ export function updateCarrierHangars(ships: ShipState[], time: number): void {
   }
 }
 
-export function moveCarrierRecovery(craft: ShipState, ships: ShipState[], dt: number): boolean {
+export function moveCarrierRecovery(
+  craft: ShipState,
+  ships: ShipState[],
+  dt: number,
+  time = 0,
+): boolean {
   if (!craft.carrierRecovering) return false;
   const carrier = ships.find((ship) => ship.id === craft.flagshipId && ship.isAlive);
   if (!carrier) return false;
-  const delta = vecSub(carrierRecoveryPoint(carrier, craft), craft.pos);
-  craft.velocity = vecScale(
-    vecNormalize(delta),
-    Math.min(craft.maxSpeed, vecDistance([0, 0], delta) / dt),
-  );
-  craft.heading = Math.atan2(delta[1], delta[0]);
+  const destination = carrierRecoveryPoint(carrier, craft);
+  const delta = vecSub(destination, craft.pos);
+  const direction = fighterRecoveryDirection(craft, destination, ships, time);
+  craft.velocity = vecScale(direction, Math.min(craft.maxSpeed, vecDistance([0, 0], delta) / dt));
+  craft.heading = Math.atan2(direction[1], direction[0]);
   craft.pos = vecAdd(craft.pos, vecScale(craft.velocity, dt));
   return true;
 }

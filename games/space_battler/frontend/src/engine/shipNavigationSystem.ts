@@ -162,21 +162,24 @@ export function updateShipNavigation(
     rangePhase = intent.rangePhase;
     evadingOrdnance = intent.evadingOrdnance ?? false;
     // Translational escape must not be clipped by the focused target's bow-ingress envelope.
-    maintainingStandoff = aliveShips.some((enemy) => {
-      if (!enemy.isAlive || enemy.team === ship.team || enemy.hullClass === "strike_craft")
-        return false;
-      const damaged = ship.shieldCurrent <= 0 || ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4;
-      const longRange = ship.hullClass === "battleship" && enemy.hullClass === "dreadnought";
-      const distance =
-        damaged || longRange
-          ? Math.max(500, ...ship.turrets.map((turret) => turret.weapon.range * 0.9))
-          : 500;
-      return (
-        (damaged || isCapitalShip(enemy)) &&
-        vecDistance(ship.pos, enemy.pos) < distance &&
-        vecDot(intent.velocity, vecSub(enemy.pos, ship.pos)) < 0
-      );
-    });
+    maintainingStandoff =
+      ship.hullClass === "carrier" ||
+      aliveShips.some((enemy) => {
+        if (!enemy.isAlive || enemy.team === ship.team || enemy.hullClass === "strike_craft")
+          return false;
+        const damaged =
+          ship.shieldCurrent <= 0 || ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4;
+        const longRange = ship.hullClass === "battleship" && enemy.hullClass === "dreadnought";
+        const distance =
+          damaged || longRange
+            ? Math.max(500, ...ship.turrets.map((turret) => turret.weapon.range * 0.9))
+            : 500;
+        return (
+          (damaged || isCapitalShip(enemy)) &&
+          vecDistance(ship.pos, enemy.pos) < distance &&
+          vecDot(intent.velocity, vecSub(enemy.pos, ship.pos)) < 0
+        );
+      });
   }
   if (
     ship.hullClass !== "tender" &&

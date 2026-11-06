@@ -1,4 +1,5 @@
 import type { FighterPhase, ShipState, Vector2, WingPhase } from "../types/combat";
+import { fighterRecoveryDirection } from "./fighterRecovery";
 import {
   dogfightTarget,
   fighterDispersal,
@@ -419,7 +420,11 @@ export class FighterMissionSystem {
       laneAvoidance,
       vecAdd(separation(ship, aliveShips), fighterDispersal(ship, aliveShips)),
     );
-    const intentDir = vecNormalize(vecAdd(vecScale(vecNormalize(toIntent), ship.maxSpeed), avoid));
+    const recoveryDir =
+      phase === "recover" || phase === "egress"
+        ? fighterRecoveryDirection(ship, intentTarget, aliveShips, timeElapsed)
+        : vecNormalize(toIntent);
+    const intentDir = vecNormalize(vecAdd(vecScale(recoveryDir, ship.maxSpeed), avoid));
     // Score reachable trajectories rather than hypothetical instant maximum-speed turns.
     const SECTORS = 16;
     let bestSector = ship.lastSelectedSector ?? 0;
