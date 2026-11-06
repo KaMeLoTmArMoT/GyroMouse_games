@@ -106,7 +106,7 @@ export default function App() {
     }
     return DEFAULT_USER_SLOTS;
   });
-  const [budgetLimit] = useState<number>(20000);
+  const [budgetLimit] = useState<number>(30000);
   const [enemyPresetId, setEnemyPresetId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.enemyPreset);

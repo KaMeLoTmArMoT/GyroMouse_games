@@ -33,14 +33,14 @@ describe("FleetBuilder presentation", () => {
       }),
     );
     const names = [
-      "Bastion Artillery Dreadnought",
-      "Oceanic Fleet Carrier",
-      "Leviathan Battleship",
-      "Vanguard Cruiser",
-      '"Оберіг" EW Shield Tender',
-      "Quiver Missile Frigate",
+      "Artillery Dreadnought",
+      "Oceanic Carrier",
+      "Sovereign Battleship",
+      "Strike Cruiser",
+      "Shield Tender",
+      "Missile Frigate",
       "Aegis Corvette",
-      "Raider Interceptor",
+      "Viper Fighter",
     ];
     const positions = names.map((name) => markup.indexOf(name.replaceAll('"', "&quot;")));
     expect(positions.every((position) => position >= 0)).toBe(true);
@@ -52,6 +52,10 @@ describe("FleetBuilder presentation", () => {
     expect(markup).toContain('aria-label="blue carrier"');
     expect(markup).toContain("Blue Active Roster");
     expect(markup).toContain("Red Active Roster");
+    expect(markup).toContain("Blue Budget");
+    expect(markup).toContain("Red Budget");
+    expect(markup).not.toContain("Armament Loadout");
+    expect(markup).not.toContain("suggested Blue vs Red");
     expect(markup).not.toContain("fabrication are not yet simulated");
   });
 });

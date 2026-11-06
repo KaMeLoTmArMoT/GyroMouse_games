@@ -128,17 +128,17 @@ describe("fleet builder matchups", () => {
     let tree = renderBuilder();
     button(tree, "Clear All").props.onClick();
     tree = renderBuilder();
-    enlist(tree, "Oceanic Fleet Carrier");
+    enlist(tree, "Oceanic Carrier");
     tree = renderBuilder();
-    expect(text(tree)).toContain("3000 / 20000 CR");
+    expect(text(tree)).toContain("3,000 / 30,000 CR");
     selector(tree, "Strike wing").props.onChange({ target: { value: "8" } });
     tree = renderBuilder();
-    expect(text(tree)).toContain("3960 / 20000 CR");
+    expect(text(tree)).toContain("3,960 / 30,000 CR");
     selector(tree, "Corvette escorts").props.onChange({
       target: { value: "2" },
     });
     tree = renderBuilder();
-    expect(text(tree)).toContain("4660 / 20000 CR");
+    expect(text(tree)).toContain("4,660 / 30,000 CR");
     button(tree, "Engage Fleet Simulator").props.onClick();
     const canvas = elements(renderApp()).find((element) => element.type === TacticalCanvas);
     const blue = canvas?.props.sim.ships.filter((ship) => ship.team === 0) ?? [];
@@ -154,7 +154,7 @@ describe("fleet builder matchups", () => {
     button(tree, "Opposing Force (Red)").props.onClick();
     tree = renderBuilder();
     expect(text(tree)).toContain("Red Active Roster (27 hulls)");
-    expect(text(tree)).toContain("3240 / 20000 CR");
+    expect(text(tree)).toContain("3,240 / 30,000 CR");
     button(tree, "Clear All").props.onClick();
     tree = renderBuilder();
     expect(text(tree)).toContain("Red Active Roster (0 hulls)");
@@ -162,7 +162,7 @@ describe("fleet builder matchups", () => {
     expect(selector(tree, "Opposing Fleet Presets").props.value).toBe("custom");
     expect(selector(tree, "Tactical Scenarios").props.value).toBe("custom");
 
-    enlist(tree, "Leviathan Battleship");
+    enlist(tree, "Sovereign Battleship");
     tree = renderBuilder();
     expect(text(tree)).toContain("Red Active Roster (1 hulls)");
     button(tree, "Terran Task Force (Blue)").props.onClick();

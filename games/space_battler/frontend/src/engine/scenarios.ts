@@ -99,7 +99,7 @@ const curated: ScenarioDefinition[] = [
     // Preserve the existing costly-duel regression ID and smoke coverage.
     id: isThreeKnives ? "1bb-vs-3cr" : id,
     version: 1,
-    label: `${preset.name} (suggested Blue vs Red)`,
+    label: preset.name,
     tags: isThreeKnives ? ["curated", "budget", "smoke"] : ["curated", "budget"],
     blue,
     red: preset.composition,

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { renderShipPreview } from "../canvas/shipRenderer";
 import { buildFleetFromSlots, GROUP_ANCHORS } from "../engine/fleetBuilder";
+import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { HullClass } from "../types/combat";
 
 export function useDelayedPreview<T>(delay: number) {
@@ -65,14 +66,21 @@ export function ShipPreview({ hull, team }: { hull: HullClass; team: 0 | 1 }) {
 
   return (
     <div
-      className={`absolute z-20 top-2 right-2 pointer-events-none rounded-lg border bg-zinc-950/95 shadow-xl text-center ${team === 1 ? "border-red-500/50 shadow-red-950/40" : "border-cyan-500/50 shadow-cyan-950/40"}`}
+      className={`absolute z-20 top-2 right-2 w-56 pointer-events-none rounded-lg border bg-zinc-950/95 shadow-xl text-center ${team === 1 ? "border-red-500/50 shadow-red-950/40" : "border-cyan-500/50 shadow-cyan-950/40"}`}
     >
-      <canvas ref={canvas} width={240} height={144} className="w-48 h-auto" aria-hidden="true" />
+      <canvas
+        ref={canvas}
+        width={240}
+        height={144}
+        className="w-48 h-auto mx-auto"
+        aria-hidden="true"
+      />
       <div
         className={`text-[11px] font-mono pb-2 ${team === 1 ? "text-red-200" : "text-cyan-200"}`}
       >
-        HULL PREVIEW
+        SIZE {HULL_PROFILES[hull].size}u
       </div>
+      <p className="px-2 pb-2 text-xs text-zinc-300">{HULL_PROFILES[hull].desc}</p>
     </div>
   );
 }

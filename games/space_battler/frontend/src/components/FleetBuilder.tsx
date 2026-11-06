@@ -1,6 +1,6 @@
 // Tactical Fleet Builder Modal & Panel Component with full-height scroll, text selection, and clear roster
 
-import { ChevronDown, ChevronUp, Copy, Plus, Shield, Swords, Trash2, Zap } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Plus, Shield, Swords, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type FleetSlot, fleetSlotCost } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
@@ -688,71 +688,60 @@ function FleetBuilderPanel({
               >
                 {isInspecting && <ShipPreview hull={hull} team={previewTeam} />}
                 <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <div
                         onMouseEnter={() => shipPreview.show(hull)}
                         onMouseLeave={shipPreview.hide}
-                        className={`w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 ${redTeam ? "text-red-400" : "text-cyan-400"}`}
+                        title={`${spec.desc} Size: ${HULL_PROFILES[hull].size}u`}
+                        className={`w-9 h-9 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 ${redTeam ? "text-red-400" : "text-cyan-400"}`}
                       >
                         <ShipSilhouette hullClass={hull} team={previewTeam} className="w-7 h-7" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="font-semibold text-sm text-zinc-100 select-all">
                           {spec.name}
                         </div>
                         <span
-                          className={`text-[11px] uppercase font-mono ${redTeam ? "text-red-300" : "text-cyan-300"}`}
+                          className={`block truncate text-[11px] uppercase font-mono ${redTeam ? "text-red-300" : "text-cyan-300"}`}
+                          title={spec.role}
                         >
                           {spec.role}
                         </span>
-                        <span
-                          className="ml-2 text-[10px] font-mono text-zinc-500"
-                          title="Hull size"
-                        >
-                          SIZE {HULL_PROFILES[hull].size}u
-                        </span>
                       </div>
                     </div>
-                    <div className="text-right flex flex-col items-end">
-                      <span className="text-xs font-mono font-bold text-zinc-200 block select-all">
-                        {spec.cost.toLocaleString("en-US")} CR
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded border font-bold transition-colors ${
+                          counts.group > 0
+                            ? `${activeTheme.bg} ${activeTheme.border} ${activeTheme.text}`
+                            : "bg-zinc-950/60 border-zinc-800 text-zinc-500"
+                        }`}
+                        title={`Assigned to Group ${selectedGroup}`}
+                      >
+                        GRP {selectedGroup}: {counts.group}
                       </span>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span
-                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded border font-bold transition-colors ${
-                            counts.group > 0
-                              ? `${activeTheme.bg} ${activeTheme.border} ${activeTheme.text}`
-                              : "bg-zinc-950/60 border-zinc-800 text-zinc-500"
-                          }`}
-                          title={`Assigned to Group ${selectedGroup}`}
-                        >
-                          GRP {selectedGroup}: {counts.group}
-                        </span>
-                        <span
-                          className="text-[10px] font-mono text-zinc-400"
-                          title="Total across all groups"
-                        >
-                          ({counts.total} total)
-                        </span>
-                      </div>
+                      <span
+                        className="text-[10px] font-mono text-zinc-400"
+                        title="Total across all groups"
+                      >
+                        ({counts.total} total)
+                      </span>
                     </div>
                   </div>
-
-                  <p className="text-xs text-zinc-300 mt-1.5 select-text">{spec.desc}</p>
-                  {hull === "tender" && (
-                    <div className="text-[10px] text-cyan-300">
-                      HARMONIC 65 SP/s · 500u · HAVEN +20% · ECM IN RESEARCH
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setDoctrineHull(hull)}
-                    aria-label={`View doctrine and states for ${spec.name}`}
-                    className={`mt-1.5 rounded border px-2 py-1 text-[11px] font-medium cursor-pointer ${redTeam ? "border-red-900/40 text-red-400 hover:bg-red-950 hover:text-rose-300" : "border-cyan-800/70 text-cyan-400 hover:bg-cyan-950 hover:text-cyan-200"}`}
-                  >
-                    Doctrine &amp; States
-                  </button>
+                  <div className="flex items-center justify-end gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setDoctrineHull(hull)}
+                      aria-label={`View doctrine and stances for ${spec.name}`}
+                      className={`rounded border px-2 py-0.5 text-[11px] font-medium cursor-pointer ${redTeam ? "border-red-900/40 text-red-400 hover:bg-red-950 hover:text-rose-300" : "border-cyan-800/70 text-cyan-400 hover:bg-cyan-950 hover:text-cyan-200"}`}
+                    >
+                      Doctrine &amp; Stances
+                    </button>
+                    <span className="w-20 text-right text-xs font-mono font-bold text-zinc-200 select-all">
+                      {spec.cost.toLocaleString("en-US")} CR
+                    </span>
+                  </div>
 
                   {/* Compact Stats Row */}
                   <div className="grid grid-cols-4 gap-1 mt-1.5 pt-1.5 border-t border-zinc-800/80 text-[11px] font-mono">
@@ -778,9 +767,9 @@ function FleetBuilderPanel({
                     </div>
                   </div>
 
-                  {/* Permanent Armament Loadout - Fixed height so cards never jump on hover */}
+                  {/* Weapon summary */}
                   <div
-                    className={`mt-1.5 p-1.5 rounded-lg text-[11px] font-mono min-h-[56px] flex flex-col justify-center transition-colors ${
+                    className={`mt-1 p-1 rounded-lg text-[11px] font-mono flex flex-col justify-center transition-colors ${
                       isInspecting
                         ? redTeam
                           ? "bg-zinc-950 border border-red-950/60 text-red-300"
@@ -788,12 +777,6 @@ function FleetBuilderPanel({
                         : "bg-zinc-950/60 border border-zinc-800/80 text-zinc-400"
                     }`}
                   >
-                    <div className="text-zinc-300 font-semibold flex items-center gap-1 text-[11px] uppercase tracking-wider mb-1">
-                      <Zap
-                        className={`w-2.5 h-2.5 ${isInspecting ? (redTeam ? "text-red-400" : "text-cyan-400") : "text-zinc-500"}`}
-                      />{" "}
-                      Armament Loadout
-                    </div>
                     <div className="space-y-0.5">
                       {groupedWeapons.map((w) => (
                         <div
@@ -841,24 +824,32 @@ function FleetBuilderPanel({
       <div className="w-full md:w-96 min-[1536px]:w-80 md:shrink-0 flex flex-col gap-2 min-h-0 md:h-full">
         {/* Budget Bar */}
         <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2 select-text">
-          <div className="flex justify-between items-center text-xs font-mono">
-            <span className="text-zinc-400">{team === "blue" ? "Blue" : "Red"} Budget</span>
-            <span
-              className={
-                remainingBudget < 0 || redTeam
-                  ? "text-red-400 font-bold"
-                  : "text-cyan-400 font-bold"
-              }
-            >
-              {currentCost} / {budgetLimit} CR
-            </span>
-          </div>
-          <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all ${remainingBudget < 0 ? "bg-red-500" : redTeam ? "bg-red-700" : "bg-cyan-400"}`}
-              style={{ width: `${Math.min(100, (currentCost / budgetLimit) * 100)}%` }}
-            />
-          </div>
+          {(isActive ? (["blue", "red"] as const) : [team]).map((budgetTeam) => {
+            const cost = (budgetTeam === "blue" ? blueSlots : redSlots).reduce(
+              (total, slot) => total + fleetSlotCost(slot),
+              0,
+            );
+            return (
+              <div key={budgetTeam} className="space-y-1">
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">
+                    {budgetTeam === "blue" ? "Blue" : "Red"} Budget
+                  </span>
+                  <span
+                    className={`font-bold ${cost > budgetLimit || budgetTeam === "red" ? "text-red-400" : "text-cyan-400"}`}
+                  >
+                    {cost.toLocaleString("en-US")} / {budgetLimit.toLocaleString("en-US")} CR
+                  </span>
+                </div>
+                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${cost > budgetLimit ? "bg-red-500" : budgetTeam === "red" ? "bg-red-700" : "bg-cyan-400"}`}
+                    style={{ width: `${Math.min(100, (cost / budgetLimit) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Selected Fleet Roster - Stretches to fill available height cleanly! */}

@@ -40,7 +40,7 @@ export interface HullProfile {
 
 export const HULL_PROFILES: Record<HullClass, HullProfile> = {
   carrier: {
-    name: "Oceanic Fleet Carrier",
+    name: "Oceanic Carrier",
     role: "Fleet Aviation & Mobile Repair",
     desc: "A fleet aviation capital with a flak turret and three defense lasers.",
     cost: 3000,
@@ -92,7 +92,7 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
     ),
   },
   battleship: {
-    name: "Leviathan Battleship",
+    name: "Sovereign Battleship",
     role: "Capital Flagship",
     desc: "Devastating spinal railgun + dual broadside beam batteries.",
     cost: 3200,
@@ -183,7 +183,7 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
     ],
   },
   dreadnought: {
-    name: "Bastion Artillery Dreadnought",
+    name: "Artillery Dreadnought",
     role: "Broadside Linebreaker",
     desc: "Four heavy batteries; three concentrate on either broadside. Requires escorts.",
     cost: 3600,
@@ -230,7 +230,7 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
     ),
   },
   cruiser: {
-    name: "Vanguard Cruiser",
+    name: "Strike Cruiser",
     role: "Medium Combatant",
     desc: "Heavy beam laser turret + prow heavy torpedo launcher.",
     cost: 1100,
@@ -298,7 +298,7 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
     ],
   },
   missile_frigate: {
-    name: "Quiver Missile Frigate",
+    name: "Missile Frigate",
     role: "Shield Saturation Support",
     desc: "Four light missile tubes strip shields; fragile and ineffective against heavy armor.",
     cost: 700,
@@ -347,9 +347,9 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
     ),
   },
   tender: {
-    name: '"Оберіг" EW Shield Tender',
+    name: "Shield Tender",
     role: "Fleet Shield Restoration & ECM Support",
-    desc: "A dedicated support frigate armed with a point-defense flak cannon, a focused harmonic shield restoration beam, and capital haven amplification.",
+    desc: "Restores shields and protects capital ships with flak and haven amplification.",
     cost: 1250,
     size: 32,
     speed: 75,
@@ -458,7 +458,7 @@ export const HULL_PROFILES: Record<HullClass, HullProfile> = {
     ],
   },
   strike_craft: {
-    name: "Raider Interceptor",
+    name: "Viper Fighter",
     role: "Strike Swarm",
     desc: "Agile fighter equipped with forward plasma bolt.",
     cost: 120,
