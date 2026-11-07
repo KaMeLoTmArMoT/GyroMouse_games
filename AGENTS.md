@@ -14,6 +14,7 @@
 ## Rules
 Do not run `npm run build` or `npm run dev` if i don't ask for it.
 STRICTLY FORBIDDEN: NEVER add mouse movement/cursor tilt controls (e.g. `mouseEnabled`, `pointermove` for game steering) to games unless explicitly requested. Controls must remain strictly keyboard-driven (WASD / Arrow keys / Space).
+STRICTLY FORBIDDEN: NEVER modify, rescale, or rebalance core combat/simulation hyperparameters (weapon damage, fire rates, cooldowns, ship speeds, turn rates, hull/armor/shield values, ship/shield sizes, `ARENA_RADIUS`, or simulation timestep) without explicit prior discussion, thorough analytical justification, and user approval. Calibrated balance values are sacred; solve fleet placement, positioning, and navigation challenges via geometry, inward compaction, and algorithmic optimizations, NEVER by casually tweaking hyperparameter constants.
 
 ## Testing & Validation
 No test runner configured — validate changes manually via `npm run dev` and visual check in browser.

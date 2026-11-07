@@ -61,13 +61,14 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const barWidth = canvas.width / HISTORY_SIZE;
     snapshot.graphFrames.forEach((frame, index) => {
       const height = Math.max(1, Math.min(canvas.height, (frame / 50) * canvas.height));
       ctx.fillStyle = frame <= 16.7 ? "#34d399" : frame <= 33 ? "#fbbf24" : "#ef4444";
       ctx.fillRect(
-        canvas.width - snapshot.graphFrames.length + index,
+        canvas.width - (snapshot.graphFrames.length - index) * barWidth,
         canvas.height - height,
-        1,
+        barWidth,
         height,
       );
     });
@@ -80,28 +81,35 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
     : null;
 
   return (
-    <div className="absolute top-4 left-4 z-10 pointer-events-none w-48 rounded-lg border border-zinc-700/80 bg-zinc-950/85 p-3 font-mono tabular-nums text-[11px] text-zinc-400 shadow-lg backdrop-blur-sm">
+    <div className="absolute top-4 left-4 z-10 pointer-events-none w-64 rounded-lg border border-zinc-700/80 bg-zinc-950/85 p-3 font-mono tabular-nums text-[11px] text-zinc-400 shadow-lg backdrop-blur-sm">
       <div className="mb-2 font-semibold uppercase tracking-wider text-cyan-400">Performance</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-        <span>
+        <span className="whitespace-nowrap">
           FPS <span className="text-zinc-100">{frame ? (1000 / frame).toFixed(1) : "—"}</span>
         </span>
-        <span>
+        <span className="whitespace-nowrap">
           Frame <span className="text-zinc-100">{frame?.toFixed(1) ?? "—"} ms</span>
         </span>
-        <span>
+        <span className="whitespace-nowrap">
           1% low <span className="text-zinc-100">{lowFps(sorted, 0.01)}</span>
         </span>
-        <span>
+        <span className="whitespace-nowrap">
           0.1% low <span className="text-zinc-100">{lowFps(sorted, 0.001)}</span>
         </span>
         <span className="col-span-2">
-          Sim step avg <span className="text-zinc-100">{step?.toFixed(1) ?? "—"} μs</span>
+          Sim step avg{" "}
+          <span className="text-zinc-100">
+            {step === null
+              ? "—"
+              : step >= 1000
+                ? `${(step / 1000).toFixed(2)} ms`
+                : `${step.toFixed(1)} μs`}
+          </span>
         </span>
       </div>
       <canvas
         ref={graphRef}
-        width={160}
+        width={232}
         height={36}
         className="mt-2 block w-full h-9 bg-zinc-900/80 rounded"
         aria-label="Recent frame times"
