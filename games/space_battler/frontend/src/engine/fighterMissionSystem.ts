@@ -1,5 +1,5 @@
 import type { FighterPhase, ShipState, Vector2, WingPhase } from "../types/combat";
-import { fighterRecoveryDirection } from "./fighterRecovery";
+import { fighterRecoveryDirection, friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import {
   dogfightTarget,
   fighterDispersal,
@@ -20,8 +20,14 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { shieldEnvelopeRadius } from "./shieldGeometry";
-import { findNavigationTarget } from "./shipNavigationSystem";
+import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
+import {
+  FLAK_DENIAL_RADIUS,
+  fighterShieldWaypoint,
+  fighterTacticalTick,
+  findNavigationTarget,
+  hostileFlakThreats,
+} from "./shipNavigationSystem";
 import type { ClientCombatSimulation } from "./simulation";
 
 const FIGHTER_STANDOFF = 520;
@@ -64,6 +70,19 @@ export class FighterMissionSystem {
   private wings: FighterWing[] = [];
   private readonly context: MissionContext;
   private readonly onEgress: (ship: ShipState) => void;
+  private decisions = new WeakMap<ShipState, number>();
+  private steering = new WeakMap<
+    ShipState,
+    {
+      tick: number;
+      phase: FighterPhase;
+      heading: number;
+      speed: number;
+      committedAt: number;
+      evaluatedAt: number;
+      evasive: boolean;
+    }
+  >();
 
   constructor(context: MissionContext, onEgress: (ship: ShipState) => void) {
     this.context = context;
@@ -72,6 +91,8 @@ export class FighterMissionSystem {
 
   clear(): void {
     this.wings = [];
+    this.decisions = new WeakMap();
+    this.steering = new WeakMap();
   }
 
   getVisuals(): FighterWingVisual[] {
@@ -164,9 +185,22 @@ export class FighterMissionSystem {
 
   updateWings(aliveShips: ShipState[]): void {
     const { timeElapsed, orders } = this.context;
+    const reassess = new Set<ShipState>();
+    const flak = new Map<ShipState, ShipState[]>();
     for (const ship of aliveShips) {
       if (ship.hullClass !== "strike_craft") continue;
-      dogfightTarget(ship, aliveShips, timeElapsed);
+      const threats = hostileFlakThreats(ship, aliveShips);
+      flak.set(ship, threats);
+      const tick = fighterTacticalTick(ship, timeElapsed, aliveShips);
+      if (tick !== this.decisions.get(ship)) {
+        this.decisions.set(ship, tick);
+        reassess.add(ship);
+        if (!threats.length) dogfightTarget(ship, aliveShips, timeElapsed);
+      }
+      if (threats.length) {
+        ship.dogfightTargetId = undefined;
+        if (threats.length >= 2 || ship.fighterPhase === "intercept") this.setPhase(ship, "egress");
+      }
     }
     const groupTargets = new Map<string, ShipState | undefined>();
     for (const wing of this.wings) {
@@ -181,9 +215,12 @@ export class FighterMissionSystem {
       let target = groupTargets.get(groupKey);
       if (!groupTargets.has(groupKey)) {
         target =
-          aliveShips.find(
-            (ship) => ship.id === wing.targetId && withinPursuitTheater(leader, ship, aliveShips),
-          ) ??
+          (!reassess.has(leader)
+            ? aliveShips.find(
+                (ship) =>
+                  ship.id === wing.targetId && withinPursuitTheater(leader, ship, aliveShips),
+              )
+            : undefined) ??
           findNavigationTarget(
             leader,
             orders.get(wing.groupId) ?? {
@@ -217,7 +254,10 @@ export class FighterMissionSystem {
       }
       if (!target) continue;
       wing.rally = safeRally(target, wing.heading, members, aliveShips, FIGHTER_STANDOFF);
-      const healthy = members.filter((ship) => !this.needsCover(ship) && !ship.dogfightTargetId);
+      const healthy = members.filter(
+        (ship) =>
+          !this.needsCover(ship) && !ship.dogfightTargetId && (flak.get(ship)?.length ?? 0) < 2,
+      );
       const ready = healthy.filter(
         (ship) => vecDistance(ship.pos, this.rallySlot(wing, ship)) <= WING_RALLY_TOLERANCE,
       );
@@ -244,7 +284,12 @@ export class FighterMissionSystem {
             distance < target.size + 30 ||
             (!gunReady &&
               (distance <= shieldEnvelopeRadius(target) + 75 ||
-                timeElapsed - (wing.engagementStarted ?? timeElapsed) >= 6))
+                timeElapsed - (wing.engagementStarted ?? timeElapsed) >= 6)) ||
+            (ship.maxSpeed > 0 &&
+              (flak.get(ship)?.length ?? 0) > 0 &&
+              target.hullClass === "corvette" &&
+              (timeElapsed - (wing.engagementStarted ?? timeElapsed) >= 1.5 ||
+                vecDot(vecSub(target.pos, ship.pos), rotatePoint([1, 0], ship.heading)) < 0))
           )
             this.setPhase(ship, "egress");
         }
@@ -294,11 +339,13 @@ export class FighterMissionSystem {
           ship,
           this.needsCover(ship)
             ? "recover"
-            : ship.dogfightTargetId
-              ? "intercept"
-              : wing.phase === "attack" && ship.fighterPhase === "egress"
-                ? "egress"
-                : wing.phase,
+            : (flak.get(ship)?.length ?? 0) >= 2
+              ? "egress"
+              : ship.dogfightTargetId
+                ? "intercept"
+                : wing.phase === "attack" && ship.fighterPhase === "egress"
+                  ? "egress"
+                  : wing.phase,
         );
     }
   }
@@ -310,12 +357,20 @@ export class FighterMissionSystem {
     aliveShips: ShipState[],
   ): { heading: number; speed: number } {
     const { timeElapsed, projectiles } = this.context;
+    const threats = hostileFlakThreats(ship, aliveShips);
+    if (threats.length >= 2 || (threats.length && ship.fighterPhase === "intercept")) {
+      ship.dogfightTargetId = undefined;
+      this.setPhase(ship, "egress");
+    }
+    const wing = this.wings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
+    if (!wing) return { heading: ship.heading, speed: 0 };
+    const phase = ship.havenState === "seeking" ? "recover" : (ship.fighterPhase ?? wing.phase);
+    const tick = fighterTacticalTick(ship, timeElapsed, aliveShips);
+    const previous = this.steering.get(ship);
+    if (previous && previous.tick === tick && previous.phase === phase) return previous;
     // Safe haven management retains shield health, distance, and occupancy scoring.
     const friendlyAnchors = aliveShips.filter(
-      (s) =>
-        s.team === ship.team &&
-        s.isAlive &&
-        (s.hullClass === "battleship" || s.hullClass === "cruiser" || s.hullClass === "corvette"),
+      (s) => s.team === ship.team && s.isAlive && (isCapitalShip(s) || s.hullClass === "corvette"),
     );
     const criticallyWounded = ship.hullCurrent < ship.hullMax * 0.3;
     if (
@@ -348,21 +403,18 @@ export class FighterMissionSystem {
         ship.safeHavenTimer = 1.0;
       }
     } else {
-      ship.safeHavenTimer = (ship.safeHavenTimer ?? 0) - dt;
+      ship.safeHavenTimer =
+        (ship.safeHavenTimer ?? 0) - (previous ? timeElapsed - previous.evaluatedAt : dt);
     }
     const safeHaven = friendlyAnchors.find((a) => a.id === ship.safeHavenId) ?? null;
     const isDamaged = this.needsCover(ship);
-    const wing = this.wings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
-    if (!wing) return { heading: ship.heading, speed: 0 };
-    const phase = ship.havenState === "seeking" ? "recover" : (ship.fighterPhase ?? wing.phase);
+    const targetDistance = vecDistance(ship.pos, target.pos);
     const liningUp =
       phase === "attack" &&
       ship.turrets.some(
-        (turret) =>
-          turret.cooldownTimer <= 0 &&
-          vecDistance(ship.pos, target.pos) <= turret.weapon.range + 120,
+        (turret) => turret.cooldownTimer <= 0 && targetDistance <= turret.weapon.range + 120,
       );
-    const attackSpeed = liningUp ? ship.maxSpeed * 0.45 : ship.maxSpeed;
+    const attackSpeed = ship.maxSpeed;
     let intentTarget: Vector2;
     const slot = ship.wingSlot ?? 0;
     const rallySlot = this.rallySlot(wing, ship);
@@ -397,8 +449,8 @@ export class FighterMissionSystem {
           Math.abs(vecDot(toRally, [-forward[1], forward[0]])) > WING_RALLY_TOLERANCE;
         intentTarget = acquiringCorridor
           ? rallySlot
-          : vecDistance(ship.pos, target.pos) <= 600
-            ? target.pos
+          : isCapitalShip(target) || target.hullClass === "corvette"
+            ? fighterShieldWaypoint(ship, target, wing.index % 2 === 0 ? 1 : -1, true)
             : vecAdd(target.pos, rotatePoint([-standoff, slot * 35], wing.heading));
         break;
       }
@@ -406,13 +458,15 @@ export class FighterMissionSystem {
       case "recover": {
         const peelSign = wing.index % 2 === 0 ? 1 : -1;
         intentTarget = safeHaven
-          ? vecAdd(
-              safeHaven.pos,
-              rotatePoint(
-                [-safeHaven.size - 55, slot * 28],
-                phase === "recover" ? safeHaven.heading : wing.heading,
-              ),
-            )
+          ? phase === "egress" && isCapitalShip(safeHaven)
+            ? fighterShieldWaypoint(ship, safeHaven, peelSign)
+            : vecAdd(
+                safeHaven.pos,
+                rotatePoint(
+                  [-safeHaven.size - 55, slot * 28],
+                  phase === "recover" ? safeHaven.heading : wing.heading,
+                ),
+              )
           : vecAdd(rallySlot, rotatePoint([0, peelSign * 150], wing.heading));
         break;
       }
@@ -426,10 +480,72 @@ export class FighterMissionSystem {
     const recoveryDir =
       phase === "recover" || phase === "egress"
         ? fighterRecoveryDirection(ship, intentTarget, aliveShips, timeElapsed)
-        : vecNormalize(toIntent);
+        : friendlyShieldRecoveryDirection(ship, intentTarget, aliveShips, vecNormalize(toIntent));
     const intentDir = vecNormalize(vecAdd(vecScale(recoveryDir, ship.maxSpeed), avoid));
     // Score reachable trajectories rather than hypothetical instant maximum-speed turns.
     const SECTORS = 16;
+    const candidateSpeed = Math.min(attackSpeed, vecDistance([0, 0], ship.velocity) + 120);
+    const projectileThreats = projectiles
+      .filter(
+        (p) =>
+          p.ownerTeam !== ship.team &&
+          (p.weaponType === "missile" || p.weaponType === "railgun") &&
+          p.hp > 0 &&
+          p.lifetime > 0 &&
+          vecDistance(ship.pos, p.pos) <= 650,
+      )
+      .map((p) => ({
+        velocity: p.velocity,
+        relative: vecSub(ship.pos, p.pos),
+        horizon: Math.min(2, p.lifetime),
+      }));
+    const craftRadius = shieldEnvelopeRadius(ship);
+    const obstacles = aliveShips
+      .filter(
+        (s) =>
+          s.isAlive &&
+          !s.isDocked &&
+          !s.isDebris &&
+          s.id !== ship.id &&
+          !(s.team === ship.team && s.hullClass === "strike_craft"),
+      )
+      .map((obstacle) => {
+        const capital = isCapitalShip(obstacle);
+        const missionTarget = liningUp && obstacle.id === target.id;
+        return {
+          obstacle,
+          capital,
+          relative: vecSub(obstacle.pos, ship.pos),
+          clearance:
+            craftRadius + shieldEnvelopeRadius(obstacle) + (missionTarget ? 20 : capital ? 95 : 40),
+          horizon: missionTarget ? 0.25 : 1,
+          flak: obstacle.team !== ship.team && obstacle.hullClass === "corvette",
+          pdRange:
+            obstacle.team !== ship.team &&
+            (phase === "staging" || phase === "rejoin" || phase === "recover")
+              ? Math.max(
+                  0,
+                  ...obstacle.turrets
+                    .filter((t) => t.weapon.weaponType === "point_defense")
+                    .map((t) => t.weapon.range + 80),
+                )
+              : 0,
+        };
+      });
+    const peers = aliveShips
+      .filter(
+        (peer) =>
+          peer.isAlive &&
+          !peer.isDocked &&
+          peer.id !== ship.id &&
+          peer.team === ship.team &&
+          peer.hullClass === "strike_craft",
+      )
+      .map((peer) => ({
+        direction: vecNormalize(vecSub(peer.pos, ship.pos)),
+        distance: vecDistance(peer.pos, ship.pos),
+      }))
+      .filter((peer) => peer.distance < FIGHTER_CLEARANCE);
     let bestSector = ship.lastSelectedSector ?? 0;
     let maxScore = -Infinity;
     let maxDangerObserved = 0;
@@ -443,29 +559,17 @@ export class FighterMissionSystem {
           ship.turnRate * 0.5,
         );
       const candidateDir: Vector2 = [Math.cos(reachable), Math.sin(reachable)];
-      const candidateVel = vecScale(
-        candidateDir,
-        Math.min(attackSpeed, vecDistance([0, 0], ship.velocity) + 120),
-      );
+      const candidateVel = vecScale(candidateDir, candidateSpeed);
       // Recovery values the eventual sanctuary bearing even when it requires a full turn.
       const interestDir: Vector2 =
         phase === "recover" ? [Math.cos(sectorAngle), Math.sin(sectorAngle)] : candidateDir;
       const interestScore = vecDot(interestDir, intentDir);
       let dangerScore = 0;
-      for (const p of projectiles) {
-        if (
-          p.ownerTeam === ship.team ||
-          (p.weaponType !== "missile" && p.weaponType !== "railgun") ||
-          p.hp <= 0 ||
-          p.lifetime <= 0
-        )
-          continue;
-        const r = vecSub(ship.pos, p.pos);
-        const distToMissile = vecDistance([0, 0], r);
-        if (distToMissile > 650) continue;
+      for (const p of projectileThreats) {
+        const r = p.relative;
         const u = vecSub(candidateVel, p.velocity);
         const uSq = vecDot(u, u) + 1e-4;
-        const horizon = Math.min(2, p.lifetime);
+        const horizon = p.horizon;
         const tStar = clamp(-vecDot(r, u) / uSq, 0, horizon);
         const rStar = vecAdd(r, vecScale(u, tStar));
         const dStar = vecDistance([0, 0], rStar);
@@ -474,49 +578,29 @@ export class FighterMissionSystem {
           dangerScore += missileDanger;
         }
       }
-      for (const obstacle of aliveShips) {
-        if (obstacle.id === ship.id) continue;
-        if (obstacle.team === ship.team && obstacle.hullClass === "strike_craft") continue;
-        const relative = vecSub(obstacle.pos, ship.pos);
+      for (const entry of obstacles) {
+        const { obstacle, relative, capital, clearance, horizon, pdRange } = entry;
         const velocity = vecSub(obstacle.velocity, candidateVel);
-        const missionTarget = liningUp && obstacle.id === target.id;
         const t = clamp(
           -vecDot(relative, velocity) / Math.max(1, vecDot(velocity, velocity)),
           0,
-          missionTarget ? 0.25 : 1,
+          horizon,
         );
         const distance = vecDistance([0, 0], vecAdd(relative, vecScale(velocity, t)));
-        const capital = obstacle.hullClass === "battleship" || obstacle.hullClass === "cruiser";
-        const clearance =
-          shieldEnvelopeRadius(ship) +
-          shieldEnvelopeRadius(obstacle) +
-          (missionTarget ? 20 : capital ? 95 : 40);
         if (distance < clearance) dangerScore += (capital ? 14 : 6) * (1 - distance / clearance);
-        if (
-          obstacle.team !== ship.team &&
-          (phase === "staging" || phase === "rejoin" || phase === "recover")
-        ) {
-          const pdRange = Math.max(
-            0,
-            ...obstacle.turrets
-              .filter((turret) => turret.weapon.weaponType === "point_defense")
-              .map((turret) => turret.weapon.range + 80),
-          );
-          if (distance < pdRange) dangerScore += 3 * (1 - distance / pdRange);
-        }
+        if (distance < pdRange) dangerScore += 3 * (1 - distance / pdRange);
+        if (entry.flak && distance < FLAK_DENIAL_RADIUS)
+          dangerScore +=
+            (phase === "attack" && obstacle.id === target.id && threats.length === 1 ? 0.5 : 8) *
+            (1 - distance / FLAK_DENIAL_RADIUS);
       }
       if (dangerScore > maxDangerObserved) maxDangerObserved = dangerScore;
       let congestionScore = 0;
-      for (const peer of aliveShips) {
-        if (peer.id === ship.id || peer.team !== ship.team || peer.hullClass !== "strike_craft")
-          continue;
-        const toPeer = vecSub(peer.pos, ship.pos);
-        const peerDist = vecDistance([0, 0], toPeer);
-        if (peerDist < FIGHTER_CLEARANCE) {
-          const headingTowardPeer = vecDot(candidateDir, vecNormalize(toPeer));
-          if (headingTowardPeer > 0)
-            congestionScore += headingTowardPeer * (1 - peerDist / FIGHTER_CLEARANCE) * 1.8;
-        }
+      for (const peer of peers) {
+        const peerDist = peer.distance;
+        const headingTowardPeer = vecDot(candidateDir, peer.direction);
+        if (headingTowardPeer > 0)
+          congestionScore += headingTowardPeer * (1 - peerDist / FIGHTER_CLEARANCE) * 1.8;
       }
       let flickerPenalty = 0;
       if (ship.lastSelectedSector !== undefined) {
@@ -536,6 +620,11 @@ export class FighterMissionSystem {
         bestSector = k;
       }
     }
+    // Trained pilots commit to an evasive line for 150ms; phase changes break the hold.
+    const hold =
+      previous?.evasive && previous.phase === phase && timeElapsed - previous.committedAt < 0.15;
+    if (hold && ship.lastSelectedSector !== undefined) bestSector = ship.lastSelectedSector;
+    const changed = ship.lastSelectedSector !== bestSector || previous?.phase !== phase;
     ship.lastSelectedSector = bestSector;
     const finalHeading = (bestSector * 2 * Math.PI) / SECTORS;
     const speed =
@@ -547,6 +636,16 @@ export class FighterMissionSystem {
       phase === "recover"
         ? attackSpeed
         : Math.min(ship.maxSpeed * 0.7, vecDistance(ship.pos, intentTarget) * 1.5);
-    return { heading: finalHeading, speed };
+    const decision = {
+      tick,
+      phase,
+      heading: finalHeading,
+      speed,
+      committedAt: changed ? timeElapsed : (previous?.committedAt ?? timeElapsed),
+      evaluatedAt: timeElapsed,
+      evasive: Boolean(hold) || maxDangerObserved > 0.4,
+    };
+    this.steering.set(ship, decision);
+    return decision;
   }
 }

@@ -35,7 +35,137 @@ import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
 import type { ClientCombatSimulation } from "./simulation";
 
+export const FLAK_DENIAL_RADIUS = 520;
+export const FLAK_THREAT_RANGE = 600;
+
+export function hostileFlakThreats(ship: ShipState, ships: ShipState[]): ShipState[] {
+  return ships.filter(
+    (enemy) =>
+      enemy.isAlive &&
+      !enemy.isDocked &&
+      !enemy.isDebris &&
+      enemy.team !== ship.team &&
+      enemy.hullClass === "corvette" &&
+      vecDistance(ship.pos, enemy.pos) <= FLAK_THREAT_RANGE,
+  );
+}
+
+const fighterDecisions = new WeakMap<
+  ShipState,
+  {
+    tick: number;
+    nextAt: number;
+    targetTick?: number;
+    target?: ShipState | null;
+    wingTargetId?: string | null;
+  }
+>();
+
+/** A stable per-pilot offset distributes tactical work across physics frames. */
+export function fighterTacticalTick(ship: ShipState, time: number, ships: ShipState[]): number {
+  let state = fighterDecisions.get(ship);
+  if (!state) {
+    state = { tick: 0, nextAt: time };
+    fighterDecisions.set(ship, state);
+  }
+  if (time + 1e-9 >= state.nextAt) {
+    const combat =
+      ship.fighterPhase === "attack" ||
+      ship.fighterPhase === "intercept" ||
+      ships.some(
+        (enemy) =>
+          enemy.isAlive &&
+          !enemy.isDocked &&
+          !enemy.isDebris &&
+          enemy.team !== ship.team &&
+          vecDistance(ship.pos, enemy.pos) <= FLAK_THREAT_RANGE,
+      );
+    const period = 1 / (combat ? 12 : 5);
+    let seed = 2166136261;
+    for (const char of ship.id) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
+    seed = Math.imul(seed ^ (seed >>> 16), 0x85ebca6b);
+    seed = Math.imul(seed ^ (seed >>> 13), 0xc2b2ae35);
+    seed ^= seed >>> 16;
+    const offset = (seed >>> 0) / 4294967296;
+    state.tick++;
+    state.nextAt = (Math.floor(time / period - offset + 1e-9) + 1 + offset) * period;
+  }
+  return state.tick;
+}
+
+/** Aim beyond the tangent contact, preserving momentum past the shield flank. */
+export function fighterShieldWaypoint(
+  ship: ShipState,
+  capital: ShipState,
+  side: number,
+  attack = false,
+): Vector2 {
+  const clearance = shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(ship);
+  const gun = attack ? ship.turrets[0] : undefined;
+  // Short-range nose guns need a tighter slash, still outside the physical shield.
+  const firingRadius = gun
+    ? gun.weapon.range *
+      Math.sin(
+        Math.min(Math.PI / 2, Math.max(Math.abs(gun.baseArc[0]), Math.abs(gun.baseArc[1]))),
+      ) *
+      0.75
+    : 350;
+  const radius = Math.max(clearance + (attack ? 5 : 95), Math.min(350, firingRadius));
+  const offset = vecSub(ship.pos, capital.pos);
+  const distance = vecDistance([0, 0], offset);
+  const outward =
+    distance > 1e-6
+      ? vecScale(offset, 1 / distance)
+      : ([-Math.cos(ship.heading), -Math.sin(ship.heading)] as Vector2);
+  const normal: Vector2 = [-outward[1] * side, outward[0] * side];
+  if (distance <= radius)
+    return vecAdd(capital.pos, vecAdd(vecScale(outward, radius + 60), vecScale(normal, 300)));
+  const contact = vecAdd(
+    capital.pos,
+    vecAdd(
+      vecScale(outward, (radius * radius) / distance),
+      vecScale(normal, radius * Math.sqrt(1 - (radius / distance) ** 2)),
+    ),
+  );
+  return vecAdd(
+    contact,
+    vecScale(
+      vecNormalize(vecSub(contact, ship.pos)),
+      Math.max(240, Math.sqrt(Math.max(0, 350 ** 2 - radius ** 2))),
+    ),
+  );
+}
+
 export function findNavigationTarget(
+  ship: ShipState,
+  order: GroupOrder,
+  aliveShips: ShipState[],
+  previousTargetId?: string,
+  wingTargetId?: string | null,
+): ShipState | null {
+  const decision = ship.hullClass === "strike_craft" ? fighterDecisions.get(ship) : undefined;
+  if (
+    decision &&
+    decision.targetTick === decision.tick &&
+    decision.wingTargetId === wingTargetId &&
+    decision.target &&
+    aliveShips.includes(decision.target) &&
+    decision.target.isAlive &&
+    !decision.target.isDocked &&
+    !decision.target.isDebris &&
+    withinPursuitTheater(ship, decision.target, aliveShips)
+  )
+    return decision.target;
+  const target = selectNavigationTarget(ship, order, aliveShips, previousTargetId, wingTargetId);
+  if (decision) {
+    decision.target = target;
+    decision.targetTick = decision.tick;
+    decision.wingTargetId = wingTargetId;
+  }
+  return target;
+}
+
+function selectNavigationTarget(
   ship: ShipState,
   order: GroupOrder,
   aliveShips: ShipState[],
@@ -51,6 +181,22 @@ export function findNavigationTarget(
       withinPursuitTheater(ship, s, aliveShips),
   );
   if (enemies.length === 0) return null;
+  if (ship.hullClass === "strike_craft") {
+    // Reassess the approach before entering an overlapping hostile flak umbrella.
+    const safeTargets = enemies.filter(
+      (enemy) =>
+        aliveShips.filter(
+          (flak) =>
+            flak.isAlive &&
+            !flak.isDocked &&
+            !flak.isDebris &&
+            flak.team !== ship.team &&
+            flak.hullClass === "corvette" &&
+            vecDistance(flak.pos, enemy.pos) <= FLAK_THREAT_RANGE,
+        ).length < 2,
+    );
+    if (safeTargets.length) enemies = safeTargets;
+  }
   const combatCapital =
     ship.hullClass === "dreadnought" ||
     ship.hullClass === "battleship" ||
@@ -228,6 +374,22 @@ export function updateShipNavigation(
     const maneuver = fighterCycle(ship, target, dt, aliveShips);
     targetHeading = maneuver.heading;
     desiredSpeed = maneuver.speed;
+    if (
+      ship.fighterPhase === "attack" &&
+      ship.turrets.some(
+        (turret) =>
+          turret.cooldownTimer <= 0 &&
+          vecDistance(ship.pos, target.pos) <= turret.weapon.range + 120,
+      )
+    ) {
+      // Slew the nose gun independently of the tangential strafe thrust.
+      thrusterVelocity = [
+        Math.cos(maneuver.heading) * desiredSpeed,
+        Math.sin(maneuver.heading) * desiredSpeed,
+      ];
+      const aim = vecSub(target.pos, ship.pos);
+      targetHeading = Math.atan2(aim[1], aim[0]);
+    }
   } else if (target) {
     const order = context.orders.get(ship.groupId) ?? {
       groupId: ship.groupId,
@@ -386,7 +548,7 @@ export function updateShipNavigation(
   // Preserve tangential flight, but bound closing speed by the remaining clearance.
   if (ship.hullClass === "strike_craft") {
     for (const capital of aliveShips) {
-      if (!capital.isAlive || capital.team === ship.team || !isCapitalShip(capital)) continue;
+      if (!capital.isAlive || !isCapitalShip(capital)) continue;
       const distance = vecDistance(ship.pos, capital.pos);
       if (distance < 1e-6) continue;
       const clearance = shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(ship) + 30;
