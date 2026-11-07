@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { mountPosition } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
-import { calculateSeparation, clampLateralVelocity } from "../src/engine/flightBehaviors";
+import {
+  calculateSeparation,
+  clampLateralVelocity,
+  emergencySkirmishBreakout,
+  imminentSkirmishThreat,
+  skirmishFleetVelocity,
+} from "../src/engine/flightBehaviors";
 import {
   ARENA_HARD_PULL_RADIUS,
   ARENA_RADIUS,
@@ -30,6 +36,85 @@ function ship(hullClass: HullClass, team = 0) {
   result.pos = [0, 0];
   return result;
 }
+
+describe("skirmish survival overrides", () => {
+  it("stands off from a closing capital while focused on a distant carrier", () => {
+    const frigate = ship("missile_frigate");
+    const carrier = ship("carrier", 1);
+    carrier.pos = [1400, 0];
+    const threat = ship("battleship", 1);
+    threat.pos = [650, 0];
+    threat.velocity = [-100, 0];
+    const ships = [frigate, carrier, threat];
+    expect(imminentSkirmishThreat(frigate, ships, carrier)).toBe(threat);
+    const intent = capitalIntent(frigate, carrier, ships, {
+      groupId: 1,
+      priority: "capitals",
+      stance: "optimal_range",
+    });
+    expect(intent.velocity[0]).toBeLessThan(0);
+    expect(frigate.skirmishCycle?.targetId).toBe(carrier.id);
+  });
+
+  it("ranks closing threats by arrival and ignores inactive capitals", () => {
+    const frigate = ship("missile_frigate");
+    const near = ship("cruiser", 1);
+    near.pos = [500, 0];
+    near.velocity = [-10, 0];
+    const fast = ship("dreadnought", 1);
+    fast.pos = [700, 0];
+    fast.velocity = [-200, 0];
+    expect(imminentSkirmishThreat(frigate, [near, fast])).toBe(fast);
+    fast.isDebris = true;
+    expect(imminentSkirmishThreat(frigate, [near, fast])).toBe(near);
+    near.pos = [750, 0];
+    expect(imminentSkirmishThreat(frigate, [near, fast])).toBeNull();
+  });
+
+  it("sprints inward at full speed under boundary pressure, bypassing the fleet tether", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [ARENA_RADIUS * 0.9, 0];
+    frigate.heading = Math.PI;
+    frigate.velocity = [-frigate.maxSpeed, 0];
+    const enemy = ship("battleship", 1);
+    enemy.pos = [frigate.pos[0] + 500, 0];
+    const friendly = ship("carrier");
+    friendly.id = "anchor";
+    friendly.pos = [frigate.pos[0] + 1600, 0];
+    const ships = [frigate, enemy, friendly];
+    const breakout = emergencySkirmishBreakout(frigate, ships, ARENA_RADIUS);
+    expect(breakout?.velocity[0]).toBeCloseTo(-frigate.maxSpeed);
+    const sim = new ClientCombatSimulation();
+    updateShipNavigation(frigate, enemy, ships, 1 / 60, sim, () => ({ heading: 0, speed: 0 }));
+    expect(frigate.velocity[0]).toBeCloseTo(-frigate.maxSpeed);
+    expect(frigate.heading).toBeCloseTo(Math.PI);
+  });
+
+  it("breaks out when locally outnumbered but leaves safe boundary flight alone", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [ARENA_RADIUS * 0.9, 0];
+    const enemies = [ship("corvette", 1), ship("corvette", 1)];
+    enemies.forEach((enemy, i) => {
+      enemy.id = `enemy_${i}`;
+      enemy.pos = [frigate.pos[0] - 400, i * 100];
+    });
+    expect(emergencySkirmishBreakout(frigate, enemies, ARENA_RADIUS)?.velocity[0]).toBeLessThan(0);
+    expect(emergencySkirmishBreakout(frigate, [enemies[0]], ARENA_RADIUS)).toBeNull();
+    frigate.pos = [0, 0];
+    expect(emergencySkirmishBreakout(frigate, enemies, ARENA_RADIUS)).toBeNull();
+  });
+
+  it("gently attracts toward friendly lines without reversing survival thrust", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [1600, 0];
+    const anchor = ship("carrier");
+    anchor.id = "anchor";
+    const desired: Vector2 = [frigate.maxSpeed, 0];
+    const tethered = skirmishFleetVelocity(frigate, desired, [anchor]);
+    expect(tethered[0]).toBeGreaterThan(frigate.maxSpeed * 0.8);
+    expect(tethered[0]).toBeLessThan(frigate.maxSpeed);
+  });
+});
 
 describe("predictive kinetic wreck routing", () => {
   it("evades an oncoming wreck using thrust before any collision solver runs", () => {

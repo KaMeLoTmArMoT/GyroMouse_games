@@ -38,7 +38,7 @@ describe("crew tactical cadence", () => {
 });
 
 describe("missile frigate containment", () => {
-  it("returns to friendly capital support while preserving lateral thrust", () => {
+  it("gently attracts toward friendly capital support while preserving lateral thrust", () => {
     const frigate = ship("missile_frigate");
     frigate.pos = [1500, 0];
     const carrier = ship("carrier");
@@ -48,7 +48,7 @@ describe("missile frigate containment", () => {
     const escort = ship("missile_frigate");
     escort.pos = [2500, 0];
     expect(skirmishFleetVelocity(frigate, [60, 30], [frigate, carrier, enemy, escort])).toEqual([
-      -50, 30,
+      45, 30,
     ]);
     expect(skirmishFleetVelocity(frigate, [60, 30], [frigate, enemy, escort])).toEqual([60, 30]);
   });

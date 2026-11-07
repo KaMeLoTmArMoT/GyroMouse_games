@@ -789,6 +789,7 @@ export function capitalIntent(
           ),
         },
         engagementRange: gun?.weapon.range ?? doctrine.desiredDistance,
+        ships,
       },
     );
     if (ship.skirmishCycle.phase === "breakoff" && intent.rangePhase !== "approach") {

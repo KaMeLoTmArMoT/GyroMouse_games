@@ -4,7 +4,11 @@ import { type CrewVeterancy, crewDecisionPeriod } from "./crewVeterancy";
 import type { FighterMissionSystem } from "./fighterMissionSystem";
 import { friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import { damagedTargetPriority, squadFocusPriority } from "./fireControl";
-import { clampLateralVelocity, skirmishFleetVelocity } from "./flightBehaviors";
+import {
+  clampLateralVelocity,
+  emergencySkirmishBreakout,
+  skirmishFleetVelocity,
+} from "./flightBehaviors";
 import {
   ARENA_HARD_PULL_RADIUS,
   ARENA_RADIUS,
@@ -407,6 +411,7 @@ export function updateShipNavigation(
   let maintainingStandoff = false;
   let thrustMultiplier = 1;
   let constrainedSkirmish = false;
+  let emergencyBreakout = false;
   if (ship.hullClass === "tender") {
     const rescueTarget = tenderRescueTarget(ship, aliveShips);
     if (
@@ -533,6 +538,15 @@ export function updateShipNavigation(
       rangePhase = undefined;
     }
   }
+  if (SHIP_DOCTRINES[ship.hullClass].flight.kind === "skirmish") {
+    const breakout = emergencySkirmishBreakout(ship, aliveShips, ARENA_RADIUS);
+    if (breakout) {
+      emergencyBreakout = true;
+      targetHeading = breakout.heading;
+      thrusterVelocity = breakout.velocity;
+      rangePhase = undefined;
+    }
+  }
   let intendedVelocity: Vector2 = thrusterVelocity ?? [
     Math.cos(targetHeading) * desiredSpeed,
     Math.sin(targetHeading) * desiredSpeed,
@@ -559,7 +573,7 @@ export function updateShipNavigation(
   if (thrusterVelocity) {
     const unconstrained = thrusterVelocity;
     thrusterVelocity = arenaVelocity(ship, thrusterVelocity);
-    if (ship.hullClass === "missile_frigate") {
+    if (ship.hullClass === "missile_frigate" && !emergencyBreakout) {
       thrusterVelocity = skirmishFleetVelocity(ship, thrusterVelocity, aliveShips);
       constrainedSkirmish = vecDistance(unconstrained, thrusterVelocity) > 1e-6;
       if (constrainedSkirmish) targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);

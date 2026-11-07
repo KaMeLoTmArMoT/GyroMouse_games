@@ -186,9 +186,11 @@ export function HitAndRunSkirmishBlock(
   settings: {
     doctrine: SkirmishFlightDoctrine;
     engagementRange: number;
+    ships?: ShipState[];
   },
 ): FlightIntent {
   const { doctrine, engagementRange } = settings;
+  target = imminentSkirmishThreat(ship, settings.ships ?? [], target) ?? target;
   const rangePhase = classifyRange(vecDistance(ship.pos, target.pos), engagementRange);
   const delta = vecSub(target.pos, ship.pos);
   const bearing = Math.atan2(delta[1], delta[0]);
@@ -213,6 +215,79 @@ export function HitAndRunSkirmishBlock(
   };
 }
 
+// Rank by time to contact, including our intended approach through a stationary front line.
+export function imminentSkirmishThreat(
+  ship: ShipState,
+  ships: ShipState[],
+  target?: ShipState,
+): ShipState | null {
+  const approach = target
+    ? vecScale(vecNormalize(vecSub(target.pos, ship.pos)), ship.maxSpeed)
+    : ship.velocity;
+  let threat: ShipState | null = null;
+  let soonest = Infinity;
+  for (const enemy of ships) {
+    if (
+      !enemy.isAlive ||
+      enemy.isDocked ||
+      enemy.isDebris ||
+      enemy.team === ship.team ||
+      !["battleship", "dreadnought", "cruiser"].includes(enemy.hullClass)
+    )
+      continue;
+    const distance = vecDistance(ship.pos, enemy.pos);
+    if (distance >= 750) continue;
+    const toward = vecNormalize(vecSub(enemy.pos, ship.pos));
+    const closing = Math.max(
+      vecDot(vecSub(ship.velocity, enemy.velocity), toward),
+      vecDot(vecSub(approach, enemy.velocity), toward),
+    );
+    if (closing <= 0) continue;
+    const arrival = distance / closing;
+    if (arrival < soonest || (arrival === soonest && enemy.id < (threat?.id ?? ""))) {
+      threat = enemy;
+      soonest = arrival;
+    }
+  }
+  return threat;
+}
+
+export function emergencySkirmishBreakout(
+  ship: ShipState,
+  ships: ShipState[],
+  arenaRadius: number,
+): FlightIntent | null {
+  if (vecDistance([0, 0], ship.pos) <= arenaRadius * 0.85) return null;
+  let hostiles = 0;
+  let friendlies = 1;
+  let pressed = false;
+  let away: Vector2 = [0, 0];
+  for (const peer of ships) {
+    if (peer.id === ship.id || !peer.isAlive || peer.isDocked || peer.isDebris) continue;
+    const distance = vecDistance(ship.pos, peer.pos);
+    if (distance >= 750) continue;
+    if (peer.team === ship.team) {
+      friendlies++;
+      continue;
+    }
+    hostiles++;
+    pressed ||=
+      peer.hullClass === "battleship" ||
+      peer.hullClass === "dreadnought" ||
+      peer.hullClass === "cruiser";
+    away = vecAdd(away, vecScale(vecNormalize(vecSub(ship.pos, peer.pos)), 1 - distance / 750));
+  }
+  if (!pressed && hostiles <= friendlies) return null;
+  const inward = vecScale(vecNormalize(ship.pos), -1);
+  // Keep an inward component even when hostile lines lie between us and the center.
+  const direction = vecNormalize(vecAdd(inward, vecScale(vecNormalize(away), 0.65)));
+  return {
+    heading: Math.atan2(direction[1], direction[0]),
+    velocity: vecScale(direction, ship.maxSpeed),
+    rangePhase: "engage",
+  };
+}
+
 export function formationVelocity(ship: ShipState, anchor: ShipState, station: Vector2): Vector2 {
   return vecAdd(anchor.velocity, vecScale(vecSub(station, ship.pos), 0.6));
 }
@@ -224,7 +299,6 @@ export function skirmishFleetVelocity(
   ships: ShipState[],
 ): Vector2 {
   let position: Vector2 = [0, 0];
-  let velocity: Vector2 = [0, 0];
   let count = 0;
   for (const peer of ships) {
     if (
@@ -237,21 +311,16 @@ export function skirmishFleetVelocity(
     )
       continue;
     position = vecAdd(position, peer.pos);
-    velocity = vecAdd(velocity, peer.velocity);
     count++;
   }
   if (!count) return desired;
   position = vecScale(position, 1 / count);
-  velocity = vecScale(velocity, 1 / count);
   const distance = vecDistance(ship.pos, position);
   if (distance < 1200) return desired;
-  const outward = vecNormalize(vecSub(ship.pos, position));
-  const radial = vecDot(vecSub(desired, velocity), outward);
-  // Brake before 1400u, then return inward while preserving tangential skirmish thrust.
-  const safeRadial = clamp((1400 - distance) * 0.5, -ship.maxSpeed, ship.maxSpeed);
-  return radial > safeRadial
-    ? limitVelocity(vecSub(desired, vecScale(outward, radial - safeRadial)), ship.maxSpeed)
-    : desired;
+  if (imminentSkirmishThreat(ship, ships)) return desired;
+  const inward = vecNormalize(vecSub(position, ship.pos));
+  const attraction = Math.min(ship.maxSpeed * 0.15, (distance - 1200) * 0.05);
+  return limitVelocity(vecAdd(desired, vecScale(inward, attraction)), ship.maxSpeed);
 }
 
 export function LowHealthRetreatBlock(
