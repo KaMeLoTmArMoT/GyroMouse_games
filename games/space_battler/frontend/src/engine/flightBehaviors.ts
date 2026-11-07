@@ -194,7 +194,11 @@ export function HitAndRunSkirmishBlock(
   const rangePhase = classifyRange(vecDistance(ship.pos, target.pos), engagementRange);
   const delta = vecSub(target.pos, ship.pos);
   const bearing = Math.atan2(delta[1], delta[0]);
-  const side = ship.skirmishCycle?.side ?? 1;
+  let side = ship.skirmishCycle?.side ?? 1;
+  if (settings.ships) {
+    const fleetSide = skirmishFleetSide(ship, settings.ships, bearing);
+    if (Math.abs(fleetSide) >= 100) side = Math.sign(fleetSide);
+  }
   if (rangePhase === "approach" || ship.skirmishCycle?.phase !== "breakoff")
     return StandoffApproachBlock(
       ship,
@@ -292,13 +296,24 @@ export function formationVelocity(ship: ShipState, anchor: ShipState, station: V
   return vecAdd(anchor.velocity, vecScale(vecSub(station, ship.pos), 0.6));
 }
 
-// Only supporting capitals anchor skirmishers: other frigates must not pull the tether outward.
+// Choose the fleet-facing evasive side without changing radial thrust or speed.
 export function skirmishFleetVelocity(
   ship: ShipState,
   desired: Vector2,
   ships: ShipState[],
+  bearing = ship.heading,
 ): Vector2 {
-  let position: Vector2 = [0, 0];
+  const nx = -Math.sin(bearing);
+  const ny = Math.cos(bearing);
+  const lateral = desired[0] * nx + desired[1] * ny;
+  const fleetSide = skirmishFleetSide(ship, ships, bearing);
+  if (lateral * fleetSide >= 0 || Math.abs(fleetSide) < 100) return desired;
+  return [desired[0] - 2 * lateral * nx, desired[1] - 2 * lateral * ny];
+}
+
+function skirmishFleetSide(ship: ShipState, ships: ShipState[], bearing: number): number {
+  let x = 0;
+  let y = 0;
   let count = 0;
   for (const peer of ships) {
     if (
@@ -310,17 +325,14 @@ export function skirmishFleetVelocity(
       !isCapitalShip(peer)
     )
       continue;
-    position = vecAdd(position, peer.pos);
+    x += peer.pos[0];
+    y += peer.pos[1];
     count++;
   }
-  if (!count) return desired;
-  position = vecScale(position, 1 / count);
-  const distance = vecDistance(ship.pos, position);
-  if (distance < 1200) return desired;
-  if (imminentSkirmishThreat(ship, ships)) return desired;
-  const inward = vecNormalize(vecSub(position, ship.pos));
-  const attraction = Math.min(ship.maxSpeed * 0.15, (distance - 1200) * 0.05);
-  return limitVelocity(vecAdd(desired, vecScale(inward, attraction)), ship.maxSpeed);
+  if (!count) return 0;
+  const nx = -Math.sin(bearing);
+  const ny = Math.cos(bearing);
+  return (x / count - ship.pos[0]) * nx + (y / count - ship.pos[1]) * ny;
 }
 
 export function LowHealthRetreatBlock(

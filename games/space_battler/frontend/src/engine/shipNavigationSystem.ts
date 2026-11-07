@@ -4,11 +4,7 @@ import { type CrewVeterancy, crewDecisionPeriod } from "./crewVeterancy";
 import type { FighterMissionSystem } from "./fighterMissionSystem";
 import { friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import { damagedTargetPriority, squadFocusPriority } from "./fireControl";
-import {
-  clampLateralVelocity,
-  emergencySkirmishBreakout,
-  skirmishFleetVelocity,
-} from "./flightBehaviors";
+import { clampLateralVelocity, emergencySkirmishBreakout } from "./flightBehaviors";
 import {
   ARENA_HARD_PULL_RADIUS,
   ARENA_RADIUS,
@@ -36,6 +32,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { obstacleCourseCorrection } from "./obstacleNavigation";
 import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
 import type { ClientCombatSimulation } from "./simulation";
@@ -65,6 +62,8 @@ const fighterDecisions = new WeakMap<
     wingTargetId?: string | null;
   }
 >();
+
+const obstacleDecisions = new WeakMap<ShipState, { tick: number; correction: number }>();
 
 /**
  * After the initial immediate decision, FNV-1a hashes each ship ID and Murmur3
@@ -410,8 +409,6 @@ export function updateShipNavigation(
   let evadingOrdnance = false;
   let maintainingStandoff = false;
   let thrustMultiplier = 1;
-  let constrainedSkirmish = false;
-  let emergencyBreakout = false;
   if (ship.hullClass === "tender") {
     const rescueTarget = tenderRescueTarget(ship, aliveShips);
     if (
@@ -541,7 +538,6 @@ export function updateShipNavigation(
   if (SHIP_DOCTRINES[ship.hullClass].flight.kind === "skirmish") {
     const breakout = emergencySkirmishBreakout(ship, aliveShips, ARENA_RADIUS);
     if (breakout) {
-      emergencyBreakout = true;
       targetHeading = breakout.heading;
       thrusterVelocity = breakout.velocity;
       rangePhase = undefined;
@@ -564,6 +560,32 @@ export function updateShipNavigation(
     targetHeading = Math.atan2(route[1], route[0]);
   }
   const allShips = context.ships ?? aliveShips;
+  const tacticalTick = fighterTacticalTick(ship, context.timeElapsed, aliveShips);
+  let obstacleDecision = obstacleDecisions.get(ship);
+  if (!obstacleDecision) {
+    obstacleDecision = { tick: -1, correction: 0 };
+    obstacleDecisions.set(ship, obstacleDecision);
+  }
+  if (obstacleDecision.tick !== tacticalTick) {
+    obstacleDecision.tick = tacticalTick;
+    obstacleDecision.correction = obstacleCourseCorrection(
+      ship,
+      allShips,
+      intendedVelocity[0],
+      intendedVelocity[1],
+      ship.hullClass === "strike_craft" && ship.fighterPhase === "attack" ? target : null,
+    );
+  }
+  const avoidingObstacle = Math.abs(obstacleDecision.correction) > 1e-6;
+  if (avoidingObstacle) {
+    const course =
+      Math.atan2(intendedVelocity[1], intendedVelocity[0]) + obstacleDecision.correction;
+    const speed = Math.hypot(intendedVelocity[0], intendedVelocity[1]);
+    intendedVelocity[0] = Math.cos(course) * speed;
+    intendedVelocity[1] = Math.sin(course) * speed;
+    thrusterVelocity = intendedVelocity;
+    targetHeading = course;
+  }
   const debrisVelocity = debrisAvoidanceVelocity(ship, intendedVelocity, allShips);
   const avoidingDebris = vecDistance(debrisVelocity, intendedVelocity) > 1e-6;
   if (avoidingDebris) {
@@ -571,13 +593,7 @@ export function updateShipNavigation(
     targetHeading = Math.atan2(debrisVelocity[1], debrisVelocity[0]);
   }
   if (thrusterVelocity) {
-    const unconstrained = thrusterVelocity;
     thrusterVelocity = arenaVelocity(ship, thrusterVelocity);
-    if (ship.hullClass === "missile_frigate" && !emergencyBreakout) {
-      thrusterVelocity = skirmishFleetVelocity(ship, thrusterVelocity, aliveShips);
-      constrainedSkirmish = vecDistance(unconstrained, thrusterVelocity) > 1e-6;
-      if (constrainedSkirmish) targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
-    }
   } else if (vecDistance([0, 0], ship.pos) > ARENA_RADIUS) {
     const inward = arenaVelocity(ship, [
       Math.cos(targetHeading) * desiredSpeed,
@@ -642,7 +658,7 @@ export function updateShipNavigation(
     !evadingOrdnance &&
     !maintainingStandoff &&
     !avoidingDebris &&
-    !(constrainedSkirmish && rangePhase !== "approach")
+    !avoidingObstacle
   ) {
     const flight = SHIP_DOCTRINES[ship.hullClass].flight;
     if (flight.kind === "capital" || flight.kind === "skirmish")

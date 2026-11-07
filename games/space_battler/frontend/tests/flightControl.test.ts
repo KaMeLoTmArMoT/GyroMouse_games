@@ -104,7 +104,7 @@ describe("skirmish survival overrides", () => {
     expect(emergencySkirmishBreakout(frigate, enemies, ARENA_RADIUS)).toBeNull();
   });
 
-  it("gently attracts toward friendly lines without reversing survival thrust", () => {
+  it("does not add a fleet tether to survival thrust", () => {
     const frigate = ship("missile_frigate");
     frigate.pos = [1600, 0];
     const anchor = ship("carrier");
@@ -112,7 +112,7 @@ describe("skirmish survival overrides", () => {
     const desired: Vector2 = [frigate.maxSpeed, 0];
     const tethered = skirmishFleetVelocity(frigate, desired, [anchor]);
     expect(tethered[0]).toBeGreaterThan(frigate.maxSpeed * 0.8);
-    expect(tethered[0]).toBeLessThan(frigate.maxSpeed);
+    expect(tethered).toEqual(desired);
   });
 });
 
