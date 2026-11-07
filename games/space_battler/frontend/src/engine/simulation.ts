@@ -298,7 +298,9 @@ export class ClientCombatSimulation {
   private tick(dt: number): void {
     this.timeElapsed += dt;
     this.ships = this.ships.filter((ship) => !ship.isDebris || ship.isAlive);
-    updateCarrierHangars(this.ships, this.timeElapsed);
+    updateCarrierHangars(this.ships, this.timeElapsed, (ship, amount) =>
+      this.observer?.onShieldRegen(ship, amount),
+    );
     const combatShips = this.ships.filter((ship) => !ship.isDebris);
     const wrecks = this.ships.filter((ship) => ship.isDebris);
     const wreckStarts = new Map(wrecks.map((ship) => [ship.id, [...ship.pos] as Vector2]));

@@ -125,7 +125,11 @@ export function storeCarrierAuxiliaries(ships: ShipState[]): void {
   }
 }
 
-export function updateCarrierHangars(ships: ShipState[], time: number): void {
+export function updateCarrierHangars(
+  ships: ShipState[],
+  time: number,
+  onShieldRestore?: (ship: ShipState, amount: number) => void,
+): void {
   fabricateCarrierWings(ships, time);
   for (const craft of ships) {
     if (!craft.isAlive || !craft.flagshipId) continue;
@@ -170,7 +174,9 @@ export function updateCarrierHangars(ships: ShipState[], time: number): void {
     const launchAt = craft.hangarTurnaroundUntil ?? craft.hangarLaunchAt ?? Infinity;
     if (time + 1e-9 < launchAt) continue;
     if (craft.hangarTurnaroundUntil !== undefined) {
+      const restored = craft.shieldMax - craft.shieldCurrent;
       craft.shieldCurrent = craft.shieldMax;
+      onShieldRestore?.(craft, restored);
       craft.shieldDelayTimer = 0;
       craft.armorCurrent = Math.min(craft.armorMax, craft.armorCurrent + craft.armorMax * 0.5);
       craft.hullCurrent = Math.min(craft.hullMax, craft.hullCurrent + craft.hullMax * 0.5);

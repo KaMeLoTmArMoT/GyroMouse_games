@@ -1,5 +1,6 @@
 import {
   Activity,
+  BarChart3,
   Compass,
   Copy,
   RotateCcw,
@@ -19,6 +20,7 @@ import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { type CrewVeterancy, FleetBuilder } from "./components/FleetBuilder";
 import { spaceAudio } from "./engine/audioEngine";
 import { CARRIER_FABRICATION_INTERVAL, carrierFabricationProgress } from "./engine/carrierHangar";
+import { FleetBreakdown } from "./engine/fleetBreakdown";
 import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
 import { FLEET_PRESETS } from "./engine/fleetPresets";
 import {
@@ -75,6 +77,7 @@ export default function App() {
   const [lastActiveSpeed, setLastActiveSpeed] = useState<number>(1);
   const [muted, setMuted] = useState(() => spaceAudio.isMuted());
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
+  const [breakdownNotification, setBreakdownNotification] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"vessel" | "telemetry" | "log">("vessel");
   const [showVictoryModal, setShowVictoryModal] = useState<boolean>(true);
   const [ingressRevision, setIngressRevision] = useState(0);
@@ -277,6 +280,7 @@ export default function App() {
     const redShips = buildFleetFromSlots(redSlots, 1, 1100, Math.PI);
     for (const ship of redShips) s.addShip(ship);
 
+    s.observer = new FleetBreakdown(s);
     return s;
   }
 
@@ -350,6 +354,7 @@ export default function App() {
   const continueBattle = () => {
     if (!canContinueWithRemnants) return;
     sim.continueBattleWithRemnants();
+    sim.observer = new FleetBreakdown(sim);
     setIngressRevision((revision) => revision + 1);
     setSelectedShipId(sim.ships[0]?.id ?? null);
     setSelectedProjectileId(null);
@@ -386,6 +391,22 @@ export default function App() {
     setCopiedNotification(true);
     setTimeout(() => setCopiedNotification(false), 2000);
   };
+
+  const copyFleetBreakdown = async (team: number) => {
+    if (!(sim.observer instanceof FleetBreakdown)) return;
+    try {
+      await navigator.clipboard.writeText(sim.observer.format(team));
+      setBreakdownNotification("Copied to clipboard!");
+    } catch {
+      setBreakdownNotification("Unable to copy to clipboard.");
+    }
+  };
+
+  useEffect(() => {
+    if (!breakdownNotification) return;
+    const timeout = setTimeout(() => setBreakdownNotification(""), 2000);
+    return () => clearTimeout(timeout);
+  }, [breakdownNotification]);
 
   return (
     <div className="min-h-dvh flex flex-col bg-zinc-950 text-zinc-100 selection:bg-cyan-500/30">
@@ -437,6 +458,15 @@ export default function App() {
         {/* Speed Controls */}
         {activeTab === "battle" ? (
           <div className="flex items-center gap-2">
+            {sim.winner !== null && !showVictoryModal && (
+              <button
+                type="button"
+                onClick={() => setShowVictoryModal(true)}
+                className="px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-700/60 text-cyan-300 hover:bg-cyan-900/70 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <BarChart3 className="w-4 h-4" /> Show Battle Summary
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setMuted(spaceAudio.toggleMute())}
@@ -578,8 +608,17 @@ export default function App() {
                   {/* Summary Comparison Cards */}
                   <div className="grid grid-cols-2 gap-3 w-full my-5 text-left text-xs">
                     <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-800/30">
-                      <div className="text-[10px] uppercase font-bold text-cyan-400 mb-1">
-                        Terran Fleet
+                      <div className="flex items-center justify-between gap-1 text-[10px] uppercase font-bold text-cyan-400 mb-1">
+                        <span>Terran Fleet</span>
+                        <button
+                          type="button"
+                          onClick={() => void copyFleetBreakdown(0)}
+                          title="Copy Fleet Breakdown"
+                          aria-label="Copy Terran fleet breakdown"
+                          className="p-1 rounded hover:bg-cyan-800/50 cursor-pointer"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                       <div className="text-zinc-200">
                         Survivors:{" "}
@@ -607,8 +646,17 @@ export default function App() {
                     </div>
 
                     <div className="p-3 rounded-xl bg-red-950/20 border border-red-800/30">
-                      <div className="text-[10px] uppercase font-bold text-red-400 mb-1">
-                        Alien Swarm
+                      <div className="flex items-center justify-between gap-1 text-[10px] uppercase font-bold text-red-400 mb-1">
+                        <span>Alien Swarm</span>
+                        <button
+                          type="button"
+                          onClick={() => void copyFleetBreakdown(1)}
+                          title="Copy Fleet Breakdown"
+                          aria-label="Copy Alien fleet breakdown"
+                          className="p-1 rounded hover:bg-red-800/50 cursor-pointer"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                       <div className="text-zinc-200">
                         Survivors:{" "}
@@ -635,6 +683,12 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+
+                  {breakdownNotification && (
+                    <p role="status" className="text-xs text-cyan-300 mb-3">
+                      {breakdownNotification}
+                    </p>
+                  )}
 
                   {/* Action Buttons */}
                   <button
