@@ -926,6 +926,16 @@ export default function App() {
                           Heading: {(selectedShip.heading * (180 / Math.PI)).toFixed(0)}°
                         </span>
                       </div>
+                      <span
+                        title="Reflex latency: ~150ms · Standard targeting precision"
+                        className={`inline-block mt-2 rounded-full border px-2 py-0.5 text-[10px] font-mono font-semibold ${
+                          selectedShip.team === 0
+                            ? "border-emerald-800 bg-emerald-950/50 text-cyan-300"
+                            : "border-rose-800 bg-rose-950/50 text-amber-300"
+                        }`}
+                      >
+                        PILOT • REGULAR
+                      </span>
                     </div>
 
                     {/* Defense Bars */}

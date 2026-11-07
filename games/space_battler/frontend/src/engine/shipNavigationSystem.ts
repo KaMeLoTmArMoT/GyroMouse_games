@@ -61,7 +61,12 @@ const fighterDecisions = new WeakMap<
   }
 >();
 
-/** A stable per-pilot offset distributes tactical work across physics frames. */
+/**
+ * After the initial immediate decision, FNV-1a hashes each ship ID and Murmur3
+ * mixing produces a stable phase offset. This deterministically spreads tactical
+ * decisions across the 60 physics frames per second, avoiding synchronized CPU
+ * spikes on frames 0 or 30 while preserving each pilot's decision cadence.
+ */
 export function fighterTacticalTick(ship: ShipState, time: number, ships: ShipState[]): number {
   let state = fighterDecisions.get(ship);
   if (!state) {
@@ -101,16 +106,7 @@ export function fighterShieldWaypoint(
   attack = false,
 ): Vector2 {
   const clearance = shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(ship);
-  const gun = attack ? ship.turrets[0] : undefined;
-  // Short-range nose guns need a tighter slash, still outside the physical shield.
-  const firingRadius = gun
-    ? gun.weapon.range *
-      Math.sin(
-        Math.min(Math.PI / 2, Math.max(Math.abs(gun.baseArc[0]), Math.abs(gun.baseArc[1]))),
-      ) *
-      0.75
-    : 350;
-  const radius = Math.max(clearance + (attack ? 5 : 95), Math.min(350, firingRadius));
+  const radius = clearance + (attack ? 20 : 95);
   const offset = vecSub(ship.pos, capital.pos);
   const distance = vecDistance([0, 0], offset);
   const outward =
@@ -131,7 +127,7 @@ export function fighterShieldWaypoint(
     contact,
     vecScale(
       vecNormalize(vecSub(contact, ship.pos)),
-      Math.max(240, Math.sqrt(Math.max(0, 350 ** 2 - radius ** 2))),
+      Math.max(240, radius * 1.15),
     ),
   );
 }

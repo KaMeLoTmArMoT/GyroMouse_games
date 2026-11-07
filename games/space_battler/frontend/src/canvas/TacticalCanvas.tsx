@@ -937,7 +937,7 @@ function drawTacticalTrajectory(
   // Render Intent Tag below ship
   const pillY = ship.pos[1] + ship.size + 18;
   const pillX = ship.pos[0];
-  const line1 = `SPD: ${Math.round(speed)} u/s • ${intent}`;
+  const line1 = `SPD: ${Math.round(speed)} u/s • ${ship.hullClass === "strike_craft" ? "PILOT • " : ""}${intent}`;
   const line2 = target
     ? `TGT: ${target.name} [${Math.round(Math.hypot(target.pos[0] - ship.pos[0], target.pos[1] - ship.pos[1]))}u]`
     : null;
