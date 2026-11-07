@@ -17,6 +17,31 @@ function fixture(id: string, hullClass: HullClass, team: number, pos: Vector2) {
 }
 
 describe("capital navigation target priority", () => {
+  it("preserves input order on equal scores without reordering candidates", () => {
+    const ship = fixture("owner", "carrier", 0, [0, 0]);
+    const first = fixture("z-first", "carrier", 1, [500, 0]);
+    const second = fixture("a-second", "carrier", 1, [-500, 0]);
+    const ships = [ship, first, second];
+    expect(findNavigationTarget(ship, order, ships)).toBe(first);
+    expect(ships).toEqual([ship, first, second]);
+    expect(findNavigationTarget(ship, order, [ship, second, first])).toBe(second);
+  });
+
+  it("uses lexical ID ties for local corvette hunting instead of fleet order", () => {
+    const ship = fixture("owner", "corvette", 0, [0, 0]);
+    const first = fixture("z-gunboat", "corvette", 1, [300, 0]);
+    const second = fixture("a-gunboat", "corvette", 1, [-300, 0]);
+    expect(findNavigationTarget(ship, order, [ship, first, second])).toBe(second);
+  });
+
+  it("falls back to a noncapital when no eligible capital exists", () => {
+    const ship = fixture("owner", "carrier", 0, [0, 0]);
+    const docked = fixture("docked", "carrier", 1, [100, 0]);
+    docked.isDocked = true;
+    const gunboat = fixture("gunboat", "corvette", 1, [300, 0]);
+    expect(findNavigationTarget(ship, order, [ship, docked, gunboat])).toBe(gunboat);
+  });
+
   it.each(["dreadnought", "battleship", "cruiser"] as const)(
     "%s abandons a focused 2000u carrier for nearby hostile dreadnoughts",
     (hullClass) => {
