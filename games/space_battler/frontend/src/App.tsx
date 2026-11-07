@@ -327,6 +327,11 @@ export default function App() {
   };
 
   const selectedShip = sim.ships.find((s) => s.id === selectedShipId);
+  const selectedVeterancy = selectedShip
+    ? (sim.crewVeterancy?.[selectedShip.team] ??
+      (selectedShip.team === 0 ? crewVeterancy.blue : crewVeterancy.red) ??
+      "pilot")
+    : "pilot";
   const havenGuests =
     selectedShip && isCapitalShip(selectedShip)
       ? sim.ships.filter(
@@ -1034,14 +1039,16 @@ export default function App() {
                         </span>
                       </div>
                       <span
-                        title="Reflex latency: ~150ms · Standard targeting precision"
                         className={`inline-block mt-2 rounded-full border px-2 py-0.5 text-[10px] font-mono font-semibold ${
-                          selectedShip.team === 0
-                            ? "border-emerald-800 bg-emerald-950/50 text-cyan-300"
-                            : "border-rose-800 bg-rose-950/50 text-amber-300"
+                          {
+                            recruit: "border-zinc-700 bg-zinc-900/50 text-zinc-400",
+                            pilot: "border-emerald-800 bg-emerald-950/50 text-cyan-300",
+                            veteran: "border-indigo-800 bg-indigo-950/50 text-indigo-300",
+                            ace: "border-amber-700 bg-amber-950/50 text-amber-300",
+                          }[selectedVeterancy]
                         }`}
                       >
-                        PILOT • REGULAR
+                        {selectedVeterancy.toUpperCase()}
                       </span>
                     </div>
 
