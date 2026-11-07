@@ -4,6 +4,180 @@ import { rotatePoint } from "../engine/math2d";
 import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
+import { ShipSpriteCache } from "./shipSpriteCache";
+
+// Size and hardpoint layout are fixed configuration of each bounded cache instance.
+// Rasterize at 3 pixels/world unit, above the battlefield's maximum 2.5x zoom.
+const hullSprites = new Map<string, ShipSpriteCache>();
+
+function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState): boolean {
+  if (typeof OffscreenCanvas === "undefined") return false;
+  const transform = ctx.getTransform();
+  const cameraScale = Number(Math.hypot(transform.a, transform.b).toPrecision(6));
+  const resolution = Math.max(3, 2 ** Math.ceil(Math.log2(cameraScale)));
+  const key = JSON.stringify([
+    ship.hullClass,
+    ship.team,
+    ship.size,
+    resolution,
+    ship.hullClass === "carrier" ? cameraScale : null,
+    ship.turrets.map((turret) => [turret.offset, turret.baseRadius, turret.weapon.weaponType]),
+  ]);
+  let cache = hullSprites.get(key);
+  const extent = ship.size * 1.6 + 4;
+  if (!cache) {
+    const snapshot = {
+      ...ship,
+      turrets: ship.turrets.map((turret) => ({ ...turret, offset: [...turret.offset] as Vector2 })),
+    };
+    cache = new ShipSpriteCache(
+      Math.ceil(extent * 2 * resolution),
+      (offscreen, _, team, pixels) => {
+        offscreen.translate(pixels / 2, pixels / 2);
+        offscreen.scale(resolution, resolution);
+        // Both 2D contexts expose the same hull drawing operations.
+        const hullContext = offscreen as unknown as CanvasRenderingContext2D;
+        if (team === 0)
+          drawTerranHull(
+            hullContext,
+            snapshot,
+            "#38bdf8",
+            "#0f172a",
+            "#0284c7",
+            undefined,
+            true,
+            resolution / cameraScale,
+          );
+        else
+          drawAlienHull(
+            hullContext,
+            snapshot,
+            "#f87171",
+            "#450a0a",
+            "#dc2626",
+            undefined,
+            true,
+            resolution / cameraScale,
+          );
+      },
+    );
+    const oldest = hullSprites.keys().next().value;
+    if (hullSprites.size >= 32 && oldest !== undefined) hullSprites.delete(oldest);
+    hullSprites.set(key, cache);
+  }
+  const sprite = cache.get(ship.hullClass, ship.team);
+  if (!sprite) return false;
+  const width = sprite.width / resolution;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(sprite, -width / 2, -width / 2, width, width);
+  ctx.restore();
+  drawAnimatedHullDetails(ctx, ship);
+  return true;
+}
+
+function drawCarrierRecessLight(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  time: number,
+  index: number,
+  side: number,
+): void {
+  const s = ship.size;
+  const pulse = 0.35 + 0.2 * Math.sin(time * 3 + index * 0.8);
+  ctx.strokeStyle = `rgba(56, 189, 248, ${pulse + 0.25})`;
+  ctx.fillStyle = `rgba(56, 189, 248, ${pulse * 0.35})`;
+  ctx.lineWidth = s * 0.015;
+  ctx.beginPath();
+  ctx.ellipse(s * (-0.62 + index * 0.27), side * s * 0.51, s * 0.075, s * 0.05, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawCarrierRecessLights(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  time: number,
+): void {
+  ctx.save();
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) drawCarrierRecessLight(ctx, ship, time, i, side);
+  }
+  ctx.restore();
+}
+
+function drawAlienCommandEye(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+  const s = ship.size;
+  ctx.fillStyle = "#ef4444";
+  ctx.beginPath();
+  ctx.arc(-s * 0.16, 0, s * (0.075 + 0.01 * Math.sin(performance.now() / 400)), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fde68a";
+  ctx.beginPath();
+  ctx.arc(-s * 0.16, 0, s * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawTerranDetailPlume(ctx: CanvasRenderingContext2D, ship: ShipState, side: number): void {
+  const s = ship.size;
+  const speed = Math.min(1, Math.hypot(...ship.velocity) / ship.maxSpeed);
+  const corvette = ship.hullClass === "corvette";
+  const y = side * s * 0.32;
+  ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
+  ctx.beginPath();
+  ctx.moveTo(-s * (corvette ? 0.68 : 0.61), corvette ? y - s * 0.06 : side * s * 0.29);
+  ctx.lineTo(-s * (corvette ? 0.7 + speed * 0.35 : 0.68 + speed * 0.24), y);
+  ctx.lineTo(-s * (corvette ? 0.68 : 0.61), corvette ? y + s * 0.06 : side * s * 0.35);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawAnimatedHullDetails(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+  ctx.save();
+  if (ship.team !== 0 && ship.hullClass === "battleship") drawAlienCommandEye(ctx, ship);
+  if (ship.team === 0 && (ship.hullClass === "corvette" || ship.hullClass === "strike_craft")) {
+    const s = ship.size;
+    const corvette = ship.hullClass === "corvette";
+    if (corvette) {
+      // Match the vector detail layer's hull clip without rebuilding the static deck.
+      ctx.beginPath();
+      ctx.moveTo(s * 1.15, 0);
+      for (const [x, y] of [
+        [0.4, -0.45],
+        [-0.5, -0.58],
+        [-0.95, -0.32],
+        [-0.75, 0],
+        [-0.95, 0.32],
+        [-0.5, 0.58],
+        [0.4, 0.45],
+      ])
+        ctx.lineTo(s * x, s * y);
+      ctx.closePath();
+      ctx.clip();
+    }
+    for (const side of [-1, 1]) {
+      drawTerranDetailPlume(ctx, ship, side);
+      // The nozzle covers the root of the animated plume in the original painter order.
+      if (corvette) {
+        ctx.fillStyle = "#0284c7";
+        ctx.beginPath();
+        ctx.ellipse(-s * 0.61, side * s * 0.32, s * 0.14, s * 0.09, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#bae6fd";
+        ctx.beginPath();
+        ctx.ellipse(-s * 0.65, side * s * 0.32, s * 0.07, s * 0.04, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "#0ea5e9";
+        ctx.beginPath();
+        ctx.arc(-s * 0.59, side * s * 0.32, s * 0.055, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
 
 /** Draw the same hull and hardpoints as the battlefield, without combat HUD overlays. */
 export function renderShipPreview(ctx: CanvasRenderingContext2D, ship: ShipState, time = 0): void {
@@ -94,7 +268,10 @@ export function renderShip(
   drawEngineGlow(ctx, ship);
   if (hasFighterHazard(ship)) drawCoolantTrail(ctx, ship, time);
 
-  if (isBlue) {
+  if (drawCachedHull(ctx, ship)) {
+    if (ship.hullClass === "tender") drawTenderLight(ctx, ship, time);
+    if (ship.hullClass === "carrier") drawCarrierRecessLights(ctx, ship, time);
+  } else if (isBlue) {
     drawTerranHull(
       ctx,
       ship,
@@ -339,6 +516,8 @@ export function renderCarrierHull(
   primaryColor: string,
   secondaryColor: string,
   time = performance.now() / 1000,
+  staticOnly = false,
+  rasterScale = 1,
 ): void {
   const s = ship.size;
   const alien = ship.team !== 0;
@@ -374,7 +553,8 @@ export function renderCarrierHull(
   ctx.strokeStyle = primaryColor;
   ctx.lineWidth = Math.max(1, s * 0.018);
   ctx.shadowColor = primaryColor;
-  ctx.shadowBlur = s * 0.08;
+  // Canvas shadows are bitmap-space effects, unlike the transformed hull geometry.
+  ctx.shadowBlur = s * 0.08 * rasterScale;
   ctx.fill();
   ctx.stroke();
   ctx.shadowBlur = 0;
@@ -388,16 +568,10 @@ export function renderCarrierHull(
       ctx.beginPath();
       ctx.ellipse(x, y, s * 0.1, s * 0.075, 0, 0, Math.PI * 2);
       ctx.fill();
-      const pulse = 0.35 + 0.2 * Math.sin(time * 3 + i * 0.8);
-      ctx.strokeStyle = `rgba(56, 189, 248, ${pulse + 0.25})`;
-      ctx.fillStyle = `rgba(56, 189, 248, ${pulse * 0.35})`;
-      ctx.lineWidth = s * 0.015;
-      ctx.beginPath();
-      ctx.ellipse(x, y, s * 0.075, s * 0.05, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      if (!staticOnly) drawCarrierRecessLight(ctx, ship, time, i, side);
     }
     // Two integrated aft engine pods.
+    ctx.lineWidth = s * 0.015;
     ctx.fillStyle = alien ? "#3d1c2b" : "#12283c";
     ctx.strokeStyle = primaryColor;
     ctx.beginPath();
@@ -441,6 +615,7 @@ function drawTenderHull(
   edge: string,
   dark: string,
   time = 0,
+  staticOnly = false,
 ): void {
   const s = ship.size;
   const alien = ship.team === 1;
@@ -526,6 +701,14 @@ function drawTenderHull(
   }
   ctx.fill();
   ctx.stroke();
+  if (!staticOnly) drawTenderLight(ctx, ship, time);
+  ctx.restore();
+}
+
+function drawTenderLight(ctx: CanvasRenderingContext2D, ship: ShipState, time: number): void {
+  const s = ship.size;
+  const alien = ship.team === 1;
+  ctx.save();
   const pulse = 0.7 + 0.3 * Math.sin(time * 3);
   ctx.shadowColor = alien ? "#f43f5e" : "#22d3ee";
   ctx.shadowBlur = s * (0.12 + pulse * 0.18);
@@ -544,13 +727,15 @@ function drawTerranHull(
   hullDarkColor: string,
   accentColor: string,
   previewTime?: number,
+  staticOnly = false,
+  rasterScale = 1,
 ): void {
   if (ship.hullClass === "tender") {
-    drawTenderHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
+    drawTenderHull(ctx, ship, primaryColor, hullDarkColor, previewTime, staticOnly);
     return;
   }
   if (ship.hullClass === "carrier") {
-    renderCarrierHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
+    renderCarrierHull(ctx, ship, primaryColor, hullDarkColor, previewTime, staticOnly, rasterScale);
     return;
   }
   if (ship.hullClass === "dreadnought" || ship.hullClass === "missile_frigate") {
@@ -655,13 +840,13 @@ function drawTerranHull(
   if (ship.hullClass === "corvette") {
     ctx.save();
     ctx.clip();
-    drawTerranCorvetteDetails(ctx, ship, accentColor);
+    drawTerranCorvetteDetails(ctx, ship, accentColor, staticOnly);
     ctx.restore();
     return;
   }
 
   if (ship.hullClass === "strike_craft") {
-    drawTerranStrikeDetails(ctx, ship, accentColor);
+    drawTerranStrikeDetails(ctx, ship, accentColor, staticOnly);
     return;
   }
 
@@ -683,13 +868,15 @@ function drawAlienHull(
   hullDarkColor: string,
   accentColor: string,
   previewTime?: number,
+  staticOnly = false,
+  rasterScale = 1,
 ): void {
   if (ship.hullClass === "tender") {
-    drawTenderHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
+    drawTenderHull(ctx, ship, primaryColor, hullDarkColor, previewTime, staticOnly);
     return;
   }
   if (ship.hullClass === "carrier") {
-    renderCarrierHull(ctx, ship, primaryColor, hullDarkColor, previewTime);
+    renderCarrierHull(ctx, ship, primaryColor, hullDarkColor, previewTime, staticOnly, rasterScale);
     return;
   }
   if (ship.hullClass === "dreadnought" || ship.hullClass === "missile_frigate") {
@@ -774,7 +961,7 @@ function drawAlienHull(
   if (ship.hullClass === "battleship") {
     ctx.save();
     ctx.clip();
-    drawAlienBattleshipDetails(ctx, ship, accentColor);
+    drawAlienBattleshipDetails(ctx, ship, accentColor, staticOnly);
     ctx.restore();
   }
 }
@@ -1029,6 +1216,7 @@ function drawAlienBattleshipDetails(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
   accentColor: string,
+  staticOnly = false,
 ): void {
   const s = ship.size;
 
@@ -1098,14 +1286,7 @@ function drawAlienBattleshipDetails(
       ctx.stroke();
     }
   }
-  ctx.fillStyle = "#ef4444";
-  ctx.beginPath();
-  ctx.arc(-s * 0.16, 0, s * (0.075 + 0.01 * Math.sin(performance.now() / 400)), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#fde68a";
-  ctx.beginPath();
-  ctx.arc(-s * 0.16, 0, s * 0.025, 0, Math.PI * 2);
-  ctx.fill();
+  if (!staticOnly) drawAlienCommandEye(ctx, ship);
 
   // The concave stern places the outer vents farther aft than the inner pair.
   for (const y of [-0.42, -0.24, 0.24, 0.42]) {
@@ -1264,9 +1445,9 @@ function drawTerranCorvetteDetails(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
   accentColor: string,
+  staticOnly = false,
 ): void {
   const s = ship.size;
-  const speed = Math.min(1, Math.hypot(...ship.velocity) / ship.maxSpeed);
 
   ctx.strokeStyle = accentColor;
   ctx.lineWidth = 0.8;
@@ -1308,13 +1489,7 @@ function drawTerranCorvetteDetails(
 
   for (const side of [-1, 1]) {
     const y = side * s * 0.32;
-    ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
-    ctx.beginPath();
-    ctx.moveTo(-s * 0.68, y - s * 0.06);
-    ctx.lineTo(-s * (0.7 + speed * 0.35), y);
-    ctx.lineTo(-s * 0.68, y + s * 0.06);
-    ctx.closePath();
-    ctx.fill();
+    if (!staticOnly) drawTerranDetailPlume(ctx, ship, side);
     ctx.fillStyle = "#0284c7";
     ctx.beginPath();
     ctx.ellipse(-s * 0.61, y, s * 0.14, s * 0.09, 0, 0, Math.PI * 2);
@@ -1392,9 +1567,9 @@ function drawTerranStrikeDetails(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
   accentColor: string,
+  staticOnly = false,
 ): void {
   const s = ship.size;
-  const speed = Math.min(1, Math.hypot(...ship.velocity) / ship.maxSpeed);
 
   ctx.lineWidth = 0.7;
   ctx.strokeStyle = accentColor;
@@ -1432,13 +1607,7 @@ function drawTerranStrikeDetails(
     ctx.arc(s * 0.17, side * s * 0.18, s * 0.025, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
-    ctx.beginPath();
-    ctx.moveTo(-s * 0.61, side * s * 0.29);
-    ctx.lineTo(-s * (0.68 + speed * 0.24), side * s * 0.32);
-    ctx.lineTo(-s * 0.61, side * s * 0.35);
-    ctx.closePath();
-    ctx.fill();
+    if (!staticOnly) drawTerranDetailPlume(ctx, ship, side);
     ctx.fillStyle = "#0ea5e9";
     ctx.beginPath();
     ctx.arc(-s * 0.59, side * s * 0.32, s * 0.055, 0, Math.PI * 2);
