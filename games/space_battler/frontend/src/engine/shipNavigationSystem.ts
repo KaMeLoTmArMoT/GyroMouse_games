@@ -51,6 +51,18 @@ export function findNavigationTarget(
       withinPursuitTheater(ship, s, aliveShips),
   );
   if (enemies.length === 0) return null;
+  const combatCapital =
+    ship.hullClass === "dreadnought" ||
+    ship.hullClass === "battleship" ||
+    ship.hullClass === "cruiser";
+  const range = Math.max(360, ...ship.turrets.map((turret) => turret.weapon.range));
+  const closeCapitalThreat = (enemy: ShipState) =>
+    (enemy.hullClass === "dreadnought" ||
+      enemy.hullClass === "battleship" ||
+      enemy.hullClass === "cruiser") &&
+    vecDistance(ship.pos, enemy.pos) <= range;
+  const hasCloseCapitalThreat = combatCapital && enemies.some(closeCapitalThreat);
+  const previousId = previousTargetId ?? ship.maneuverTargetId;
   if (ship.hullClass === "corvette") {
     const pack = corvetteWolfpack(ship, aliveShips);
     const hunter = pack[0] ?? ship;
@@ -103,6 +115,9 @@ export function findNavigationTarget(
     const firedTarget = enemies.find((e) => e.id === mainGun?.currentTargetId);
     if (
       firedTarget &&
+      mainGun?.sideTargetId !== firedTarget.id &&
+      (!combatCapital || firedTarget.id === previousId) &&
+      (!hasCloseCapitalThreat || vecDistance(ship.pos, firedTarget.pos) <= range) &&
       mainGun?.lastFiredTime !== undefined &&
       mainGun.lastFiredTime !==
         (ship.hullClass === "missile_frigate"
@@ -124,9 +139,13 @@ export function findNavigationTarget(
     order.priority === "screen_and_defend"
       ? (aliveShips.find((s) => s.id === ship.flagshipId && s.isAlive) ?? ship)
       : ship;
-  const range = Math.max(360, ...ship.turrets.map((turret) => turret.weapon.range));
   const score = (enemy: ShipState): number => {
     const distance = vecDistance(anchor.pos, enemy.pos);
+    const weaponDistance = vecDistance(ship.pos, enemy.pos);
+    const beyondRange = Math.max(0, weaponDistance / range - 1.15);
+    const distancePenalty = combatCapital
+      ? beyondRange * 6 + (hasCloseCapitalThreat && beyondRange > 0 ? 8 : 0)
+      : 0;
     const nearby = clamp(2 - distance / range, 0, 1);
     const assignments = aliveShips.filter(
       (peer) =>
@@ -138,11 +157,24 @@ export function findNavigationTarget(
     return (
       (-distance / range) * 2 +
       nearby * damagedTargetPriority(enemy) +
-      squadFocusPriority(assignments) +
-      (enemy.id === (previousTargetId ?? ship.maneuverTargetId) ? 0.45 : 0)
+      // Saturated focus squads must not send a capital through the hostile front line.
+      (hasCloseCapitalThreat && closeCapitalThreat(enemy)
+        ? Math.max(-2, squadFocusPriority(assignments)) + 2
+        : squadFocusPriority(assignments)) +
+      (enemy.id === previousId ? 0.45 : 0) -
+      distancePenalty
     );
   };
-  return enemies.reduce((best, enemy) => (score(enemy) > score(best) ? enemy : best));
+  const best = enemies.reduce((best, enemy) => (score(enemy) > score(best) ? enemy : best));
+  const previous = enemies.find((enemy) => enemy.id === previousId);
+  if (
+    combatCapital &&
+    previous &&
+    !(hasCloseCapitalThreat && vecDistance(ship.pos, previous.pos) > range * 1.15) &&
+    score(best) <= score(previous) + 0.5 * Math.max(Math.abs(score(previous)), 1)
+  )
+    return previous;
+  return best;
 }
 
 export function updateShipNavigation(

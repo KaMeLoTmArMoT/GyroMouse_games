@@ -162,6 +162,7 @@ export function acquireMountTarget(
 ): FireSolution | null {
   const muzzle = mountPosition(ship, turret);
   const weapon = turret.weapon;
+  turret.sideTargetId = undefined;
   const defense = pointDefenseMode(weapon);
   const defendedShips = [
     ship,
@@ -279,6 +280,21 @@ export function acquireMountTarget(
     evaluate(enemy, "ship", role, priority);
   }
 
+  if (
+    !solutions.some((solution) => solution.kind === "ship" && solution.target.id === primary?.id)
+  ) {
+    for (const solution of solutions) {
+      if (solution.kind !== "ship") continue;
+      const enemy = solution.target as ShipState;
+      const salvosToKill =
+        (enemy.shieldCurrent / Math.max(0.01, weapon.shieldMultiplier) +
+          enemy.armorCurrent / Math.max(0.01, weapon.armorMultiplier) +
+          enemy.hullCurrent / Math.max(0.01, weapon.hullMultiplier)) /
+        Math.max(1, weapon.damage);
+      if (salvosToKill <= 2) solution.score += 3;
+    }
+  }
+
   const defensiveBeam =
     ship.hullClass === "battleship" && weapon.weaponType === "beam_laser" && solutions.length === 0;
   if (weapon.weaponType === "point_defense" || defensiveBeam) {
@@ -326,13 +342,17 @@ export function acquireMountTarget(
   );
   const best = solutions[0];
   if (!best) return null;
-  if (defense === "laser") return best;
   const current = solutions.find(
     (s) => s.target.id === turret.currentTargetId && s.kind === turret.currentTargetKind,
   );
-  return current &&
+  const selected =
+    defense !== "laser" &&
+    current &&
     best.priority === current.priority &&
     best.score <= current.score + 0.2 * Math.max(Math.abs(current.score), 1)
-    ? current
-    : best;
+      ? current
+      : best;
+  if (selected.kind === "ship" && selected.target.id !== primary?.id)
+    turret.sideTargetId = selected.target.id;
+  return selected;
 }

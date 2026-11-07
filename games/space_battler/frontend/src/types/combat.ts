@@ -63,6 +63,7 @@ export interface TurretMountState {
   cooldownTimer: number;
   currentTargetId: string | null;
   currentTargetKind?: "ship" | "missile";
+  sideTargetId?: string; // Opportunistic firing target; never a flight-navigation assignment.
   barrelLength: number;
   baseRadius: number;
   isSpinalGimbal?: boolean;
