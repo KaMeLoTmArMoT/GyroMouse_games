@@ -13,6 +13,7 @@ import {
 } from "../engine/simulation";
 import type { ShipState } from "../types/combat";
 import { VisualEffectsManager } from "./effects";
+import { drawGlowLine } from "./glowSprites";
 import { renderHavenSlots, renderHavenTethers } from "./havenRenderer";
 import {
   renderBeam,
@@ -22,6 +23,7 @@ import {
 } from "./projectileRenderer";
 import { projectileAtPoint } from "./projectileSelection";
 import { renderShip } from "./shipRenderer";
+import { discVisible, segmentVisible, worldViewport } from "./viewport";
 
 interface TacticalCanvasProps {
   sim: ClientCombatSimulation;
@@ -198,6 +200,7 @@ export function TacticalCanvas({
             canvas.height / 2 + cameraRef.current.y,
           );
           ctx.scale(cameraRef.current.zoom, cameraRef.current.zoom);
+          const viewport = worldViewport(canvas.width, canvas.height, cameraRef.current);
 
           drawTacticalGrid(ctx);
 
@@ -227,6 +230,7 @@ export function TacticalCanvas({
 
           // Draw Active Beams
           for (const beam of effectsRef.current.beams) {
+            if (!segmentVisible(viewport, beam.from, beam.to, beam.width * 4 + 40)) continue;
             renderBeam(ctx, beam, sim.timeElapsed);
           }
 
@@ -235,6 +239,7 @@ export function TacticalCanvas({
             if (core.delay > 0) continue;
             const progress = 1 - core.remainingDuration / core.maxDuration;
             const radius = core.maxRadius * (0.15 + 0.85 * progress);
+            if (!discVisible(viewport, core.pos, radius)) continue;
             const gradient = ctx.createRadialGradient(
               core.pos[0],
               core.pos[1],
@@ -256,6 +261,7 @@ export function TacticalCanvas({
           for (const wave of effectsRef.current.shipShockwaves) {
             const alpha = wave.remainingDuration / wave.maxDuration;
             const radius = wave.maxRadius * (1 - alpha);
+            if (!discVisible(viewport, wave.pos, radius + wave.maxRadius * 0.025)) continue;
             ctx.strokeStyle = `rgba(255, 160, 55, ${alpha * 0.9})`;
             ctx.lineWidth = Math.max(1, wave.maxRadius * 0.025 * alpha);
             ctx.beginPath();
@@ -266,6 +272,7 @@ export function TacticalCanvas({
           // Draw Particles
           ctx.save();
           for (const p of effectsRef.current.particles) {
+            if (!discVisible(viewport, p.pos, p.radius)) continue;
             ctx.globalAlpha = p.remainingDuration / p.maxDuration;
             ctx.fillStyle = p.color;
             ctx.beginPath();
@@ -276,6 +283,7 @@ export function TacticalCanvas({
 
           ctx.save();
           for (const p of effectsRef.current.smokeParticles) {
+            if (!discVisible(viewport, p.pos, p.radius)) continue;
             ctx.globalAlpha = (p.remainingDuration / p.maxDuration) * 0.7;
             ctx.fillStyle = p.color;
             ctx.beginPath();
@@ -285,6 +293,7 @@ export function TacticalCanvas({
           ctx.restore();
 
           for (const shard of effectsRef.current.debrisShards) {
+            if (!discVisible(viewport, shard.pos, shard.size * 2)) continue;
             ctx.save();
             ctx.translate(shard.pos[0], shard.pos[1]);
             ctx.rotate(shard.angle);
@@ -303,6 +312,7 @@ export function TacticalCanvas({
 
           ctx.save();
           for (const p of effectsRef.current.engineParticles) {
+            if (!discVisible(viewport, p.pos, p.radius)) continue;
             ctx.globalAlpha = p.remainingDuration / p.maxDuration;
             ctx.fillStyle = p.color;
             ctx.beginPath();
@@ -313,6 +323,7 @@ export function TacticalCanvas({
 
           // Draw Expanding Flak Burst Shockwaves
           for (const burst of effectsRef.current.flakBursts) {
+            if (!discVisible(viewport, burst.pos, burst.radius + 3)) continue;
             const alpha = Math.max(0, burst.remainingDuration / burst.maxDuration);
 
             ctx.strokeStyle =
@@ -336,9 +347,11 @@ export function TacticalCanvas({
 
           // Draw Projectiles
           for (const proj of sim.projectiles) {
+            if (!discVisible(viewport, proj.pos, 30)) continue;
             renderProjectile(ctx, proj);
           }
           for (const effect of effectsRef.current.expiredProjectiles) {
+            if (!discVisible(viewport, effect.projectile.pos, 30)) continue;
             const alpha = effect.remainingDuration / effect.maxDuration;
             ctx.save();
             ctx.globalAlpha = alpha;
@@ -362,6 +375,11 @@ export function TacticalCanvas({
           );
           for (const ship of sim.ships) {
             if (ship.isDocked) continue;
+            if (
+              ship.id !== selectedShipId &&
+              !discVisible(viewport, ship.pos, Math.max(ship.size * 2, shieldEnvelopeRadius(ship)))
+            )
+              continue;
             const gate = ingressGates.get(ship.id);
             ctx.save();
             if (gate) {
@@ -406,13 +424,21 @@ export function TacticalCanvas({
             const ship = sim.ships.find((s) => s.id === impact.shipId && s.isAlive);
             const [x, y] = ship?.pos ?? impact.pos;
             const radius = ship ? shieldEnvelopeRadius(ship) : impact.shipRadius;
+            if (!discVisible(viewport, [x, y], radius * 1.5 + 20)) continue;
             const alpha = impact.remainingDuration / 0.35;
             const progress = 1 - alpha;
             const px = x + Math.cos(impact.impactAngle) * radius;
             const py = y + Math.sin(impact.impactAngle) * radius;
             ctx.globalAlpha = alpha;
-            ctx.shadowColor = "#38bdf8";
-            ctx.shadowBlur = 12;
+            ctx.save();
+            ctx.globalAlpha *= 0.35;
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = 3 + 12 / cameraRef.current.zoom;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, impact.impactAngle - 0.42, impact.impactAngle + 0.42);
+            ctx.stroke();
+            drawGlowLine(ctx, [px, py], [px, py], "#38bdf8", Math.max(8, radius * 0.3));
+            ctx.restore();
             ctx.strokeStyle = "#67e8f9";
             ctx.lineWidth = 3;
             ctx.beginPath();
@@ -437,6 +463,11 @@ export function TacticalCanvas({
 
           ctx.save();
           for (const p of effectsRef.current.sparkParticles) {
+            const end: [number, number] = [
+              p.pos[0] - p.velocity[0] * 0.055 - p.velocity[1] * 0.01,
+              p.pos[1] - p.velocity[1] * 0.055 + p.velocity[0] * 0.01,
+            ];
+            if (!segmentVisible(viewport, p.pos, end, 2)) continue;
             ctx.globalAlpha = p.remainingDuration / p.maxDuration;
             ctx.strokeStyle = p.color;
             ctx.lineWidth = 1.5;

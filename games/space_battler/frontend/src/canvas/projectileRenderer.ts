@@ -3,6 +3,7 @@
 import { mountPosition } from "../engine/fireControl";
 import type { ProjectileState, ShipState } from "../types/combat";
 import type { LaserBeamEffect } from "./effects";
+import { drawGlowLine } from "./glowSprites";
 
 export function renderBeam(
   ctx: CanvasRenderingContext2D,
@@ -20,8 +21,9 @@ export function renderBeam(
     : beam.ownerTeam === 0
       ? "#0284c7"
       : "#991b1b";
-  ctx.shadowColor = beam.color;
-  ctx.shadowBlur = 12;
+  // Canvas shadows are screen-space; compensate for the camera scale.
+  const zoom = Math.hypot(ctx.getTransform().a, ctx.getTransform().b);
+  drawGlowLine(ctx, beam.from, beam.to, beam.color, beam.width * 2 + 12 / zoom);
   ctx.lineWidth = beam.width * 4;
   ctx.beginPath();
   ctx.moveTo(...beam.from);
@@ -151,8 +153,8 @@ export function renderProjectile(
 
       ctx.strokeStyle = isBlue ? "#67e8f9" : "#ef4444";
       ctx.globalAlpha *= plumeAlpha;
-      ctx.shadowColor = isBlue ? "#0ea5e9" : "#dc2626";
-      ctx.shadowBlur = 8;
+      const zoom = Math.hypot(ctx.getTransform().a, ctx.getTransform().b);
+      drawGlowLine(ctx, [-7, 0], [-16, 0], isBlue ? "#0ea5e9" : "#dc2626", 8 / zoom + 2);
       ctx.lineWidth = isBlue ? 2.5 : 4;
       ctx.beginPath();
       ctx.moveTo(-7, 0);
