@@ -11,6 +11,7 @@ type AssignmentCounts = Map<number, Map<number, Map<string, number>>>;
 export class NavigationContext {
   readonly byId = new Map<string, ShipState>();
   readonly teams = new Map<number, ShipState[]>();
+  readonly teamEnemies = new Map<number, ShipState[]>();
   readonly hulls = new Map<ShipState["hullClass"], ShipState[]>();
   readonly anchors = new Map<ShipState, ShipState | undefined>();
   readonly safe = new Map<ShipState, boolean>();
@@ -35,6 +36,13 @@ export class NavigationContext {
       this.hulls.set(ship.hullClass, hull);
       this.adjust(this.navigationAssignments, ship, ship.navigationTargetId, 1);
     }
+    // Preserve source order for scoring ties, including enemies from multiple teams.
+    // Eligibility remains live: a hull can dock or die after this context is prepared.
+    for (const team of this.teams.keys())
+      this.teamEnemies.set(
+        team,
+        ships.filter((ship) => ship.team !== team),
+      );
     for (const team of this.teams.values()) {
       const capitals = team.filter(isCapitalShip);
       const flak = team.filter((ship) => ship.hullClass === "corvette");

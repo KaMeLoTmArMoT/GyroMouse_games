@@ -34,6 +34,7 @@ import {
   vecSub,
 } from "./math2d";
 import {
+  type NavigationContext,
   navigationContext,
   navigationSpatialScale,
   tacticalDensity,
@@ -197,6 +198,11 @@ function selectNavigationTarget(
   wingTargetId?: string | null,
 ): ShipState | null {
   const fighter = ship.hullClass === "strike_craft";
+  const context = navigationContext(aliveShips);
+  const enemies =
+    context?.teamEnemies.get(ship.team) ?? aliveShips.filter((enemy) => enemy.team !== ship.team);
+  // Only corvette pursuit needs allied defense anchors; other hulls only inspect enemies.
+  const pursuitShips = ship.hullClass === "corvette" ? aliveShips : enemies;
   const combatCapital =
     ship.hullClass === "dreadnought" ||
     ship.hullClass === "battleship" ||
@@ -215,9 +221,9 @@ function selectNavigationTarget(
   let hasCapital = false;
   let hasCraft = false;
   let hasCloseCapitalThreat = false;
-  for (const enemy of aliveShips) {
-    if (!navigationCandidate(ship, enemy, aliveShips)) continue;
-    const safe = !fighter || safeNavigationTarget(enemy, aliveShips);
+  for (const enemy of enemies) {
+    if (!navigationCandidate(ship, enemy, pursuitShips)) continue;
+    const safe = !fighter || safeNavigationTarget(enemy, aliveShips, context);
     if (safe && !hasSafeTarget) {
       hasSafeTarget = true;
       hasCapital = false;
@@ -262,10 +268,9 @@ function selectNavigationTarget(
     order.priority === "screen_and_defend"
       ? (aliveShips.find((s) => s.id === ship.flagshipId && s.isAlive) ?? ship)
       : ship;
-  for (const enemy of aliveShips) {
-    if (!navigationCandidate(ship, enemy, aliveShips)) continue;
-    if (fighter && hasSafeTarget && !safeNavigationTarget(enemy, aliveShips)) continue;
-    const context = navigationContext(aliveShips);
+  for (const enemy of enemies) {
+    if (!navigationCandidate(ship, enemy, pursuitShips)) continue;
+    if (fighter && hasSafeTarget && !safeNavigationTarget(enemy, aliveShips, context)) continue;
     let assignments =
       context?.count(context.navigationAssignments, ship, enemy.id, ship.navigationTargetId) ?? 0;
     if (!context)
@@ -405,8 +410,11 @@ function closeNavigationThreat(enemy: ShipState, ship: ShipState, rangeSquared: 
   );
 }
 
-function safeNavigationTarget(enemy: ShipState, ships: ShipState[]): boolean {
-  const context = navigationContext(ships);
+function safeNavigationTarget(
+  enemy: ShipState,
+  ships: ShipState[],
+  context: NavigationContext | undefined,
+): boolean {
   if (context) return context.safe.get(enemy) ?? true;
   let threats = 0;
   for (const flak of ships) {

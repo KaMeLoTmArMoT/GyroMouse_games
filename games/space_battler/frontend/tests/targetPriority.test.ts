@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { acquireMountTarget } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
+import { prepareNavigationContext } from "../src/engine/navigationContext";
 import { findNavigationTarget } from "../src/engine/shipNavigationSystem";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { GroupOrder, HullClass, Vector2 } from "../src/types/combat";
@@ -25,6 +26,41 @@ describe("capital navigation target priority", () => {
     expect(findNavigationTarget(ship, order, ships)).toBe(first);
     expect(ships).toEqual([ship, first, second]);
     expect(findNavigationTarget(ship, order, [ship, second, first])).toBe(second);
+  });
+
+  it.each([false, true])(
+    "preserves equal-score order across interleaved enemy teams (cached: %s)",
+    (cached) => {
+      const ship = fixture("owner", "carrier", 0, [0, 0]);
+      const ally = fixture("ally", "carrier", 0, [100, 0]);
+      const first = fixture("z-first", "carrier", 2, [500, 0]);
+      const second = fixture("a-second", "carrier", 1, [-500, 0]);
+      for (const enemies of [
+        [first, second],
+        [second, first],
+      ]) {
+        const ships = [ship, enemies[0], ally, enemies[1]];
+        if (cached) prepareNavigationContext(ships);
+        expect(findNavigationTarget(ship, order, ships)).toBe(enemies[0]);
+        expect(ships).toEqual([ship, enemies[0], ally, enemies[1]]);
+      }
+    },
+  );
+
+  it("checks current enemy eligibility after preparing the navigation context", () => {
+    const ship = fixture("owner", "carrier", 0, [0, 0]);
+    const docked = fixture("docked", "carrier", 1, [100, 0]);
+    const dead = fixture("dead", "carrier", 1, [200, 0]);
+    const debris = fixture("debris", "carrier", 1, [300, 0]);
+    const fallback = fixture("fallback", "corvette", 1, [400, 0]);
+    docked.isDocked = true;
+    const ships = [ship, docked, dead, debris, fallback];
+    prepareNavigationContext(ships);
+    dead.isAlive = false;
+    debris.isDebris = true;
+    expect(findNavigationTarget(ship, order, ships)).toBe(fallback);
+    docked.isDocked = false;
+    expect(findNavigationTarget(ship, order, ships)).toBe(docked);
   });
 
   it("uses lexical ID ties for local corvette hunting instead of fleet order", () => {
