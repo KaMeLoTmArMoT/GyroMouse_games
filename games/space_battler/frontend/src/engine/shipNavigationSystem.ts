@@ -3,7 +3,7 @@ import { moveCarrierLaunch } from "./carrierHangar";
 import { type CrewVeterancy, crewDecisionPeriod } from "./crewVeterancy";
 import type { FighterMissionSystem } from "./fighterMissionSystem";
 import { friendlyShieldRecoveryDirection } from "./fighterRecovery";
-import { damagedTargetPriority, squadFocusPriority } from "./fireControl";
+import { capitalFinishPriority, damagedTargetPriority, squadFocusPriority } from "./fireControl";
 import { clampLateralVelocity, emergencySkirmishBreakout } from "./flightBehaviors";
 import {
   ARENA_HARD_PULL_RADIUS,
@@ -15,6 +15,7 @@ import {
   escortVelocity,
   fleetReturnVelocity,
   limitVelocity,
+  rescueRouteRisk,
   separation,
   spinalEscape,
   supportVelocity,
@@ -289,19 +290,26 @@ function selectNavigationTarget(
     for (const peer of aliveShips) {
       if (
         peer.id !== ship.id &&
+        peer.isAlive &&
+        !peer.isDocked &&
+        !peer.isDebris &&
         peer.team === ship.team &&
         peer.groupId === ship.groupId &&
         peer.navigationTargetId === enemy.id
       )
         assignments++;
     }
+    const finishPriority = capitalFinishPriority(ship, enemy, aliveShips);
     const score =
       (-distance / range) * 2 +
       nearby * damagedTargetPriority(enemy) +
+      finishPriority +
       // Saturated focus squads must not send a capital through the hostile front line.
-      (hasCloseCapitalThreat && closeNavigationThreat(enemy, ship, rangeSquared)
-        ? Math.max(-2, squadFocusPriority(assignments)) + 2
-        : squadFocusPriority(assignments)) +
+      (finishPriority > 0
+        ? 0
+        : hasCloseCapitalThreat && closeNavigationThreat(enemy, ship, rangeSquared)
+          ? Math.max(-2, squadFocusPriority(assignments)) + 2
+          : squadFocusPriority(assignments)) +
       (enemy.id === previousId ? 0.45 : 0) -
       distancePenalty;
     if (!best || score > bestScore) {
@@ -507,16 +515,25 @@ export function updateShipNavigation(
     ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4 &&
     !evadingOrdnance
   ) {
-    const tender = aliveShips
-      .filter(
-        (peer) =>
-          peer.isAlive &&
-          !peer.isDocked &&
-          peer.team === ship.team &&
-          peer.hullClass === "tender" &&
-          vecDistance(ship.pos, peer.pos) <= 800,
+    let tender: ShipState | undefined;
+    let bestScore = -Infinity;
+    for (const peer of aliveShips) {
+      if (
+        !peer.isAlive ||
+        peer.isDocked ||
+        peer.isDebris ||
+        peer.team !== ship.team ||
+        peer.hullClass !== "tender"
       )
-      .sort((a, b) => vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos))[0];
+        continue;
+      const risk = rescueRouteRisk(ship, peer, aliveShips);
+      if (risk >= 1.5) continue;
+      const score = 1 / (1 + vecDistance(ship.pos, peer.pos) / 1200) - risk;
+      if (score > bestScore || (score === bestScore && tender && peer.id < tender.id)) {
+        tender = peer;
+        bestScore = score;
+      }
+    }
     if (tender) {
       const distance = vecDistance(ship.pos, tender.pos);
       const toward = vecNormalize(vecSub(tender.pos, ship.pos));

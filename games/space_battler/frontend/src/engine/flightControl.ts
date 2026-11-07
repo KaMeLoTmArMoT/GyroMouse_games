@@ -6,6 +6,7 @@ import type {
   Vector2,
 } from "../types/combat";
 import {
+  closeToKillTarget,
   damagedTargetPriority,
   interceptTime,
   mountPosition,
@@ -239,25 +240,85 @@ export function orbitVelocity(ship: ShipState, target: ShipState, radius = 300):
 }
 
 export function tenderRescueTarget(ship: ShipState, ships: ShipState[]): ShipState | undefined {
-  return ships
-    .filter(
-      (peer) =>
-        peer.isAlive &&
-        !peer.isDocked &&
-        peer.team === ship.team &&
-        peer.id !== ship.id &&
-        peer.hullClass !== "tender" &&
-        vecDistance(ship.pos, peer.pos) <= 800 &&
-        (peer.shieldCurrent <= 0 ||
-          (peer.shieldDelayTimer > 0 && peer.shieldCurrent < peer.shieldMax * 0.4)),
+  let best: ShipState | undefined;
+  let bestScore = -Infinity;
+  for (const peer of ships) {
+    if (
+      !peer.isAlive ||
+      peer.isDocked ||
+      peer.isDebris ||
+      peer.team !== ship.team ||
+      peer.id === ship.id ||
+      peer.hullClass === "tender" ||
+      !(
+        peer.shieldCurrent <= 0 ||
+        peer.hullCurrent < peer.hullMax ||
+        (peer.shieldDelayTimer > 0 && peer.shieldCurrent < peer.shieldMax * 0.4)
+      )
     )
-    .sort(
-      (a, b) =>
-        Number(b.shieldCurrent <= 0) - Number(a.shieldCurrent <= 0) ||
-        a.hullCurrent / Math.max(1, a.hullMax) - b.hullCurrent / Math.max(1, b.hullMax) ||
-        vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) ||
-        a.id.localeCompare(b.id),
-    )[0];
+      continue;
+    const risk = rescueRouteRisk(ship, peer, ships);
+    // Dense capital crossfire is a route veto, never a distance veto.
+    if (risk >= 1.5) continue;
+    const importance =
+      peer.hullClass === "dreadnought"
+        ? 6
+        : peer.hullClass === "battleship"
+          ? 5
+          : peer.hullClass === "carrier"
+            ? 4
+            : peer.hullClass === "cruiser"
+              ? 3
+              : peer.hullClass === "missile_frigate"
+                ? 2
+                : 1;
+    const criticality =
+      2 * Number(peer.shieldCurrent <= 0) +
+      3 * clamp(1 - peer.hullCurrent / Math.max(1, peer.hullMax), 0, 1);
+    const score =
+      (importance + criticality) / (1 + vecDistance(ship.pos, peer.pos) / 1200) - risk * 6;
+    if (score > bestScore || (score === bestScore && best && peer.id < best.id)) {
+      best = peer;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** Allocation-free exposure along the rendezvous segment. */
+export function rescueRouteRisk(ship: ShipState, target: ShipState, ships: ShipState[]): number {
+  const dx = target.pos[0] - ship.pos[0];
+  const dy = target.pos[1] - ship.pos[1];
+  const lengthSquared = dx * dx + dy * dy;
+  let risk = 0;
+  for (const enemy of ships) {
+    if (
+      !enemy.isAlive ||
+      enemy.isDocked ||
+      enemy.isDebris ||
+      enemy.team === ship.team ||
+      !isCapitalShip(enemy)
+    )
+      continue;
+    let range = 0;
+    for (const turret of enemy.turrets) {
+      if (turret.weapon.weaponType !== "point_defense")
+        range = Math.max(range, turret.weapon.range);
+    }
+    if (range <= 0) continue;
+    const t = clamp(
+      ((enemy.pos[0] - ship.pos[0]) * dx + (enemy.pos[1] - ship.pos[1]) * dy) /
+        Math.max(1, lengthSquared),
+      0,
+      1,
+    );
+    const distance = Math.hypot(
+      enemy.pos[0] - ship.pos[0] - dx * t,
+      enemy.pos[1] - ship.pos[1] - dy * t,
+    );
+    risk += clamp(1 - distance / range, 0, 1);
+  }
+  return risk;
 }
 
 export function supportVelocity(
@@ -274,6 +335,7 @@ export function supportVelocity(
       peer.team === ship.team &&
       peer.id !== ship.id &&
       peer.hullClass !== "tender" &&
+      rescueRouteRisk(ship, peer, ships) < 1.5 &&
       (peer.hullClass !== "strike_craft" || peer.shieldCurrent < peer.shieldMax),
   );
   const anchor =
@@ -521,6 +583,7 @@ function defensiveStandoff(
   ships: ShipState[],
   velocity: Vector2,
   radius: number,
+  finishingTarget?: ShipState,
 ): Vector2 {
   const damaged = damageStandoffWeight(ship) > 0;
   let corrected = velocity;
@@ -529,6 +592,7 @@ function defensiveStandoff(
     // rapidly changing bearings with full-speed defensive translation.
     if (
       !enemy.isAlive ||
+      enemy === finishingTarget ||
       enemy.team === ship.team ||
       enemy.hullClass === "strike_craft" ||
       (!damaged && !isCapitalShip(enemy))
@@ -740,6 +804,27 @@ export function capitalIntent(
       : (SHIP_DOCTRINES.cruiser.flight as CapitalFlightDoctrine);
   const gun = primaryGun(ship, doctrine.primaryMount);
   const aimBearing = interceptBearing(ship, target, gun);
+  if (closeToKillTarget(ship, target) && damageStandoffWeight(ship) === 0) {
+    const clearance = ship.size + target.size + 120;
+    const approach = StandoffApproachBlock(ship, target, clearance, 0, {
+      ...doctrine.approach,
+      standoffThreshold: clearance + 50,
+      aimBearing,
+      forwardSpeedRatio: 1,
+    });
+    let velocity = vecAdd(approach.velocity, calculateSeparation(ship, ships));
+    const evasive = OrdnanceAvoidanceBlock(ship, projectiles, ships, time, "torpedo", velocity);
+    const evadingOrdnance = evasive !== velocity;
+    velocity = evasive;
+    return {
+      ...approach,
+      evadingOrdnance,
+      velocity: limitVelocity(
+        defensiveStandoff(ship, ships, velocity, clearance, target),
+        ship.maxSpeed,
+      ),
+    };
+  }
   if (doctrine.kind === "skirmish") {
     const tubes = ship.turrets.filter((t) => t.weapon.weaponType === "missile");
     const salvo = salvoReload(tubes, ship.skirmishCycle?.lastSalvoShot);

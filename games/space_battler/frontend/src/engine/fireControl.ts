@@ -130,6 +130,50 @@ export function squadFocusPriority(assignments: number): number {
   return assignments < 3 ? assignments * 0.6 : 1.2 - (assignments - 2) * 4;
 }
 
+export function closeToKillTarget(ship: ShipState, target: ShipState): boolean {
+  return (
+    (ship.hullClass === "dreadnought" ||
+      ship.hullClass === "battleship" ||
+      ship.hullClass === "cruiser" ||
+      ship.hullClass === "missile_frigate") &&
+    (target.hullClass === "carrier" ||
+      target.hullClass === "dreadnought" ||
+      target.hullClass === "battleship" ||
+      target.hullClass === "cruiser") &&
+    target.shieldCurrent <= 0 &&
+    (target.hullClass === "carrier" || target.hullCurrent < target.hullMax * 0.4) &&
+    (target.pos[0] - ship.pos[0]) * target.velocity[0] +
+      (target.pos[1] - ship.pos[1]) * target.velocity[1] >
+      Math.hypot(target.pos[0] - ship.pos[0], target.pos[1] - ship.pos[1]) * target.maxSpeed * 0.5
+  );
+}
+
+export function capitalFinishPriority(
+  ship: ShipState,
+  target: ShipState,
+  ships: ShipState[],
+): number {
+  if (
+    (ship.hullClass !== "dreadnought" && ship.hullClass !== "battleship") ||
+    !closeToKillTarget(ship, target)
+  )
+    return 0;
+  let assignments = 0;
+  for (const peer of ships) {
+    if (
+      peer !== ship &&
+      peer.isAlive &&
+      !peer.isDocked &&
+      !peer.isDebris &&
+      peer.team === ship.team &&
+      (peer.hullClass === "dreadnought" || peer.hullClass === "battleship") &&
+      peer.navigationTargetId === target.id
+    )
+      assignments++;
+  }
+  return 3 + Math.min(assignments, 4) * 1.5;
+}
+
 export interface MissileLock {
   targetId: string;
   weapon: WeaponDefinition;
@@ -263,6 +307,7 @@ export function acquireMountTarget(
     )
       role += 3;
     role += damagedTargetPriority(enemy);
+    if (weapon.weaponType !== "point_defense") role += capitalFinishPriority(ship, enemy, ships);
     let priority = 0;
     if (enemy.hullClass === "strike_craft") {
       if (defense === "flak" && vecDistance(muzzle, enemy.pos) < 350) priority = 3;

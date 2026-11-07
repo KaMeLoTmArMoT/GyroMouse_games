@@ -38,6 +38,34 @@ export const WING_WAVE_DELAY = 1.7;
 const WING_RELAUNCH_DELAY = 0.25;
 const WING_RALLY_TOLERANCE = 65;
 
+/** Only committed, healthy attackers lend courage; recovery craft do not count. */
+export function swarmFlakFear(ship: ShipState, corvette: ShipState, ships: ShipState[]): number {
+  if (
+    ship.fighterPhase !== "attack" ||
+    ship.carrierRecovering ||
+    ship.recoveryStarted !== undefined
+  )
+    return 1;
+  let attackers = 0;
+  for (const peer of ships) {
+    if (
+      !peer.isAlive ||
+      peer.isDocked ||
+      peer.isDebris ||
+      peer.team !== ship.team ||
+      peer.hullClass !== "strike_craft" ||
+      peer.fighterPhase !== "attack" ||
+      peer.carrierRecovering ||
+      peer.recoveryStarted !== undefined
+    )
+      continue;
+    const dx = peer.pos[0] - corvette.pos[0];
+    const dy = peer.pos[1] - corvette.pos[1];
+    if (peer.navigationTargetId === corvette.id || dx * dx + dy * dy <= 600 * 600) attackers++;
+  }
+  return attackers >= 4 ? Math.max(0.2, (0.5 * 4) / attackers) : 1;
+}
+
 interface FighterWing {
   team: number;
   groupId: number;
@@ -532,6 +560,10 @@ export class FighterMissionSystem {
             craftRadius + shieldEnvelopeRadius(obstacle) + (missionTarget ? 20 : capital ? 95 : 40),
           horizon: missionTarget ? 0.25 : 1,
           flak: obstacle.team !== ship.team && obstacle.hullClass === "corvette",
+          flakFear:
+            obstacle.team !== ship.team && obstacle.hullClass === "corvette"
+              ? swarmFlakFear(ship, obstacle, aliveShips)
+              : 1,
           pdRange:
             obstacle.team !== ship.team &&
             (phase === "staging" || phase === "rejoin" || phase === "recover")
@@ -613,6 +645,7 @@ export class FighterMissionSystem {
         if (entry.flak && distance < FLAK_DENIAL_RADIUS)
           dangerScore +=
             (phase === "attack" && obstacle.id === target.id && threats.length === 1 ? 0.5 : 8) *
+            entry.flakFear *
             (1 - distance / FLAK_DENIAL_RADIUS);
       }
       if (dangerScore > maxDangerObserved) maxDangerObserved = dangerScore;
