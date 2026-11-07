@@ -111,17 +111,24 @@ function eligibleParent(guest: ShipState, parent: ShipState): boolean {
 export class ShieldHavenSystem {
   private leases = new Map<string, ShieldHavenLease>();
   private ships = new Map<string, ShipState>();
+  private tenders = new Map<number, ShipState[]>();
 
-  private hasTenderAura(parent: ShipState, ships: Iterable<ShipState>): boolean {
-    if (!parent.isAlive || !isCapitalShip(parent)) return false;
+  private tenderTeams(ships: Iterable<ShipState>): Map<number, ShipState[]> {
+    const teams = new Map<number, ShipState[]>();
     for (const donor of ships) {
-      if (
-        donor.isAlive &&
-        donor.hullClass === "tender" &&
-        donor.team === parent.team &&
-        vecDistance(donor.pos, parent.pos) <= 500
-      )
-        return true;
+      if (!donor.isAlive || donor.hullClass !== "tender") continue;
+      const team = teams.get(donor.team);
+      if (team) team.push(donor);
+      else teams.set(donor.team, [donor]);
+    }
+    return teams;
+  }
+
+  private hasTenderAura(parent: ShipState, teams = this.tenders): boolean {
+    const tenders = teams.get(parent.team);
+    if (!tenders || !parent.isAlive || !isCapitalShip(parent)) return false;
+    for (const donor of tenders) {
+      if (donor.isAlive && vecDistance(donor.pos, parent.pos) <= 500) return true;
     }
     return false;
   }
@@ -129,13 +136,14 @@ export class ShieldHavenSystem {
   /** One strongest aura, shared by hitboxes, repulsors, rendering and haven corridors. */
   refreshAmplification(ships: Iterable<ShipState> = this.ships.values()): void {
     const fleet = [...ships];
+    const tenders = this.tenderTeams(fleet);
     for (const ship of fleet)
-      ship.havenRadiusMultiplier = this.hasTenderAura(ship, fleet) ? 1.2 : 1;
+      ship.havenRadiusMultiplier = tenders.size && this.hasTenderAura(ship, tenders) ? 1.2 : 1;
   }
 
   /** Snapshot before shield damage releases the guest's authoritative lease. */
   overflowMultiplier(parent: ShipState): number {
-    return this.hasTenderAura(parent, this.ships.values()) ? 0.9 : 1;
+    return this.hasTenderAura(parent) ? 0.9 : 1;
   }
 
   getLease(guestId: string): ShieldHavenLease | null {
@@ -189,6 +197,7 @@ export class ShieldHavenSystem {
     }
     this.leases.clear();
     this.ships.clear();
+    this.tenders.clear();
   }
 
   /** Remove unsafe leases immediately after combat, without starting new episodes. */
@@ -222,6 +231,7 @@ export class ShieldHavenSystem {
         resetHaven(ship);
       }
     }
+    this.tenders = this.tenderTeams(this.ships.values());
     this.updateGuestCounts();
   }
 

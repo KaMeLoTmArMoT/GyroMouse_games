@@ -246,6 +246,7 @@ export function acquireMountTarget(
 ): FireSolution | null {
   const muzzle = mountPosition(ship, turret);
   const weapon = turret.weapon;
+  const rangeSq = weapon.range * weapon.range;
   turret.sideTargetId = undefined;
   const defense = pointDefenseMode(weapon);
   const defendedShips = (
@@ -266,7 +267,7 @@ export function acquireMountTarget(
   const inRange = (target: ShipState | ProjectileState) => {
     const dx = muzzle[0] - target.pos[0];
     const dy = muzzle[1] - target.pos[1];
-    return dx * dx + dy * dy <= weapon.range * weapon.range;
+    return dx * dx + dy * dy <= rangeSq;
   };
   const evaluate = (
     target: ShipState | ProjectileState,
@@ -318,6 +319,24 @@ export function acquireMountTarget(
     if (retained) finishCurrent = finish;
   };
 
+  // Preserve projectile order within each target's payloads without rescanning
+  // every projectile for every enemy considered by a missile mount.
+  const missilesByTarget = new Map<string, ProjectileState[]>();
+  if (weapon.weaponType === "missile") {
+    for (const missile of projectiles) {
+      if (
+        missile.weaponType !== "missile" ||
+        !(missile.hp > 0) ||
+        !(missile.lifetime > 0) ||
+        missile.targetId === null
+      )
+        continue;
+      const incoming = missilesByTarget.get(missile.targetId);
+      if (incoming) incoming.push(missile);
+      else missilesByTarget.set(missile.targetId, [missile]);
+    }
+  }
+
   for (const enemy of ships) {
     if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team) continue;
     if (!inRange(enemy)) continue;
@@ -325,14 +344,8 @@ export function acquireMountTarget(
       let incoming = 0;
       let inFlightDamage = 0;
       let insuranceDamage = 0;
-      for (const missile of projectiles) {
-        if (
-          missile.weaponType === "missile" &&
-          missile.targetId === enemy.id &&
-          missile.ownerTeam !== enemy.team &&
-          missile.hp > 0 &&
-          missile.lifetime > 0
-        ) {
+      for (const missile of missilesByTarget.get(enemy.id) ?? []) {
+        if (missile.ownerTeam !== enemy.team) {
           incoming += missileWeight(enemy, isHeavyTorpedo(missile));
           inFlightDamage += missile.damage;
           insuranceDamage = Math.max(insuranceDamage, missile.damage);
@@ -400,7 +413,9 @@ export function acquireMountTarget(
         missile.lifetime <= 0
       )
         continue;
-      if (!inRange(missile)) continue;
+      // Range and current-bearing arc are prerequisites for evaluate(); reject
+      // impossible shots before testing trajectories against the defended fleet.
+      if (!inRange(missile) || !inMountArc(ship, turret, missile.pos)) continue;
       let arrival = Infinity;
       let urgentTorpedo = false;
       for (const defended of defendedShips) {
