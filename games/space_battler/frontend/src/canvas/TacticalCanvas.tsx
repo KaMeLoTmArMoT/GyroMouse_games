@@ -187,8 +187,9 @@ export function TacticalCanvas({
         followRef.current && sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
       if (targetShip) {
         const camera = cameraRef.current;
-        camera.x += (-targetShip.pos[0] * camera.zoom - camera.x) * 0.08;
-        camera.y += (-targetShip.pos[1] * camera.zoom - camera.y) * 0.08;
+        const followAlpha = 1 - (1 - 0.08) ** (dt * 60);
+        camera.x += (-targetShip.pos[0] * camera.zoom - camera.x) * followAlpha;
+        camera.y += (-targetShip.pos[1] * camera.zoom - camera.y) * followAlpha;
       }
 
       const canvas = canvasRef.current;
@@ -765,16 +766,24 @@ function drawRadiationInterference(
   ctx.fillStyle = "#c5ffda";
   for (let layer = 0; layer < 2; layer++) {
     const opacity = layer === 0 ? 1 - blend : blend;
-    for (let i = 0; i < 650; i++) {
+    for (let i = 0; i < 1000; i++) {
       const seed = (frame + layer) * 4000 + i * 4;
       const x = viewport.minX + random(seed) * width;
       const y = viewport.minY + random(seed + 1) * height;
-      const depth = Math.hypot(x, y) - ARENA_RADIUS;
+      const radius = Math.hypot(x, y);
+      const depth = radius - ARENA_RADIUS;
       if (depth <= 0) continue;
-      const intensity = Math.min(1, depth / Math.max(1, ARENA_HARD_PULL_RADIUS - ARENA_RADIUS));
+      const bufferWidth = Math.max(1, ARENA_HARD_PULL_RADIUS - ARENA_RADIUS);
+      const buffer = Math.min(1, depth / bufferWidth);
+      const deep = Math.min(1, Math.max(0, radius - ARENA_HARD_PULL_RADIUS) / bufferWidth);
+      const smoothBuffer = buffer * buffer * (3 - 2 * buffer);
+      const smoothDeep = deep * deep * (3 - 2 * deep);
+      if (i >= 650 && deep === 0) continue;
+      const intensity = 0.35 * smoothBuffer + 0.65 * smoothDeep;
       const hit = random(seed + 2);
-      ctx.globalAlpha = opacity * intensity * (0.06 + hit * 0.16);
-      ctx.fillRect(x, y, (1 + hit * 2) * pixel, pixel);
+      ctx.globalAlpha = opacity * intensity * (i >= 650 ? smoothDeep : 1) * (0.06 + hit * 0.16);
+      const length = 1 + hit * 2 + smoothDeep * (0.5 + hit * 1.5);
+      ctx.fillRect(x, y, length * pixel, pixel);
     }
   }
   ctx.restore();

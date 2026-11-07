@@ -44,54 +44,97 @@ export function arenaAnticipation(distance: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Compare short breakthrough routes in hull-equivalent damage, including turning exposure. */
-function returnRouteCost(ship: ShipState, heading: number, ships: ShipState[]): number {
+/** Compare a skirting leg followed by an inward return, including turning exposure. */
+function returnRouteCost(ship: ShipState, heading: number, ships: ShipState[]) {
   const distance = Math.hypot(...ship.pos);
   const inward: Vector2 = [-ship.pos[0] / distance, -ship.pos[1] / distance];
   const direction: Vector2 = [Math.cos(heading), Math.sin(heading)];
-  const inwardSpeed = Math.max(ship.maxSpeed * 0.25, vecDot(direction, inward) * ship.maxSpeed);
+  const inwardSpeed = Math.max(ship.maxSpeed * 0.5, vecDot(direction, inward) * ship.maxSpeed);
   const turnTime = Math.abs(normalizeAngle(heading - ship.heading)) / Math.max(ship.turnRate, 0.01);
-  const duration = clamp((distance - ARENA_RADIUS + ship.size * 2) / inwardSpeed + turnTime, 1, 8);
-  const samples = 4;
-  const step = duration / samples;
+  const travelTime = Math.max((distance - ARENA_RADIUS + ship.size * 2) / inwardSpeed, 1);
+  const end = vecAdd(ship.pos, vecScale(direction, ship.maxSpeed * travelTime));
+  const endDistance = Math.hypot(...end);
+  const returnTime = Math.max(0, endDistance - ARENA_RADIUS + ship.size * 2) / ship.maxSpeed;
+  const returnDirection = vecScale(end, -1 / Math.max(endDistance, 1));
+  const returnTurn =
+    returnTime > 0
+      ? Math.abs(normalizeAngle(Math.atan2(returnDirection[1], returnDirection[0]) - heading)) /
+        Math.max(ship.turnRate, 0.01)
+      : 0;
+  const duration = turnTime + travelTime + returnTurn + returnTime;
   let shields = ship.shieldCurrent;
+  let radiationShields = shields;
+  let radiationDamage = 0;
   let damage = 0;
-  for (let sample = 1; sample <= samples; sample++) {
-    const time = step * (sample - 0.5);
-    const pos = vecAdd(ship.pos, vecScale(direction, ship.maxSpeed * Math.max(0, time - turnTime)));
-    const intensity = radiationIntensity(pos);
-    const shieldDps = ship.shieldMax * RADIATION_SHIELD_DECAY * intensity;
-    const shieldedTime = shieldDps > 0 ? Math.min(step, shields / shieldDps) : 0;
-    shields = Math.max(0, shields - shieldDps * step);
-    if (intensity > 0) damage += RADIATION_HULL_DPS * intensity * (step - shieldedTime);
-    for (const enemy of ships) {
-      if (
-        !enemy.isAlive ||
-        enemy.isDocked ||
-        enemy.isDebris ||
-        enemy.team === ship.team ||
-        !isCapitalShip(enemy)
-      )
-        continue;
-      const drift = vecScale(enemy.velocity, time);
-      const enemyDistance = Math.hypot(...vecSub(pos, vecAdd(enemy.pos, drift)));
-      const clearance = shieldEnvelopeRadius(enemy) + shieldEnvelopeRadius(ship);
-      // Hull/shield contact can kill light craft outright, regardless of the current gun arc.
-      if (enemyDistance < clearance) damage += ship.hullMax * step;
-      const point = vecSub(pos, drift);
-      for (const turret of enemy.turrets) {
-        if (
-          !inMountArc(enemy, turret, point) ||
-          Math.hypot(...vecSub(point, mountPosition(enemy, turret))) > turret.weapon.range
-        )
+  let elapsed = 0;
+  const legs = [
+    { start: ship.pos, velocity: [0, 0] as Vector2, duration: turnTime },
+    { start: ship.pos, velocity: vecScale(direction, ship.maxSpeed), duration: travelTime },
+    { start: end, velocity: [0, 0] as Vector2, duration: returnTurn },
+    { start: end, velocity: vecScale(returnDirection, ship.maxSpeed), duration: returnTime },
+  ];
+  for (const leg of legs) {
+    if (leg.duration <= 0) continue;
+    const samples = 8;
+    const step = leg.duration / samples;
+    for (let sample = 1; sample <= samples; sample++) {
+      const localTime = step * (sample - 0.5);
+      const time = elapsed + localTime;
+      const pos = vecAdd(leg.start, vecScale(leg.velocity, localTime));
+      const intensity = radiationIntensity(pos);
+      const shieldDps = ship.shieldMax * RADIATION_SHIELD_DECAY * intensity;
+      const radiationShieldedTime =
+        shieldDps > 0 ? Math.min(step, radiationShields / shieldDps) : 0;
+      radiationShields = Math.max(0, radiationShields - shieldDps * step);
+      radiationDamage += RADIATION_HULL_DPS * intensity * (step - radiationShieldedTime);
+      const shieldedTime = shieldDps > 0 ? Math.min(step, shields / shieldDps) : 0;
+      shields = Math.max(0, shields - shieldDps * step);
+      if (intensity > 0) damage += RADIATION_HULL_DPS * intensity * (step - shieldedTime);
+      for (const enemy of ships) {
+        if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team)
           continue;
-        const dps = turret.weapon.damage / Math.max(turret.weapon.cooldown, 1);
-        damage += dps * turret.weapon.hullMultiplier * step;
+        const drift = vecScale(enemy.velocity, time);
+        const enemyDistance = Math.hypot(...vecSub(pos, vecAdd(enemy.pos, drift)));
+        const clearance = shieldEnvelopeRadius(enemy) + shieldEnvelopeRadius(ship);
+        // Hull/shield contact can kill light craft outright, regardless of the current gun arc.
+        if (isCapitalShip(enemy) && enemyDistance < clearance) damage += ship.hullMax * step;
+        const point = vecSub(pos, drift);
+        for (const turret of enemy.turrets) {
+          if (
+            !inMountArc(enemy, turret, point) ||
+            Math.hypot(...vecSub(point, mountPosition(enemy, turret))) >
+              turret.weapon.range + (turret.weapon.flak?.blastRadius ?? 0)
+          )
+            continue;
+          // Zero-cooldown defense lasers specify continuous DPS; flak uses its real cadence.
+          const dps = turret.weapon.damage / (turret.weapon.cooldown || 1);
+          const shieldDamage = dps * turret.weapon.shieldMultiplier * step;
+          const absorbed = Math.min(shields, shieldDamage);
+          shields -= absorbed;
+          damage +=
+            dps *
+            turret.weapon.hullMultiplier *
+            step *
+            (shieldDamage > 0 ? 1 - absorbed / shieldDamage : 1);
+        }
       }
     }
+    elapsed += leg.duration;
   }
   // A small path-length cost keeps the direct route preferable when both routes are safe.
-  return damage / Math.max(1, ship.hullCurrent) + duration * 0.01;
+  return {
+    cost: damage / Math.max(1, ship.hullCurrent) + duration * 0.01,
+    damage,
+    radiationDamage,
+  };
+}
+
+/** Threat timestamps are simulation time, so the roll is stable within each five-second window. */
+function desperateBreakthrough(ship: ShipState): boolean {
+  let seed = 2166136261;
+  for (const char of `${ship.id}:${Math.floor((ship.lastThreatTime ?? 0) / 5)}`)
+    seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
+  return (seed >>> 0) % 100 < 5;
 }
 
 /** Desired thrust only. Actual momentum is changed exclusively by ordinary ship thrusters. */
@@ -120,23 +163,33 @@ export function arenaVelocity(ship: ShipState, desired: Vector2, ships: ShipStat
   const inwardHeading = Math.atan2(-ship.pos[1], -ship.pos[0]);
   let heading = inwardHeading;
   const threats = ships.filter(
-    (enemy) =>
-      enemy.isAlive &&
-      !enemy.isDocked &&
-      !enemy.isDebris &&
-      enemy.team !== ship.team &&
-      isCapitalShip(enemy),
+    (enemy) => enemy.isAlive && !enemy.isDocked && !enemy.isDebris && enemy.team !== ship.team,
   );
   if (threats.length === 0)
     return [Math.cos(heading) * ship.maxSpeed, Math.sin(heading) * ship.maxSpeed];
-  let bestCost = returnRouteCost(ship, heading, threats);
-  for (const offset of [Math.PI / 6, -Math.PI / 6, Math.PI / 3, -Math.PI / 3]) {
+  const direct = returnRouteCost(ship, heading, threats);
+  let best = direct;
+  for (const offset of [
+    Math.PI / 6,
+    -Math.PI / 6,
+    Math.PI / 3,
+    -Math.PI / 3,
+    Math.PI / 2,
+    -Math.PI / 2,
+  ]) {
     const candidate = inwardHeading + offset;
-    const cost = returnRouteCost(ship, candidate, threats);
-    if (cost < bestCost) {
+    const route = returnRouteCost(ship, candidate, threats);
+    if (route.cost < best.cost) {
       heading = candidate;
-      bestCost = cost;
+      best = route;
     }
   }
+  if (
+    best.radiationDamage >= ship.hullCurrent * 0.95 ||
+    (direct.damage >= ship.hullCurrent &&
+      best.damage >= ship.hullCurrent &&
+      desperateBreakthrough(ship))
+  )
+    heading = inwardHeading;
   return [Math.cos(heading) * ship.maxSpeed, Math.sin(heading) * ship.maxSpeed];
 }
