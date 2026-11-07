@@ -16,6 +16,48 @@ const projectile = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("projectile feedback", () => {
+  it("captures expired munitions with their respective decay durations and coasts them", () => {
+    const effects = new VisualEffectsManager();
+    const munitions = (["plasma", "railgun", "point_defense", "missile"] as const).map(
+      (weaponType) =>
+        ({ ...projectile, id: weaponType, weaponType, lifetime: 0, weapon: {} }) as ProjectileState,
+    );
+    effects.captureExpiredProjectiles(munitions, []);
+    expect(effects.expiredProjectiles.map((effect) => effect.maxDuration)).toEqual([
+      0.4, 0.35, 0.25, 1.1,
+    ]);
+    effects.update(0.1);
+    expect(effects.expiredProjectiles.map((effect) => effect.projectile.pos)).toEqual([
+      [110, 50],
+      [110, 50],
+      [110, 50],
+      [110, 50],
+    ]);
+    expect(munitions[0].pos).toEqual([100, 50]);
+    effects.update(0.16);
+    expect(effects.expiredProjectiles.map((effect) => effect.projectile.id)).toEqual([
+      "plasma",
+      "railgun",
+      "missile",
+    ]);
+  });
+
+  it("does not capture flak, active, destroyed, or unexpired projectiles", () => {
+    const effects = new VisualEffectsManager();
+    const base = { ...projectile, weaponType: "point_defense", lifetime: 0, weapon: {} };
+    const active = { ...base, id: "active" } as ProjectileState;
+    effects.captureExpiredProjectiles(
+      [
+        active,
+        { ...base, id: "flak", weapon: { flak: {} } } as ProjectileState,
+        { ...base, id: "destroyed", hp: 0 } as ProjectileState,
+        { ...base, id: "unexpired", lifetime: 1 } as ProjectileState,
+      ],
+      [active],
+    );
+    expect(effects.expiredProjectiles).toHaveLength(0);
+  });
+
   it("emits damage smoke and sparks only for damaged missiles", () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     const healthy = new VisualEffectsManager();

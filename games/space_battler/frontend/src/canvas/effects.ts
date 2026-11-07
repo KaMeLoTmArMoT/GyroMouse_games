@@ -203,10 +203,21 @@ export class VisualEffectsManager {
         activeIds.has(projectile.id) ||
         projectile.hp <= 0 ||
         projectile.lifetime > 0 ||
-        (projectile.weaponType !== "plasma" && projectile.weaponType !== "missile")
+        projectile.weapon.flak ||
+        (projectile.weaponType !== "plasma" &&
+          projectile.weaponType !== "railgun" &&
+          projectile.weaponType !== "point_defense" &&
+          projectile.weaponType !== "missile")
       )
         continue;
-      const duration = projectile.weaponType === "plasma" ? 0.4 : 1.1;
+      const duration =
+        projectile.weaponType === "plasma"
+          ? 0.4
+          : projectile.weaponType === "railgun"
+            ? 0.35
+            : projectile.weaponType === "point_defense"
+              ? 0.25
+              : 1.1;
       if (this.expiredProjectiles.length >= 500) this.expiredProjectiles.shift();
       this.expiredProjectiles.push({
         projectile: { ...projectile, pos: [...projectile.pos], velocity: [...projectile.velocity] },

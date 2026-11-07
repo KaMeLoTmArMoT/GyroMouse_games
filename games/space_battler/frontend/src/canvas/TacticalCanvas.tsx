@@ -121,13 +121,27 @@ export function TacticalCanvas({
 
     let animId: number;
     let lastTime = performance.now();
+    let focused = document.hasFocus();
+    const handleBlur = () => {
+      focused = false;
+    };
+    const handleFocus = () => {
+      focused = true;
+      lastTime = performance.now();
+    };
+    const handleVisibilityChange = () => {
+      lastTime = performance.now();
+    };
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const renderLoop = (now: number) => {
       const rawDt = (now - lastTime) / 1000;
       lastTime = now;
-      const dt = rawDt;
+      const dt = Math.max(0, Math.min(rawDt, 0.033));
 
-      if (speed > 0) {
+      if (speed > 0 && focused && !document.hidden) {
         if (pendingIngressRef.current) {
           effectsRef.current.triggerFleetWarpIn(sim.ships);
           if (sim.drainAudioEvents().some((event) => event.type === "warp_ingress")) {
@@ -327,7 +341,7 @@ export function TacticalCanvas({
             const alpha = effect.remainingDuration / effect.maxDuration;
             ctx.save();
             ctx.globalAlpha = alpha;
-            if (effect.projectile.weaponType === "plasma") {
+            if (effect.projectile.weaponType !== "missile") {
               const [x, y] = effect.projectile.pos;
               ctx.translate(x, y);
               ctx.scale(alpha, alpha);
@@ -446,6 +460,9 @@ export function TacticalCanvas({
     animId = requestAnimationFrame(renderLoop);
     return () => {
       cancelAnimationFrame(animId);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       sim.onBeamFire = null;
       sim.onFlakBurst = null;
       sim.onProjectileFire = undefined;
