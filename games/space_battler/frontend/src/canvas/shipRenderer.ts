@@ -721,6 +721,67 @@ function drawTenderLight(ctx: CanvasRenderingContext2D, ship: ShipState, time: n
   ctx.restore();
 }
 
+/** Static inset armor and bevels; called inside the light hull's clip. */
+function drawLightHullDepth(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+  const s = ship.size;
+  const alien = ship.team !== 0;
+  const strike = ship.hullClass === "strike_craft";
+  const corvette = ship.hullClass === "corvette";
+  const light = ctx.createLinearGradient(0, -s * 0.6, 0, s * 0.6);
+  light.addColorStop(0, alien ? "rgba(251, 113, 133, 0.32)" : "rgba(125, 211, 252, 0.32)");
+  light.addColorStop(0.45, alien ? "rgba(127, 29, 29, 0.12)" : "rgba(51, 65, 85, 0.12)");
+  light.addColorStop(1, "rgba(2, 6, 23, 0.55)");
+  ctx.fillStyle = light;
+  ctx.fillRect(-s * 1.3, -s, s * 2.6, s * 2);
+
+  // A dark seam beneath a narrow highlight reads as a raised, chamfered deck.
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    if (alien && strike) {
+      ctx.moveTo(-s * 0.48, side * s * 0.27);
+      ctx.quadraticCurveTo(s * 0.12, side * s * 0.16, s * 0.72, side * s * 0.56);
+    } else if (alien) {
+      ctx.moveTo(-s * 0.67, side * s * (corvette ? 0.43 : 0.34));
+      ctx.quadraticCurveTo(s * 0.15, side * s * (corvette ? 0.55 : 0.38), s * 0.98, 0);
+    } else {
+      ctx.moveTo(-s * (strike ? 0.57 : 0.75), side * s * (strike ? 0.39 : 0.32));
+      ctx.lineTo(-s * 0.4, side * s * (strike ? 0.3 : corvette ? 0.47 : 0.37));
+      ctx.lineTo(s * 0.37, side * s * (strike ? 0.12 : corvette ? 0.35 : 0.23));
+      ctx.lineTo(s * (strike ? 0.88 : 1.02), 0);
+    }
+    ctx.strokeStyle = "rgba(2, 6, 23, 0.8)";
+    ctx.lineWidth = Math.max(0.7, s * 0.055);
+    ctx.stroke();
+    ctx.strokeStyle = alien ? "rgba(254, 205, 211, 0.65)" : "rgba(186, 230, 253, 0.7)";
+    ctx.lineWidth = Math.max(0.35, s * 0.014);
+    ctx.stroke();
+  }
+}
+
+/** Stationary barbettes are part of the hull sprite; turret housings rotate above them. */
+function drawLightMounts(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+  const alien = ship.team !== 0;
+  for (const turret of ship.turrets) {
+    const [x, y] = turret.offset;
+    const r = (turret.baseRadius ?? 4) * 1.45;
+    ctx.fillStyle = "rgba(2, 6, 23, 0.8)";
+    ctx.beginPath();
+    ctx.ellipse(x, y + r * 0.2, r * 1.1, r, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = alien ? "#71313d" : "#334155";
+    ctx.strokeStyle = alien ? "#fb7185" : "#7dd3fc";
+    ctx.lineWidth = Math.max(0.4, r * 0.12);
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = alien ? "#fecdd3" : "#e0f2fe";
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 0.82, r * 0.68, 0, Math.PI * 1.1, Math.PI * 1.8);
+    ctx.stroke();
+  }
+}
+
 function drawTerranHull(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
@@ -808,6 +869,19 @@ function drawTerranHull(
   ctx.fill();
   ctx.stroke();
 
+  if (ship.hullClass === "corvette" || ship.hullClass === "strike_craft") {
+    ctx.save();
+    ctx.clip();
+    drawLightHullDepth(ctx, ship);
+    if (ship.hullClass === "corvette")
+      drawTerranCorvetteDetails(ctx, ship, accentColor, staticOnly);
+    else drawTerranStrikeDetails(ctx, ship, accentColor, true);
+    drawLightMounts(ctx, ship);
+    ctx.restore();
+    if (ship.hullClass === "strike_craft" && !staticOnly) drawAnimatedHullDetails(ctx, ship);
+    return;
+  }
+
   if (previewTime !== undefined) {
     ctx.save();
     ctx.clip();
@@ -835,19 +909,6 @@ function drawTerranHull(
     ctx.clip();
     drawTerranCruiserDetails(ctx, ship, accentColor);
     ctx.restore();
-    return;
-  }
-
-  if (ship.hullClass === "corvette") {
-    ctx.save();
-    ctx.clip();
-    drawTerranCorvetteDetails(ctx, ship, accentColor, staticOnly);
-    ctx.restore();
-    return;
-  }
-
-  if (ship.hullClass === "strike_craft") {
-    drawTerranStrikeDetails(ctx, ship, accentColor, staticOnly);
     return;
   }
 
@@ -938,24 +999,22 @@ function drawAlienHull(
   ctx.fill();
   ctx.stroke();
 
+  if (ship.hullClass === "corvette" || ship.hullClass === "strike_craft") {
+    ctx.save();
+    ctx.clip();
+    drawLightHullDepth(ctx, ship);
+    if (ship.hullClass === "corvette") drawAlienCorvetteDetails(ctx, ship, accentColor);
+    else drawAlienStrikeDetails(ctx, ship, accentColor);
+    drawLightMounts(ctx, ship);
+    ctx.restore();
+    return;
+  }
+
   if (ship.hullClass === "cruiser") {
     ctx.save();
     ctx.clip();
     drawAlienCruiserDetails(ctx, ship, accentColor);
     ctx.restore();
-    return;
-  }
-
-  if (ship.hullClass === "corvette") {
-    ctx.save();
-    ctx.clip();
-    drawAlienCorvetteDetails(ctx, ship, accentColor);
-    ctx.restore();
-    return;
-  }
-
-  if (ship.hullClass === "strike_craft") {
-    drawAlienStrikeDetails(ctx, ship, accentColor);
     return;
   }
 
@@ -1037,6 +1096,7 @@ function drawNewHull(
 
   ctx.save();
   ctx.clip();
+  if (!dread) drawLightHullDepth(ctx, ship);
   // Layered armor ribs frame the weapon decks and catch rotating preview light.
   ctx.strokeStyle = previewTime === undefined ? edge : accent;
   ctx.globalAlpha = previewTime === undefined ? 0.55 : 0.55 + 0.2 * Math.sin(previewTime * 1.5);
@@ -1078,14 +1138,6 @@ function drawNewHull(
     ctx.fillStyle = accent;
     ctx.fillRect(s * 0.005, -s * 0.075, s * 0.025, s * 0.15);
   } else {
-    // Four exposed launch-cell sockets sit under the independent missile mounts.
-    for (const turret of ship.turrets) {
-      const [x, y] = turret.offset;
-      ctx.fillStyle = dark;
-      ctx.strokeStyle = edge;
-      ctx.fillRect(x - s * 0.12, y - s * 0.1, s * 0.24, s * 0.2);
-      ctx.strokeRect(x - s * 0.12, y - s * 0.1, s * 0.24, s * 0.2);
-    }
     ctx.strokeStyle = accent;
     ctx.beginPath();
     ctx.moveTo(s * 0.48, 0);
@@ -1111,6 +1163,7 @@ function drawNewHull(
     ctx.ellipse(s * x, s * y, s * 0.045, s * 0.025, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+  if (!dread) drawLightMounts(ctx, ship);
   ctx.restore();
 }
 
@@ -1464,18 +1517,6 @@ function drawTerranCorvetteDetails(
   }
   ctx.stroke();
 
-  // The deck rings follow the independently rendered point-defense mounts.
-  for (const turret of ship.turrets) {
-    if (turret.weapon.weaponType !== "point_defense") continue;
-    ctx.fillStyle = "#020617";
-    ctx.strokeStyle = accentColor;
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.arc(turret.offset[0], turret.offset[1], (turret.baseRadius ?? 4) * 1.65, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-
   // Aft crossbar and forward armored bridge slit.
   ctx.strokeStyle = "#38bdf8";
   ctx.lineWidth = 1.2;
@@ -1584,18 +1625,18 @@ function drawTerranStrikeDetails(
 
   ctx.fillStyle = "#0ea5e9";
   ctx.beginPath();
-  ctx.moveTo(s * 0.75, 0);
-  ctx.lineTo(s * 0.52, -s * 0.09);
-  ctx.lineTo(s * 0.4, 0);
-  ctx.lineTo(s * 0.52, s * 0.09);
+  ctx.moveTo(s * 0.2, 0);
+  ctx.lineTo(-s * 0.08, -s * 0.1);
+  ctx.lineTo(-s * 0.3, 0);
+  ctx.lineTo(-s * 0.08, s * 0.1);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = "#e0f2fe";
   ctx.lineWidth = 0.5;
   ctx.beginPath();
-  ctx.moveTo(s * 0.46, -s * 0.02);
-  ctx.lineTo(s * 0.56, -s * 0.05);
-  ctx.lineTo(s * 0.68, 0);
+  ctx.moveTo(-s * 0.24, -s * 0.02);
+  ctx.lineTo(-s * 0.08, -s * 0.06);
+  ctx.lineTo(s * 0.12, 0);
   ctx.stroke();
 
   for (const side of [-1, 1]) {
@@ -1631,6 +1672,17 @@ function drawAlienStrikeDetails(
     ctx.moveTo(-s * 0.14, side * s * 0.16);
     ctx.quadraticCurveTo(s * 0.15, side * s * 0.18, s * 0.34, side * s * 0.3);
   }
+  ctx.stroke();
+
+  // The command lens sits aft of the forward gun, where its reflection remains visible.
+  ctx.fillStyle = "#7f1d1d";
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.05, 0, s * 0.21, s * 0.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#fecdd3";
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.05, 0, s * 0.16, s * 0.07, 0, Math.PI * 1.1, Math.PI * 1.8);
   ctx.stroke();
 
   ctx.strokeStyle = "#ef4444";

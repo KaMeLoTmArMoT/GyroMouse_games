@@ -1,6 +1,8 @@
 import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState } from "../types/combat";
 
+const lightTurretSprites = new Map<string, OffscreenCanvas>();
+
 export function renderTurret(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
@@ -10,14 +12,91 @@ export function renderTurret(
   const [x, y] = rotatePoint(turret.offset, ship.heading);
   const r = turret.baseRadius ?? 4;
   const length = turret.barrelLength ?? 10;
+  const lightShip =
+    ship.hullClass === "strike_craft" ||
+    ship.hullClass === "corvette" ||
+    ship.hullClass === "missile_frigate";
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ship.heading + turret.currentLocalAngle);
+
+  if (lightShip && typeof OffscreenCanvas !== "undefined") {
+    const transform = ctx.getTransform();
+    const scale = Math.max(
+      Math.hypot(transform.a, transform.b),
+      Math.hypot(transform.c, transform.d),
+    );
+    const resolution = Math.max(3, 2 ** Math.ceil(Math.log2(scale)));
+    const key = JSON.stringify([
+      ship.team,
+      primaryColor,
+      r,
+      length,
+      turret.weapon.weaponType,
+      !!turret.weapon.flak,
+      turret.weapon.damage > 10,
+      resolution,
+    ]);
+    let sprite = lightTurretSprites.get(key);
+    if (!sprite) {
+      const extent = Math.max(length + r * 2, r * 3) + 2;
+      const pixels = Math.ceil(extent * 2 * resolution);
+      const canvas = new OffscreenCanvas(pixels, pixels);
+      const offscreen = canvas.getContext("2d");
+      if (offscreen) {
+        offscreen.translate(pixels / 2, pixels / 2);
+        offscreen.scale(resolution, resolution);
+        drawTurretBody(
+          offscreen as unknown as CanvasRenderingContext2D,
+          ship,
+          turret,
+          primaryColor,
+          true,
+        );
+        sprite = canvas;
+        const oldest = lightTurretSprites.keys().next().value;
+        if (lightTurretSprites.size >= 64 && oldest !== undefined)
+          lightTurretSprites.delete(oldest);
+        lightTurretSprites.set(key, sprite);
+      }
+    }
+    if (sprite) {
+      const width = sprite.width / resolution;
+      ctx.drawImage(sprite, -width / 2, -width / 2, width, width);
+      ctx.restore();
+      return;
+    }
+  }
+
+  drawTurretBody(ctx, ship, turret, primaryColor, lightShip);
+  ctx.restore();
+}
+
+function drawTurretBody(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  turret: TurretMountState,
+  primaryColor: string,
+  elevated: boolean,
+): void {
+  const r = turret.baseRadius ?? 4;
+  const length = turret.barrelLength ?? 10;
   const armor = ship.team === 0 ? "#1e293b" : "#450a0a";
   const recess = ship.team === 0 ? "#020617" : "#260606";
   const metal = ship.team === 0 ? "#94a3b8" : "#fca5a5";
   const lens = ship.team === 0 ? "#38bdf8" : "#ef4444";
 
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(ship.heading + turret.currentLocalAngle);
+  if (elevated) {
+    // Solid offsets give the rotating housing a raised lower edge without a canvas blur.
+    ctx.fillStyle = ship.team === 0 ? "#020617" : "#200306";
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.28, r * 1.12, r * 0.95, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (turret.weapon.weaponType === "missile") {
+      ctx.fillRect(-r, -r * 0.52, length + r, r * 1.6);
+    }
+  }
   ctx.fillStyle = armor;
   ctx.strokeStyle = primaryColor;
   ctx.lineWidth = 0.8;
@@ -191,5 +270,17 @@ export function renderTurret(
       break;
     }
   }
-  ctx.restore();
+  if (elevated) {
+    ctx.strokeStyle = ship.team === 0 ? "rgba(224, 242, 254, 0.85)" : "rgba(254, 205, 211, 0.85)";
+    ctx.lineWidth = Math.max(0.35, r * 0.16);
+    ctx.beginPath();
+    if (turret.weapon.weaponType === "missile") {
+      ctx.moveTo(-r * 0.85, -r * 0.73);
+      ctx.lineTo(length * 0.7, -r * 0.73);
+      ctx.lineTo(length * 0.92, -r * 0.48);
+    } else {
+      ctx.arc(0, 0, r * 0.8, Math.PI * 1.12, Math.PI * 1.73);
+    }
+    ctx.stroke();
+  }
 }

@@ -35,8 +35,14 @@ export function ShipPreview({ hull, team }: { hull: HullClass; team: 0 | 1 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const ctx = canvas.current?.getContext("2d");
-    if (!ctx) return;
+    const element = canvas.current;
+    const ctx = element?.getContext("2d");
+    if (!element || !ctx) return;
+    const pixelRatio = window.devicePixelRatio || 1;
+    element.width = Math.round(240 * pixelRatio);
+    element.height = Math.round(144 * pixelRatio);
+    ctx.setTransform(element.width / 240, 0, 0, element.height / 144, 0, 0);
+    ctx.imageSmoothingQuality = "high";
     const ship = buildFleetFromSlots(
       [{ id: "preview", hullClass: hull, groupId: 1 }],
       team,
