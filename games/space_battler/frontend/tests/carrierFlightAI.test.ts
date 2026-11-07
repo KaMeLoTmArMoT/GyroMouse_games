@@ -143,3 +143,73 @@ describe("bounded wolfpack hunting", () => {
     expect(withinPursuitTheater(escorts[1], straggler, fleet)).toBe(false);
   });
 });
+
+describe("corvette flak escort screen", () => {
+  it.each(["carrier", "battleship", "dreadnought"] as const)(
+    "screens a threatened %s toward the predicted strike vector even during a wolfpack attack",
+    (hull) => {
+      const capital = ship(hull, "capital");
+      const escorts = [0, 1, 2].map((i) => {
+        const escort = ship("corvette", `escort_${i}`);
+        escort.flagshipId = capital.id;
+        escort.pos = [-100, i * 20];
+        return escort;
+      });
+      const strike = ship("strike_craft", "strike", 1);
+      strike.pos = [600, 200];
+      strike.velocity = [-100, -100];
+      const enemyCapital = ship("battleship", "enemy", 1);
+      enemyCapital.pos = [-500, 0];
+      const fleet = [capital, ...escorts, strike, enemyCapital];
+      const escort = escorts[1];
+      expect(corvetteWolfpack(escort, fleet)).toHaveLength(2);
+      const velocity = escortVelocity(escort, enemyCapital, fleet);
+      expect(velocity[0]).toBeGreaterThan(0);
+      expect(velocity[1]).toBeLessThan(0);
+      escort.pos = [300, 0];
+      expect(escortVelocity(escort, enemyCapital, fleet)).toEqual([0, 0]);
+    },
+  );
+
+  it("screens the nearest threatened capital and follows its velocity", () => {
+    const escort = ship("corvette", "escort");
+    const safe = ship("carrier", "safe");
+    safe.pos = [-500, 0];
+    escort.flagshipId = safe.id;
+    const capital = ship("battleship", "threatened");
+    capital.pos = [400, 0];
+    capital.velocity = [10, 0];
+    const strike = ship("strike_craft", "strike", 1);
+    strike.pos = [1000, 0];
+    strike.velocity = [10, 0];
+    escort.pos = [700, 0];
+    expect(escortVelocity(escort, null, [escort, safe, capital, strike])).toEqual([10, 0]);
+  });
+
+  it("resumes ordinary escort behavior when the strike threat disappears or flak is absent", () => {
+    const capital = ship("carrier", "capital");
+    const escort = ship("corvette", "escort_0");
+    escort.flagshipId = capital.id;
+    escort.pos = [300, 0];
+    const strike = ship("strike_craft", "strike", 1);
+    strike.pos = [600, 0];
+    const fleet = [capital, escort, strike];
+    const screened = escortVelocity(escort, null, fleet);
+    expect(screened).toEqual([0, 0]);
+    strike.isDocked = true;
+    const normal = escortVelocity(escort, null, fleet);
+    expect(normal).not.toEqual(screened);
+    strike.isDocked = false;
+    escort.shieldCurrent = escort.shieldMax * 0.39;
+    expect(escortVelocity(escort, null, fleet)).toEqual(
+      escortVelocity(escort, null, [capital, escort]),
+    );
+    escort.shieldCurrent = escort.shieldMax;
+    escort.turrets.forEach((turret) => {
+      turret.weapon.flak = undefined;
+    });
+    expect(escortVelocity(escort, null, fleet)).toEqual(normal);
+    strike.isAlive = false;
+    expect(escortVelocity(escort, null, fleet)).toEqual(normal);
+  });
+});

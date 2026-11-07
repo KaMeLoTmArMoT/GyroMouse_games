@@ -378,6 +378,71 @@ export function escortVelocity(
   target: ShipState | null,
   ships: ShipState[],
 ): Vector2 {
+  if (
+    ship.hullClass === "corvette" &&
+    ship.shieldCurrent / Math.max(1, ship.shieldMax) >= 0.4 &&
+    ship.turrets.some(
+      (turret) => turret.weapon.weaponType === "point_defense" && turret.weapon.flak,
+    )
+  ) {
+    let capital: ShipState | undefined;
+    let threat: ShipState | undefined;
+    let bestDistance = Infinity;
+    let threatDistance = Infinity;
+    for (const ally of ships) {
+      if (
+        !ally.isAlive ||
+        ally.isDocked ||
+        ally.isDebris ||
+        ally.team !== ship.team ||
+        !["carrier", "battleship", "dreadnought"].includes(ally.hullClass)
+      )
+        continue;
+      const distance = vecDistance(ship.pos, ally.pos);
+      if (distance > 1200 || distance > bestDistance) continue;
+      for (const enemy of ships) {
+        if (
+          !enemy.isAlive ||
+          enemy.isDocked ||
+          enemy.isDebris ||
+          enemy.team === ship.team ||
+          enemy.hullClass !== "strike_craft"
+        )
+          continue;
+        const proximity = vecDistance(ally.pos, enemy.pos);
+        if (proximity > 900) continue;
+        if (
+          distance < bestDistance ||
+          (distance === bestDistance &&
+            (proximity < threatDistance ||
+              (proximity === threatDistance && enemy.id < (threat?.id ?? "\uffff"))))
+        ) {
+          capital = ally;
+          threat = enemy;
+          bestDistance = distance;
+          threatDistance = proximity;
+        }
+      }
+    }
+    if (capital && threat) {
+      // Lead the incoming vector in the capital's frame, while keeping the screen tethered.
+      const predicted = vecAdd(
+        vecSub(threat.pos, capital.pos),
+        vecScale(vecSub(threat.velocity, capital.velocity), 2),
+      );
+      const bearing =
+        vecDistance([0, 0], predicted) > 1e-6
+          ? vecNormalize(predicted)
+          : vecNormalize(vecSub(threat.pos, capital.pos));
+      const direction =
+        vecDistance([0, 0], bearing) > 1e-6
+          ? bearing
+          : ([Math.cos(capital.heading), Math.sin(capital.heading)] as Vector2);
+      const radius = clamp(escortCapitalStandoff(ship, capital), 300, 400);
+      const station = vecAdd(capital.pos, vecScale(direction, radius));
+      return limitVelocity(formationVelocity(ship, capital, station), ship.maxSpeed);
+    }
+  }
   if (target && !withinPursuitTheater(ship, target, ships)) target = null;
   let anchor = ships.find((s) => s.isAlive && s.team === ship.team && s.id === ship.flagshipId);
   if (!anchor) {
