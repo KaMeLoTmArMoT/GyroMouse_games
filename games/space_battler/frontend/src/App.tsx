@@ -42,6 +42,7 @@ const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
 
 const STORAGE_KEYS = {
   activeTab: "gyromouse_sb_active_tab",
+  builderActiveSide: "gyromouse_sb_builder_active_side",
   userSlots: "gyromouse_sb_user_slots",
   redSlots: "gyromouse_sb_red_slots",
   enemyPreset: "gyromouse_sb_enemy_preset",
@@ -103,6 +104,13 @@ export default function App() {
     return "battle";
   });
   const [speed, setSpeed] = useState<number>(0);
+  const [builderActiveSide, setBuilderActiveSide] = useState<"blue" | "red">(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.builderActiveSide) === "red" ? "red" : "blue";
+    } catch {
+      return "blue";
+    }
+  });
   const [lastActiveSpeed, setLastActiveSpeed] = useState<number>(1);
   const [muted, setMuted] = useState(() => spaceAudio.isMuted());
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
@@ -216,6 +224,14 @@ export default function App() {
       // ignore
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.builderActiveSide, builderActiveSide);
+    } catch {
+      // ignore storage errors
+    }
+  }, [builderActiveSide]);
 
   useEffect(() => {
     try {
@@ -638,6 +654,8 @@ export default function App() {
       {/* Main Content Area */}
       {activeTab === "builder" ? (
         <FleetBuilder
+          activeTeam={builderActiveSide}
+          setActiveTeam={setBuilderActiveSide}
           blueSlots={blueSlots}
           redSlots={redSlots}
           onUpdateBlueSlots={updateBlueSlots}

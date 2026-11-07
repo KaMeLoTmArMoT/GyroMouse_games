@@ -95,24 +95,25 @@ describe("bounded wolfpack hunting", () => {
     expect(findNavigationTarget(hunter, order, [hunter, enemy])).toBeNull();
   });
   it.each([
-    "strike_craft",
-    "corvette",
-    "missile_frigate",
-    "cruiser",
-    "battleship",
-    "dreadnought",
-  ] as const)("breaks %s pursuit beyond 600u", (hull) => {
+    ["strike_craft", 601],
+    ["corvette", 601],
+    ["missile_frigate", 901],
+    ["cruiser", 901],
+    ["battleship", 901],
+    ["dreadnought", 901],
+  ] as const)("breaks %s pursuit beyond its tactical limit", (hull, distance) => {
     const hunter = ship(hull, "hunter");
     const enemy = ship("strike_craft", "enemy", 1);
-    enemy.pos = [601, 0];
+    enemy.pos = [distance, 0];
+    const other = ship("corvette", "other", 1);
+    other.pos = [-2000, 0];
+    const fleet = [hunter, enemy, other];
     hunter.navigationTargetId = enemy.id;
     hunter.dogfightTargetId = enemy.id;
-    expect(findNavigationTarget(hunter, order, [hunter, enemy], enemy.id)).toBeNull();
-    expect(dogfightTarget(hunter, [hunter, enemy], 0)).toBeNull();
+    expect(findNavigationTarget(hunter, order, fleet, enemy.id)).not.toBe(enemy);
+    expect(dogfightTarget(hunter, fleet, 0)).toBeNull();
     if (hull !== "strike_craft" && hull !== "corvette")
-      expect(capitalIntent(hunter, enemy, [hunter, enemy], order).velocity[0]).toBeLessThanOrEqual(
-        0,
-      );
+      expect(capitalIntent(hunter, enemy, fleet, order).velocity[0]).toBeLessThanOrEqual(0);
     if (hull === "corvette") expect(escortVelocity(hunter, enemy, [hunter, enemy])).toEqual([0, 0]);
   });
 
@@ -130,7 +131,9 @@ describe("bounded wolfpack hunting", () => {
     grouped.pos = [200, 450];
     const ally = ship("cruiser", "ally", 1);
     ally.pos = [200, 500];
-    const fleet = [capital, ...escorts, straggler, grouped, ally];
+    const secondAlly = ship("missile_frigate", "second-ally", 1);
+    secondAlly.pos = [0, 500];
+    const fleet = [capital, ...escorts, straggler, grouped, ally, secondAlly];
     expect(corvetteWolfpack(escorts[0], fleet)).toEqual([]);
     expect(corvetteWolfpack(escorts[1], fleet)).toEqual(escorts.slice(1));
     for (const hunter of escorts.slice(1))

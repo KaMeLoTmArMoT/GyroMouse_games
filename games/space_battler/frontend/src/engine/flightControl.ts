@@ -523,6 +523,18 @@ export function withinPursuitTheater(
     }
     return !ship.dogfightTargetId && !pursued.has(target.id);
   }
+  if (ship.hullClass !== "corvette") {
+    // Only an all-fighter enemy remnant warrants leaving the tactical battle area.
+    const otherHulls = ships.some(
+      (enemy) =>
+        enemy.isAlive &&
+        !enemy.isDocked &&
+        !enemy.isDebris &&
+        enemy.team !== ship.team &&
+        enemy.hullClass !== "strike_craft",
+    );
+    return !otherHulls || distanceSquared(ship, target) <= 900 * 900;
+  }
   const anchor = fleetDefenseAnchor(ship, ships);
   return (
     vecDistance(ship.pos, target.pos) <= 600 &&

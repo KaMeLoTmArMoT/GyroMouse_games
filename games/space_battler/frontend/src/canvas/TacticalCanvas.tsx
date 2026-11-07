@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import type { PerformanceSamples } from "../components/PerformanceHud";
 import { spaceAudio } from "../engine/audioEngine";
 import { carrierFabricationProgress } from "../engine/carrierHangar";
-import { ARENA_RADIUS } from "../engine/flightControl";
+import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
 import { HARMONIC_RANGE } from "../engine/harmonicShieldSystem";
 import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import {
@@ -209,7 +209,7 @@ export function TacticalCanvas({
           ctx.scale(cameraRef.current.zoom, cameraRef.current.zoom);
           const viewport = worldViewport(canvas.width, canvas.height, cameraRef.current);
 
-          drawTacticalGrid(ctx, viewport, now / 1000);
+          drawTacticalGrid(ctx, now / 1000);
           renderMapObstacles(ctx, sim.mapObstacles, viewport);
 
           const selectedTender = sim.ships.find(
@@ -493,6 +493,18 @@ export function TacticalCanvas({
           }
           ctx.restore();
 
+          const camera = cameraRef.current;
+          drawRadiationInterference(
+            ctx,
+            {
+              minX: (-canvas.width / 2 - camera.x) / camera.zoom,
+              maxX: (canvas.width / 2 - camera.x) / camera.zoom,
+              minY: (-canvas.height / 2 - camera.y) / camera.zoom,
+              maxY: (canvas.height / 2 - camera.y) / camera.zoom,
+            },
+            camera.zoom,
+            now / 1000,
+          );
           ctx.restore();
         }
       }
@@ -721,66 +733,58 @@ function drawEchelonIndicators(
   }
 }
 
-const radiationMotes = Array.from({ length: 56 }, (_, i) => {
+function drawRadiationInterference(
+  ctx: CanvasRenderingContext2D,
+  viewport: Viewport,
+  zoom: number,
+  time: number,
+): void {
+  const furthestX = Math.max(Math.abs(viewport.minX), Math.abs(viewport.maxX));
+  const furthestY = Math.max(Math.abs(viewport.minY), Math.abs(viewport.maxY));
+  if (Math.hypot(furthestX, furthestY) <= ARENA_RADIUS) return;
+
+  const width = viewport.maxX - viewport.minX;
+  const height = viewport.maxY - viewport.minY;
+  const pixel = 1 / zoom;
+  const phase = time * 0.7;
+  const frame = Math.floor(phase);
+  const blend = (1 - Math.cos((phase - frame) * Math.PI)) / 2;
   const random = (seed: number) => {
     const value = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
     return value - Math.floor(value);
   };
-  return {
-    angle: random(i * 3) * Math.PI * 2,
-    distance: 60 + 2200 * random(i * 3 + 1) ** 0.4,
-    size: 2 + random(i * 3 + 2) * 3,
-    phase: random(i + 173) * Math.PI * 2,
-  };
-});
 
-function drawTacticalGrid(ctx: CanvasRenderingContext2D, viewport: Viewport, time: number): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(viewport.minX, viewport.minY, width, height);
+  ctx.moveTo(ARENA_RADIUS, 0);
+  ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2);
+  ctx.clip("evenodd");
+
+  // Crossfade sparse sensor grain rather than replacing every hit at once.
+  ctx.fillStyle = "#c5ffda";
+  for (let layer = 0; layer < 2; layer++) {
+    const opacity = layer === 0 ? 1 - blend : blend;
+    for (let i = 0; i < 650; i++) {
+      const seed = (frame + layer) * 4000 + i * 4;
+      const x = viewport.minX + random(seed) * width;
+      const y = viewport.minY + random(seed + 1) * height;
+      const depth = Math.hypot(x, y) - ARENA_RADIUS;
+      if (depth <= 0) continue;
+      const intensity = Math.min(1, depth / Math.max(1, ARENA_HARD_PULL_RADIUS - ARENA_RADIUS));
+      const hit = random(seed + 2);
+      ctx.globalAlpha = opacity * intensity * (0.06 + hit * 0.16);
+      ctx.fillRect(x, y, (1 + hit * 2) * pixel, pixel);
+    }
+  }
+  ctx.restore();
+}
+
+function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number): void {
   const gridSize = 100;
   const radius = ARENA_RADIUS;
 
   ctx.save();
-  const furthestX = Math.max(Math.abs(viewport.minX), Math.abs(viewport.maxX));
-  const furthestY = Math.max(Math.abs(viewport.minY), Math.abs(viewport.maxY));
-  if (Math.hypot(furthestX, furthestY) > radius) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(
-      viewport.minX,
-      viewport.minY,
-      viewport.maxX - viewport.minX,
-      viewport.maxY - viewport.minY,
-    );
-    ctx.moveTo(radius, 0);
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.clip("evenodd");
-    const hazard = ctx.createRadialGradient(0, 0, radius, 0, 0, radius + 1500);
-    hazard.addColorStop(0, "rgba(34, 197, 94, 0.05)");
-    hazard.addColorStop(0.55, "rgba(16, 185, 129, 0.12)");
-    hazard.addColorStop(1, "rgba(16, 185, 129, 0.18)");
-    ctx.fillStyle = hazard;
-    ctx.fillRect(
-      viewport.minX,
-      viewport.minY,
-      viewport.maxX - viewport.minX,
-      viewport.maxY - viewport.minY,
-    );
-
-    for (const mote of radiationMotes) {
-      const distance = radius + mote.distance;
-      const x = Math.cos(mote.angle) * distance + Math.sin(time * 0.35 + mote.phase) * 18;
-      const y = Math.sin(mote.angle) * distance + Math.cos(time * 0.28 + mote.phase) * 18;
-      if (!discVisible(viewport, [x, y], mote.size * 3)) continue;
-      ctx.fillStyle = "rgba(74, 222, 128, 0.08)";
-      ctx.beginPath();
-      ctx.arc(x, y, mote.size * 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "rgba(134, 239, 172, 0.55)";
-      ctx.beginPath();
-      ctx.arc(x, y, mote.size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
 
   ctx.save();
   ctx.beginPath();
@@ -801,13 +805,34 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, viewport: Viewport, tim
   ctx.stroke();
   ctx.restore();
 
-  ctx.fillStyle = "rgba(134, 239, 172, 0.55)";
+  const shimmer = 0.2 + 0.05 * Math.sin(time * 0.7);
+  ctx.strokeStyle = `rgba(103, 232, 249, ${shimmer})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(251, 191, 36, 0.2)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([12, 10]);
+  ctx.beginPath();
+  ctx.arc(0, 0, ARENA_HARD_PULL_RADIUS, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = "rgba(103, 232, 249, 0.6)";
   ctx.font = "10px monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  const label = "☢ RADIATION HAZARD ZONE • SHIELD & HULL DECAY";
-  ctx.fillText(label, 0, -ARENA_RADIUS - 28);
-  ctx.fillText(label, 0, ARENA_RADIUS + 28);
+  const shieldLabel = "CONTAINMENT SHIELD BOUNDARY • 100% ATTENUATION";
+  ctx.fillText(shieldLabel, 0, -radius + 18);
+  ctx.fillText(shieldLabel, 0, radius - 18);
+  ctx.fillStyle = "rgba(251, 191, 36, 0.55)";
+  const bufferLabel = "IONIZING BUFFER ZONE • PARTIAL DAMPENING";
+  const bufferCenter = (radius + ARENA_HARD_PULL_RADIUS) / 2;
+  ctx.fillText(bufferLabel, 0, -bufferCenter);
+  ctx.fillText(bufferLabel, 0, bufferCenter);
+  ctx.fillText("☢ DEEP COSMIC RADIATION HAZARD", 0, -ARENA_HARD_PULL_RADIUS - 20);
+  ctx.fillText("☢ DEEP COSMIC RADIATION HAZARD", 0, ARENA_HARD_PULL_RADIUS + 20);
 
   ctx.restore();
 }

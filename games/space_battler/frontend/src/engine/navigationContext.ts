@@ -15,6 +15,7 @@ export class NavigationContext {
   readonly anchors = new Map<ShipState, ShipState | undefined>();
   readonly safe = new Map<ShipState, boolean>();
   readonly isolated = new Map<ShipState, boolean>();
+  readonly localDensity = new Map<ShipState, Map<number, number>>();
   readonly packs = new Map<ShipState, ShipState[]>();
   readonly capitalAssignments = new Map<number, Map<string, number>>();
   readonly navigationAssignments: AssignmentCounts = new Map();
@@ -62,11 +63,9 @@ export class NavigationContext {
           if (radius > 0 && distanceSquared(ship, peer) <= radius ** 2 && ++threats >= 2) break;
         }
         this.safe.set(ship, threats < 2);
-        if (ship.hullClass === "strike_craft")
-          this.isolated.set(
-            ship,
-            !team.some((peer) => peer.id !== ship.id && distanceSquared(ship, peer) <= 400 * 400),
-          );
+        const density = countTacticalDensity(ship, ships);
+        this.localDensity.set(ship, density);
+        this.isolated.set(ship, (density.get(ship.team) ?? 0) <= 2);
       }
     }
   }
@@ -109,6 +108,35 @@ export function distanceSquared(a: ShipState, b: ShipState): number {
   const dx = a.pos[0] - b.pos[0];
   const dy = a.pos[1] - b.pos[1];
   return dx * dx + dy * dy;
+}
+
+export function tacticalSupportRadius(ship: ShipState): number {
+  if (ship.hullClass === "strike_craft" || ship.hullClass === "corvette") return 400;
+  if (ship.hullClass === "missile_frigate" || ship.hullClass === "cruiser") return 500;
+  return 600;
+}
+
+/** Includes the vessel itself; inactive hulls provide neither support nor pressure. */
+export function tacticalDensity(ship: ShipState, ships: ShipState[]): Map<number, number> {
+  const cached = navigationContext(ships)?.localDensity.get(ship);
+  if (cached) return cached;
+  return countTacticalDensity(ship, ships);
+}
+
+function countTacticalDensity(ship: ShipState, ships: ShipState[]): Map<number, number> {
+  const density = new Map<number, number>();
+  const radiusSquared = tacticalSupportRadius(ship) ** 2;
+  for (const peer of ships) {
+    if (
+      !peer.isAlive ||
+      peer.isDocked ||
+      peer.isDebris ||
+      distanceSquared(ship, peer) > radiusSquared
+    )
+      continue;
+    density.set(peer.team, (density.get(peer.team) ?? 0) + 1);
+  }
+  return density;
 }
 
 export function prepareNavigationContext(ships: ShipState[]): NavigationContext {

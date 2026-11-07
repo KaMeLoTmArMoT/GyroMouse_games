@@ -15,6 +15,8 @@ import { GroupPreview, ShipPreview, useDelayedPreview } from "./FleetPreviews";
 export type { CrewVeterancy } from "../engine/crewVeterancy";
 
 interface FleetBuilderProps {
+  activeTeam?: "blue" | "red";
+  setActiveTeam?: (team: "blue" | "red") => void;
   blueSlots: FleetSlot[];
   redSlots: FleetSlot[];
   onUpdateBlueSlots: (newSlots: FleetSlot[]) => void;
@@ -408,7 +410,9 @@ export function RosterCountInput({
 }
 
 export function FleetBuilder(props: FleetBuilderProps) {
-  const [activeTeam, setActiveTeam] = useState<"blue" | "red">("blue");
+  const [fallbackTeam, setFallbackTeam] = useState<"blue" | "red">("blue");
+  const activeTeam = props.activeTeam ?? fallbackTeam;
+  const setActiveTeam = props.setActiveTeam ?? setFallbackTeam;
   const selectedScenario = SCENARIOS.find((s) => `scenario:${s.id}` === props.enemyPresetId);
   const selectedPreset = FLEET_PRESETS.find((p) => p.id === props.enemyPresetId);
   return (
