@@ -1,14 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 
 const HISTORY_SIZE = 160;
+const GRAPH_SAMPLE_MS = 50;
 
 export class PerformanceSamples {
   frames: number[] = [];
   steps: number[] = [];
+  graphFrames: number[] = [];
+  private graphElapsed = 0;
 
   addFrame = (duration: number) => {
     this.frames.push(duration);
     if (this.frames.length > HISTORY_SIZE) this.frames.shift();
+    this.graphElapsed += duration;
+    const count = Math.floor(this.graphElapsed / GRAPH_SAMPLE_MS);
+    this.graphElapsed %= GRAPH_SAMPLE_MS;
+    for (let i = 0; i < Math.min(count, HISTORY_SIZE); i++) this.graphFrames.push(duration);
+    if (this.graphFrames.length > HISTORY_SIZE) {
+      this.graphFrames.splice(0, this.graphFrames.length - HISTORY_SIZE);
+    }
   };
 
   addStep = (duration: number) => {
@@ -28,10 +38,19 @@ function lowFps(sortedSlowestFirst: number[], fraction: number): string {
 
 export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
   const graphRef = useRef<HTMLCanvasElement>(null);
-  const [snapshot, setSnapshot] = useState({ frames: [] as number[], steps: [] as number[] });
+  const [snapshot, setSnapshot] = useState({
+    frames: [] as number[],
+    steps: [] as number[],
+    graphFrames: [] as number[],
+  });
 
   useEffect(() => {
-    const update = () => setSnapshot({ frames: [...samples.frames], steps: [...samples.steps] });
+    const update = () =>
+      setSnapshot({
+        frames: [...samples.frames],
+        steps: [...samples.steps],
+        graphFrames: [...samples.graphFrames],
+      });
     update();
     const interval = window.setInterval(update, 250);
     return () => window.clearInterval(interval);
@@ -42,17 +61,17 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    snapshot.frames.forEach((frame, index) => {
+    snapshot.graphFrames.forEach((frame, index) => {
       const height = Math.max(1, Math.min(canvas.height, (frame / 50) * canvas.height));
       ctx.fillStyle = frame <= 16.7 ? "#34d399" : frame <= 33 ? "#fbbf24" : "#ef4444";
       ctx.fillRect(
-        canvas.width - snapshot.frames.length + index,
+        canvas.width - snapshot.graphFrames.length + index,
         canvas.height - height,
         1,
         height,
       );
     });
-  }, [snapshot.frames]);
+  }, [snapshot.graphFrames]);
 
   const frame = snapshot.frames.at(-1);
   const sorted = [...snapshot.frames].sort((a, b) => b - a);
@@ -61,7 +80,7 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
     : null;
 
   return (
-    <div className="absolute top-4 left-4 z-10 pointer-events-none rounded-lg border border-zinc-700/80 bg-zinc-950/85 p-3 font-mono text-[11px] text-zinc-400 shadow-lg backdrop-blur-sm">
+    <div className="absolute top-4 left-4 z-10 pointer-events-none w-48 rounded-lg border border-zinc-700/80 bg-zinc-950/85 p-3 font-mono tabular-nums text-[11px] text-zinc-400 shadow-lg backdrop-blur-sm">
       <div className="mb-2 font-semibold uppercase tracking-wider text-cyan-400">Performance</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         <span>

@@ -10,10 +10,48 @@ import {
   updateSlotsForStackCount,
 } from "../src/components/FleetBuilder";
 import { GroupPreview, useDelayedPreview } from "../src/components/FleetPreviews";
+import { ARENA_RADIUS } from "../src/engine/arenaBoundary";
 import { buildFleetFromSlots, type FleetSlot, GROUP_ANCHORS } from "../src/engine/fleetBuilder";
 import { shieldEnvelopeRadius } from "../src/engine/shieldGeometry";
 
 describe("fleet spawn formations", () => {
+  it("keeps massive fleets inside containment with shield clearance", () => {
+    const slots: FleetSlot[] = [];
+    for (let groupId = 1; groupId <= 10; groupId++) {
+      for (const [hullClass, count] of [
+        ["strike_craft", 10],
+        ["corvette", 3],
+        ["missile_frigate", 1],
+        ["cruiser", 1],
+        ["battleship", 1],
+        ["dreadnought", 1],
+      ] as const) {
+        for (let i = 0; i < count; i++) {
+          slots.push({ id: `${groupId}-${hullClass}-${i}`, hullClass, groupId });
+        }
+      }
+    }
+    for (const [team, baseX, heading] of [
+      [0, -1100, 0],
+      [1, 1100, Math.PI],
+    ]) {
+      const ships = buildFleetFromSlots(slots, team, baseX, heading);
+      expect(ships).toHaveLength(170);
+      for (let i = 0; i < ships.length; i++) {
+        const ship = ships[i];
+        expect(Math.hypot(...ship.pos)).toBeLessThanOrEqual(
+          ARENA_RADIUS - shieldEnvelopeRadius(ship) - 25 + 1e-9,
+        );
+        for (let j = 0; j < i; j++) {
+          const other = ships[j];
+          expect(
+            Math.hypot(ship.pos[0] - other.pos[0], ship.pos[1] - other.pos[1]),
+          ).toBeGreaterThan(shieldEnvelopeRadius(ship) + shieldEnvelopeRadius(other) + 20);
+        }
+      }
+    }
+  });
+
   it("keeps 100 deployed vessels clear, grouped, and mirrored", () => {
     const slots: FleetSlot[] = [];
     for (const groupId of [1, 2]) {

@@ -1,6 +1,7 @@
 // Assembly builder for translating abstract compositions into concrete positioned ShipStates
 
 import type { HullClass, ShipState, Vector2 } from "../types/combat";
+import { ARENA_RADIUS } from "./arenaBoundary";
 import { storeCarrierAuxiliaries } from "./carrierHangar";
 import { clamp } from "./math2d";
 import { shieldEnvelopeRadius } from "./shieldGeometry";
@@ -144,8 +145,14 @@ export function buildFleetFromSlots(
     for (const ship of ships) {
       ship.pos[0] += baseX + x - centerX;
       ship.pos[1] += y - centerY;
+      const safeRadius = ARENA_RADIUS - shieldEnvelopeRadius(ship) - 25;
+      const distance = Math.hypot(...ship.pos);
+      if (distance > safeRadius) {
+        ship.pos = [(ship.pos[0] * safeRadius) / distance, (ship.pos[1] * safeRadius) / distance];
+      }
       const [startX, startY] = ship.pos;
       const clear = () =>
+        Math.hypot(...ship.pos) <= safeRadius &&
         placed.every(
           (other) =>
             Math.hypot(ship.pos[0] - other.pos[0], ship.pos[1] - other.pos[1]) >

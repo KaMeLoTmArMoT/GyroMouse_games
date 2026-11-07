@@ -283,8 +283,6 @@ export class VisualEffectsManager {
       ctx.translate(gate.pos[0], gate.pos[1]);
       ctx.rotate(gate.heading);
       ctx.globalAlpha = Math.min(1, opening * 2) * closing;
-      ctx.shadowColor = primary;
-      ctx.shadowBlur = 10;
       ctx.strokeStyle = primary;
       ctx.lineWidth = Math.max(1.5, gate.radius * 0.045);
       ctx.beginPath();
@@ -298,7 +296,6 @@ export class VisualEffectsManager {
         Math.PI * 2,
       );
       ctx.stroke();
-      ctx.shadowBlur = 0;
       ctx.strokeStyle = secondary;
       ctx.globalAlpha *= 0.6;
       ctx.beginPath();
