@@ -1,6 +1,6 @@
 import type { ShipState } from "../types/combat";
-import { isCapitalShip } from "./shieldGeometry";
-import { flakThreatRadius } from "./shipProfiles";
+import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
+import { flakThreatRadius, HULL_PROFILES } from "./shipProfiles";
 
 export { CORVETTE_FLAK_THREAT_RADIUS } from "./shipProfiles";
 
@@ -110,10 +110,39 @@ export function distanceSquared(a: ShipState, b: ShipState): number {
   return dx * dx + dy * dy;
 }
 
+// Stock doctrine horizons are calibration points, not caps on refitted/scaled hulls.
+const SUPPORT_HORIZONS: Record<ShipState["hullClass"], number> = {
+  strike_craft: 400,
+  corvette: 400,
+  missile_frigate: 500,
+  cruiser: 500,
+  battleship: 600,
+  dreadnought: 600,
+  carrier: 600,
+  tender: 600,
+};
+
+/** Blend physical coverage and weapon reach; either can change independently. */
+export function navigationSpatialScale(ship: ShipState): number {
+  const profile = HULL_PROFILES[ship.hullClass];
+  const envelopeScale =
+    shieldEnvelopeRadius(ship) /
+    shieldEnvelopeRadius({ hullClass: ship.hullClass, size: profile.size });
+  const stockRange = Math.max(...profile.turrets.map((turret) => turret.weapon.range));
+  const weaponScale = ship.turrets.length
+    ? Math.max(...ship.turrets.map((turret) => turret.weapon.range)) / stockRange
+    : envelopeScale;
+  return (envelopeScale + weaponScale) / 2;
+}
+
 export function tacticalSupportRadius(ship: ShipState): number {
-  if (ship.hullClass === "strike_craft" || ship.hullClass === "corvette") return 400;
-  if (ship.hullClass === "missile_frigate" || ship.hullClass === "cruiser") return 500;
-  return 600;
+  return SUPPORT_HORIZONS[ship.hullClass] * navigationSpatialScale(ship);
+}
+
+/** Preserve the stock theater while reserving more pursuit reach for faster hulls. */
+export function antiKitePursuitLimit(ship: ShipState): number {
+  const speedScale = ship.maxSpeed / HULL_PROFILES[ship.hullClass].speed;
+  return 900 * (navigationSpatialScale(ship) * 0.75 + speedScale * 0.25);
 }
 
 /** Includes the vessel itself; inactive hulls provide neither support nor pressure. */

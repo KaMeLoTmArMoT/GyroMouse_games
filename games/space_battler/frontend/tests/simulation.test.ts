@@ -1714,6 +1714,30 @@ describe("arena containment and matchup rebalance", () => {
     }
   });
 
+  it.each([
+    "strike_craft",
+    "corvette",
+    "missile_frigate",
+    "cruiser",
+    "battleship",
+    "dreadnought",
+    "carrier",
+    "tender",
+  ] as const)("centers a lone %s on its anchor in either spacing mode", (hullClass) => {
+    for (const team of [0, 1]) {
+      for (const expandedSpacing of [false, true]) {
+        const [vessel] = buildFleetFromSlots(
+          [{ id: "single", hullClass, groupId: 5 }],
+          team,
+          100,
+          team ? Math.PI : 0,
+          expandedSpacing,
+        );
+        expect(vessel.pos).toEqual([100 + (team ? -250 : 250), 0]);
+      }
+    }
+  });
+
   ht(
     "advances 60 grouped fighters into cohesive, shield-safe strikes against Triple Threat",
     () => {
@@ -1841,10 +1865,10 @@ describe("arena containment and matchup rebalance", () => {
       ...fleet(["battleship"], 0, -800),
       ...fleet(["cruiser", "cruiser", "cruiser"], 1, 800),
     ];
-    for (const cruiser of ships.slice(1)) {
-      cruiser.pos[0] -= 150;
-      cruiser.pos[1] -= 450;
-    }
+    // Fix the calibrated duel geometry independently of spawn formation centering.
+    ships.slice(1).forEach((cruiser, i) => {
+      cruiser.pos = [900, [140, -140, 250][i]];
+    });
     const sim = simulate(ships);
     for (let i = 0; i < 60 * 120 && sim.winner === null; i++) sim.update(1 / 60);
     expect(sim.winner).not.toBeNull();

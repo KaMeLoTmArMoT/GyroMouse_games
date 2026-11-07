@@ -38,7 +38,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { distanceSquared, navigationContext } from "./navigationContext";
+import { antiKitePursuitLimit, distanceSquared, navigationContext } from "./navigationContext";
 import { escortCapitalStandoff, isCapitalShip } from "./shieldGeometry";
 import { type CapitalFlightDoctrine, SHIP_DOCTRINES } from "./shipDoctrines";
 
@@ -533,12 +533,12 @@ export function withinPursuitTheater(
         enemy.team !== ship.team &&
         enemy.hullClass !== "strike_craft",
     );
-    return !otherHulls || distanceSquared(ship, target) <= 900 * 900;
+    return !otherHulls || distanceSquared(ship, target) <= antiKitePursuitLimit(ship) ** 2;
   }
   const anchor = fleetDefenseAnchor(ship, ships);
   return (
     vecDistance(ship.pos, target.pos) <= 600 &&
-    (!anchor || vecDistance(anchor.pos, target.pos) <= 900)
+    (!anchor || vecDistance(anchor.pos, target.pos) <= antiKitePursuitLimit(anchor))
   );
 }
 

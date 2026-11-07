@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { capitalIntent, withinPursuitTheater } from "../src/engine/flightControl";
 import {
+  antiKitePursuitLimit,
   prepareNavigationContext,
   tacticalDensity,
   tacticalSupportRadius,
 } from "../src/engine/navigationContext";
-import { findNavigationTarget, updateShipNavigation } from "../src/engine/shipNavigationSystem";
+import {
+  fighterShieldWaypoint,
+  findNavigationTarget,
+  updateShipNavigation,
+} from "../src/engine/shipNavigationSystem";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass } from "../src/types/combat";
 
@@ -29,6 +34,54 @@ const heavyHulls = [
 ] as const;
 
 describe("hull-aware isolated targets", () => {
+  it.each([
+    ["strike_craft", 400],
+    ["corvette", 400],
+    ["missile_frigate", 500],
+    ["cruiser", 500],
+    ["battleship", 600],
+    ["dreadnought", 600],
+    ["carrier", 600],
+    ["tender", 600],
+  ] as const)("preserves the stock %s support horizon", (hull, radius) => {
+    expect(tacticalSupportRadius(ship(hull, "target"))).toBeCloseTo(radius);
+  });
+
+  it.each(["strike_craft", "corvette", ...heavyHulls] as const)(
+    "%s scales isolation with independently changed geometry and weapon reach",
+    (hull) => {
+      for (const metric of ["geometry", "weapons"] as const) {
+        const target = ship(hull, "target", 0, 1);
+        const stockRadius = tacticalSupportRadius(target);
+        const peers = [
+          ship("corvette", "first", stockRadius * 1.25, 1),
+          ship("corvette", "second", -stockRadius * 1.25, 1),
+        ];
+        const ships = [target, ...peers];
+        expect(prepareNavigationContext(ships).isolated.get(target)).toBe(true);
+        if (metric === "geometry") target.size *= 2;
+        else for (const turret of target.turrets) turret.weapon.range *= 2;
+        expect(tacticalSupportRadius(target)).toBeCloseTo(stockRadius * 1.5);
+        expect(tacticalDensity(target, [...ships]).get(1)).toBe(3);
+        expect(prepareNavigationContext(ships).isolated.get(target)).toBe(false);
+        if (metric === "geometry") target.size /= 4;
+        else for (const turret of target.turrets) turret.weapon.range /= 4;
+        expect(tacticalSupportRadius(target)).toBeCloseTo(stockRadius * 0.75);
+        expect(tacticalDensity(target, [...ships]).get(1)).toBe(1);
+        expect(prepareNavigationContext(ships).isolated.get(target)).toBe(true);
+      }
+    },
+  );
+
+  it("accounts for enlarged haven envelopes and unarmed hulls", () => {
+    const target = ship("cruiser", "target");
+    const stockRadius = tacticalSupportRadius(target);
+    target.havenRadiusMultiplier = 2;
+    expect(tacticalSupportRadius(target)).toBeCloseTo(stockRadius * 1.5);
+    target.turrets = [];
+    expect(tacticalSupportRadius(target)).toBeCloseTo(stockRadius * 2);
+  });
+
   it.each(["strike_craft", "corvette", ...heavyHulls] as const)(
     "%s tolerates one supporting peer but not two, excluding inactive hulls",
     (hull) => {
@@ -105,6 +158,46 @@ describe("hull-aware isolated targets", () => {
 });
 
 describe("anti-kite pursuit", () => {
+  it.each(heavyHulls)("%s calibrates its dynamic pursuit limit to the stock theater", (hull) => {
+    expect(antiKitePursuitLimit(ship(hull, "hunter"))).toBeCloseTo(900);
+  });
+
+  it.each(["geometry", "weapons", "speed"] as const)(
+    "scales the pursuit helper with independently changed %s",
+    (metric) => {
+      const hunter = ship("cruiser", "hunter");
+      const stockLimit = antiKitePursuitLimit(hunter);
+      if (metric === "geometry") hunter.size *= 2;
+      else if (metric === "speed") hunter.maxSpeed *= 2;
+      else for (const turret of hunter.turrets) turret.weapon.range *= 2;
+      expect(antiKitePursuitLimit(hunter)).toBeGreaterThan(stockLimit);
+      if (metric === "geometry") hunter.size /= 4;
+      else if (metric === "speed") hunter.maxSpeed /= 4;
+      else for (const turret of hunter.turrets) turret.weapon.range /= 4;
+      expect(antiKitePursuitLimit(hunter)).toBeLessThan(stockLimit);
+    },
+  );
+
+  it("uses the hunter's scaled limit when pursuing fighters", () => {
+    const hunter = ship("cruiser", "hunter");
+    const fighter = ship("strike_craft", "fighter", 1000, 1);
+    const other = ship("corvette", "other", -2500, 1);
+    const ships = [hunter, fighter, other];
+    expect(withinPursuitTheater(hunter, fighter, ships)).toBe(false);
+    hunter.maxSpeed *= 2;
+    expect(withinPursuitTheater(hunter, fighter, ships)).toBe(true);
+  });
+
+  it("uses the anchor's scaled limit for corvette pursuit", () => {
+    const anchor = ship("battleship", "anchor");
+    const hunter = ship("corvette", "hunter", 500);
+    const fighter = ship("strike_craft", "fighter", 1000, 1);
+    const ships = [anchor, hunter, fighter];
+    expect(withinPursuitTheater(hunter, fighter, ships)).toBe(false);
+    anchor.maxSpeed *= 2;
+    expect(withinPursuitTheater(hunter, fighter, ships)).toBe(true);
+  });
+
   it.each(heavyHulls)("%s rejects distant fighters while any other enemy hull survives", (hull) => {
     const hunter = ship(hull, "hunter");
     const fighter = ship("strike_craft", "fighter", 901, 1);
@@ -157,5 +250,21 @@ describe("anti-kite pursuit", () => {
     expect(hunter.maneuverTargetId).toBeUndefined();
     expect(hunter.dogfightTargetId).toBeUndefined();
     expect(hunter.velocity[0]).toBeLessThanOrEqual(0);
+  });
+});
+
+describe("relative shield flank waypoints", () => {
+  it.each([false, true])("scales tangent clearance and runout (attack=%s)", (attack) => {
+    for (const x of [50, 1000]) {
+      const fighter = ship("strike_craft", "fighter", x);
+      const capital = ship("battleship", "capital");
+      const waypoint = fighterShieldWaypoint(fighter, capital, 1, attack);
+      fighter.size *= 2;
+      capital.size *= 2;
+      fighter.pos = [x * 2, 0];
+      const scaled = fighterShieldWaypoint(fighter, capital, 1, attack);
+      expect(scaled[0]).toBeCloseTo(waypoint[0] * 2);
+      expect(scaled[1]).toBeCloseTo(waypoint[1] * 2);
+    }
   });
 });

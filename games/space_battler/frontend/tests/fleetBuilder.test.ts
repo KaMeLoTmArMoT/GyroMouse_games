@@ -11,6 +11,67 @@ import {
 } from "../src/components/FleetBuilder";
 import { GroupPreview, useDelayedPreview } from "../src/components/FleetPreviews";
 import { buildFleetFromSlots, type FleetSlot, GROUP_ANCHORS } from "../src/engine/fleetBuilder";
+import { shieldEnvelopeRadius } from "../src/engine/shieldGeometry";
+
+describe("fleet spawn formations", () => {
+  it("keeps 100 deployed vessels clear, grouped, and mirrored", () => {
+    const slots: FleetSlot[] = [];
+    for (const groupId of [1, 2]) {
+      for (const [hullClass, count] of [
+        ["strike_craft", 32],
+        ["corvette", 6],
+        ["missile_frigate", 6],
+        ["battleship", 3],
+        ["cruiser", 3],
+      ] as const) {
+        for (let i = 0; i < count; i++) {
+          slots.push({ id: `${groupId}-${hullClass}-${i}`, hullClass, groupId });
+        }
+      }
+    }
+    const blue = buildFleetFromSlots(slots, 0, 0, 0);
+    const red = buildFleetFromSlots(slots, 1, 0, Math.PI);
+    expect(blue).toHaveLength(100);
+    for (const groupId of [1, 2]) {
+      expect(blue.filter((ship) => ship.groupId === groupId)).toHaveLength(50);
+    }
+    for (const fleet of [blue, red]) {
+      for (let i = 0; i < fleet.length; i++) {
+        for (let j = 0; j < i; j++) {
+          const a = fleet[i];
+          const b = fleet[j];
+          expect(Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])).toBeGreaterThan(
+            shieldEnvelopeRadius(a) + shieldEnvelopeRadius(b) + 20,
+          );
+        }
+      }
+    }
+    blue.forEach((ship, i) => {
+      expect(red[i].pos[0]).toBeCloseTo(-ship.pos[0]);
+      expect(red[i].pos[1]).toBeCloseTo(ship.pos[1]);
+    });
+    const heavies = blue.filter((ship) => ship.groupId === 1 && ship.hullClass === "battleship");
+    expect(heavies[0].pos[0]).toBeGreaterThan(heavies[1].pos[0]);
+    expect(heavies[0].pos[0]).toBeGreaterThan(heavies[2].pos[0]);
+  });
+
+  it("forms separate eight-craft chevrons with their leaders forward", () => {
+    const slots: FleetSlot[] = Array.from({ length: 16 }, (_, i) => ({
+      id: `fighter-${i}`,
+      hullClass: "strike_craft",
+      groupId: 1,
+    }));
+    const ships = buildFleetFromSlots(slots, 0, 0, 0);
+    for (const start of [0, 8]) {
+      const [leader, left, right] = ships.slice(start, start + 3);
+      expect(leader.pos[0]).toBeGreaterThan(left.pos[0]);
+      expect(left.pos[0]).toBe(right.pos[0]);
+      expect(left.pos[1] - leader.pos[1]).toBe(56);
+      expect(right.pos[1] - leader.pos[1]).toBe(-56);
+    }
+    expect(ships[8].pos[0] - ships[0].pos[0]).toBe(300);
+  });
+});
 
 describe("FleetBuilder presentation", () => {
   it("orders the catalog, groups weapons, and offers independent selectors and carrier controls", () => {

@@ -22,6 +22,7 @@ import {
   withinPursuitTheater,
 } from "./flightControl";
 import type { RangePhase } from "./flightCycles";
+import { HARMONIC_RANGE } from "./harmonicShieldSystem";
 import {
   clamp,
   normalizeAngle,
@@ -32,7 +33,12 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
-import { navigationContext, tacticalDensity } from "./navigationContext";
+import {
+  navigationContext,
+  navigationSpatialScale,
+  tacticalDensity,
+  tacticalSupportRadius,
+} from "./navigationContext";
 import { obstacleCourseCorrection } from "./obstacleNavigation";
 import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
@@ -111,6 +117,13 @@ export function fighterTacticalTick(
   return state.tick;
 }
 
+/** Pair-relative clearance remains stable when either hull or haven umbrella changes. */
+function shieldClearanceScale(a: ShipState, b: ShipState): number {
+  const stockRadius = (ship: ShipState) =>
+    shieldEnvelopeRadius({ hullClass: ship.hullClass, size: HULL_PROFILES[ship.hullClass].size });
+  return (shieldEnvelopeRadius(a) + shieldEnvelopeRadius(b)) / (stockRadius(a) + stockRadius(b));
+}
+
 /** Aim beyond the tangent contact, preserving momentum past the shield flank. */
 export function fighterShieldWaypoint(
   ship: ShipState,
@@ -119,7 +132,9 @@ export function fighterShieldWaypoint(
   attack = false,
 ): Vector2 {
   const clearance = shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(ship);
-  const radius = clearance + (attack ? 20 : 95);
+  // The haven is already in clearance; maneuvering margins scale with the craft itself.
+  const scale = ship.size / HULL_PROFILES[ship.hullClass].size;
+  const radius = clearance + (attack ? 20 : 95) * scale;
   const offset = vecSub(ship.pos, capital.pos);
   const distance = vecDistance([0, 0], offset);
   const outward =
@@ -128,7 +143,10 @@ export function fighterShieldWaypoint(
       : ([-Math.cos(ship.heading), -Math.sin(ship.heading)] as Vector2);
   const normal: Vector2 = [-outward[1] * side, outward[0] * side];
   if (distance <= radius)
-    return vecAdd(capital.pos, vecAdd(vecScale(outward, radius + 60), vecScale(normal, 300)));
+    return vecAdd(
+      capital.pos,
+      vecAdd(vecScale(outward, radius + 60 * scale), vecScale(normal, 300 * scale)),
+    );
   const contact = vecAdd(
     capital.pos,
     vecAdd(
@@ -138,7 +156,7 @@ export function fighterShieldWaypoint(
   );
   return vecAdd(
     contact,
-    vecScale(vecNormalize(vecSub(contact, ship.pos)), Math.max(240, radius * 1.15)),
+    vecScale(vecNormalize(vecSub(contact, ship.pos)), Math.max(240 * scale, radius * 1.15)),
   );
 }
 
@@ -183,7 +201,8 @@ function selectNavigationTarget(
     ship.hullClass === "dreadnought" ||
     ship.hullClass === "battleship" ||
     ship.hullClass === "cruiser";
-  let range = 360;
+  const spatialScale = navigationSpatialScale(ship);
+  let range = 360 * spatialScale;
   let mainGun: ShipState["turrets"][number] | undefined;
   for (const turret of ship.turrets) {
     range = Math.max(range, turret.weapon.range);
@@ -227,6 +246,8 @@ function selectNavigationTarget(
     ship.hullClass === "missile_frigate" ||
     ship.hullClass === "cruiser";
   const hunter = pack?.[0] ?? ship;
+  const localEngagementRadius = Math.min(1000 * spatialScale, Math.max(600 * spatialScale, range));
+  const packEngagementRadius = tacticalSupportRadius(hunter) * 1.5;
   let localBest: ShipState | null = null;
   let localRank = Infinity;
   let localDistanceSquared = Infinity;
@@ -263,14 +284,16 @@ function selectNavigationTarget(
     const density = coordinated ? tacticalDensity(enemy, aliveShips) : undefined;
     const defenders = density?.get(enemy.team) ?? 1;
     const isolated = coordinated && (context?.isolated.get(enemy) ?? defenders <= 2);
-    const local =
-      navigationDistanceSquared(hunter, enemy) <= Math.min(1000, Math.max(600, range)) ** 2;
+    const local = navigationDistanceSquared(hunter, enemy) <= localEngagementRadius ** 2;
     const forceWeight =
       coordinated && local ? clamp((density?.get(ship.team) ?? 0) / defenders - 1, -1, 1) * 1.5 : 0;
     const isolationWeight = isolated && local ? 3 : 0;
     if (pack) {
       const distanceSquared = navigationDistanceSquared(hunter, enemy);
-      if (distanceSquared <= 600 * 600 && withinPursuitTheater(hunter, enemy, aliveShips)) {
+      if (
+        distanceSquared <= packEngagementRadius ** 2 &&
+        withinPursuitTheater(hunter, enemy, aliveShips)
+      ) {
         let rank = Infinity;
         if (enemy.hullClass === "corvette") rank = 0;
         else if (pack.length >= 2 && enemy.hullClass === "strike_craft" && isolated) rank = 1;
@@ -434,7 +457,7 @@ export function updateShipNavigation(
     const rescueTarget = tenderRescueTarget(ship, aliveShips);
     if (
       rescueTarget &&
-      vecDistance(ship.pos, rescueTarget.pos) > 450 &&
+      vecDistance(ship.pos, rescueTarget.pos) > HARMONIC_RANGE * 0.9 &&
       ship.hullCurrent / Math.max(1, ship.hullMax) >= 0.35
     )
       thrustMultiplier = 1.35;
@@ -460,7 +483,8 @@ export function updateShipNavigation(
       ship.turrets.some(
         (turret) =>
           turret.cooldownTimer <= 0 &&
-          vecDistance(ship.pos, target.pos) <= turret.weapon.range + 120,
+          vecDistance(ship.pos, target.pos) <=
+            turret.weapon.range + ship.maxSpeed * (120 / HULL_PROFILES.strike_craft.speed),
       )
     ) {
       // Slew the nose gun independently of the tangential strafe thrust.
@@ -498,10 +522,11 @@ export function updateShipNavigation(
         const damaged =
           ship.shieldCurrent <= 0 || ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4;
         const longRange = ship.hullClass === "battleship" && enemy.hullClass === "dreadnought";
+        const standoff = 500 * shieldClearanceScale(ship, enemy);
         const distance =
           damaged || longRange
-            ? Math.max(500, ...ship.turrets.map((turret) => turret.weapon.range * 0.9))
-            : 500;
+            ? Math.max(standoff, ...ship.turrets.map((turret) => turret.weapon.range * 0.9))
+            : standoff;
         return (
           (damaged || isCapitalShip(enemy)) &&
           vecDistance(ship.pos, enemy.pos) < distance &&
@@ -541,7 +566,7 @@ export function updateShipNavigation(
         continue;
       const risk = rescueRouteRisk(ship, peer, aliveShips);
       if (risk >= 1.5) continue;
-      const score = 1 / (1 + vecDistance(ship.pos, peer.pos) / 1200) - risk;
+      const score = 1 / (1 + vecDistance(ship.pos, peer.pos) / (HARMONIC_RANGE * 2.4)) - risk;
       if (score > bestScore || (score === bestScore && tender && peer.id < tender.id)) {
         tender = peer;
         bestScore = score;
@@ -552,7 +577,7 @@ export function updateShipNavigation(
       const toward = vecNormalize(vecSub(tender.pos, ship.pos));
       const rendezvous = vecAdd(
         tender.velocity,
-        vecScale(toward, clamp((distance - 400) * 0.6, 0, ship.maxSpeed * 0.6)),
+        vecScale(toward, clamp((distance - HARMONIC_RANGE * 0.8) * 0.6, 0, ship.maxSpeed * 0.6)),
       );
       thrusterVelocity = limitVelocity(
         vecAdd(vecScale(thrusterVelocity ?? ship.velocity, 0.3), vecScale(rendezvous, 0.7)),
@@ -581,7 +606,13 @@ export function updateShipNavigation(
     const speed = vecDistance([0, 0], intendedVelocity);
     const route = friendlyShieldRecoveryDirection(
       ship,
-      vecAdd(ship.pos, vecScale(vecNormalize(intendedVelocity), 900)),
+      vecAdd(
+        ship.pos,
+        vecScale(
+          vecNormalize(intendedVelocity),
+          ship.maxSpeed * (900 / HULL_PROFILES.strike_craft.speed),
+        ),
+      ),
       aliveShips,
       vecNormalize(intendedVelocity),
     );
@@ -668,7 +699,7 @@ export function updateShipNavigation(
       if (!capital.isAlive || !isCapitalShip(capital)) continue;
       const distance = vecDistance(ship.pos, capital.pos);
       if (distance < 1e-6) continue;
-      const clearance = shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(ship) + 30;
+      const clearance = shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(ship) + ship.size * 3;
       const toward = vecScale(vecSub(capital.pos, ship.pos), 1 / distance);
       const closing = vecDot(vecSub(controlledVelocity, capital.velocity), toward);
       const safeClosing = Math.max(0, (distance - clearance) / 0.5);

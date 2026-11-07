@@ -139,9 +139,11 @@ export function buildFleetFromSlots(
     if (ships.length === 0) continue;
     const centerX =
       (Math.min(...ships.map((s) => s.pos[0])) + Math.max(...ships.map((s) => s.pos[0]))) / 2;
+    const centerY =
+      (Math.min(...ships.map((s) => s.pos[1])) + Math.max(...ships.map((s) => s.pos[1]))) / 2;
     for (const ship of ships) {
       ship.pos[0] += baseX + x - centerX;
-      ship.pos[1] += y;
+      ship.pos[1] += y - centerY;
       const [startX, startY] = ship.pos;
       const clear = () =>
         placed.every(
@@ -152,7 +154,10 @@ export function buildFleetFromSlots(
       for (let ring = 1; !clear(); ring++) {
         for (let step = 0; step < 16 && !clear(); step++) {
           const angle = (step * Math.PI) / 8;
-          ship.pos = [startX + Math.cos(angle) * ring * 20, startY + Math.sin(angle) * ring * 20];
+          ship.pos = [
+            startX + Math.cos(angle) * ring * 20 * (heading === 0 ? 1 : -1),
+            startY + Math.sin(angle) * ring * 20,
+          ];
         }
       }
       placed.push(ship);
@@ -209,6 +214,13 @@ function buildGroup(
     ...battleships.map((_, i) => `${prefix}_bb_${counts.battleship + i}`),
     ...cruisers.map((_, i) => `${prefix}_cr_${counts.cruiser + i}`),
   ];
+  const forward = heading === 0 ? 1 : -1;
+  const heavyCount = carriers.length + dreadnoughts.length + battleships.length;
+  const heavyPosition = (index: number): Vector2 => {
+    if (heavyCount < 3) return [0, (index - (heavyCount - 1) / 2) * 300];
+    const rank = Math.ceil(index / 2);
+    return [-forward * rank * (expandedSpacing ? 240 : 180), (index % 2 ? 1 : -1) * rank * 260];
+  };
   const addShip = (slot: FleetSlot, idx: number, code: string, name: string, pos: Vector2) => {
     const profile = HULL_PROFILES[slot.hullClass];
     const id = `${prefix}_${code}_${counts[slot.hullClass] + idx}`;
@@ -252,30 +264,27 @@ function buildGroup(
     });
   };
   carriers.forEach((slot, idx) => {
-    addShip(slot, idx, "car", `Oceanic CV-${counts.carrier + idx + 1}`, [
-      0,
-      (idx - (carriers.length - 1) / 2) * (expandedSpacing ? 370 : 200),
-    ]);
+    addShip(slot, idx, "car", `Oceanic CV-${counts.carrier + idx + 1}`, heavyPosition(idx));
   });
   // 1. Battleships (Center Core)
   battleships.forEach((slot, idx) => {
-    addShip(slot, idx, "bb", `Leviathan BB-0${counts.battleship + idx + 1}`, [
-      0,
-      (idx - (battleships.length - 1) / 2) * (expandedSpacing ? 330 : 160),
-    ]);
+    addShip(
+      slot,
+      idx,
+      "bb",
+      `Leviathan BB-0${counts.battleship + idx + 1}`,
+      heavyPosition(carriers.length + dreadnoughts.length + idx),
+    );
   });
   // 2. Cruisers (Flanking lines)
   dreadnoughts.forEach((slot, idx) => {
-    addShip(slot, idx, "dn", `Bastion DN-${counts.dreadnought + idx + 1}`, [
-      0,
-      (idx - (dreadnoughts.length - 1) / 2) * (expandedSpacing ? 350 : 180),
-    ]);
-  });
-  frigates.forEach((slot, idx) => {
-    addShip(slot, idx, "mf", `Quiver MF-${counts.missile_frigate + idx + 1}`, [
-      (heading === 0 ? -1 : 1) * 180,
-      (idx - (frigates.length - 1) / 2) * 120,
-    ]);
+    addShip(
+      slot,
+      idx,
+      "dn",
+      `Bastion DN-${counts.dreadnought + idx + 1}`,
+      heavyPosition(carriers.length + idx),
+    );
   });
   cruisers.forEach((slot, idx) => {
     const sign = idx % 2 === 0 ? 1 : -1;
@@ -290,61 +299,41 @@ function buildGroup(
       (idx - (tenders.length - 1) / 2) * 120,
     ]);
   });
+  const escortPosition = (idx: number, offset: number): Vector2 => {
+    const anchor = ships.find((ship) => ship.id === anchorIds[idx % anchorIds.length]);
+    const pair = Math.floor(idx / Math.max(1, anchorIds.length));
+    const side = pair % 2 === 0 ? 1 : -1;
+    const rank = Math.floor(pair / 2);
+    return [
+      (anchor?.pos[0] ?? 0) - forward * (offset + rank * 100),
+      (anchor?.pos[1] ?? 0) + side * (220 + rank * 90),
+    ];
+  };
+  frigates.forEach((slot, idx) => {
+    addShip(
+      slot,
+      idx,
+      "mf",
+      `Quiver MF-${counts.missile_frigate + idx + 1}`,
+      escortPosition(idx, 180),
+    );
+  });
   // 3. Corvette escort columns; shield clearance is applied after assembly.
   corvettes.forEach((slot, idx) => {
-    const sign = idx % 2 === 0 ? 1 : -1;
-    addShip(slot, idx, "cv", `Aegis CV-0${counts.corvette + idx + 1}`, [
-      (heading === 0 ? -1 : 1) * 95,
-      sign * (expandedSpacing ? 220 + Math.floor(idx / 2) * 90 : 145 + Math.floor(idx / 2) * 85),
+    addShip(slot, idx, "cv", `Aegis CV-0${counts.corvette + idx + 1}`, escortPosition(idx, 95));
+  });
+  // Flights of eight form separate chevrons, arranged in staggered rows.
+  const flightCount = Math.ceil(fighters.length / 8);
+  fighters.forEach((slot, idx) => {
+    const flight = Math.floor(idx / 8);
+    const member = idx % 8;
+    const rank = Math.ceil(member / 2);
+    const side = member % 2 ? 1 : -1;
+    addShip(slot, idx, "sc", `Raider F-${counts.strike_craft + idx + 1}`, [
+      forward * ((expandedSpacing ? 440 : 350) + (flight % 2) * 300 - rank * 32),
+      (Math.floor(flight / 2) - (Math.ceil(flightCount / 2) - 1) / 2) * 520 + side * rank * 56,
     ]);
   });
-  // 4. Grouped vanguard blocks. Keep shield repulsor zones clear on the first tick.
-  const fighterGroups = new Map<number, FleetSlot[]>();
-  for (const slot of fighters) {
-    const group = fighterGroups.get(slot.groupId) ?? [];
-    group.push(slot);
-    fighterGroups.set(slot.groupId, group);
-  }
-  const spacing = 56;
-  const maxRows = Math.max(
-    1,
-    Math.min(5, Math.floor((2 * 520 + spacing) / (fighterGroups.size * spacing))),
-  );
-  const totalRows = [...fighterGroups.values()].reduce(
-    (sum, group) => sum + Math.min(maxRows, group.length),
-    0,
-  );
-  const positionedFighters: { slot: FleetSlot; xOff: number; yOff: number }[] = [];
-  let rowOffset = 0;
-  for (const group of fighterGroups.values()) {
-    const rows = Math.min(maxRows, group.length);
-    group.forEach((slot, index) => {
-      positionedFighters.push({
-        slot,
-        xOff:
-          (heading === 0 ? 1 : -1) *
-          ((expandedSpacing ? 310 : 180) + Math.floor(index / rows) * spacing),
-        yOff: (rowOffset + (index % rows) - (totalRows - 1) / 2) * spacing,
-      });
-    });
-    rowOffset += rows;
-  }
-  positionedFighters.forEach(({ slot, xOff, yOff }, idx) => {
-    addShip(slot, idx, "sc", `Raider F-${counts.strike_craft + idx + 1}`, [xOff, yOff]);
-  });
-  // Preserve formation columns and vertical order using the calibrated shield clearance.
-  const ordered = [...ships].sort((a, b) => a.pos[1] - b.pos[1]);
-  for (let i = 0; i < ordered.length; i++) {
-    const shipB = ordered[i];
-    for (const shipA of ordered.slice(0, i)) {
-      const spacing = (shieldEnvelopeRadius(shipA) + shieldEnvelopeRadius(shipB)) * 1.15 + 20;
-      if (Math.abs(shipA.pos[0] - shipB.pos[0]) < spacing) {
-        shipB.pos[1] = Math.max(shipB.pos[1], shipA.pos[1] + spacing);
-      }
-    }
-  }
-  const center = ordered.length ? (ordered[0].pos[1] + ordered[ordered.length - 1].pos[1]) / 2 : 0;
-  for (const ship of ships) ship.pos[1] -= center;
   counts.battleship += battleships.length;
   counts.carrier += carriers.length;
   counts.dreadnought += dreadnoughts.length;
