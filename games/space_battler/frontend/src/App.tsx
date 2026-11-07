@@ -20,6 +20,7 @@ import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { type CrewVeterancy, FleetBuilder } from "./components/FleetBuilder";
 import { spaceAudio } from "./engine/audioEngine";
 import { CARRIER_FABRICATION_INTERVAL, carrierFabricationProgress } from "./engine/carrierHangar";
+import { fleetAdvantage } from "./engine/fleetAdvantage";
 import { FleetBreakdown } from "./engine/fleetBreakdown";
 import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
 import { FLEET_PRESETS } from "./engine/fleetPresets";
@@ -355,6 +356,9 @@ export default function App() {
   const canContinueWithRemnants = [0, 1].every((team) =>
     sim.ships.some((ship) => ship.team === team && ship.isAlive),
   );
+  const [terranAdvantage, alienAdvantage] = fleetAdvantage(sim.ships, sim.winner);
+  const terranPercent = Math.round(terranAdvantage);
+  const alienPercent = terranAdvantage + alienAdvantage === 0 ? 0 : 100 - terranPercent;
 
   const continueBattle = () => {
     if (!canContinueWithRemnants) return;
@@ -833,6 +837,35 @@ export default function App() {
                     / {sim.ships.filter((s) => s.team === 1).length} active
                   </span>
                 </div>
+              </div>
+            </div>
+
+            <div
+              className="shrink-0"
+              title="Estimated fleet power based on surviving ships and their condition"
+            >
+              <div className="flex justify-between text-[10px] font-mono font-semibold mb-1">
+                <span className="text-cyan-400">{terranPercent}%</span>
+                <span className="text-zinc-500 uppercase tracking-wider">Fleet advantage</span>
+                <span className="text-red-400">{alienPercent}%</span>
+              </div>
+              <div
+                className="flex h-1.5 rounded-full bg-zinc-800 shadow-[0_0_10px_rgba(34,211,238,0.15)] overflow-hidden"
+                role="progressbar"
+                aria-label="Terran fleet advantage"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={terranPercent}
+                aria-valuetext={`Terran ${terranPercent}%, Alien ${alienPercent}%`}
+              >
+                <div
+                  className="h-full bg-cyan-400 transition-all duration-300"
+                  style={{ width: `${terranAdvantage}%` }}
+                />
+                <div
+                  className="h-full bg-red-500 transition-all duration-300"
+                  style={{ width: `${alienAdvantage}%` }}
+                />
               </div>
             </div>
 
