@@ -1,0 +1,2441 @@
+{
+  "baseline": {
+    "meanMs": 436.0993289999999,
+    "p50Ms": 451.449099999998,
+    "p95Ms": 519.6385000000009,
+    "maxMs": 813.1554000000033
+  },
+  "windows": [
+    {
+      "ticks": "1-60",
+      "baseline": {
+        "meanMs": 337.02200999999985,
+        "p50Ms": 329.8741999999984,
+        "p95Ms": 392.1131000000005,
+        "maxMs": 613.6913999999997
+      },
+      "subsystems": [
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 43511,
+          "inclusiveMs": 3105.152899999912,
+          "selfMs": 3105.152899999912,
+          "inclusiveMsPerTick": 51.752548333331866,
+          "selfMsPerTick": 51.752548333331866
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 20533,
+          "inclusiveMs": 2198.855099999915,
+          "selfMs": 2198.855099999915,
+          "inclusiveMsPerTick": 36.647584999998585,
+          "selfMsPerTick": 36.647584999998585
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 60,
+          "inclusiveMs": 1223.8620999999966,
+          "selfMs": 1197.7450999999874,
+          "inclusiveMsPerTick": 20.39770166666661,
+          "selfMsPerTick": 19.962418333333122
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 18852,
+          "inclusiveMs": 819.9724000000006,
+          "selfMs": 819.9724000000006,
+          "inclusiveMsPerTick": 13.666206666666676,
+          "selfMsPerTick": 13.666206666666676
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 8880,
+          "inclusiveMs": 1182.295100000023,
+          "selfMs": 589.4016999999039,
+          "inclusiveMsPerTick": 19.704918333333715,
+          "selfMsPerTick": 9.823361666665066
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 12376,
+          "inclusiveMs": 452.61879999999655,
+          "selfMs": 452.61879999999655,
+          "inclusiveMsPerTick": 7.543646666666609,
+          "selfMsPerTick": 7.543646666666609
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 11622,
+          "inclusiveMs": 514.0203999999758,
+          "selfMs": 439.56769999986045,
+          "inclusiveMsPerTick": 8.567006666666263,
+          "selfMsPerTick": 7.326128333331008
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 20382,
+          "inclusiveMs": 3120.7786000002416,
+          "selfMs": 432.1266000003907,
+          "inclusiveMsPerTick": 52.012976666670696,
+          "selfMsPerTick": 7.2021100000065115
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 5742,
+          "inclusiveMs": 528.9299999999894,
+          "selfMs": 381.1860000001034,
+          "inclusiveMsPerTick": 8.815499999999822,
+          "selfMsPerTick": 6.353100000001723
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 60,
+          "inclusiveMs": 277.7303999999822,
+          "selfMs": 277.7303999999822,
+          "inclusiveMsPerTick": 4.628839999999703,
+          "selfMsPerTick": 4.628839999999703
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 7940625,
+        "haven.auraShipCandidates": 3992620,
+        "separation.peerCandidates": 6403870,
+        "obstacles.shipCandidates": 1200880,
+        "contacts.pairCandidates": 6903396,
+        "cruiser.passes": 251,
+        "cruiser.pairCandidates": 283128,
+        "fireControl.shipCandidates": 14780735,
+        "fireControl.reservationCandidates": 4629431,
+        "projectiles.processed": 15423,
+        "projectiles.shipSweepCandidates": 5220173,
+        "projectiles.missileSweepCandidates": 1560017,
+        "fireControl.projectileCandidates": 7931832,
+        "fireControl.defendedCandidates": 2489035,
+        "fireControl.targetPayloadCandidates": 663308,
+        "flak.shipPositionCandidates": 136178,
+        "flak.missilePositionCandidates": 115356,
+        "flak.shipCandidates": 136178,
+        "flak.projectileCandidates": 115356
+      }
+    },
+    {
+      "ticks": "61-120",
+      "baseline": {
+        "meanMs": 415.98825999999957,
+        "p50Ms": 424.64570000000094,
+        "p95Ms": 470.497199999998,
+        "maxMs": 495.60399999999936
+      },
+      "subsystems": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 1939,
+          "inclusiveMs": 7783.53869999999,
+          "selfMs": 7783.53869999999,
+          "inclusiveMsPerTick": 129.72564499999984,
+          "selfMsPerTick": 129.72564499999984
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 44804,
+          "inclusiveMs": 2685.762700000385,
+          "selfMs": 2685.762700000385,
+          "inclusiveMsPerTick": 44.762711666673084,
+          "selfMsPerTick": 44.762711666673084
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 20467,
+          "inclusiveMs": 2036.039899999476,
+          "selfMs": 2036.039899999476,
+          "inclusiveMsPerTick": 33.933998333324595,
+          "selfMsPerTick": 33.933998333324595
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 60,
+          "inclusiveMs": 831.4687999999987,
+          "selfMs": 812.931700000001,
+          "inclusiveMsPerTick": 13.857813333333313,
+          "selfMsPerTick": 13.548861666666683
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 18635,
+          "inclusiveMs": 720.8300000000854,
+          "selfMs": 720.8300000000854,
+          "inclusiveMsPerTick": 12.013833333334757,
+          "selfMsPerTick": 12.013833333334757
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 8866,
+          "inclusiveMs": 1032.5572999997821,
+          "selfMs": 534.3769999994838,
+          "inclusiveMsPerTick": 17.209288333329702,
+          "selfMsPerTick": 8.90628333332473
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 11580,
+          "inclusiveMs": 479.3416000000361,
+          "selfMs": 415.78340000012395,
+          "inclusiveMsPerTick": 7.989026666667269,
+          "selfMsPerTick": 6.929723333335399
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 20326,
+          "inclusiveMs": 10428.994599999525,
+          "selfMs": 374.81240000048274,
+          "inclusiveMsPerTick": 173.81657666665876,
+          "selfMsPerTick": 6.246873333341379
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 12188,
+          "inclusiveMs": 354.78989999992336,
+          "selfMs": 354.78989999992336,
+          "inclusiveMsPerTick": 5.913164999998723,
+          "selfMsPerTick": 5.913164999998723
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 5686,
+          "inclusiveMs": 364.10829999981434,
+          "selfMs": 251.9227999998584,
+          "inclusiveMsPerTick": 6.068471666663572,
+          "selfMsPerTick": 4.198713333330973
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 7901256,
+        "haven.auraShipCandidates": 3978339,
+        "separation.peerCandidates": 6312995,
+        "obstacles.shipCandidates": 1141720,
+        "contacts.pairCandidates": 6865456,
+        "cruiser.passes": 122,
+        "cruiser.pairCandidates": 137616,
+        "fireControl.shipCandidates": 15177984,
+        "fireControl.projectileCandidates": 6183179,
+        "fireControl.defendedCandidates": 1542796,
+        "fireControl.targetPayloadCandidates": 402725,
+        "projectiles.processed": 11895,
+        "projectiles.shipSweepCandidates": 4024887,
+        "projectiles.missileSweepCandidates": 1096299,
+        "flak.shipPositionCandidates": 152108,
+        "flak.missilePositionCandidates": 89489,
+        "flak.shipCandidates": 152108,
+        "flak.projectileCandidates": 89489,
+        "arena.routeSamples": 57576,
+        "arena.routeEnemyCandidates": 9745800,
+        "arena.routeTurretCandidates": 22038960,
+        "fireControl.reservationCandidates": 97181
+      }
+    },
+    {
+      "ticks": "121-300",
+      "baseline": {
+        "meanMs": 475.82879166666675,
+        "p50Ms": 470.20990000000165,
+        "p95Ms": 523.1339999999909,
+        "maxMs": 813.1554000000033
+      },
+      "subsystems": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 11578,
+          "inclusiveMs": 40589.745599999835,
+          "selfMs": 40589.745599999835,
+          "inclusiveMsPerTick": 225.49858666666574,
+          "selfMsPerTick": 225.49858666666574
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 60006,
+          "inclusiveMs": 5793.720500001269,
+          "selfMs": 5793.720500001269,
+          "inclusiveMsPerTick": 32.187336111118164,
+          "selfMsPerTick": 32.187336111118164
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 130420,
+          "inclusiveMs": 5640.530799998625,
+          "selfMs": 5640.530799998625,
+          "inclusiveMsPerTick": 31.336282222214585,
+          "selfMsPerTick": 31.336282222214585
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 46798,
+          "inclusiveMs": 1717.6354000002393,
+          "selfMs": 1717.6354000002393,
+          "inclusiveMsPerTick": 9.542418888890218,
+          "selfMsPerTick": 9.542418888890218
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 25750,
+          "inclusiveMs": 2514.389499998906,
+          "selfMs": 1495.892500000613,
+          "inclusiveMsPerTick": 13.968830555549479,
+          "selfMsPerTick": 8.310513888892293
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 34183,
+          "inclusiveMs": 1423.6620000018156,
+          "selfMs": 1231.3875000029875,
+          "inclusiveMsPerTick": 7.90923333334342,
+          "selfMsPerTick": 6.841041666683264
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 180,
+          "inclusiveMs": 1239.0057000001107,
+          "selfMs": 1194.7135000000999,
+          "inclusiveMsPerTick": 6.883365000000615,
+          "selfMsPerTick": 6.637297222222777
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 59573,
+          "inclusiveMs": 47509.00609999929,
+          "selfMs": 963.6676000053922,
+          "inclusiveMsPerTick": 263.9389227777738,
+          "selfMsPerTick": 5.353708888918845
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 34771,
+          "inclusiveMs": 882.6407999987132,
+          "selfMs": 882.6407999987132,
+          "inclusiveMsPerTick": 4.903559999992851,
+          "selfMsPerTick": 4.903559999992851
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 16005,
+          "inclusiveMs": 1075.1742999997296,
+          "selfMs": 760.9291999993802,
+          "inclusiveMsPerTick": 5.973190555554053,
+          "selfMsPerTick": 4.227384444441001
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 23065077,
+        "haven.auraShipCandidates": 11749910,
+        "separation.peerCandidates": 15503397,
+        "obstacles.shipCandidates": 3351380,
+        "arena.routeSamples": 316888,
+        "arena.routeEnemyCandidates": 52395576,
+        "arena.routeTurretCandidates": 117780160,
+        "contacts.pairCandidates": 19661404,
+        "cruiser.passes": 243,
+        "cruiser.pairCandidates": 274104,
+        "fireControl.shipCandidates": 43177014,
+        "fireControl.projectileCandidates": 9170595,
+        "fireControl.targetPayloadCandidates": 194424,
+        "fireControl.defendedCandidates": 1196209,
+        "projectiles.processed": 18902,
+        "projectiles.shipSweepCandidates": 6261303,
+        "projectiles.missileSweepCandidates": 1552245,
+        "flak.shipPositionCandidates": 457349,
+        "flak.missilePositionCandidates": 147532,
+        "flak.shipCandidates": 457349,
+        "flak.projectileCandidates": 147532,
+        "fireControl.reservationCandidates": 263445
+      }
+    }
+  ],
+  "baselinePeaks": [
+    {
+      "tick": 164,
+      "ms": 813.1554000000033,
+      "alive": 336,
+      "projectiles": 92,
+      "missiles": 20,
+      "beams": 22,
+      "damage": 17882
+    },
+    {
+      "tick": 17,
+      "ms": 613.6913999999997,
+      "alive": 340,
+      "projectiles": 217,
+      "missiles": 104,
+      "beams": 38,
+      "damage": 195
+    },
+    {
+      "tick": 151,
+      "ms": 572.088699999993,
+      "alive": 337,
+      "projectiles": 113,
+      "missiles": 31,
+      "beams": 27,
+      "damage": 16391
+    },
+    {
+      "tick": 152,
+      "ms": 565.3850999999995,
+      "alive": 337,
+      "projectiles": 111,
+      "missiles": 30,
+      "beams": 27,
+      "damage": 16413
+    },
+    {
+      "tick": 283,
+      "ms": 539.227899999998,
+      "alive": 324,
+      "projectiles": 95,
+      "missiles": 0,
+      "beams": 25,
+      "damage": 25633
+    },
+    {
+      "tick": 242,
+      "ms": 532.015699999989,
+      "alive": 328,
+      "projectiles": 81,
+      "missiles": 0,
+      "beams": 18,
+      "damage": 22738
+    },
+    {
+      "tick": 298,
+      "ms": 530.9468000000052,
+      "alive": 322,
+      "projectiles": 93,
+      "missiles": 19,
+      "beams": 17,
+      "damage": 26628
+    },
+    {
+      "tick": 299,
+      "ms": 527.7854999999981,
+      "alive": 322,
+      "projectiles": 98,
+      "missiles": 18,
+      "beams": 17,
+      "damage": 26719
+    },
+    {
+      "tick": 145,
+      "ms": 526.9360999999917,
+      "alive": 338,
+      "projectiles": 127,
+      "missiles": 35,
+      "beams": 30,
+      "damage": 15406
+    },
+    {
+      "tick": 293,
+      "ms": 523.9930999999924,
+      "alive": 324,
+      "projectiles": 104,
+      "missiles": 15,
+      "beams": 25,
+      "damage": 26287
+    }
+  ],
+  "profilePeaks": [
+    {
+      "tick": 280,
+      "ms": 416.6658000000025,
+      "alive": 324,
+      "projectiles": 89,
+      "missiles": 0,
+      "beams": 25,
+      "damage": 25482,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 70,
+          "inclusive": 272.33360000001267,
+          "self": 272.33360000001267
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 704,
+          "inclusive": 42.80860000017856,
+          "self": 42.80860000017856
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 327,
+          "inclusive": 32.19569999993837,
+          "self": 32.19569999993837
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 240,
+          "inclusive": 9.364799999952083,
+          "self": 9.364799999952083
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 140,
+          "inclusive": 13.107599999886588,
+          "self": 8.008799999850453
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 6.895799999998417,
+          "self": 6.6304999999993015
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 187,
+          "inclusive": 7.487799999958952,
+          "self": 6.4572999999218155
+        },
+        {
+          "name": "collisionContactSolver.resolveShipCollisions",
+          "calls": 2,
+          "inclusive": 6.170899999997346,
+          "self": 6.170899999997346
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 325,
+          "inclusive": 311.48489999996673,
+          "self": 5.711300000140909
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 184,
+          "inclusive": 5.264300000038929,
+          "self": 5.264300000038929
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.8660999999992782,
+          "self": 3.8660999999992782
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 86,
+          "inclusive": 5.2953000000998145,
+          "self": 3.736500000130036
+        }
+      ]
+    },
+    {
+      "tick": 296,
+      "ms": 408.22520000000077,
+      "alive": 322,
+      "projectiles": 103,
+      "missiles": 21,
+      "beams": 17,
+      "damage": 26551,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 70,
+          "inclusive": 251.29739999998128,
+          "self": 251.29739999998128
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 702,
+          "inclusive": 46.156499999939115,
+          "self": 46.156499999939115
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 326,
+          "inclusive": 32.56470000001718,
+          "self": 32.56470000001718
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 187,
+          "inclusive": 12.456900000033784,
+          "self": 10.767799999986892
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 263,
+          "inclusive": 10.20830000002752,
+          "self": 10.20830000002752
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 138,
+          "inclusive": 15.542100000035134,
+          "self": 9.073000000149477
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 8.942600000009406,
+          "self": 8.60010000001057
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 6.5521999999909895,
+          "self": 6.5521999999909895
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 323,
+          "inclusive": 291.00769999990007,
+          "self": 5.304599999712082
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 190,
+          "inclusive": 5.057600000072853,
+          "self": 5.057600000072853
+        },
+        {
+          "name": "fighterMissionSystem.updateWings",
+          "calls": 1,
+          "inclusive": 11.639899999994668,
+          "self": 4.832200000004377
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 86,
+          "inclusive": 6.267800000030547,
+          "self": 4.039100000009057
+        }
+      ]
+    },
+    {
+      "tick": 295,
+      "ms": 407.963499999998,
+      "alive": 323,
+      "projectiles": 104,
+      "missiles": 21,
+      "beams": 19,
+      "damage": 26529,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 77,
+          "inclusive": 278.9487000000372,
+          "self": 278.9487000000372
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 326,
+          "inclusive": 31.942200000063167,
+          "self": 31.942200000063167
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 701,
+          "inclusive": 27.54949999996461,
+          "self": 27.54949999996461
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 11.259300000005169,
+          "self": 10.921899999972084
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 253,
+          "inclusive": 9.34419999999227,
+          "self": 9.34419999999227
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 139,
+          "inclusive": 14.191199999913806,
+          "self": 8.367799999890849
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 187,
+          "inclusive": 8.511499999964144,
+          "self": 7.351900000066962
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 324,
+          "inclusive": 315.8041999999259,
+          "self": 5.144800000009127
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 183,
+          "inclusive": 4.7638000000297325,
+          "self": 4.7638000000297325
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 4.252100000012433,
+          "self": 4.252100000012433
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 86,
+          "inclusive": 4.667099999947823,
+          "self": 3.21399999994901
+        },
+        {
+          "name": "collisionContactSolver.resolveShipCollisions",
+          "calls": 2,
+          "inclusive": 3.2027999999991152,
+          "self": 3.2027999999991152
+        }
+      ]
+    },
+    {
+      "tick": 242,
+      "ms": 406.62029999999504,
+      "alive": 328,
+      "projectiles": 81,
+      "missiles": 0,
+      "beams": 18,
+      "damage": 22738,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 70,
+          "inclusive": 253.6369000001141,
+          "self": 253.6369000001141
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 716,
+          "inclusive": 38.38659999977972,
+          "self": 38.38659999977972
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 330,
+          "inclusive": 34.615600000019185,
+          "self": 34.615600000019185
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 249,
+          "inclusive": 9.712699999887263,
+          "self": 9.712699999887263
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 189,
+          "inclusive": 10.804599999886705,
+          "self": 9.625899999955436
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 9.12850000000617,
+          "self": 8.949900000006892
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 141,
+          "inclusive": 13.265699999901699,
+          "self": 8.094299999982468
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 6.9799999999959255,
+          "self": 6.9799999999959255
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 328,
+          "inclusive": 295.3078000000969,
+          "self": 5.682100000718492
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 193,
+          "inclusive": 5.401800000094227,
+          "self": 5.401800000094227
+        },
+        {
+          "name": "fighterMissionSystem.updateWings",
+          "calls": 1,
+          "inclusive": 12.400500000003376,
+          "self": 5.2031000000133645
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 87,
+          "inclusive": 7.5161999999399995,
+          "self": 4.904199999931734
+        }
+      ]
+    },
+    {
+      "tick": 290,
+      "ms": 405.79559999999765,
+      "alive": 324,
+      "projectiles": 111,
+      "missiles": 14,
+      "beams": 27,
+      "damage": 26160,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 77,
+          "inclusive": 278.04559999991034,
+          "self": 278.04559999991034
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 326,
+          "inclusive": 35.1024999999936,
+          "self": 35.1024999999936
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 698,
+          "inclusive": 28.407600000020466,
+          "self": 28.407600000020466
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 9.1762000000017,
+          "self": 8.883999999976368
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 239,
+          "inclusive": 8.676800000030198,
+          "self": 8.676800000030198
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 139,
+          "inclusive": 12.608199999958742,
+          "self": 7.797100000025239
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 187,
+          "inclusive": 7.723199999963981,
+          "self": 6.691599999961909
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 324,
+          "inclusive": 313.5112000000372,
+          "self": 5.006700000114506
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 183,
+          "inclusive": 4.688399999999092,
+          "self": 4.688399999999092
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.666299999997136,
+          "self": 3.666299999997136
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 86,
+          "inclusive": 4.477099999945494,
+          "self": 3.139999999955762
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 86,
+          "inclusive": 3.050500000012107,
+          "self": 3.050500000012107
+        }
+      ]
+    }
+  ],
+  "timeline": [
+    {
+      "tick": 1,
+      "ms": 392.1131000000005,
+      "alive": 340,
+      "projectiles": 80,
+      "missiles": 60,
+      "beams": 48,
+      "damage": 0,
+      "profileMs": 303.2671999999993,
+      "metrics": [
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 96,
+          "inclusive": 84.50410000000011,
+          "self": 70.61850000000777
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 768,
+          "inclusive": 66.63919999995414,
+          "self": 66.63919999995414
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 352,
+          "inclusive": 49.82380000000194,
+          "self": 49.82380000000194
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 340,
+          "inclusive": 20.10220000001027,
+          "self": 20.10220000001027
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 148,
+          "inclusive": 23.734800000000178,
+          "self": 14.343699999995806
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 284,
+          "inclusive": 13.514399999992747,
+          "self": 13.514399999992747
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 340,
+          "inclusive": 149.9525000000158,
+          "self": 12.863499999941268
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 7.866799999999785,
+          "self": 7.866799999999785
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 194,
+          "inclusive": 8.86360000001514,
+          "self": 7.558000000021821
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 96,
+          "inclusive": 7.199800000007599,
+          "self": 7.199800000007599
+        },
+        {
+          "name": "fighterMissionSystem.updateWings",
+          "calls": 1,
+          "inclusive": 16.34649999999965,
+          "self": 6.876600000006874
+        },
+        {
+          "name": "obstacleNavigation.obstacleCourseCorrection",
+          "calls": 340,
+          "inclusive": 6.01540000001296,
+          "self": 6.01540000001296
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 132600,
+        "haven.auraShipCandidates": 66640,
+        "separation.peerCandidates": 115600,
+        "obstacles.shipCandidates": 115600,
+        "contacts.pairCandidates": 115260,
+        "cruiser.passes": 1,
+        "cruiser.pairCandidates": 1128,
+        "fireControl.shipCandidates": 261120,
+        "fireControl.reservationCandidates": 1174593,
+        "projectiles.processed": 80,
+        "projectiles.shipSweepCandidates": 27200,
+        "projectiles.missileSweepCandidates": 160
+      }
+    },
+    {
+      "tick": 2,
+      "ms": 287.1815999999999,
+      "alive": 340,
+      "projectiles": 109,
+      "missiles": 62,
+      "beams": 48,
+      "damage": 0,
+      "profileMs": 182.9370999999992,
+      "metrics": [
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 720,
+          "inclusive": 43.051099999986036,
+          "self": 43.051099999986036
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 340,
+          "inclusive": 41.15280000002349,
+          "self": 41.15280000002349
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 281,
+          "inclusive": 17.90459999997438,
+          "self": 17.90459999997438
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 148,
+          "inclusive": 24.543399999995017,
+          "self": 12.89350000000195
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 340,
+          "inclusive": 66.89539999999943,
+          "self": 10.286400000017238
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 199,
+          "inclusive": 8.459800000000541,
+          "self": 8.459800000000541
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 194,
+          "inclusive": 8.70140000000356,
+          "self": 7.543400000009569
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 96,
+          "inclusive": 7.447899999993751,
+          "self": 7.447899999993751
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 7.366100000001097,
+          "self": 7.366100000001097
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 96,
+          "inclusive": 8.17090000000644,
+          "self": 5.7207000000107655
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 4.997499999999491,
+          "self": 4.997499999999491
+        },
+        {
+          "name": "collisionContactSolver.resolveShipCollisions",
+          "calls": 2,
+          "inclusive": 3.342800000000352,
+          "self": 3.342800000000352
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 132600,
+        "haven.auraShipCandidates": 66640,
+        "separation.peerCandidates": 95540,
+        "obstacles.shipCandidates": 14280,
+        "contacts.pairCandidates": 115260,
+        "cruiser.passes": 1,
+        "cruiser.pairCandidates": 1128,
+        "fireControl.shipCandidates": 244800,
+        "fireControl.projectileCandidates": 43200,
+        "fireControl.defendedCandidates": 3566,
+        "fireControl.targetPayloadCandidates": 5164,
+        "fireControl.reservationCandidates": 39527,
+        "projectiles.processed": 109,
+        "projectiles.shipSweepCandidates": 37060,
+        "projectiles.missileSweepCandidates": 3161
+      }
+    },
+    {
+      "tick": 10,
+      "ms": 339.89799999999923,
+      "alive": 340,
+      "projectiles": 208,
+      "missiles": 80,
+      "beams": 44,
+      "damage": 90,
+      "profileMs": 181.5598000000009,
+      "metrics": [
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 342,
+          "inclusive": 40.48230000000876,
+          "self": 40.48230000000876
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 720,
+          "inclusive": 40.44880000000012,
+          "self": 40.44880000000012
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 293,
+          "inclusive": 15.538500000007843,
+          "self": 15.538500000007843
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 13.097700000000259,
+          "self": 13.097700000000259
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 148,
+          "inclusive": 22.10620000000017,
+          "self": 11.623600000000806
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 340,
+          "inclusive": 60.04109999999855,
+          "self": 9.136999999947875
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 201,
+          "inclusive": 8.113600000006045,
+          "self": 8.113600000006045
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 7.869599999999991,
+          "self": 7.869599999999991
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 194,
+          "inclusive": 8.078999999979715,
+          "self": 6.868000000000393
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 96,
+          "inclusive": 9.014200000001438,
+          "self": 6.715099999999438
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 96,
+          "inclusive": 5.2339000000065425,
+          "self": 5.2339000000065425
+        },
+        {
+          "name": "fighterMissionSystem.updateWings",
+          "calls": 1,
+          "inclusive": 12.92950000000019,
+          "self": 4.883400000002439
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 132600,
+        "haven.auraShipCandidates": 66640,
+        "separation.peerCandidates": 99620,
+        "obstacles.shipCandidates": 18700,
+        "contacts.pairCandidates": 115260,
+        "cruiser.passes": 1,
+        "cruiser.pairCandidates": 1128,
+        "fireControl.shipCandidates": 244800,
+        "fireControl.projectileCandidates": 81600,
+        "fireControl.defendedCandidates": 13455,
+        "fireControl.targetPayloadCandidates": 6680,
+        "fireControl.reservationCandidates": 48045,
+        "projectiles.processed": 208,
+        "projectiles.shipSweepCandidates": 70720,
+        "projectiles.missileSweepCandidates": 22880
+      }
+    },
+    {
+      "tick": 20,
+      "ms": 320.44040000000314,
+      "alive": 340,
+      "projectiles": 215,
+      "missiles": 100,
+      "beams": 36,
+      "damage": 284,
+      "profileMs": 155.83489999999983,
+      "metrics": [
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 732,
+          "inclusive": 42.21939999998722,
+          "self": 42.21939999998722
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 341,
+          "inclusive": 36.10490000000027,
+          "self": 36.10490000000027
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 14.808199999999488,
+          "self": 14.649399999996604
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 302,
+          "inclusive": 11.403100000015911,
+          "self": 11.403100000015911
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 148,
+          "inclusive": 16.48790000000372,
+          "self": 8.562000000010812
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 194,
+          "inclusive": 8.433199999984936,
+          "self": 7.183699999997771
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 202,
+          "inclusive": 6.20049999998264,
+          "self": 6.20049999998264
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 340,
+          "inclusive": 42.79589999998825,
+          "self": 6.045700000004217
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 96,
+          "inclusive": 6.008600000006481,
+          "self": 4.3105000000032305
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.8708000000005995,
+          "self": 3.8708000000005995
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 96,
+          "inclusive": 3.6882000000059634,
+          "self": 3.6882000000059634
+        },
+        {
+          "name": "collisionContactSolver.resolveShipCollisions",
+          "calls": 2,
+          "inclusive": 2.7321999999985565,
+          "self": 2.7321999999985565
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 132600,
+        "haven.auraShipCandidates": 66640,
+        "separation.peerCandidates": 102680,
+        "obstacles.shipCandidates": 18020,
+        "contacts.pairCandidates": 115260,
+        "cruiser.passes": 2,
+        "cruiser.pairCandidates": 2256,
+        "fireControl.shipCandidates": 248880,
+        "fireControl.projectileCandidates": 117504,
+        "fireControl.defendedCandidates": 19820,
+        "fireControl.targetPayloadCandidates": 8221,
+        "projectiles.processed": 219,
+        "projectiles.shipSweepCandidates": 74460,
+        "projectiles.missileSweepCandidates": 21900,
+        "flak.shipPositionCandidates": 1020,
+        "flak.missilePositionCandidates": 657,
+        "flak.shipCandidates": 1020,
+        "flak.projectileCandidates": 657
+      }
+    },
+    {
+      "tick": 30,
+      "ms": 315.02709999999934,
+      "alive": 340,
+      "projectiles": 291,
+      "missiles": 151,
+      "beams": 45,
+      "damage": 1198,
+      "profileMs": 165.08690000000024,
+      "metrics": [
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 723,
+          "inclusive": 45.852099999978236,
+          "self": 45.852099999978236
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 341,
+          "inclusive": 34.72919999999067,
+          "self": 34.72919999999067
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 20.90389999999934,
+          "self": 20.591199999998935
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 317,
+          "inclusive": 11.94009999998707,
+          "self": 11.94009999998707
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 148,
+          "inclusive": 17.144999999998618,
+          "self": 8.336999999997715
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 201,
+          "inclusive": 6.671100000017759,
+          "self": 6.671100000017759
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 194,
+          "inclusive": 7.750199999993129,
+          "self": 6.555399999995643
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 340,
+          "inclusive": 43.299199999997654,
+          "self": 6.1393999999691005
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 96,
+          "inclusive": 5.6875,
+          "self": 3.946800000008807
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.9192000000002736,
+          "self": 3.9192000000002736
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 96,
+          "inclusive": 3.6287000000029366,
+          "self": 3.6287000000029366
+        },
+        {
+          "name": "collisionContactSolver.resolveShipCollisions",
+          "calls": 2,
+          "inclusive": 2.9997999999995955,
+          "self": 2.9997999999995955
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 132600,
+        "haven.auraShipCandidates": 66640,
+        "separation.peerCandidates": 107780,
+        "obstacles.shipCandidates": 21080,
+        "contacts.pairCandidates": 115260,
+        "cruiser.passes": 12,
+        "cruiser.pairCandidates": 13536,
+        "fireControl.shipCandidates": 245820,
+        "fireControl.projectileCandidates": 158304,
+        "fireControl.defendedCandidates": 38779,
+        "fireControl.targetPayloadCandidates": 12166,
+        "projectiles.processed": 298,
+        "projectiles.shipSweepCandidates": 101320,
+        "projectiles.missileSweepCandidates": 37250,
+        "flak.shipPositionCandidates": 2380,
+        "flak.missilePositionCandidates": 2086,
+        "flak.shipCandidates": 2380,
+        "flak.projectileCandidates": 2086
+      }
+    },
+    {
+      "tick": 60,
+      "ms": 353.692500000001,
+      "alive": 339,
+      "projectiles": 236,
+      "missiles": 135,
+      "beams": 44,
+      "damage": 6464,
+      "profileMs": 227.67269999999917,
+      "metrics": [
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 723,
+          "inclusive": 66.09719999993467,
+          "self": 66.09719999993467
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 340,
+          "inclusive": 35.418200000025536,
+          "self": 35.418200000025536
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 25.11609999999928,
+          "self": 24.410299999999552
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 317,
+          "inclusive": 22.991100000006554,
+          "self": 22.991100000006554
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 148,
+          "inclusive": 29.274600000000646,
+          "self": 12.045400000028167
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 193,
+          "inclusive": 12.876600000025064,
+          "self": 11.449100000001636
+        },
+        {
+          "name": "collisionContactSolver.resolveShipCollisions",
+          "calls": 2,
+          "inclusive": 9.066900000001624,
+          "self": 9.066900000001624
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 339,
+          "inclusive": 62.9590000000826,
+          "self": 7.400100000064413
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 201,
+          "inclusive": 7.14339999997901,
+          "self": 7.14339999997901
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 7.098099999999249,
+          "self": 7.098099999999249
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 95,
+          "inclusive": 8.580300000023271,
+          "self": 5.607400000015332
+        },
+        {
+          "name": "fighterMissionSystem.updateWings",
+          "calls": 1,
+          "inclusive": 11.698300000000017,
+          "self": 4.528999999998632
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 131727,
+        "haven.auraShipCandidates": 66300,
+        "separation.peerCandidates": 107463,
+        "obstacles.shipCandidates": 19720,
+        "contacts.pairCandidates": 114582,
+        "cruiser.passes": 6,
+        "cruiser.pairCandidates": 6768,
+        "fireControl.shipCandidates": 245097,
+        "fireControl.projectileCandidates": 133035,
+        "fireControl.defendedCandidates": 59788,
+        "fireControl.targetPayloadCandidates": 11547,
+        "projectiles.processed": 252,
+        "projectiles.shipSweepCandidates": 85428,
+        "projectiles.missileSweepCandidates": 23184,
+        "flak.shipPositionCandidates": 4068,
+        "flak.missilePositionCandidates": 3024,
+        "flak.shipCandidates": 4068,
+        "flak.projectileCandidates": 3024
+      }
+    },
+    {
+      "tick": 90,
+      "ms": 428.57250000000204,
+      "alive": 339,
+      "projectiles": 194,
+      "missiles": 70,
+      "beams": 19,
+      "damage": 9998,
+      "profileMs": 291.2538999999997,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 35,
+          "inclusive": 143.54349999999977,
+          "self": 143.54349999999977
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 748,
+          "inclusive": 40.2630000000172,
+          "self": 40.2630000000172
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 340,
+          "inclusive": 32.68429999998989,
+          "self": 32.68429999998989
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 12.694899999998597,
+          "self": 12.5212999999967
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 305,
+          "inclusive": 11.675599999984115,
+          "self": 11.675599999984115
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 148,
+          "inclusive": 17.181000000000495,
+          "self": 9.05170000000362
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 193,
+          "inclusive": 8.369600000030914,
+          "self": 7.359800000034738
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 339,
+          "inclusive": 185.8975999999784,
+          "self": 6.062399999907939
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 199,
+          "inclusive": 5.5187000000078115,
+          "self": 5.5187000000078115
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.7775999999976193,
+          "self": 3.7775999999976193
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 94,
+          "inclusive": 3.6151000000172644,
+          "self": 3.6151000000172644
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 95,
+          "inclusive": 4.655300000002171,
+          "self": 3.255200000003242
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 131727,
+        "haven.auraShipCandidates": 66300,
+        "separation.peerCandidates": 103395,
+        "obstacles.shipCandidates": 21760,
+        "arena.routeSamples": 1056,
+        "arena.routeEnemyCandidates": 178888,
+        "arena.routeTurretCandidates": 404872,
+        "contacts.pairCandidates": 114582,
+        "cruiser.passes": 2,
+        "cruiser.pairCandidates": 2256,
+        "fireControl.shipCandidates": 253572,
+        "fireControl.projectileCandidates": 101541,
+        "fireControl.defendedCandidates": 20077,
+        "fireControl.targetPayloadCandidates": 6517,
+        "projectiles.processed": 199,
+        "projectiles.shipSweepCandidates": 67461,
+        "projectiles.missileSweepCandidates": 18706,
+        "flak.shipPositionCandidates": 1695,
+        "flak.missilePositionCandidates": 995,
+        "flak.shipCandidates": 1695,
+        "flak.projectileCandidates": 995
+      }
+    },
+    {
+      "tick": 120,
+      "ms": 446.14710000000196,
+      "alive": 338,
+      "projectiles": 162,
+      "missiles": 48,
+      "beams": 10,
+      "damage": 12586,
+      "profileMs": 312.9501999999993,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 49,
+          "inclusive": 175.23480000000563,
+          "self": 175.23480000000563
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 753,
+          "inclusive": 38.053899999948044,
+          "self": 38.053899999948044
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 339,
+          "inclusive": 31.43499999999767,
+          "self": 31.43499999999767
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 299,
+          "inclusive": 10.824099999997998,
+          "self": 10.824099999997998
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 10.321899999995367,
+          "self": 10.093699999997625
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 147,
+          "inclusive": 14.877599999941594,
+          "self": 7.917099999940547
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 193,
+          "inclusive": 6.967700000015611,
+          "self": 6.011200000022654
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 338,
+          "inclusive": 215.0142999999225,
+          "self": 5.459200000106648
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 199,
+          "inclusive": 5.384699999973236,
+          "self": 5.384699999973236
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.684900000000198,
+          "self": 3.684900000000198
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 93,
+          "inclusive": 3.635500000033062,
+          "self": 3.635500000033062
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 94,
+          "inclusive": 4.855000000017753,
+          "self": 3.4376000000120257
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 131534,
+        "haven.auraShipCandidates": 66300,
+        "separation.peerCandidates": 101062,
+        "obstacles.shipCandidates": 20400,
+        "arena.routeSamples": 1392,
+        "arena.routeEnemyCandidates": 235104,
+        "arena.routeTurretCandidates": 530688,
+        "contacts.pairCandidates": 113906,
+        "cruiser.passes": 2,
+        "cruiser.pairCandidates": 2256,
+        "fireControl.shipCandidates": 254514,
+        "fireControl.projectileCandidates": 86240,
+        "fireControl.targetPayloadCandidates": 4258,
+        "fireControl.defendedCandidates": 18791,
+        "projectiles.processed": 169,
+        "projectiles.shipSweepCandidates": 57122,
+        "projectiles.missileSweepCandidates": 15379,
+        "flak.shipPositionCandidates": 2366,
+        "flak.missilePositionCandidates": 1183,
+        "flak.shipCandidates": 2366,
+        "flak.projectileCandidates": 1183
+      }
+    },
+    {
+      "tick": 180,
+      "ms": 464.50800000000163,
+      "alive": 336,
+      "projectiles": 66,
+      "missiles": 8,
+      "beams": 31,
+      "damage": 19398,
+      "profileMs": 338.07450000000244,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 63,
+          "inclusive": 216.09180000000924,
+          "self": 216.09180000000924
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 727,
+          "inclusive": 31.5795000000071,
+          "self": 31.5795000000071
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 337,
+          "inclusive": 30.98530000003666,
+          "self": 30.98530000003666
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 258,
+          "inclusive": 9.187299999932293,
+          "self": 9.187299999932293
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 146,
+          "inclusive": 14.184699999997974,
+          "self": 8.580400000108057
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 192,
+          "inclusive": 7.252000000022235,
+          "self": 6.267000000058033
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 336,
+          "inclusive": 252.44519999995828,
+          "self": 5.066299999729381
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 4.73750000000291,
+          "self": 4.5059000000183005
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 192,
+          "inclusive": 4.355100000000675,
+          "self": 4.355100000000675
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.753499999998894,
+          "self": 3.753499999998894
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 89,
+          "inclusive": 4.577700000045297,
+          "self": 3.2808000000513857
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 88,
+          "inclusive": 2.889500000019325,
+          "self": 2.889500000019325
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 130472,
+        "haven.auraShipCandidates": 65960,
+        "separation.peerCandidates": 86688,
+        "obstacles.shipCandidates": 19380,
+        "arena.routeSamples": 1680,
+        "arena.routeEnemyCandidates": 282240,
+        "arena.routeTurretCandidates": 636720,
+        "contacts.pairCandidates": 112560,
+        "cruiser.passes": 2,
+        "cruiser.pairCandidates": 2256,
+        "fireControl.shipCandidates": 244272,
+        "fireControl.projectileCandidates": 37450,
+        "fireControl.targetPayloadCandidates": 810,
+        "fireControl.defendedCandidates": 6020,
+        "projectiles.processed": 74,
+        "projectiles.shipSweepCandidates": 24864,
+        "projectiles.missileSweepCandidates": 4514,
+        "flak.shipPositionCandidates": 2688,
+        "flak.missilePositionCandidates": 592,
+        "flak.shipCandidates": 2688,
+        "flak.projectileCandidates": 592
+      }
+    },
+    {
+      "tick": 240,
+      "ms": 502.22960000000603,
+      "alive": 328,
+      "projectiles": 76,
+      "missiles": 0,
+      "beams": 19,
+      "damage": 22664,
+      "profileMs": 366.6128999999928,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 70,
+          "inclusive": 247.38149999997404,
+          "self": 247.38149999997404
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 329,
+          "inclusive": 32.01119999996445,
+          "self": 32.01119999996445
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 716,
+          "inclusive": 27.003100000089034,
+          "self": 27.003100000089034
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 241,
+          "inclusive": 8.929699999993318,
+          "self": 8.929699999993318
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 141,
+          "inclusive": 13.160500000085449,
+          "self": 8.017700000025798
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 189,
+          "inclusive": 8.283100000102422,
+          "self": 7.197600000028615
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 328,
+          "inclusive": 282.7342000001081,
+          "self": 5.08209999986866
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 5.305400000012014,
+          "self": 5.058400000008987
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 185,
+          "inclusive": 4.526700000016717,
+          "self": 4.526700000016717
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 4.048800000004121,
+          "self": 4.048800000004121
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 88,
+          "inclusive": 4.6286000000545755,
+          "self": 3.2989000000670785
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 86,
+          "inclusive": 2.8858999999793014,
+          "self": 2.8858999999793014
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 126932,
+        "haven.auraShipCandidates": 64940,
+        "separation.peerCandidates": 79048,
+        "obstacles.shipCandidates": 18700,
+        "arena.routeSamples": 1960,
+        "arena.routeEnemyCandidates": 321448,
+        "arena.routeTurretCandidates": 720320,
+        "contacts.pairCandidates": 107256,
+        "cruiser.passes": 1,
+        "cruiser.pairCandidates": 1128,
+        "fireControl.shipCandidates": 234848,
+        "fireControl.projectileCandidates": 39140,
+        "projectiles.processed": 85,
+        "projectiles.shipSweepCandidates": 27880,
+        "projectiles.missileSweepCandidates": 6290,
+        "flak.shipPositionCandidates": 2952,
+        "flak.missilePositionCandidates": 765,
+        "flak.shipCandidates": 2952,
+        "flak.projectileCandidates": 765
+      }
+    },
+    {
+      "tick": 300,
+      "ms": 519.6385000000009,
+      "alive": 322,
+      "projectiles": 97,
+      "missiles": 19,
+      "beams": 17,
+      "damage": 26739,
+      "profileMs": 370.84509999999136,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 77,
+          "inclusive": 248.65160000011383,
+          "self": 248.65160000011383
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 324,
+          "inclusive": 28.85369999994873,
+          "self": 28.85369999994873
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 703,
+          "inclusive": 27.059600000284263,
+          "self": 27.059600000284263
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 11.770799999998417,
+          "self": 11.502299999978277
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 260,
+          "inclusive": 9.313900000008289,
+          "self": 9.313900000008289
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 138,
+          "inclusive": 14.304600000017672,
+          "self": 8.35130000008212
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 186,
+          "inclusive": 7.80669999984093,
+          "self": 6.820699999923818
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 322,
+          "inclusive": 284.56829999998445,
+          "self": 5.005300000004354
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 182,
+          "inclusive": 4.574399999939487,
+          "self": 4.574399999939487
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.488900000011199,
+          "self": 3.488900000011199
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 86,
+          "inclusive": 4.284200000023702,
+          "self": 2.984800000078394
+        },
+        {
+          "name": "flightControl.escortVelocity",
+          "calls": 86,
+          "inclusive": 2.721700000023702,
+          "self": 2.721700000023702
+        }
+      ],
+      "census": {
+        "haven.tenderIndexCandidates": 123812,
+        "haven.auraShipCandidates": 63920,
+        "separation.peerCandidates": 83720,
+        "obstacles.shipCandidates": 18020,
+        "arena.routeSamples": 2032,
+        "arena.routeEnemyCandidates": 327648,
+        "arena.routeTurretCandidates": 732016,
+        "contacts.pairCandidates": 103362,
+        "cruiser.passes": 1,
+        "cruiser.pairCandidates": 1128,
+        "fireControl.shipCandidates": 226366,
+        "fireControl.projectileCandidates": 49392,
+        "fireControl.targetPayloadCandidates": 1497,
+        "fireControl.reservationCandidates": 17860,
+        "fireControl.defendedCandidates": 7826,
+        "projectiles.processed": 102,
+        "projectiles.shipSweepCandidates": 32844,
+        "projectiles.missileSweepCandidates": 7140,
+        "flak.shipPositionCandidates": 1610,
+        "flak.missilePositionCandidates": 510,
+        "flak.shipCandidates": 1610,
+        "flak.projectileCandidates": 510
+      }
+    }
+  ],
+  "milestones": {
+    "projectilePeak": {
+      "tick": 36,
+      "ms": 355.6298999999999,
+      "alive": 340,
+      "projectiles": 329,
+      "missiles": 211,
+      "beams": 45,
+      "damage": 2346
+    },
+    "missilePeak": {
+      "tick": 36,
+      "ms": 355.6298999999999,
+      "alive": 340,
+      "projectiles": 329,
+      "missiles": 211,
+      "beams": 45,
+      "damage": 2346
+    },
+    "firstDamage": {
+      "tick": 7,
+      "ms": 355.07680000000073,
+      "alive": 340,
+      "projectiles": 145,
+      "missiles": 75,
+      "beams": 48,
+      "damage": 90
+    },
+    "firstLoss": {
+      "tick": 42,
+      "ms": 321.08730000000287,
+      "alive": 339,
+      "projectiles": 319,
+      "missiles": 202,
+      "beams": 44,
+      "damage": 2689
+    },
+    "firstArenaCost": {
+      "tick": 64,
+      "ms": 228.946899999999,
+      "alive": 339,
+      "projectiles": 210,
+      "missiles": 121,
+      "beams": 43,
+      "damage": 7099,
+      "metrics": [
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 724,
+          "inclusive": 57.68500000001586,
+          "self": 57.68500000001586
+        },
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 7,
+          "inclusive": 47.544999999994616,
+          "self": 47.544999999994616
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 342,
+          "inclusive": 35.3195000000087,
+          "self": 35.3195000000087
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 16.899900000000343,
+          "self": 16.61909999999989
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 318,
+          "inclusive": 12.66480000001684,
+          "self": 12.66480000001684
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 148,
+          "inclusive": 18.188300000001618,
+          "self": 8.901999999983673
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 339,
+          "inclusive": 95.92339999997057,
+          "self": 7.714600000032078
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 193,
+          "inclusive": 8.026799999970535,
+          "self": 7.016299999959301
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 203,
+          "inclusive": 6.92169999996986,
+          "self": 6.92169999996986
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 95,
+          "inclusive": 7.128499999977066,
+          "self": 4.738299999989977
+        },
+        {
+          "name": "collisionContactSolver.resolveShipCollisions",
+          "calls": 2,
+          "inclusive": 4.371299999998882,
+          "self": 4.371299999998882
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 3.9369000000006054,
+          "self": 3.9369000000006054
+        }
+      ],
+      "route": {
+        "calls": 7,
+        "inclusiveMs": 47.544999999994616,
+        "selfMs": 47.544999999994616
+      }
+    },
+    "maxArenaCost": {
+      "tick": 295,
+      "ms": 407.963499999998,
+      "alive": 323,
+      "projectiles": 104,
+      "missiles": 21,
+      "beams": 19,
+      "damage": 26529,
+      "metrics": [
+        {
+          "name": "arenaBoundary.returnRouteCost",
+          "calls": 77,
+          "inclusive": 278.9487000000372,
+          "self": 278.9487000000372
+        },
+        {
+          "name": "shipNavigationSystem.findNavigationTarget",
+          "calls": 326,
+          "inclusive": 31.942200000063167,
+          "self": 31.942200000063167
+        },
+        {
+          "name": "fireControl.acquireMountTarget",
+          "calls": 701,
+          "inclusive": 27.54949999996461,
+          "self": 27.54949999996461
+        },
+        {
+          "name": "projectileEngine.updateProjectiles",
+          "calls": 1,
+          "inclusive": 11.259300000005169,
+          "self": 10.921899999972084
+        },
+        {
+          "name": "flightBehaviors.calculateSeparation",
+          "calls": 253,
+          "inclusive": 9.34419999999227,
+          "self": 9.34419999999227
+        },
+        {
+          "name": "flightControl.capitalIntent",
+          "calls": 139,
+          "inclusive": 14.191199999913806,
+          "self": 8.367799999890849
+        },
+        {
+          "name": "shieldHaven.cleanup",
+          "calls": 187,
+          "inclusive": 8.511499999964144,
+          "self": 7.351900000066962
+        },
+        {
+          "name": "shipNavigationSystem.updateShipNavigation",
+          "calls": 324,
+          "inclusive": 315.8041999999259,
+          "self": 5.144800000009127
+        },
+        {
+          "name": "flightBehaviors.OrdnanceAvoidanceBlock",
+          "calls": 183,
+          "inclusive": 4.7638000000297325,
+          "self": 4.7638000000297325
+        },
+        {
+          "name": "navigationContext.prepareNavigationContext",
+          "calls": 1,
+          "inclusive": 4.252100000012433,
+          "self": 4.252100000012433
+        },
+        {
+          "name": "fighterMissionSystem.updateCycle",
+          "calls": 86,
+          "inclusive": 4.667099999947823,
+          "self": 3.21399999994901
+        },
+        {
+          "name": "collisionContactSolver.resolveShipCollisions",
+          "calls": 2,
+          "inclusive": 3.2027999999991152,
+          "self": 3.2027999999991152
+        }
+      ],
+      "route": {
+        "calls": 77,
+        "inclusiveMs": 278.9487000000372,
+        "selfMs": 278.9487000000372
+      }
+    }
+  },
+  "nativeExclusive": [
+    {
+      "name": "arena route",
+      "samples": 51875,
+      "percent": 44.75455094469847
+    },
+    {
+      "name": "other",
+      "samples": 25315,
+      "percent": 21.840220861012856
+    },
+    {
+      "name": "missile/ship fire control",
+      "samples": 10874,
+      "percent": 9.381416616340264
+    },
+    {
+      "name": "separation",
+      "samples": 10640,
+      "percent": 9.179535846777672
+    },
+    {
+      "name": "navigation target",
+      "samples": 9505,
+      "percent": 8.200327840565956
+    },
+    {
+      "name": "projectiles",
+      "samples": 3834,
+      "percent": 3.3077387628332326
+    },
+    {
+      "name": "contacts",
+      "samples": 1983,
+      "percent": 1.7108101112932448
+    },
+    {
+      "name": "haven cleanup",
+      "samples": 1743,
+      "percent": 1.5037529117418686
+    },
+    {
+      "name": "obstacles",
+      "samples": 141,
+      "percent": 0.12164610473643343
+    }
+  ],
+  "nativeInclusive": [
+    {
+      "name": "arena route",
+      "samples": 51875,
+      "percent": 44.75455094469847
+    },
+    {
+      "name": "missile/ship fire control",
+      "samples": 10874,
+      "percent": 9.381416616340264
+    },
+    {
+      "name": "separation",
+      "samples": 10640,
+      "percent": 9.179535846777672
+    },
+    {
+      "name": "navigation target",
+      "samples": 9505,
+      "percent": 8.200327840565956
+    },
+    {
+      "name": "projectiles",
+      "samples": 3834,
+      "percent": 3.3077387628332326
+    },
+    {
+      "name": "contacts",
+      "samples": 1983,
+      "percent": 1.7108101112932448
+    },
+    {
+      "name": "haven cleanup",
+      "samples": 1743,
+      "percent": 1.5037529117418686
+    },
+    {
+      "name": "obstacles",
+      "samples": 141,
+      "percent": 0.12164610473643343
+    }
+  ],
+  "nativeLeaves": [
+    {
+      "name": "math2d.ts:vecSub",
+      "samples": 19241,
+      "percent": 16.59994823570011
+    },
+    {
+      "name": "math2d.ts:vecAdd",
+      "samples": 16158,
+      "percent": 13.940125959796394
+    },
+    {
+      "name": "arenaBoundary.ts:returnRouteCost",
+      "samples": 12812,
+      "percent": 11.053403502717625
+    },
+    {
+      "name": "fireControl.ts:inMountArc",
+      "samples": 5710,
+      "percent": 4.926235872659822
+    },
+    {
+      "name": "math2d.ts:rotatePoint",
+      "samples": 5314,
+      "percent": 4.584591493400052
+    },
+    {
+      "name": "arenaBoundary.ts:arenaVelocity",
+      "samples": 4548,
+      "percent": 3.9237339314985764
+    },
+    {
+      "name": "shieldGeometry.ts:__name",
+      "samples": 4280,
+      "percent": 3.6925200586662066
+    },
+    {
+      "name": "runtime:set filename",
+      "samples": 4173,
+      "percent": 3.6002070571995515
+    },
+    {
+      "name": "fireControl.ts:acquireMountTarget",
+      "samples": 3220,
+      "percent": 2.7780174273142957
+    },
+    {
+      "name": "flightControl.ts:withinPursuitTheater",
+      "samples": 2587,
+      "percent": 2.231904063497541
+    },
+    {
+      "name": "flightBehaviors.ts:calculateSeparation",
+      "samples": 2474,
+      "percent": 2.134414632042102
+    },
+    {
+      "name": "math2d.ts:vecLengthSq",
+      "samples": 2453,
+      "percent": 2.1162971270813564
+    },
+    {
+      "name": "shipNavigationSystem.ts:updateShipNavigation",
+      "samples": 2347,
+      "percent": 2.024846863946165
+    },
+    {
+      "name": "simulation.ts:tick",
+      "samples": 2313,
+      "percent": 1.9955137606763869
+    },
+    {
+      "name": "math2d.ts:vecDot",
+      "samples": 2240,
+      "percent": 1.9325338624795099
+    },
+    {
+      "name": "shipNavigationSystem.ts:findNavigationTarget",
+      "samples": 2164,
+      "percent": 1.8669657492882408
+    },
+    {
+      "name": "shipNavigationSystem.ts:selectNavigationTarget",
+      "samples": 1790,
+      "percent": 1.54430161332068
+    },
+    {
+      "name": "flightControl.ts:capitalIntent",
+      "samples": 1758,
+      "percent": 1.5166939867138296
+    },
+    {
+      "name": "shieldHaven.ts:cleanup",
+      "samples": 1554,
+      "percent": 1.34069536709516
+    },
+    {
+      "name": "collisionContactSolver.ts:resolveShipCollisions",
+      "samples": 1510,
+      "percent": 1.302734880510741
+    },
+    {
+      "name": "flightControl.ts:anonymous",
+      "samples": 1502,
+      "percent": 1.2958329738590286
+    },
+    {
+      "name": "fireControl.ts:anonymous",
+      "samples": 1341,
+      "percent": 1.1569321024933137
+    },
+    {
+      "name": "runtime:(garbage collector)",
+      "samples": 1084,
+      "percent": 0.9352083513070486
+    },
+    {
+      "name": "math2d.ts:vecScale",
+      "samples": 950,
+      "percent": 0.8196014148908636
+    },
+    {
+      "name": "projectileEngine.ts:updateProjectiles",
+      "samples": 857,
+      "percent": 0.7393667500647054
+    }
+  ],
+  "minAlive": 322,
+  "state": "aebd570d3dfcd0077455f0bb7cb4172efc8cde278d9226b1f713ca8d37eba712"
+}
