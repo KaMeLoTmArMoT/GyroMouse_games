@@ -2,6 +2,7 @@
 
 import { ChevronDown, ChevronUp, Copy, Plus, Shield, Swords, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { BATTLE_MAPS, type BattleMapId } from "../engine/battleMaps";
 import type { CrewVeterancy } from "../engine/crewVeterancy";
 import { type FleetSlot, fleetSlotCost } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
@@ -23,6 +24,8 @@ interface FleetBuilderProps {
   budgetLimit: number;
   enemyPresetId: string;
   onSelectEnemyPreset: (presetId: string) => void;
+  selectedMap: BattleMapId;
+  onSelectMap: (map: BattleMapId) => void;
   onStartBattle: () => void;
 }
 
@@ -425,7 +428,7 @@ export function FleetBuilder(props: FleetBuilderProps) {
         />
       </div>
       <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 shrink-0 select-text">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
           <label className="block min-w-0 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
             Opposing Fleet Presets
             <select
@@ -456,6 +459,20 @@ export function FleetBuilder(props: FleetBuilderProps) {
               {SCENARIOS.map((scenario) => (
                 <option key={scenario.id} value={`scenario:${scenario.id}`}>
                   {scenario.label.replace(/\bSC\b/g, "Fighters")}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block min-w-0 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            Battle Arena
+            <select
+              value={props.selectedMap}
+              onChange={(event) => props.onSelectMap(event.target.value as BattleMapId)}
+              className="mt-1 w-full min-w-0 max-w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-xs text-zinc-200 font-mono focus:border-cyan-500 focus:outline-none"
+            >
+              {BATTLE_MAPS.map((map) => (
+                <option key={map.id} value={map.id}>
+                  {map.label} — {map.description}
                 </option>
               ))}
             </select>

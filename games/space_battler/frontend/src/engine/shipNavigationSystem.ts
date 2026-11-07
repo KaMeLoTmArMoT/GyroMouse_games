@@ -399,7 +399,8 @@ export function updateShipNavigation(
   context: Pick<
     ClientCombatSimulation,
     "shieldHaven" | "orders" | "timeElapsed" | "projectiles" | "ships"
-  >,
+  > &
+    Partial<Pick<ClientCombatSimulation, "mapObstacles">>,
   fighterCycle: FighterMissionSystem["updateCycle"],
 ): void {
   if (moveCarrierLaunch(ship, aliveShips, dt, context.timeElapsed)) return;
@@ -591,6 +592,7 @@ export function updateShipNavigation(
       intendedVelocity[0],
       intendedVelocity[1],
       ship.hullClass === "strike_craft" && ship.fighterPhase === "attack" ? target : null,
+      context.mapObstacles,
     );
   }
   const avoidingObstacle = Math.abs(obstacleDecision.correction) > 1e-6;

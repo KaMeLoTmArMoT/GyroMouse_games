@@ -12,6 +12,12 @@ import type {
   WeaponType,
 } from "../types/combat";
 import {
+  type BattleMapId,
+  createMapObstacles,
+  resolveMapContacts,
+  updateMapObstacles,
+} from "./battleMaps";
+import {
   type ActiveBeam,
   type BeamChannel,
   type BeamFireCallback,
@@ -39,6 +45,12 @@ export type { FlakBurstCallback } from "./projectileEngine";
 const FIXED_STEP = 1 / 60;
 
 export class ClientCombatSimulation {
+  readonly mapObstacles;
+  readonly selectedMap: BattleMapId;
+  constructor(selectedMap: BattleMapId = "empty_void") {
+    this.selectedMap = selectedMap;
+    this.mapObstacles = createMapObstacles(selectedMap);
+  }
   readonly shieldHaven = new ShieldHavenSystem();
   readonly harmonicShields = new HarmonicShieldSystem();
   ships: ShipState[] = [];
@@ -303,6 +315,7 @@ export class ClientCombatSimulation {
 
   private tick(dt: number): void {
     this.timeElapsed += dt;
+    updateMapObstacles(this.mapObstacles, this.timeElapsed);
     this.ships = this.ships.filter((ship) => !ship.isDebris || ship.isAlive);
     updateCarrierHangars(this.ships, this.timeElapsed, (ship, amount) =>
       this.observer?.onShieldRegen(ship, amount),
@@ -386,6 +399,9 @@ export class ClientCombatSimulation {
     this.contactSolver.resolveCruiserClearance(aliveShips);
     this.shieldHaven.attachGuests(aliveShips, dt);
     this.resolveShipCollisions(collisionShips, dt, true, repulsorSteps);
+    resolveMapContacts(aliveShips, this.mapObstacles, (ship) => {
+      if (ship.havenState === "tethered") this.shieldHaven.release(ship.id);
+    });
     this.shieldHaven.refreshAmplification(combatShips);
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];

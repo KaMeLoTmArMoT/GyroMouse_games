@@ -16,6 +16,7 @@ import type { ShipState } from "../types/combat";
 import { VisualEffectsManager } from "./effects";
 import { drawGlowLine } from "./glowSprites";
 import { renderHavenSlots, renderHavenTethers } from "./havenRenderer";
+import { renderMapObstacles } from "./obstacleRenderer";
 import {
   renderBeam,
   renderProjectile,
@@ -209,6 +210,7 @@ export function TacticalCanvas({
           const viewport = worldViewport(canvas.width, canvas.height, cameraRef.current);
 
           drawTacticalGrid(ctx);
+          renderMapObstacles(ctx, sim.mapObstacles, viewport);
 
           const selectedTender = sim.ships.find(
             (ship) =>

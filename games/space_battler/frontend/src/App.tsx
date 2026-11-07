@@ -20,6 +20,7 @@ import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { type CrewVeterancy, FleetBuilder } from "./components/FleetBuilder";
 import { PerformanceHud, PerformanceSamples } from "./components/PerformanceHud";
 import { spaceAudio } from "./engine/audioEngine";
+import type { BattleMapId } from "./engine/battleMaps";
 import { CARRIER_FABRICATION_INTERVAL, carrierFabricationProgress } from "./engine/carrierHangar";
 import { fleetAdvantage } from "./engine/fleetAdvantage";
 import { FleetBreakdown } from "./engine/fleetBreakdown";
@@ -127,6 +128,7 @@ export default function App() {
     return DEFAULT_USER_SLOTS;
   });
   const [budgetLimit] = useState<number>(30000);
+  const [selectedMap, setSelectedMap] = useState<BattleMapId>("empty_void");
   const [crewVeterancy, setCrewVeterancy] = useState<Record<"blue" | "red", CrewVeterancy>>({
     blue: "pilot",
     red: "pilot",
@@ -288,7 +290,7 @@ export default function App() {
     blueSlots: FleetSlot[],
     redSlots: FleetSlot[],
   ): ClientCombatSimulation {
-    const s = new ClientCombatSimulation();
+    const s = new ClientCombatSimulation(selectedMap);
     s.crewVeterancy = { 0: crewVeterancy.blue, 1: crewVeterancy.red };
 
     // 1. Build Blue Force (Spawn at -1100u with wide tactical stance)
@@ -585,6 +587,8 @@ export default function App() {
           budgetLimit={budgetLimit}
           enemyPresetId={enemyPresetId}
           onSelectEnemyPreset={selectEnemyPreset}
+          selectedMap={selectedMap}
+          onSelectMap={setSelectedMap}
           onStartBattle={handleStartFromBuilder}
         />
       ) : (

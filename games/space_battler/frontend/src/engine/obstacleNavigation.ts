@@ -1,4 +1,5 @@
 import type { ShipState } from "../types/combat";
+import type { MapObstacle } from "./battleMaps";
 import { clamp, normalizeAngle } from "./math2d";
 import { activeShieldRadius, isCapitalShip } from "./shieldGeometry";
 
@@ -9,6 +10,7 @@ export function obstacleCourseCorrection(
   vx: number,
   vy: number,
   attackTarget: ShipState | null = null,
+  mapObstacles: readonly MapObstacle[] = [],
 ): number {
   const speed = Math.hypot(vx, vy);
   if (speed < 1) return 0;
@@ -50,6 +52,34 @@ export function obstacleCourseCorrection(
     const bearing = Math.atan2(py, px);
     const side = Math.sign(normalizeAngle(heading - bearing)) || (ship.id < obstacle.id ? -1 : 1);
     const tangent = Math.asin(Math.min(1, clearance / Math.max(1, distance)));
+    correction = normalizeAngle(bearing + side * (tangent + 0.08) - heading);
+  }
+  for (const obstacle of mapObstacles) {
+    const rx = obstacle.pos[0] - ship.pos[0];
+    const ry = obstacle.pos[1] - ship.pos[1];
+    const dx = vx - obstacle.velocity[0];
+    const dy = vy - obstacle.velocity[1];
+    const closing = rx * dx + ry * dy;
+    const relativeSpeedSquared = dx * dx + dy * dy;
+    if (closing <= 0 || relativeSpeedSquared < 1e-6) continue;
+    const tStar = clamp(closing / relativeSpeedSquared, 0, horizon);
+    const clearance = activeShieldRadius(ship) + obstacle.radius + 60;
+    const cx = rx - dx * tStar;
+    const cy = ry - dy * tStar;
+    if (cx * cx + cy * cy >= clearance * clearance) continue;
+    const discriminant =
+      closing * closing - relativeSpeedSquared * (rx * rx + ry * ry - clearance * clearance);
+    const contact = Math.max(
+      0,
+      (closing - Math.sqrt(Math.max(0, discriminant))) / relativeSpeedSquared,
+    );
+    if (contact >= firstContact) continue;
+    firstContact = contact;
+    const px = rx + obstacle.velocity[0] * tStar;
+    const py = ry + obstacle.velocity[1] * tStar;
+    const bearing = Math.atan2(py, px);
+    const side = Math.sign(normalizeAngle(heading - bearing)) || (ship.id < obstacle.id ? -1 : 1);
+    const tangent = Math.asin(Math.min(1, clearance / Math.max(1, Math.hypot(px, py))));
     correction = normalizeAngle(bearing + side * (tangent + 0.08) - heading);
   }
   return correction;
