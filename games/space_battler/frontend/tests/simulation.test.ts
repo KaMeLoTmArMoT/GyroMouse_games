@@ -19,6 +19,9 @@ import { HULL_PROFILES, projectileMaxHp } from "../src/engine/shipProfiles";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass, ProjectileState, ShipState, Vector2 } from "../src/types/combat";
 
+// Heavy integration tests remain enabled unless the fast runner explicitly skips them.
+const ht = process.env.SKIP_HEAVY_TESTS === "1" ? it.skip : it;
+
 function fleet(hulls: HullClass[], team: number, x: number): ShipState[] {
   return buildFleetFromSlots(
     hulls.map((hullClass, i) => ({ id: `${i}`, hullClass, groupId: team + 1 })),
@@ -1102,7 +1105,7 @@ describe("tactical maneuvers", () => {
     expect(fighter.fighterPhase).toBe("egress");
   });
 
-  it.each([0, 1])(
+  ht.each([0, 1])(
     "delivers all 30 first-pass payloads with short-range nose guns on team %i",
     (team) => {
       const fighters = buildFleetFromSlots(
@@ -1711,86 +1714,94 @@ describe("arena containment and matchup rebalance", () => {
     }
   });
 
-  it("advances 60 grouped fighters into cohesive, shield-safe strikes against Triple Threat", () => {
-    const fighters = buildFleetFromSlots(
-      Array.from({ length: 60 }, (_, i) => ({
-        id: `${i}`,
-        hullClass: "strike_craft" as const,
-        groupId: Math.floor(i / 20) + 1,
-      })),
-      0,
-      -800,
-      0,
-    );
-    const preset = FLEET_PRESETS.find((p) => p.id === "test_all_threes");
-    if (!preset) throw new Error("Missing Triple Threat preset");
-    const enemies = buildFleetFromSlots(
-      preset.composition.flatMap(({ hullClass, count, groupId }) =>
-        Array.from({ length: count }, (_, i) => ({ id: `${hullClass}_${i}`, hullClass, groupId })),
-      ),
-      1,
-      800,
-      Math.PI,
-    );
-    expect(fighters).toHaveLength(60);
-    expect(fighters.every((s) => Math.abs(s.pos[1]) <= 600)).toBe(true);
-    const spawnX = fighters.map((s) => s.pos[0]);
-    const sim = simulate([...fighters, ...enemies]);
-    const capitals = enemies.filter(
-      (s) => s.hullClass === "battleship" || s.hullClass === "cruiser",
-    );
-    let contacts = 0;
-    let capitalDamage = 0;
-    const nearCapital = (s: ShipState) =>
-      capitals.some(
-        (enemy) =>
-          enemy.isAlive && vecDistance(s.pos, enemy.pos) <= (s.size + enemy.size) * 1.4 + 21,
+  ht(
+    "advances 60 grouped fighters into cohesive, shield-safe strikes against Triple Threat",
+    () => {
+      const fighters = buildFleetFromSlots(
+        Array.from({ length: 60 }, (_, i) => ({
+          id: `${i}`,
+          hullClass: "strike_craft" as const,
+          groupId: Math.floor(i / 20) + 1,
+        })),
+        0,
+        -800,
+        0,
       );
-    // Collision resolution pushes hulls apart before emitting destruction callbacks.
-    sim.onShipDestroyed = (s) => {
-      if (s.team === 0 && nearCapital(s)) contacts++;
-    };
-    sim.update(1 / 60);
-    for (const groupId of [1, 2, 3]) {
-      const group = fighters.filter((s) => s.groupId === groupId);
-      expect(new Set(group.map((s) => s.navigationTargetId)).size).toBe(1);
-      expect(group.every((s) => s.navigationTargetId !== undefined)).toBe(true);
-      expect(group.filter((s) => s.fighterPhase === "attack")).toHaveLength(4);
-      expect(group.filter((s) => s.fighterPhase === "staging")).toHaveLength(16);
-      expect(new Set(group.map((s) => s.wingIndex)).size).toBe(5);
-      for (const fighter of group)
-        expect(
-          fighters
-            .filter((s) => s.wingIndex === fighter.wingIndex)
-            .every((s) => s.groupId === groupId),
-        ).toBe(true);
-      for (const wingIndex of new Set(group.map((s) => s.wingIndex))) {
-        const ys = group.filter((s) => s.wingIndex === wingIndex).map((s) => s.pos[1]);
-        expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(57);
-      }
-    }
-    for (let tick = 1; tick < 60 * 90 && sim.winner === null; tick++) {
+      const preset = FLEET_PRESETS.find((p) => p.id === "test_all_threes");
+      if (!preset) throw new Error("Missing Triple Threat preset");
+      const enemies = buildFleetFromSlots(
+        preset.composition.flatMap(({ hullClass, count, groupId }) =>
+          Array.from({ length: count }, (_, i) => ({
+            id: `${hullClass}_${i}`,
+            hullClass,
+            groupId,
+          })),
+        ),
+        1,
+        800,
+        Math.PI,
+      );
+      expect(fighters).toHaveLength(60);
+      expect(fighters.every((s) => Math.abs(s.pos[1]) <= 600)).toBe(true);
+      const spawnX = fighters.map((s) => s.pos[0]);
+      const sim = simulate([...fighters, ...enemies]);
+      const capitals = enemies.filter(
+        (s) => s.hullClass === "battleship" || s.hullClass === "cruiser",
+      );
+      let contacts = 0;
+      let capitalDamage = 0;
+      const nearCapital = (s: ShipState) =>
+        capitals.some(
+          (enemy) =>
+            enemy.isAlive && vecDistance(s.pos, enemy.pos) <= (s.size + enemy.size) * 1.4 + 21,
+        );
+      // Collision resolution pushes hulls apart before emitting destruction callbacks.
+      sim.onShipDestroyed = (s) => {
+        if (s.team === 0 && nearCapital(s)) contacts++;
+      };
       sim.update(1 / 60);
-      capitalDamage = Math.max(
-        capitalDamage,
-        ...capitals.map((s) => s.armorMax - s.armorCurrent + s.hullMax - s.hullCurrent),
-      );
-      if (tick < 60)
-        fighters.forEach((s, i) => {
-          expect(s.pos[0], s.id).toBeGreaterThanOrEqual(spawnX[i]);
-        });
-      for (const fighter of fighters) if (fighter.isAlive && nearCapital(fighter)) contacts++;
-      if (tick % 60 === 0)
-        for (const groupId of [1, 2, 3]) {
-          const group = fighters.filter((s) => s.isAlive && s.groupId === groupId);
-          expect(new Set(group.map((s) => s.navigationTargetId)).size).toBeLessThanOrEqual(1);
+      for (const groupId of [1, 2, 3]) {
+        const group = fighters.filter((s) => s.groupId === groupId);
+        expect(new Set(group.map((s) => s.navigationTargetId)).size).toBe(1);
+        expect(group.every((s) => s.navigationTargetId !== undefined)).toBe(true);
+        expect(group.filter((s) => s.fighterPhase === "attack")).toHaveLength(4);
+        expect(group.filter((s) => s.fighterPhase === "staging")).toHaveLength(16);
+        expect(new Set(group.map((s) => s.wingIndex)).size).toBe(5);
+        for (const fighter of group)
+          expect(
+            fighters
+              .filter((s) => s.wingIndex === fighter.wingIndex)
+              .every((s) => s.groupId === groupId),
+          ).toBe(true);
+        for (const wingIndex of new Set(group.map((s) => s.wingIndex))) {
+          const ys = group.filter((s) => s.wingIndex === wingIndex).map((s) => s.pos[1]);
+          expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(57);
         }
-    }
-    expect(contacts).toBeLessThanOrEqual(2);
-    expect(sim.stats[0].damageDealt).toBeGreaterThan(6500);
-    expect(sim.stats[1].shipsLost).toBeGreaterThanOrEqual(3);
-    expect(capitalDamage).toBeGreaterThan(0);
-  }, 60000);
+      }
+      for (let tick = 1; tick < 60 * 90 && sim.winner === null; tick++) {
+        sim.update(1 / 60);
+        capitalDamage = Math.max(
+          capitalDamage,
+          ...capitals.map((s) => s.armorMax - s.armorCurrent + s.hullMax - s.hullCurrent),
+        );
+        if (tick < 60)
+          fighters.forEach((s, i) => {
+            expect(s.pos[0], s.id).toBeGreaterThanOrEqual(spawnX[i]);
+          });
+        for (const fighter of fighters) if (fighter.isAlive && nearCapital(fighter)) contacts++;
+        if (tick % 60 === 0)
+          for (const groupId of [1, 2, 3]) {
+            const group = fighters.filter((s) => s.isAlive && s.groupId === groupId);
+            expect(new Set(group.map((s) => s.navigationTargetId)).size).toBeLessThanOrEqual(1);
+          }
+      }
+      expect(contacts).toBeLessThanOrEqual(2);
+      expect(sim.stats[0].damageDealt).toBeGreaterThan(6500);
+      expect(sim.stats[1].shipsLost).toBeGreaterThanOrEqual(3);
+      expect(capitalDamage).toBeGreaterThan(0);
+    },
+    60000,
+  );
 
   it("jinks away from an opening inbound torpedo before it reaches close range", () => {
     const fighter = ship("strike_craft", 0, [0, 0]);

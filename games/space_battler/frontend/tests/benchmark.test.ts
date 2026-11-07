@@ -25,7 +25,33 @@ describe("headless benchmark", () => {
       for (const ship of ships) sim.addShip(ship);
       const telemetry = new CombatTelemetry(ships);
       if (observed) sim.observer = telemetry;
-      for (let tick = 0; tick < 3600; tick++) sim.update(1 / 60);
+      // Use Vitest's verbose reporter to display profiling output for passing tests.
+      if (process.env.PROFILING === "true") {
+        const ticks: { duration: number; ships: number; projectiles: number; debris: number }[] =
+          [];
+        for (let tick = 0; tick < 3600; tick++) {
+          const ships = sim.ships.filter((ship) => ship.isAlive && !ship.isDebris).length;
+          const debris = sim.ships.filter((ship) => ship.isAlive && ship.isDebris).length;
+          const projectiles = sim.projectiles.length;
+          const start = performance.now();
+          sim.update(1 / 60);
+          ticks.push({ duration: performance.now() - start, ships, projectiles, debris });
+        }
+        const durations = ticks.map((tick) => tick.duration).sort((a, b) => a - b);
+        const percentile = (p: number) => durations[Math.ceil(p * durations.length) - 1];
+        const middle = durations.length / 2;
+        const median = (durations[middle - 1] + durations[middle]) / 2;
+        console.log(`Tick profile (${observed ? "observed" : "plain"}, ms):`, {
+          median,
+          p95: percentile(0.95),
+          worst1Percent: percentile(0.99), // 99th-percentile duration: threshold for slowest 1%.
+        });
+        for (const [index, tick] of ticks.entries()) {
+          if (tick.duration > 3 * median) console.log(`Tick spike ${index}:`, tick);
+        }
+      } else {
+        for (let tick = 0; tick < 3600; tick++) sim.update(1 / 60);
+      }
       return { ships, initial, stats: sim.stats, telemetry };
     };
     const observed = run(true);

@@ -9,6 +9,7 @@
     "bench": "tsx bench/run.ts",
     "bench:drift": "tsx bench/drift.ts",
     "bench:update-golden": "tsx bench/drift.ts --update",
+    "test:fast": "node -e \"const r = require('child_process').spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run'], { stdio: 'inherit', env: { ...process.env, SKIP_HEAVY_TESTS: '1' } }); process.exit(r.status ?? 1)\"",
     "lint": "oxlint",
     "preview": "vite preview"
   },
