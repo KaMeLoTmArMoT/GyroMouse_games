@@ -392,11 +392,17 @@ export default function App() {
     setTimeout(() => setCopiedNotification(false), 2000);
   };
 
-  const copyFleetBreakdown = async (team: number) => {
+  const copyFleetBreakdown = async (team?: number) => {
     if (!(sim.observer instanceof FleetBreakdown)) return;
     try {
-      await navigator.clipboard.writeText(sim.observer.format(team));
-      setBreakdownNotification("Copied to clipboard!");
+      const text =
+        team === undefined
+          ? [sim.observer.format(0), sim.observer.format(1), sim.observer.format()].join("\n\n")
+          : sim.observer.format(team);
+      await navigator.clipboard.writeText(text);
+      setBreakdownNotification(
+        `Copied ${team === undefined ? "Battle State" : team === 0 ? "Terran Fleet" : "Alien Fleet"} to clipboard!`,
+      );
     } catch {
       setBreakdownNotification("Unable to copy to clipboard.");
     }
@@ -778,7 +784,18 @@ export default function App() {
             <div className="grid grid-cols-2 gap-2 text-xs shrink-0">
               <div className="p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40 select-text">
                 <div className="flex items-center justify-between text-[10px] text-cyan-400 font-semibold uppercase">
-                  <span>Terran</span>
+                  <span className="flex items-center gap-1">
+                    Terran
+                    <button
+                      type="button"
+                      onClick={() => void copyFleetBreakdown(0)}
+                      title="Copy Terran fleet"
+                      aria-label="Copy Terran fleet"
+                      className="p-1 rounded hover:bg-cyan-800/50 cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
                   <span className="font-mono">{sim.getRollingDPS(0)} DPS</span>
                 </div>
                 <div className="text-base font-bold text-zinc-100 mt-0.5 select-all">
@@ -791,7 +808,18 @@ export default function App() {
 
               <div className="p-2.5 rounded-lg bg-red-950/20 border border-red-800/40 select-text">
                 <div className="flex items-center justify-between text-[10px] text-red-400 font-semibold uppercase">
-                  <span>Alien</span>
+                  <span className="flex items-center gap-1">
+                    Alien
+                    <button
+                      type="button"
+                      onClick={() => void copyFleetBreakdown(1)}
+                      title="Copy Alien fleet"
+                      aria-label="Copy Alien fleet"
+                      className="p-1 rounded hover:bg-red-800/50 cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
                   <span className="font-mono">{sim.getRollingDPS(1)} DPS</span>
                 </div>
                 <div className="text-base font-bold text-zinc-100 mt-0.5 select-all">
@@ -801,6 +829,22 @@ export default function App() {
                   </span>
                 </div>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => void copyFleetBreakdown()}
+                className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                title="Copy combined battle state"
+              >
+                <Copy className="w-3.5 h-3.5" /> Copy battle state
+              </button>
+              {breakdownNotification && (
+                <span role="status" className="text-[11px] text-cyan-300">
+                  {breakdownNotification}
+                </span>
+              )}
             </div>
 
             {/* TAB 1: Inspected Vessel Details */}

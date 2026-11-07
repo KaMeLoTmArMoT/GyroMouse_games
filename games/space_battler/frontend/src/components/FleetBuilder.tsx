@@ -929,14 +929,11 @@ function FleetBuilderPanel({
                 }
                 className={`mt-1 w-full rounded-lg border bg-zinc-950 p-1.5 text-xs font-mono text-zinc-200 focus:outline-none ${redTeam ? "border-red-900/40 focus:border-red-500" : "border-zinc-800 focus:border-cyan-500"}`}
               >
-                <option value="recruit">Recruit · Новачок</option>
-                <option value="pilot">Pilot · Пілот</option>
-                <option value="veteran">Veteran · Ветеран</option>
-                <option value="ace">Ace · Ас</option>
+                <option value="recruit">Recruit</option>
+                <option value="pilot">Pilot</option>
+                <option value="veteran">Veteran</option>
+                <option value="ace">Ace</option>
               </select>
-              <span className="mt-1 block normal-case font-normal tracking-normal text-zinc-500">
-                Preview only; combat uses current settings.
-              </span>
             </label>
             <div className="flex flex-wrap gap-2">
               <button

@@ -49,18 +49,18 @@ export class FleetBreakdown implements CombatObserver {
     this.restored.set(ship.id, (this.restored.get(ship.id) ?? 0) + amount);
   }
 
-  format(team: number): string {
-    const ships = this.sim.ships.filter((s) => s.team === team && !s.isDebris);
+  format(team?: number): string {
+    const ships = this.sim.ships.filter(
+      (s) => (team === undefined || s.team === team) && !s.isDebris,
+    );
     const lines = [
-      `## ${team === 0 ? "Terran Fleet" : "Alien Swarm"} Breakdown`,
+      `## ${team === undefined ? "Battle" : team === 0 ? "Terran Fleet" : "Alien Swarm"} Breakdown`,
       "| Class | Count (initial → active; added, lost) | Hull HP | Armor | Shields | Shields Restored | Damage Dealt (avg DPS) |",
       "| --- | --- | --- | --- | --- | --- | --- |",
     ];
     let currentHp = 0;
     let maxHp = 0;
-    for (const hullClass of Object.keys(CLASS_NAMES) as HullClass[]) {
-      const group = ships.filter((s) => s.hullClass === hullClass);
-      if (!group.length) continue;
+    const row = (name: string, group: ShipState[]) => {
       const initial = group.filter((s) => this.initialIds.has(s.id)).length;
       const active = group.filter((s) => s.isAlive).length;
       const added = group.length - initial;
@@ -71,8 +71,10 @@ export class FleetBreakdown implements CombatObserver {
       ) => {
         const value = group.reduce((sum, s) => sum + (s.isAlive ? s[current] : 0), 0);
         const total = group.reduce((sum, s) => sum + s[max], 0);
-        currentHp += value;
-        maxHp += total;
+        if (name === "Total") {
+          currentHp += value;
+          maxHp += total;
+        }
         return `${Math.round(value)} / ${Math.round(total)}`;
       };
       const hull = layer("hullCurrent", "hullMax");
@@ -82,9 +84,14 @@ export class FleetBreakdown implements CombatObserver {
       const damage = group.reduce((sum, s) => sum + (this.damage.get(s.id) ?? 0), 0);
       const duration = this.sim.timeElapsed;
       lines.push(
-        `| ${CLASS_NAMES[hullClass]} | ${initial} → ${active} (+${added}, -${lost}) | ${hull} | ${armor} | ${shields} | ${Math.round(restored)} | ${Math.round(damage)} (${duration > 0 ? (damage / duration).toFixed(1) : "0.0"} DPS) |`,
+        `| ${name} | ${initial} → ${active} (+${added}, -${lost}) | ${hull} | ${armor} | ${shields} | ${Math.round(restored)} | ${Math.round(damage)} (${duration > 0 ? (damage / duration).toFixed(1) : "0.0"} DPS) |`,
       );
+    };
+    for (const hullClass of Object.keys(CLASS_NAMES) as HullClass[]) {
+      const group = ships.filter((s) => s.hullClass === hullClass);
+      if (group.length) row(CLASS_NAMES[hullClass], group);
     }
+    row("Total", ships);
     lines.push(
       `\nFleet HP remaining: ${maxHp > 0 ? ((currentHp / maxHp) * 100).toFixed(1) : "0.0"}% (hull + armor + shields; includes added craft).`,
       "Shields restored includes regeneration, harmonic support and carrier repairs received.",

@@ -39,4 +39,10 @@ it("reports added and lost craft, actual damage, restoration, and remaining flee
   ).toFixed(1);
   expect(text).toContain(`Fleet HP remaining: ${expectedPercent}%`);
   expect(breakdown.format(1)).not.toContain("Strike Craft");
+  expect(text).toContain("| Total | 1 → 1 (+1, -1)");
+  const battle = breakdown.format();
+  expect(battle).toContain("## Battle Breakdown");
+  expect(battle).toContain("| Total | 2 → 2 (+1, -1)");
+  expect(battle).toContain("Corvette");
+  expect(battle).toContain("Strike Craft");
 });
