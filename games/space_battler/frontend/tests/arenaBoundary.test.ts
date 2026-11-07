@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ARENA_RADIUS, applyArenaRadiation, arenaVelocity } from "../src/engine/arenaBoundary";
+import * as fireControl from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { normalizeAngle } from "../src/engine/math2d";
 import type { HullClass, ShipState, Vector2 } from "../src/types/combat";
@@ -30,6 +31,8 @@ function direct(ship: ShipState): Vector2 {
 }
 
 describe("threat-aware arena return", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it.each([
     ["strike_craft", 6],
     ["missile_frigate", 5],
@@ -71,6 +74,62 @@ describe("threat-aware arena return", () => {
     enemy.pos = [-ARENA_RADIUS, 0];
     enemy.turrets = cluster("strike_craft", 1)[0].turrets;
     expect(arenaVelocity(ship, direct(ship), [enemy])[1]).toBeCloseTo(0);
+  });
+
+  it("skips turret arc checks for enemies outside every swept return leg", () => {
+    const ship = vessel();
+    const enemies = cluster("strike_craft", 170);
+    for (const enemy of enemies) enemy.pos[0] = -ARENA_RADIUS;
+    const arcChecks = vi.spyOn(fireControl, "inMountArc");
+    expect(arenaVelocity(ship, direct(ship), enemies)[1]).toBeCloseTo(0);
+    expect(arcChecks).not.toHaveBeenCalled();
+  });
+
+  it("includes incoming enemy drift during the initial turn and later legs", () => {
+    const ship = vessel();
+    ship.heading = 0;
+    const enemy = vessel("strike_craft", 1);
+    enemy.pos = [ARENA_RADIUS - 1000, 0];
+    enemy.heading = 0;
+    const arcChecks = vi.spyOn(fireControl, "inMountArc");
+    arenaVelocity(ship, direct(ship), [enemy]);
+    expect(arcChecks).not.toHaveBeenCalled();
+    enemy.velocity = [enemy.maxSpeed, 0];
+    arenaVelocity(ship, direct(ship), [enemy]);
+    expect(arcChecks).toHaveBeenCalled();
+  });
+
+  it("includes mount offsets when the enemy hull is far from its reachable guns", () => {
+    const ship = vessel();
+    const enemies = cluster("strike_craft", 6);
+    const route = arenaVelocity(ship, direct(ship), enemies);
+    for (const enemy of enemies) {
+      enemy.pos[0] -= ARENA_RADIUS * 2;
+      for (const turret of enemy.turrets) turret.offset[0] += ARENA_RADIUS * 2;
+    }
+    expect(arenaVelocity(ship, direct(ship), enemies)).toEqual(route);
+  });
+
+  it("includes flak blast reach in the leg bounds", () => {
+    const ship = vessel();
+    const enemies = cluster("corvette", 2);
+    const route = arenaVelocity(ship, direct(ship), enemies);
+    for (const enemy of enemies)
+      for (const turret of enemy.turrets) {
+        if (!turret.weapon.flak) continue;
+        turret.weapon.flak.blastRadius += turret.weapon.range;
+        turret.weapon.range = 0;
+      }
+    expect(arenaVelocity(ship, direct(ship), enemies)).toEqual(route);
+  });
+
+  it("preserves capital contact threats even without weapons", () => {
+    const ship = vessel();
+    const enemy = vessel("cruiser", 1);
+    enemy.pos = [ARENA_RADIUS - 120, 0];
+    enemy.turrets = [];
+    const route = arenaVelocity(ship, direct(ship), [enemy]);
+    expect(Math.abs(route[1])).toBeGreaterThan(ship.maxSpeed * 0.4);
   });
 
   it("accepts partial radiation hull loss to evade a lethal fighter kill-zone", () => {

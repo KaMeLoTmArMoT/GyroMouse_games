@@ -44,8 +44,21 @@ export function arenaAnticipation(distance: number): number {
   return t * t * (3 - 2 * t);
 }
 
+interface ReturnThreat {
+  enemy: ShipState;
+  speed: number;
+  reach: number;
+  clearance: number;
+  capital: boolean;
+}
+
 /** Compare a skirting leg followed by an inward return, including turning exposure. */
-function returnRouteCost(ship: ShipState, heading: number, ships: ShipState[]) {
+function returnRouteCost(
+  ship: ShipState,
+  heading: number,
+  threats: ReturnThreat[],
+  maxCost = Infinity,
+) {
   const distance = Math.hypot(...ship.pos);
   const inward: Vector2 = [-ship.pos[0] / distance, -ship.pos[1] / distance];
   const direction: Vector2 = [Math.cos(heading), Math.sin(heading)];
@@ -62,6 +75,9 @@ function returnRouteCost(ship: ShipState, heading: number, ships: ShipState[]) {
         Math.max(ship.turnRate, 0.01)
       : 0;
   const duration = turnTime + travelTime + returnTurn + returnTime;
+  const durationCost = duration * 0.01;
+  const hull = Math.max(1, ship.hullCurrent);
+  if (durationCost >= maxCost) return { cost: durationCost, damage: 0, radiationDamage: 0 };
   let shields = ship.shieldCurrent;
   let radiationShields = shields;
   let radiationDamage = 0;
@@ -73,10 +89,24 @@ function returnRouteCost(ship: ShipState, heading: number, ships: ShipState[]) {
     { start: end, velocity: [0, 0] as Vector2, duration: returnTurn },
     { start: end, velocity: vecScale(returnDirection, ship.maxSpeed), duration: returnTime },
   ];
-  for (const leg of legs) {
+  route: for (const leg of legs) {
     if (leg.duration <= 0) continue;
     const samples = 8;
     const step = leg.duration / samples;
+    const halfTime = leg.duration * 0.5;
+    const center = vecAdd(leg.start, vecScale(leg.velocity, halfTime));
+    const routeRadius = Math.hypot(...leg.velocity) * halfTime;
+    const midTime = elapsed + halfTime;
+    // Both swept segments fit in midpoint circles; include mount offsets and contact reach.
+    const legThreats = threats.filter(({ enemy, speed, reach }) => {
+      const bound = routeRadius + speed * halfTime + reach;
+      return (
+        Math.hypot(
+          center[0] - (enemy.pos[0] + enemy.velocity[0] * midTime),
+          center[1] - (enemy.pos[1] + enemy.velocity[1] * midTime),
+        ) <= bound
+      );
+    });
     for (let sample = 1; sample <= samples; sample++) {
       const localTime = step * (sample - 0.5);
       const time = elapsed + localTime;
@@ -90,14 +120,11 @@ function returnRouteCost(ship: ShipState, heading: number, ships: ShipState[]) {
       const shieldedTime = shieldDps > 0 ? Math.min(step, shields / shieldDps) : 0;
       shields = Math.max(0, shields - shieldDps * step);
       if (intensity > 0) damage += RADIATION_HULL_DPS * intensity * (step - shieldedTime);
-      for (const enemy of ships) {
-        if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team)
-          continue;
+      for (const { enemy, clearance, capital } of legThreats) {
         const drift = vecScale(enemy.velocity, time);
-        const enemyDistance = Math.hypot(...vecSub(pos, vecAdd(enemy.pos, drift)));
-        const clearance = shieldEnvelopeRadius(enemy) + shieldEnvelopeRadius(ship);
         // Hull/shield contact can kill light craft outright, regardless of the current gun arc.
-        if (isCapitalShip(enemy) && enemyDistance < clearance) damage += ship.hullMax * step;
+        if (capital && Math.hypot(...vecSub(pos, vecAdd(enemy.pos, drift))) < clearance)
+          damage += ship.hullMax * step;
         const point = vecSub(pos, drift);
         for (const turret of enemy.turrets) {
           if (
@@ -118,12 +145,14 @@ function returnRouteCost(ship: ShipState, heading: number, ships: ShipState[]) {
             (shieldDamage > 0 ? 1 - absorbed / shieldDamage : 1);
         }
       }
+      // Costs only increase. Rejected alternatives need no complete damage/radiation totals.
+      if (damage / hull + durationCost >= maxCost) break route;
     }
     elapsed += leg.duration;
   }
   // A small path-length cost keeps the direct route preferable when both routes are safe.
   return {
-    cost: damage / Math.max(1, ship.hullCurrent) + duration * 0.01,
+    cost: damage / hull + durationCost,
     damage,
     radiationDamage,
   };
@@ -167,7 +196,19 @@ export function arenaVelocity(ship: ShipState, desired: Vector2, ships: ShipStat
   );
   if (threats.length === 0)
     return [Math.cos(heading) * ship.maxSpeed, Math.sin(heading) * ship.maxSpeed];
-  const direct = returnRouteCost(ship, heading, threats);
+  const shipRadius = shieldEnvelopeRadius(ship);
+  const returnThreats = threats.map((enemy): ReturnThreat => {
+    const clearance = shieldEnvelopeRadius(enemy) + shipRadius;
+    const capital = isCapitalShip(enemy);
+    let reach = capital ? clearance : 0;
+    for (const turret of enemy.turrets)
+      reach = Math.max(
+        reach,
+        Math.hypot(...turret.offset) + turret.weapon.range + (turret.weapon.flak?.blastRadius ?? 0),
+      );
+    return { enemy, speed: Math.hypot(...enemy.velocity), reach, clearance, capital };
+  });
+  const direct = returnRouteCost(ship, heading, returnThreats);
   let best = direct;
   for (const offset of [
     Math.PI / 6,
@@ -178,7 +219,7 @@ export function arenaVelocity(ship: ShipState, desired: Vector2, ships: ShipStat
     -Math.PI / 2,
   ]) {
     const candidate = inwardHeading + offset;
-    const route = returnRouteCost(ship, candidate, threats);
+    const route = returnRouteCost(ship, candidate, returnThreats, best.cost);
     if (route.cost < best.cost) {
       heading = candidate;
       best = route;
