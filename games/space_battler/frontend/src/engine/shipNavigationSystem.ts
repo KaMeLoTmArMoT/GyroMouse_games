@@ -125,10 +125,7 @@ export function fighterShieldWaypoint(
   );
   return vecAdd(
     contact,
-    vecScale(
-      vecNormalize(vecSub(contact, ship.pos)),
-      Math.max(240, radius * 1.15),
-    ),
+    vecScale(vecNormalize(vecSub(contact, ship.pos)), Math.max(240, radius * 1.15)),
   );
 }
 

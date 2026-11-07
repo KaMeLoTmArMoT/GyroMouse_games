@@ -507,7 +507,8 @@ export class FighterMissionSystem {
           !s.isDocked &&
           !s.isDebris &&
           s.id !== ship.id &&
-          !(s.team === ship.team && s.hullClass === "strike_craft"),
+          !(s.team === ship.team && s.hullClass === "strike_craft") &&
+          (s.pos[0] - ship.pos[0]) ** 2 + (s.pos[1] - ship.pos[1]) ** 2 <= 800 * 800,
       )
       .map((obstacle) => {
         const capital = isCapitalShip(obstacle);
@@ -516,6 +517,7 @@ export class FighterMissionSystem {
           obstacle,
           capital,
           relative: vecSub(obstacle.pos, ship.pos),
+          distance: vecDistance(ship.pos, obstacle.pos),
           clearance:
             craftRadius + shieldEnvelopeRadius(obstacle) + (missionTarget ? 20 : capital ? 95 : 40),
           horizon: missionTarget ? 0.25 : 1,
@@ -558,21 +560,26 @@ export class FighterMissionSystem {
           -ship.turnRate * 0.5,
           ship.turnRate * 0.5,
         );
-      const candidateDir: Vector2 = [Math.cos(reachable), Math.sin(reachable)];
-      const candidateVel = vecScale(candidateDir, candidateSpeed);
+      const candidateX = Math.cos(reachable);
+      const candidateY = Math.sin(reachable);
+      const velocityX = candidateX * candidateSpeed;
+      const velocityY = candidateY * candidateSpeed;
       // Recovery values the eventual sanctuary bearing even when it requires a full turn.
-      const interestDir: Vector2 =
-        phase === "recover" ? [Math.cos(sectorAngle), Math.sin(sectorAngle)] : candidateDir;
-      const interestScore = vecDot(interestDir, intentDir);
+      const interestScore =
+        phase === "recover"
+          ? Math.cos(sectorAngle) * intentDir[0] + Math.sin(sectorAngle) * intentDir[1]
+          : candidateX * intentDir[0] + candidateY * intentDir[1];
       let dangerScore = 0;
       for (const p of projectileThreats) {
         const r = p.relative;
-        const u = vecSub(candidateVel, p.velocity);
-        const uSq = vecDot(u, u) + 1e-4;
+        const ux = velocityX - p.velocity[0];
+        const uy = velocityY - p.velocity[1];
+        const uSq = ux * ux + uy * uy + 1e-4;
         const horizon = p.horizon;
-        const tStar = clamp(-vecDot(r, u) / uSq, 0, horizon);
-        const rStar = vecAdd(r, vecScale(u, tStar));
-        const dStar = vecDistance([0, 0], rStar);
+        const tStar = clamp(-(r[0] * ux + r[1] * uy) / uSq, 0, horizon);
+        const rx = r[0] + ux * tStar;
+        const ry = r[1] + uy * tStar;
+        const dStar = Math.sqrt(rx * rx + ry * ry);
         if (tStar > 0.04 && dStar < 75) {
           const missileDanger = ((75 - dStar) / 75) * (1 - tStar / horizon) * 4.5;
           dangerScore += missileDanger;
@@ -580,13 +587,16 @@ export class FighterMissionSystem {
       }
       for (const entry of obstacles) {
         const { obstacle, relative, capital, clearance, horizon, pdRange } = entry;
-        const velocity = vecSub(obstacle.velocity, candidateVel);
+        const vx = obstacle.velocity[0] - velocityX;
+        const vy = obstacle.velocity[1] - velocityY;
         const t = clamp(
-          -vecDot(relative, velocity) / Math.max(1, vecDot(velocity, velocity)),
+          -(relative[0] * vx + relative[1] * vy) / Math.max(1, vx * vx + vy * vy),
           0,
           horizon,
         );
-        const distance = vecDistance([0, 0], vecAdd(relative, vecScale(velocity, t)));
+        const dx = relative[0] + vx * t;
+        const dy = relative[1] + vy * t;
+        const distance = t === 0 ? entry.distance : Math.sqrt(dx * dx + dy * dy);
         if (distance < clearance) dangerScore += (capital ? 14 : 6) * (1 - distance / clearance);
         if (distance < pdRange) dangerScore += 3 * (1 - distance / pdRange);
         if (entry.flak && distance < FLAK_DENIAL_RADIUS)
@@ -598,7 +608,7 @@ export class FighterMissionSystem {
       let congestionScore = 0;
       for (const peer of peers) {
         const peerDist = peer.distance;
-        const headingTowardPeer = vecDot(candidateDir, peer.direction);
+        const headingTowardPeer = candidateX * peer.direction[0] + candidateY * peer.direction[1];
         if (headingTowardPeer > 0)
           congestionScore += headingTowardPeer * (1 - peerDist / FIGHTER_CLEARANCE) * 1.8;
       }

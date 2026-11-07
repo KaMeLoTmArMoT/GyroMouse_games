@@ -159,9 +159,27 @@ describe("tangent shield routing", () => {
       ]),
     );
     expect(closest).toBeGreaterThan(shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(craft));
-    expect(closest).toBeGreaterThanOrEqual(290);
-    expect(closest).toBeLessThanOrEqual(400);
-    expect(Math.abs(waypoint[1])).toBeGreaterThan(250);
+    expect(closest).toBeCloseTo(shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(craft) + 20);
+    expect(waypoint[1] * side).toBeLessThan(0);
+  });
+
+  it.each([true, false])("clears a 500u shield envelope with attack=%s", (attack) => {
+    const craft = ship("pilot", "strike_craft", [-1200, 0]);
+    const capital = ship("capital", "battleship", [0, 0], 1);
+    capital.havenRadiusMultiplier = 500 / shieldEnvelopeRadius(capital);
+    expect(shieldEnvelopeRadius(capital)).toBeCloseTo(500);
+    for (const side of [1, -1]) {
+      const waypoint = fighterShieldWaypoint(craft, capital, side, attack);
+      const route = vecSub(waypoint, craft.pos);
+      const center = vecSub(capital.pos, craft.pos);
+      const fraction = Math.max(0, Math.min(1, vecDot(center, route) / vecDot(route, route)));
+      const closest = vecDistance(
+        [0, 0],
+        vecSub(center, [route[0] * fraction, route[1] * fraction]),
+      );
+      expect(closest).toBeCloseTo(500 + shieldEnvelopeRadius(craft) + (attack ? 20 : 95));
+      expect(vecDistance(waypoint, capital.pos)).toBeGreaterThan(500);
+    }
   });
 
   it("provides an outward tangent when launched inside an enlarged capital bubble", () => {
