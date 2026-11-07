@@ -15,9 +15,10 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { type CrewVeterancy, FleetBuilder } from "./components/FleetBuilder";
+import { PerformanceHud, PerformanceSamples } from "./components/PerformanceHud";
 import { spaceAudio } from "./engine/audioEngine";
 import { CARRIER_FABRICATION_INTERVAL, carrierFabricationProgress } from "./engine/carrierHangar";
 import { fleetAdvantage } from "./engine/fleetAdvantage";
@@ -42,6 +43,7 @@ const STORAGE_KEYS = {
   userSlots: "gyromouse_sb_user_slots",
   redSlots: "gyromouse_sb_red_slots",
   enemyPreset: "gyromouse_sb_enemy_preset",
+  performanceHud: "gyromouse_sb_performance_hud",
 } as const;
 
 const DEFAULT_USER_SLOTS: FleetSlot[] = [
@@ -82,6 +84,14 @@ export default function App() {
   const [sidebarTab, setSidebarTab] = useState<"vessel" | "telemetry" | "log">("vessel");
   const [showVictoryModal, setShowVictoryModal] = useState<boolean>(true);
   const [ingressRevision, setIngressRevision] = useState(0);
+  const [showPerformance, setShowPerformance] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.performanceHud) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const performanceSamples = useRef(new PerformanceSamples());
   const [, setTick] = useState<number>(0);
 
   useEffect(() => {
@@ -158,6 +168,14 @@ export default function App() {
       // ignore
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.performanceHud, String(showPerformance));
+    } catch {
+      // ignore storage errors
+    }
+  }, [showPerformance]);
 
   useEffect(() => {
     try {
@@ -323,7 +341,7 @@ export default function App() {
   };
 
   const stepForward = () => {
-    sim.update(1 / 30);
+    sim.update(1 / 30, showPerformance ? performanceSamples.current.addStep : undefined);
     setTick((tick) => (tick + 1) % 10000);
   };
 
@@ -473,6 +491,23 @@ export default function App() {
         {/* Speed Controls */}
         {activeTab === "battle" ? (
           <div className="flex items-center gap-2">
+            <span
+              title="Battle elapsed time / 300s limit"
+              className={`text-xs font-mono tabular-nums ${sim.timeElapsed >= 240 ? "text-red-500 font-bold animate-pulse" : sim.timeElapsed >= 180 ? "text-amber-400" : "text-zinc-300"}`}
+            >
+              {sim.timeElapsed.toFixed(1)}s / 300s
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (showPerformance) performanceSamples.current = new PerformanceSamples();
+                setShowPerformance(!showPerformance);
+              }}
+              aria-pressed={showPerformance}
+              className={`px-2 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1 cursor-pointer ${showPerformance ? "border-cyan-700 text-cyan-400 bg-cyan-950/40" : "border-zinc-800 text-zinc-400 bg-zinc-900 hover:text-zinc-200"}`}
+            >
+              <Zap className="w-3.5 h-3.5" /> Perf
+            </button>
             {sim.winner !== null && !showVictoryModal && (
               <button
                 type="button"
@@ -559,6 +594,7 @@ export default function App() {
               sim={sim}
               speed={speed}
               ingressRevision={ingressRevision}
+              performanceSamples={showPerformance ? performanceSamples.current : undefined}
               selectedShipId={selectedShipId}
               selectedProjectileId={selectedProjectileId}
               onSelectShip={(id) => {
@@ -572,6 +608,7 @@ export default function App() {
                 if (id) setSidebarTab("vessel");
               }}
             />
+            {showPerformance && <PerformanceHud samples={performanceSamples.current} />}
 
             {/* Victory / Defeat Modal Overlay */}
             {sim.winner !== null && showVictoryModal && (

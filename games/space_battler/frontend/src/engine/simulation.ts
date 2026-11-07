@@ -284,14 +284,20 @@ export class ClientCombatSimulation {
     }
   }
 
-  update(dt: number): void {
+  update(dt: number, onStepDuration?: (durationMs: number) => void): void {
     if (!Number.isFinite(dt) || dt <= 0 || this.winner === -1) return;
     this.accumulator += dt;
     // Bound catch-up work after a suspended render; retain the remaining combat time.
     let steps = 0;
     while (this.accumulator + 1e-9 >= FIXED_STEP && steps++ < 240 && this.winner !== -1) {
       this.accumulator = Math.max(0, this.accumulator - FIXED_STEP);
-      this.tick(FIXED_STEP);
+      if (onStepDuration) {
+        const start = performance.now();
+        this.tick(FIXED_STEP);
+        onStepDuration(performance.now() - start);
+      } else {
+        this.tick(FIXED_STEP);
+      }
     }
   }
 

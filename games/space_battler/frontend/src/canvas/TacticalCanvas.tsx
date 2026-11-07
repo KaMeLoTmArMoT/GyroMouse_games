@@ -1,6 +1,7 @@
 // React 2.5D Tactical Canvas Component with click/hover ship selection, pan/zoom, and live range cones
 
 import { useEffect, useRef } from "react";
+import type { PerformanceSamples } from "../components/PerformanceHud";
 import { spaceAudio } from "../engine/audioEngine";
 import { carrierFabricationProgress } from "../engine/carrierHangar";
 import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
@@ -33,6 +34,7 @@ interface TacticalCanvasProps {
   onSelectShip?: (shipId: string | null) => void;
   selectedProjectileId?: string | null;
   onSelectProjectile?: (projectileId: string | null) => void;
+  performanceSamples?: PerformanceSamples;
 }
 
 export function TacticalCanvas({
@@ -43,6 +45,7 @@ export function TacticalCanvas({
   onSelectShip,
   selectedProjectileId,
   onSelectProjectile,
+  performanceSamples,
 }: TacticalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const effectsRef = useRef<VisualEffectsManager>(new VisualEffectsManager());
@@ -143,6 +146,9 @@ export function TacticalCanvas({
       const rawDt = (now - lastTime) / 1000;
       lastTime = now;
       const dt = Math.max(0, Math.min(rawDt, 0.033));
+      if (performanceSamples && focused && !document.hidden && rawDt > 0) {
+        performanceSamples.addFrame(rawDt * 1000);
+      }
 
       if (speed > 0 && focused && !document.hidden) {
         if (pendingIngressRef.current) {
@@ -169,7 +175,7 @@ export function TacticalCanvas({
           }
         }
         const previousProjectiles = sim.projectiles.slice();
-        sim.update(dt * speed);
+        sim.update(dt * speed, performanceSamples?.addStep);
         effectsRef.current.update(dt * speed, sim.ships, sim.projectiles);
         effectsRef.current.captureExpiredProjectiles(previousProjectiles, sim.projectiles);
         effectsRef.current.updateWarpGates(Math.min(dt, 0.05));
@@ -504,7 +510,7 @@ export function TacticalCanvas({
       sim.onShipDestroyed = undefined;
       sim.onVictory = undefined;
     };
-  }, [sim, speed, selectedShipId, selectedProjectileId]);
+  }, [sim, speed, selectedShipId, selectedProjectileId, performanceSamples]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -656,24 +662,6 @@ export function TacticalCanvas({
         onDoubleClick={handleDoubleClick}
         className="w-full h-full block"
       />
-
-      {/* Floating Tactical Overlay Information */}
-      <div className="absolute top-4 left-4 pointer-events-none flex flex-col gap-1 text-[11px] font-mono text-zinc-400 bg-zinc-950/70 p-2.5 rounded-lg border border-zinc-800/80 backdrop-blur-sm">
-        <div>
-          STATUS:{" "}
-          <span className="text-cyan-400 font-semibold">
-            {speed === 0 ? "SIM PAUSED" : "ENGAGED"}
-          </span>
-        </div>
-        <div>TIME: {sim.timeElapsed.toFixed(1)}s</div>
-        <div>
-          SHIPS: {sim.ships.filter((s) => s.team === 0 && s.isAlive).length} Blue /{" "}
-          {sim.ships.filter((s) => s.team === 1 && s.isAlive).length} Red
-        </div>
-        <div className="text-[10px] text-zinc-600 mt-1">
-          Click to inspect | Double-click ship to follow | Drag to pan
-        </div>
-      </div>
     </div>
   );
 }
