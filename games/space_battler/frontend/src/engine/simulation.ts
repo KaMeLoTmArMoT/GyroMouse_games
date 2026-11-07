@@ -29,10 +29,11 @@ import { CollisionContactSolver } from "./collisionContactSolver";
 import type { CombatObserver } from "./combatTelemetry";
 import type { CrewVeterancy } from "./crewVeterancy";
 import { FighterMissionSystem, type FighterWingVisual } from "./fighterMissionSystem";
-import { acquireMountTarget } from "./fireControl";
+import { acquireMountTarget, prepareFireControlContext } from "./fireControl";
 import { redeployFleetRemnants } from "./fleetBuilder";
 import { HarmonicShieldSystem } from "./harmonicShieldSystem";
 import { normalizeAngle, vecAdd, vecScale } from "./math2d";
+import { navigationContext, prepareNavigationContext } from "./navigationContext";
 import { type FlakBurstCallback, ProjectileEngine } from "./projectileEngine";
 import { isCapitalShip } from "./shieldGeometry";
 import { ShieldHavenSystem } from "./shieldHaven";
@@ -368,6 +369,9 @@ export class ClientCombatSimulation {
     // Allocate small focus squads in stable order, independent of the render/storage order.
     const previousTargets = new Map(aliveShips.map((ship) => [ship.id, ship.navigationTargetId]));
     for (const ship of aliveShips) ship.navigationTargetId = undefined;
+    const navigation = navigationContext(aliveShips) ?? prepareNavigationContext(aliveShips);
+    navigation.navigationAssignments.clear();
+    navigation.capitalAssignments.clear();
     for (const ship of [...aliveShips].sort((a, b) => a.id.localeCompare(b.id))) {
       const order = this.orders.get(ship.groupId) ?? {
         groupId: ship.groupId,
@@ -382,6 +386,7 @@ export class ClientCombatSimulation {
         this.fighterMissions.targetId(ship),
       );
       ship.navigationTargetId = target?.id;
+      navigation.adjust(navigation.navigationAssignments, ship, target?.id, 1);
       navigationTargets.set(ship.id, target);
     }
     for (const ship of aliveShips) {
@@ -415,6 +420,7 @@ export class ClientCombatSimulation {
     this.shieldHaven.refreshAmplification(combatShips);
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
+    prepareFireControlContext(aliveShips);
     const missileLocks: Array<{ targetId: string; weapon: TurretMountState["weapon"] }> = [];
     for (const ship of aliveShips) {
       if (!ship.isAlive) continue;

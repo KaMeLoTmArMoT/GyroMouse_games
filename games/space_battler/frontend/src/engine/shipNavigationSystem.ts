@@ -33,6 +33,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { navigationContext } from "./navigationContext";
 import { obstacleCourseCorrection } from "./obstacleNavigation";
 import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
@@ -243,20 +244,22 @@ function selectNavigationTarget(
         let rank = Infinity;
         if (enemy.hullClass === "corvette") rank = 0;
         else if (pack.length >= 2 && enemy.hullClass === "strike_craft") {
-          let isolated = true;
-          for (const ally of aliveShips) {
-            if (
-              ally.id !== enemy.id &&
-              ally.team === enemy.team &&
-              ally.isAlive &&
-              !ally.isDocked &&
-              !ally.isDebris &&
-              navigationDistanceSquared(ally, enemy) <= 400 * 400
-            ) {
-              isolated = false;
-              break;
+          const context = navigationContext(aliveShips);
+          let isolated = context?.isolated.get(enemy) ?? true;
+          if (!context)
+            for (const ally of aliveShips) {
+              if (
+                ally.id !== enemy.id &&
+                ally.team === enemy.team &&
+                ally.isAlive &&
+                !ally.isDocked &&
+                !ally.isDebris &&
+                navigationDistanceSquared(ally, enemy) <= 400 * 400
+              ) {
+                isolated = false;
+                break;
+              }
             }
-          }
           if (isolated) rank = 1;
         } else if (isCapitalShip(enemy)) rank = 2;
         if (
@@ -286,19 +289,22 @@ function selectNavigationTarget(
       ? beyondRange * 6 + (hasCloseCapitalThreat && beyondRange > 0 ? 8 : 0)
       : 0;
     const nearby = clamp(2 - distance / range, 0, 1);
-    let assignments = 0;
-    for (const peer of aliveShips) {
-      if (
-        peer.id !== ship.id &&
-        peer.isAlive &&
-        !peer.isDocked &&
-        !peer.isDebris &&
-        peer.team === ship.team &&
-        peer.groupId === ship.groupId &&
-        peer.navigationTargetId === enemy.id
-      )
-        assignments++;
-    }
+    const context = navigationContext(aliveShips);
+    let assignments =
+      context?.count(context.navigationAssignments, ship, enemy.id, ship.navigationTargetId) ?? 0;
+    if (!context)
+      for (const peer of aliveShips) {
+        if (
+          peer.id !== ship.id &&
+          peer.isAlive &&
+          !peer.isDocked &&
+          !peer.isDebris &&
+          peer.team === ship.team &&
+          peer.groupId === ship.groupId &&
+          peer.navigationTargetId === enemy.id
+        )
+          assignments++;
+      }
     const finishPriority = capitalFinishPriority(ship, enemy, aliveShips);
     const score =
       (-distance / range) * 2 +
@@ -375,6 +381,8 @@ function closeNavigationThreat(enemy: ShipState, ship: ShipState, rangeSquared: 
 }
 
 function safeNavigationTarget(ship: ShipState, enemy: ShipState, ships: ShipState[]): boolean {
+  const context = navigationContext(ships);
+  if (context) return context.safe.get(enemy) ?? true;
   let threats = 0;
   for (const flak of ships) {
     if (

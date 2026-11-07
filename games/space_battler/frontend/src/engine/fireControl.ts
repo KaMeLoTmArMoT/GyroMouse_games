@@ -15,6 +15,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { navigationContext } from "./navigationContext";
 import {
   isHeavyTorpedo,
   pointDefenseMode,
@@ -159,18 +160,24 @@ export function capitalFinishPriority(
   )
     return 0;
   let assignments = 0;
-  for (const peer of ships) {
-    if (
-      peer !== ship &&
-      peer.isAlive &&
-      !peer.isDocked &&
-      !peer.isDebris &&
-      peer.team === ship.team &&
-      (peer.hullClass === "dreadnought" || peer.hullClass === "battleship") &&
-      peer.navigationTargetId === target.id
-    )
-      assignments++;
-  }
+  const context = navigationContext(ships);
+  if (context)
+    assignments =
+      (context.capitalAssignments.get(ship.team)?.get(target.id) ?? 0) -
+      Number(ship.navigationTargetId === target.id);
+  else
+    for (const peer of ships) {
+      if (
+        peer !== ship &&
+        peer.isAlive &&
+        !peer.isDocked &&
+        !peer.isDebris &&
+        peer.team === ship.team &&
+        (peer.hullClass === "dreadnought" || peer.hullClass === "battleship") &&
+        peer.navigationTargetId === target.id
+      )
+        assignments++;
+    }
   return 3 + Math.min(assignments, 4) * 1.5;
 }
 
@@ -196,6 +203,39 @@ function missileWeight(target: ShipState, heavy: boolean): number {
   return heavy ? (target.hullClass === "strike_craft" ? 2 : 3) : 1;
 }
 
+const defendedContexts = new WeakMap<ShipState[], Map<ShipState, ShipState[]>>();
+
+export function prepareFireControlContext(
+  ships: ShipState[],
+  cache = true,
+): Map<ShipState, ShipState[]> {
+  const teams = new Map<number, ShipState[]>();
+  const byId = new Map(ships.map((ship) => [ship.id, ship]));
+  for (const ship of ships) {
+    if (!ship.isAlive) continue;
+    if (
+      ship.hullClass !== "carrier" &&
+      ship.hullClass !== "battleship" &&
+      ship.hullClass !== "dreadnought" &&
+      ship.hullClass !== "cruiser"
+    )
+      continue;
+    const team = teams.get(ship.team) ?? [];
+    team.push(ship);
+    teams.set(ship.team, team);
+  }
+  const defended = new Map<ShipState, ShipState[]>();
+  for (const ship of ships) {
+    const peers = [ship, ...(teams.get(ship.team) ?? []).filter((peer) => peer.id !== ship.id)];
+    const flagship = ship.flagshipId ? byId.get(ship.flagshipId) : undefined;
+    if (flagship?.isAlive && flagship.team === ship.team && !peers.includes(flagship))
+      peers.push(flagship);
+    defended.set(ship, peers);
+  }
+  if (cache) defendedContexts.set(ships, defended);
+  return defended;
+}
+
 export function acquireMountTarget(
   ship: ShipState,
   turret: TurretMountState,
@@ -208,29 +248,34 @@ export function acquireMountTarget(
   const weapon = turret.weapon;
   turret.sideTargetId = undefined;
   const defense = pointDefenseMode(weapon);
-  const defendedShips = [
-    ship,
-    ...ships.filter(
-      (s) =>
-        s.isAlive &&
-        s.team === ship.team &&
-        s.id !== ship.id &&
-        (s.id === ship.flagshipId ||
-          s.hullClass === "carrier" ||
-          s.hullClass === "battleship" ||
-          s.hullClass === "dreadnought" ||
-          s.hullClass === "cruiser"),
-    ),
-  ];
-  const solutions: Array<FireSolution & { priority: number }> = [];
+  const defendedShips = (
+    defendedContexts.get(ships) ?? prepareFireControlContext(ships, false)
+  ).get(ship) ?? [ship];
+  type RankedSolution = FireSolution & { priority: number };
+  let best: RankedSolution | undefined;
+  let current: RankedSolution | undefined;
+  let finishBest: RankedSolution | undefined;
+  let finishCurrent: RankedSolution | undefined;
+  let hasPrimary = false;
+  let hasShip = false;
+  const better = (a: RankedSolution, b: RankedSolution | undefined) =>
+    !b ||
+    a.priority > b.priority ||
+    (a.priority === b.priority &&
+      (a.score > b.score || (a.score === b.score && a.target.id.localeCompare(b.target.id) < 0)));
+  const inRange = (target: ShipState | ProjectileState) => {
+    const dx = muzzle[0] - target.pos[0];
+    const dy = muzzle[1] - target.pos[1];
+    return dx * dx + dy * dy <= weapon.range * weapon.range;
+  };
   const evaluate = (
     target: ShipState | ProjectileState,
     kind: "ship" | "missile",
     role: number,
     priority = 0,
   ) => {
+    if (!inRange(target) || !inMountArc(ship, turret, target.pos)) return;
     const distance = vecDistance(muzzle, target.pos);
-    if (distance > weapon.range || !inMountArc(ship, turret, target.pos)) return;
     let aim = target.pos;
     if (weapon.projectileSpeed > 0) {
       const t = interceptTime(vecSub(target.pos, muzzle), target.velocity, weapon.projectileSpeed);
@@ -246,17 +291,36 @@ export function acquireMountTarget(
       Math.abs(
         fullCircle(turret) || turret.baseArc[0] > turret.baseArc[1] ? normalizeAngle(error) : error,
       ) / Math.max(0.01, turret.trackingSpeed);
-    solutions.push({
+    const solution: RankedSolution = {
       kind,
       target,
       aim,
       score: role - distance / weapon.range - 0.4 * turn,
       priority,
-    });
+    };
+    if (better(solution, best)) best = solution;
+    const retained = target.id === turret.currentTargetId && kind === turret.currentTargetKind;
+    if (retained) current = solution;
+    let bonus = 0;
+    if (kind === "ship") {
+      hasShip = true;
+      hasPrimary ||= target.id === primary?.id;
+      const enemy = target as ShipState;
+      const salvos =
+        (enemy.shieldCurrent / Math.max(0.01, weapon.shieldMultiplier) +
+          enemy.armorCurrent / Math.max(0.01, weapon.armorMultiplier) +
+          enemy.hullCurrent / Math.max(0.01, weapon.hullMultiplier)) /
+        Math.max(1, weapon.damage);
+      if (salvos <= 2) bonus = 3;
+    }
+    const finish = bonus ? { ...solution, score: solution.score + bonus } : solution;
+    if (better(finish, finishBest)) finishBest = finish;
+    if (retained) finishCurrent = finish;
   };
 
   for (const enemy of ships) {
     if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team) continue;
+    if (!inRange(enemy)) continue;
     if (weapon.weaponType === "missile") {
       let incoming = 0;
       let inFlightDamage = 0;
@@ -325,23 +389,8 @@ export function acquireMountTarget(
     evaluate(enemy, "ship", role, priority);
   }
 
-  if (
-    !solutions.some((solution) => solution.kind === "ship" && solution.target.id === primary?.id)
-  ) {
-    for (const solution of solutions) {
-      if (solution.kind !== "ship") continue;
-      const enemy = solution.target as ShipState;
-      const salvosToKill =
-        (enemy.shieldCurrent / Math.max(0.01, weapon.shieldMultiplier) +
-          enemy.armorCurrent / Math.max(0.01, weapon.armorMultiplier) +
-          enemy.hullCurrent / Math.max(0.01, weapon.hullMultiplier)) /
-        Math.max(1, weapon.damage);
-      if (salvosToKill <= 2) solution.score += 3;
-    }
-  }
-
   const defensiveBeam =
-    ship.hullClass === "battleship" && weapon.weaponType === "beam_laser" && solutions.length === 0;
+    ship.hullClass === "battleship" && weapon.weaponType === "beam_laser" && !hasShip;
   if (weapon.weaponType === "point_defense" || defensiveBeam) {
     for (const missile of projectiles) {
       if (
@@ -351,6 +400,7 @@ export function acquireMountTarget(
         missile.lifetime <= 0
       )
         continue;
+      if (!inRange(missile)) continue;
       let arrival = Infinity;
       let urgentTorpedo = false;
       for (const defended of defendedShips) {
@@ -381,15 +431,11 @@ export function acquireMountTarget(
       evaluate(missile, "missile", 10 + 2 / (1 + arrival), priority);
     }
   }
-  solutions.sort(
-    (a, b) =>
-      b.priority - a.priority || b.score - a.score || a.target.id.localeCompare(b.target.id),
-  );
-  const best = solutions[0];
+  if (!hasPrimary) {
+    best = finishBest;
+    current = finishCurrent;
+  }
   if (!best) return null;
-  const current = solutions.find(
-    (s) => s.target.id === turret.currentTargetId && s.kind === turret.currentTargetKind,
-  );
   const selected =
     defense !== "laser" &&
     current &&

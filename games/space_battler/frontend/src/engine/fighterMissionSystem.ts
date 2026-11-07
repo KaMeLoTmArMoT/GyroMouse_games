@@ -21,6 +21,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { navigationContext, prepareNavigationContext } from "./navigationContext";
 import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import {
   FLAK_DENIAL_RADIUS,
@@ -214,6 +215,25 @@ export class FighterMissionSystem {
   }
 
   updateWings(aliveShips: ShipState[]): void {
+    const navigation = prepareNavigationContext(aliveShips);
+    const wingMembers = new Map<string, ShipState[]>();
+    const wingsByGroup = new Map<string, FighterWing[]>();
+    const memberWings = new Map<string, string>();
+    for (const wing of this.wings) {
+      const key = `${wing.team}:${wing.groupId}`;
+      const group = wingsByGroup.get(key) ?? [];
+      group.push(wing);
+      wingsByGroup.set(key, group);
+      const wingKey = `${key}:${wing.index}`;
+      for (const id of wing.members) memberWings.set(id, wingKey);
+    }
+    for (const ship of aliveShips) {
+      const key = memberWings.get(ship.id);
+      if (!key) continue;
+      const members = wingMembers.get(key) ?? [];
+      members.push(ship);
+      wingMembers.set(key, members);
+    }
     const { timeElapsed, orders } = this.context;
     const reassess = new Set<ShipState>();
     const flak = new Map<ShipState, ShipState[]>();
@@ -233,28 +253,25 @@ export class FighterMissionSystem {
         if (!threats.length) dogfightTarget(ship, aliveShips, timeElapsed);
       }
       if (threats.length) {
+        navigation.adjust(navigation.dogfightAssignments, ship, ship.dogfightTargetId, -1);
         ship.dogfightTargetId = undefined;
         if (threats.length >= 2 || ship.fighterPhase === "intercept") this.setPhase(ship, "egress");
       }
     }
     const groupTargets = new Map<string, ShipState | undefined>();
     for (const wing of this.wings) {
-      const members = aliveShips.filter((ship) => wing.members.includes(ship.id));
+      const members = wingMembers.get(`${wing.team}:${wing.groupId}:${wing.index}`) ?? [];
       if (members.length === 0) continue;
       const leader = members[0];
       const groupKey = `${wing.team}:${wing.groupId}`;
-      const groupWings = this.wings.filter(
-        (peer) => peer.team === wing.team && peer.groupId === wing.groupId,
-      );
+      const groupWings = wingsByGroup.get(groupKey) ?? [];
       const groupIndex = groupWings.indexOf(wing);
       let target = groupTargets.get(groupKey);
       if (!groupTargets.has(groupKey)) {
+        const retained = wing.targetId ? navigation.byId.get(wing.targetId) : undefined;
         target =
-          (!reassess.has(leader)
-            ? aliveShips.find(
-                (ship) =>
-                  ship.id === wing.targetId && withinPursuitTheater(leader, ship, aliveShips),
-              )
+          (!reassess.has(leader) && retained && withinPursuitTheater(leader, retained, aliveShips)
+            ? retained
             : undefined) ??
           findNavigationTarget(
             leader,
@@ -457,7 +474,12 @@ export class FighterMissionSystem {
     const rallySlot = this.rallySlot(wing, ship);
     switch (phase) {
       case "intercept": {
-        const opponent = aliveShips.find((s) => s.id === ship.dogfightTargetId) ?? target;
+        const opponent =
+          (ship.dogfightTargetId
+            ? navigationContext(aliveShips)?.byId.get(ship.dogfightTargetId)
+            : undefined) ??
+          aliveShips.find((s) => s.id === ship.dogfightTargetId) ??
+          target;
         const distance = vecDistance(ship.pos, opponent.pos);
         const n = vecNormalize(vecSub(opponent.pos, ship.pos));
         const pursuit = vecAdd(

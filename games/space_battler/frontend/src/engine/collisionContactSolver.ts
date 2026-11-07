@@ -4,6 +4,8 @@ import { vecAdd, vecDistance, vecDot, vecNormalize, vecScale, vecSub } from "./m
 import {
   activeShieldRadius,
   capitalSeparationDistance,
+  isCapitalShip,
+  shieldEnvelopeRadius,
   shieldRepulsorRadius,
 } from "./shieldGeometry";
 import { havenHullClearance, sharesShieldHaven } from "./shieldHaven";
@@ -33,7 +35,9 @@ function shipMass(hull: ShipState["hullClass"]): number {
 }
 
 export class CollisionContactSolver {
-  private contacts = new Set<string>();
+  private contacts = new Set<number>();
+  private readonly contactIds = new WeakMap<ShipState, number>();
+  private nextContactId = 0;
   private readonly context: Pick<ClientCombatSimulation, "shieldHaven" | "observer">;
   private readonly destroyShip: (ship: ShipState, attackerTeam?: number) => void;
 
@@ -55,18 +59,34 @@ export class CollisionContactSolver {
     tetheredPass: boolean,
     repulsorSteps = new Map<string, number>(),
   ): void {
-    const contacts = tetheredPass ? new Set(this.contacts) : new Set<string>();
+    const contacts = tetheredPass ? new Set(this.contacts) : new Set<number>();
+    const ids = aliveShips.map((ship) => {
+      let id = this.contactIds.get(ship);
+      if (id === undefined) {
+        id = this.nextContactId++;
+        this.contactIds.set(ship, id);
+      }
+      return id;
+    });
+    // Conservative bounds include capital stand-off, contact hysteresis and telemetry.
+    const envelopes = aliveShips.map(
+      (ship) => Math.max(isCapitalShip(ship) ? 210 : 0, ship.size, shieldEnvelopeRadius(ship)) + 25,
+    );
     const { observer, shieldHaven } = this.context;
     for (let i = 0; i < aliveShips.length; i++) {
       for (let j = i + 1; j < aliveShips.length; j++) {
         const a = aliveShips[i];
         const b = aliveShips[j];
         if (!a.isAlive || !b.isAlive) continue;
+        const dx = a.pos[0] - b.pos[0];
+        const dy = a.pos[1] - b.pos[1];
+        const envelope = envelopes[i] + envelopes[j];
+        if (dx * dx + dy * dy > envelope * envelope) continue;
         if (sharesCarrierCorridor(a, b)) continue;
         const tetherA = a.havenState === "tethered";
         const tetherB = b.havenState === "tethered";
         if ((tetherA || tetherB) !== tetheredPass) continue;
-        const d = vecDistance(a.pos, b.pos);
+        const d = Math.sqrt(dx * dx + dy * dy);
         const debrisContact = a.isDebris || b.isDebris;
         if (observer && !debrisContact && a.team !== b.team) observer.onProximity(a, b, d);
         const minBubbleDist = activeShieldRadius(a) + activeShieldRadius(b);
@@ -80,7 +100,9 @@ export class CollisionContactSolver {
                 capitalSeparationDistance(a, b),
                 shieldRepulsorRadius(a) + shieldRepulsorRadius(b) + 20,
               );
-        const pair = [a.id, b.id].sort().join(":");
+        const low = Math.min(ids[i], ids[j]);
+        const high = Math.max(ids[i], ids[j]);
+        const pair = (high * (high + 1)) / 2 + low;
         if (d < repulsorZone + 5 && this.contacts.has(pair)) contacts.add(pair);
         if (d >= repulsorZone) continue;
         const normal: Vector2 =
@@ -93,8 +115,14 @@ export class CollisionContactSolver {
           if (tetherA && (tetherB || a.havenParentId === b.id)) shieldHaven.release(a.id);
           if (tetherB && (tetherA || b.havenParentId === a.id)) shieldHaven.release(b.id);
         }
-        const fixedA = a.havenState === "tethered" || (nested && b.havenParentId === a.id);
-        const fixedB = b.havenState === "tethered" || (nested && a.havenParentId === b.id);
+        const fixedA =
+          a.havenState === "tethered" ||
+          (nested && b.havenParentId === a.id) ||
+          (!a.isDebris && isCapitalShip(a) && b.hullClass === "strike_craft" && !b.isDebris);
+        const fixedB =
+          b.havenState === "tethered" ||
+          (nested && a.havenParentId === b.id) ||
+          (!b.isDebris && isCapitalShip(b) && a.hullClass === "strike_craft" && !a.isDebris);
         const pushRatioA = fixedA ? 0 : fixedB ? 1 : massB / totalMass;
         const pushRatioB = fixedB ? 0 : fixedA ? 1 : massA / totalMass;
         // Cancel only closing normal velocity so hulls slide tangentially.

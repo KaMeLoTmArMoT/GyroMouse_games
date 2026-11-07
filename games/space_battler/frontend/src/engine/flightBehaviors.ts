@@ -55,8 +55,33 @@ export function clampLateralVelocity(
 
 export function calculateSeparation(ship: ShipState, ships: ShipState[]): Vector2 {
   let result: Vector2 = [0, 0];
+  const capital =
+    ship.hullClass === "dreadnought" ||
+    ship.hullClass === "battleship" ||
+    ship.hullClass === "carrier" ||
+    ship.hullClass === "cruiser";
+  const hasHeavyPeer =
+    capital &&
+    ships.some((peer) => peer.isAlive && peer.id !== ship.id && peer.hullClass !== "strike_craft");
   for (const peer of ships) {
     if (!peer.isAlive || peer.id === ship.id) continue;
+    if (hasHeavyPeer && peer.hullClass === "strike_craft") continue;
+    const weight =
+      capital && ship.hullClass !== "cruiser" && peer.hullClass === "corvette" ? 0.05 : 1;
+    const dx = ship.pos[0] - peer.pos[0];
+    const dy = ship.pos[1] - peer.pos[1];
+    const closingBound =
+      Math.abs(ship.velocity[0] - peer.velocity[0]) + Math.abs(ship.velocity[1] - peer.velocity[1]);
+    const clearanceBound = Math.max(
+      capitalSeparationDistance(ship, peer),
+      escortCapitalStandoff(ship, peer),
+      Math.max(ship.size, shieldEnvelopeRadius(ship)) +
+        Math.max(peer.size, shieldEnvelopeRadius(peer)) +
+        30,
+    );
+    const marginBound =
+      clearanceBound + (closingBound * closingBound) / 440 + closingBound * 0.15 + 90;
+    if (dx * dx + dy * dy >= marginBound * marginBound) continue;
     const distance = vecDistance(ship.pos, peer.pos);
     const away: Vector2 =
       distance > 1e-6
@@ -84,12 +109,12 @@ export function calculateSeparation(ship: ShipState, ships: ShipState[]): Vector
       if (distance < escortMargin)
         result = vecAdd(
           result,
-          vecScale(away, ship.maxSpeed * 2 * Math.min(1, (escortMargin - distance) / 90)),
+          vecScale(away, weight * ship.maxSpeed * 2 * Math.min(1, (escortMargin - distance) / 90)),
         );
       continue;
     }
     if (distance < margin)
-      result = vecAdd(result, vecScale(away, ship.maxSpeed * 2 * (1 - distance / margin)));
+      result = vecAdd(result, vecScale(away, weight * ship.maxSpeed * 2 * (1 - distance / margin)));
   }
   return result;
 }

@@ -404,6 +404,9 @@ export function TacticalCanvas({
               effectsRef.current.impactDecals.get(ship),
               sim.timeElapsed,
             );
+            if (ship.isAlive && Math.hypot(...ship.pos) > ARENA_RADIUS) {
+              drawRadiationWarning(ctx, ship, sim.timeElapsed);
+            }
             ctx.restore();
           }
 
@@ -722,6 +725,17 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D): void {
   const gridSize = 100;
   const radius = ARENA_HARD_PULL_RADIUS;
 
+  ctx.save();
+  const hazardEdge = ARENA_HARD_PULL_RADIUS + 100;
+  const hazard = ctx.createRadialGradient(0, 0, ARENA_RADIUS, 0, 0, hazardEdge);
+  hazard.addColorStop(0, "rgba(234, 179, 8, 0.04)");
+  hazard.addColorStop(1, "rgba(239, 68, 68, 0.12)");
+  ctx.fillStyle = hazard;
+  ctx.beginPath();
+  ctx.arc(0, 0, hazardEdge, 0, Math.PI * 2);
+  ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2, true);
+  ctx.fill();
+
   ctx.strokeStyle = "rgba(30, 41, 59, 0.4)";
   ctx.lineWidth = 1;
 
@@ -736,22 +750,55 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D): void {
   }
   ctx.stroke();
 
-  // Arena soft boundary ring
-  ctx.strokeStyle = "rgba(56, 189, 248, 0.2)";
+  // Hazard threshold and octant markers.
+  ctx.strokeStyle = "rgba(245, 158, 11, 0.55)";
   ctx.lineWidth = 1.5;
-  ctx.setLineDash([8, 8]);
+  ctx.setLineDash([12, 8]);
   ctx.beginPath();
   ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Arena hard pull perimeter
+  ctx.setLineDash([]);
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI) / 4;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (ARENA_RADIUS - 8), Math.sin(angle) * (ARENA_RADIUS - 8));
+    ctx.lineTo(Math.cos(angle) * (ARENA_RADIUS + 14), Math.sin(angle) * (ARENA_RADIUS + 14));
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(251, 191, 36, 0.65)";
+  ctx.font = "10px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const label = "☢ RADIATION HAZARD ZONE • SHIELD & HULL DECAY";
+  ctx.fillText(label, 0, -ARENA_RADIUS - 28);
+  ctx.fillText(label, 0, ARENA_RADIUS + 28);
+
+  // Outer warning perimeter.
   ctx.strokeStyle = "rgba(239, 68, 68, 0.25)";
   ctx.lineWidth = 2;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();
   ctx.arc(0, 0, ARENA_HARD_PULL_RADIUS, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawRadiationWarning(ctx: CanvasRenderingContext2D, ship: ShipState, time: number): void {
+  const radius = Math.max(ship.size * 1.5, shieldEnvelopeRadius(ship)) + 7;
+  const pulse = 0.4 + 0.2 * Math.sin(time * 4);
+  ctx.save();
+  ctx.strokeStyle = `rgba(202, 204, 42, ${pulse})`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.arc(ship.pos[0], ship.pos[1], radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = `rgba(250, 204, 21, ${pulse + 0.25})`;
+  ctx.font = "10px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("☢ RAD", ship.pos[0], ship.pos[1] - radius - 5);
+  ctx.restore();
 }
 
 function drawTacticalTrajectory(

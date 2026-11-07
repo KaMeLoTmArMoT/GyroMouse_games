@@ -149,3 +149,32 @@ a CPU bottleneck independent of drawing, but cannot exclude additional Canvas co
   heavy tests are skipped by the fast-suite environment.
 - Biome checked all three added TypeScript files successfully (formatted the
   profiling test). No production engine code changed.
+
+## Post-Optimization Measured Results
+
+Wave 10A, Node 24.16.0 / Ryzen 7 7700, same standalone `bench/swarm.ts`
+fixture (30 warm-up ticks, 300 measured ticks; 200 ships alive throughout):
+
+| Roster | Mean ms/tick | Median ms/tick | p95 ms/tick | Mean speedup vs standalone baseline |
+| --- | ---: | ---: | ---: | ---: |
+| Fighters | 20.063 | 20.346 | 24.048 | 6.34× |
+| 50/50 Mix | 25.659 | 25.237 | 28.439 | 5.80× |
+| Corvettes | 34.587 | 33.854 | 39.715 | 5.24× |
+
+Navigation/fighter metadata is indexed once per tick; assignment counts update in
+the existing selection order without candidate-level fleet scans. Anchors remain
+ship-relative, preserving flagship/nearest-capital ties. Contacts use conservative
+squared-distance rejection and stable numeric pair IDs; pair visitation still
+uses current positions in original order, including both attachment passes.
+Mount selection uses single-pass best/current tracking, including conditional
+finishing bonuses. Capitals ignore fighter separation with heavier peers present,
+heavy capitals apply 5% corvette repulsion, and capital/fighter contacts preserve
+capital position and velocity. Global candidate/pair enumeration and geometric
+metadata precomputation retain quadratic worst cases; this is not a fully linear
+or spatial-grid simulation. These timings are headless CPU results, not browser FPS.
+
+Verification: typecheck passed; fast suite **515 passed, 4 skipped, zero failures**.
+Changed files passed Biome. Full `biome check src/engine tests` remains blocked by
+pre-existing formatting errors in `tests/pointDefense.test.ts` (CRLF) and
+`tests/standoffRecoveryPenetration.test.ts` (one assertion layout); those files
+were not changed by Wave 10A.

@@ -255,7 +255,9 @@ describe("escort physical capital clearance", () => {
       expect(calculateSeparation(escort, [anchor, escort])[0]).toBeGreaterThan(0);
       escort.pos = [clearance, 0];
       expect(calculateSeparation(escort, [anchor, escort])[0]).toBeGreaterThan(escort.maxSpeed);
-      expect(calculateSeparation(anchor, [escort, anchor])[0]).toBeLessThan(-anchor.maxSpeed);
+      const capitalRepulsion = calculateSeparation(anchor, [escort, anchor])[0];
+      if (hull === "corvette") expect(capitalRepulsion).toBeCloseTo(-anchor.maxSpeed * 0.1);
+      else expect(capitalRepulsion).toBeLessThan(-anchor.maxSpeed);
       anchor.team = 1;
       expect(calculateSeparation(escort, [anchor, escort])[0]).toBeGreaterThan(escort.maxSpeed);
     },

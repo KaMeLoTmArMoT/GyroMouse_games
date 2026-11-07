@@ -37,6 +37,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { distanceSquared, navigationContext } from "./navigationContext";
 import { escortCapitalStandoff, isCapitalShip } from "./shieldGeometry";
 import { type CapitalFlightDoctrine, SHIP_DOCTRINES } from "./shipDoctrines";
 
@@ -523,6 +524,8 @@ export function escortVelocity(
 }
 
 export function fleetDefenseAnchor(ship: ShipState, ships: ShipState[]): ShipState | undefined {
+  const context = navigationContext(ships);
+  if (context) return context.anchors.get(ship);
   return ships
     .filter(
       (peer) =>
@@ -548,7 +551,6 @@ export function withinPursuitTheater(
 ): boolean {
   const light = target.hullClass === "strike_craft";
   if (!light) return true;
-  const anchor = fleetDefenseAnchor(ship, ships);
   if (ship.hullClass === "strike_craft") {
     const distance = vecDistance(ship.pos, target.pos);
     const pursued = fighterPursuits.get(ship) ?? new Set<string>();
@@ -559,6 +561,7 @@ export function withinPursuitTheater(
     }
     return !ship.dogfightTargetId && !pursued.has(target.id);
   }
+  const anchor = fleetDefenseAnchor(ship, ships);
   return (
     vecDistance(ship.pos, target.pos) <= 600 &&
     (!anchor || vecDistance(anchor.pos, target.pos) <= 900)
@@ -569,6 +572,9 @@ const fighterPursuits = new WeakMap<ShipState, Set<string>>();
 
 export function corvetteWolfpack(ship: ShipState, ships: ShipState[]): ShipState[] {
   if (ship.hullClass !== "corvette") return [];
+  const context = navigationContext(ships);
+  const cached = context?.packs.get(ship);
+  if (cached) return cached;
   const anchor = fleetDefenseAnchor(ship, ships);
   const escorts = ships
     .filter(
@@ -591,7 +597,11 @@ export function corvetteWolfpack(ship: ShipState, ships: ShipState[]): ShipState
   let offset = 0;
   for (let group = 0; group < groups; group++) {
     const size = Math.ceil((hunters.length - offset) / (groups - group));
-    if (index < offset + size) return hunters.slice(offset, offset + size);
+    if (index < offset + size) {
+      const pack = hunters.slice(offset, offset + size);
+      if (context) for (const peer of pack) context.packs.set(peer, pack);
+      return pack;
+    }
     offset += size;
   }
   return [];
@@ -1088,18 +1098,20 @@ export function dogfightTarget(
   ships: ShipState[],
   time: number,
 ): ShipState | null {
+  const context = navigationContext(ships);
+  const previousId = ship.dogfightTargetId;
   let best: ShipState | null = null;
   let bestScore = -Infinity;
   let current: ShipState | null = null;
   let currentScore = -Infinity;
-  for (const enemy of ships) {
+  for (const enemy of context?.hulls.get("strike_craft") ?? ships) {
     if (
       !enemy.isAlive ||
       enemy.isDocked ||
       enemy.isDebris ||
       enemy.team === ship.team ||
       enemy.hullClass !== "strike_craft" ||
-      vecDistance(ship.pos, enemy.pos) > 600 ||
+      distanceSquared(ship, enemy) > 600 * 600 ||
       !withinPursuitTheater(ship, enemy, ships)
     )
       continue;
@@ -1115,14 +1127,16 @@ export function dogfightTarget(
       time - (ship.lastThreatTime ?? 0) < 1;
     if (!threat && !retained) continue;
     const angle = Math.abs(normalizeAngle(Math.atan2(r[1], r[0]) - ship.heading));
-    const assignments = ships.filter(
-      (s) =>
-        s.isAlive &&
-        s.id !== ship.id &&
-        s.team === ship.team &&
-        s.groupId === ship.groupId &&
-        s.dogfightTargetId === enemy.id,
-    ).length;
+    const assignments = context
+      ? context.count(context.dogfightAssignments, ship, enemy.id, previousId)
+      : ships.filter(
+          (s) =>
+            s.isAlive &&
+            s.id !== ship.id &&
+            s.team === ship.team &&
+            s.groupId === ship.groupId &&
+            s.dogfightTargetId === enemy.id,
+        ).length;
     const score =
       3 * clamp(1 - approach / 600, 0, 1) +
       2 * clamp(1 - angle / (Math.PI / 4), 0, 1) +
@@ -1143,6 +1157,10 @@ export function dogfightTarget(
     return current;
   if (best) ship.lastThreatTime = time;
   ship.dogfightTargetId = best?.id;
+  if (context) {
+    context.adjust(context.dogfightAssignments, ship, previousId, -1);
+    context.adjust(context.dogfightAssignments, ship, ship.dogfightTargetId, 1);
+  }
   return best;
 }
 
