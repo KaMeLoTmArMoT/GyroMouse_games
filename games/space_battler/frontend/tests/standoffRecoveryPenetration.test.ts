@@ -79,9 +79,9 @@ describe("fighter evasive recovery", () => {
     const craft = ship("craft", "strike_craft", [0, 0]);
     const pursuer = ship("pursuer", "strike_craft", [-200, 0], 1);
     const escort = ship("escort", "dreadnought", [500, 300]);
-    expect(fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer, escort], 0)[1]).toBeGreaterThan(
-      0,
-    );
+    expect(
+      fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer, escort], 0)[1],
+    ).toBeGreaterThan(0);
     escort.pos = [-500, 300];
     expect(fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer, escort], 0)).toEqual(
       fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer], 0),

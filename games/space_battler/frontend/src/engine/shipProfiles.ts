@@ -1,6 +1,7 @@
 import type {
   HullClass,
   ProjectileState,
+  ShipState,
   TurretMountState,
   Vector2,
   WeaponDefinition,
@@ -534,3 +535,27 @@ export function instantiateTurrets(
     weapon: { ...weapon, ...(weapon.flak ? { flak: { ...weapon.flak } } : {}) },
   }));
 }
+
+/** Muzzle reach + blast edge + six hull radii of maneuvering clearance, not a world-space cap. */
+export function flakThreatRadius(ship: Pick<ShipState, "size" | "turrets">): number {
+  return ship.turrets.reduce(
+    (radius, turret) =>
+      turret.weapon.weaponType === "point_defense" && turret.weapon.flak
+        ? Math.max(
+            radius,
+            turret.weapon.range +
+              Math.hypot(...turret.offset) +
+              turret.barrelLength +
+              turret.weapon.flak.blastRadius +
+              ship.size * 6,
+          )
+        : radius,
+    0,
+  );
+}
+
+// Nominal profile metric; live navigation uses flakThreatRadius for refitted/scaled ships too.
+export const CORVETTE_FLAK_THREAT_RADIUS = flakThreatRadius({
+  size: HULL_PROFILES.corvette.size,
+  turrets: instantiateTurrets(HULL_PROFILES.corvette, "flak_metric", 0),
+});

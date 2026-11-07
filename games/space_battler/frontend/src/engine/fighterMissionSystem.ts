@@ -24,12 +24,12 @@ import {
 import { navigationContext, prepareNavigationContext } from "./navigationContext";
 import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import {
-  FLAK_DENIAL_RADIUS,
   fighterShieldWaypoint,
   fighterTacticalTick,
   findNavigationTarget,
   hostileFlakThreats,
 } from "./shipNavigationSystem";
+import { flakThreatRadius } from "./shipProfiles";
 import type { ClientCombatSimulation } from "./simulation";
 
 const FIGHTER_STANDOFF = 520;
@@ -48,6 +48,7 @@ export function swarmFlakFear(ship: ShipState, corvette: ShipState, ships: ShipS
   )
     return 1;
   let attackers = 0;
+  const radius = flakThreatRadius(corvette);
   for (const peer of ships) {
     if (
       !peer.isAlive ||
@@ -62,7 +63,8 @@ export function swarmFlakFear(ship: ShipState, corvette: ShipState, ships: ShipS
       continue;
     const dx = peer.pos[0] - corvette.pos[0];
     const dy = peer.pos[1] - corvette.pos[1];
-    if (peer.navigationTargetId === corvette.id || dx * dx + dy * dy <= 600 * 600) attackers++;
+    if (peer.navigationTargetId === corvette.id || dx * dx + dy * dy <= radius * radius)
+      attackers++;
   }
   return attackers >= 4 ? Math.max(0.2, (0.5 * 4) / attackers) : 1;
 }
@@ -568,7 +570,8 @@ export class FighterMissionSystem {
           !s.isDebris &&
           s.id !== ship.id &&
           !(s.team === ship.team && s.hullClass === "strike_craft") &&
-          (s.pos[0] - ship.pos[0]) ** 2 + (s.pos[1] - ship.pos[1]) ** 2 <= 800 * 800,
+          (s.pos[0] - ship.pos[0]) ** 2 + (s.pos[1] - ship.pos[1]) ** 2 <=
+            Math.max(800, flakThreatRadius(s)) ** 2,
       )
       .map((obstacle) => {
         const capital = isCapitalShip(obstacle);
@@ -582,6 +585,7 @@ export class FighterMissionSystem {
             craftRadius + shieldEnvelopeRadius(obstacle) + (missionTarget ? 20 : capital ? 95 : 40),
           horizon: missionTarget ? 0.25 : 1,
           flak: obstacle.team !== ship.team && obstacle.hullClass === "corvette",
+          flakDenialRadius: Math.max(0, flakThreatRadius(obstacle) - obstacle.size * 3),
           flakFear:
             obstacle.team !== ship.team && obstacle.hullClass === "corvette"
               ? swarmFlakFear(ship, obstacle, aliveShips)
@@ -664,11 +668,11 @@ export class FighterMissionSystem {
         const distance = t === 0 ? entry.distance : Math.sqrt(dx * dx + dy * dy);
         if (distance < clearance) dangerScore += (capital ? 14 : 6) * (1 - distance / clearance);
         if (distance < pdRange) dangerScore += 3 * (1 - distance / pdRange);
-        if (entry.flak && distance < FLAK_DENIAL_RADIUS)
+        if (entry.flak && distance < entry.flakDenialRadius)
           dangerScore +=
             (phase === "attack" && obstacle.id === target.id && threats.length === 1 ? 0.5 : 8) *
             entry.flakFear *
-            (1 - distance / FLAK_DENIAL_RADIUS);
+            (1 - distance / entry.flakDenialRadius);
       }
       if (dangerScore > maxDangerObserved) maxDangerObserved = dangerScore;
       let congestionScore = 0;

@@ -20,7 +20,7 @@ import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { type CrewVeterancy, FleetBuilder } from "./components/FleetBuilder";
 import { PerformanceHud, PerformanceSamples } from "./components/PerformanceHud";
 import { spaceAudio } from "./engine/audioEngine";
-import type { BattleMapId } from "./engine/battleMaps";
+import { BATTLE_MAPS, type BattleMapId } from "./engine/battleMaps";
 import { CARRIER_FABRICATION_INTERVAL, carrierFabricationProgress } from "./engine/carrierHangar";
 import { fleetAdvantage } from "./engine/fleetAdvantage";
 import { FleetBreakdown } from "./engine/fleetBreakdown";
@@ -35,6 +35,7 @@ import { normalizeAngle } from "./engine/math2d";
 import { type FleetComposition, SCENARIOS } from "./engine/scenarios";
 import { isCapitalShip } from "./engine/shieldGeometry";
 import { SHIELD_HAVEN_SLOTS } from "./engine/shieldHaven";
+import { HULL_PROFILES } from "./engine/shipProfiles";
 import { ClientCombatSimulation } from "./engine/simulation";
 
 const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
@@ -44,6 +45,8 @@ const STORAGE_KEYS = {
   userSlots: "gyromouse_sb_user_slots",
   redSlots: "gyromouse_sb_red_slots",
   enemyPreset: "gyromouse_sb_enemy_preset",
+  selectedMap: "gyromouse_sb_selected_map",
+  crewVeterancy: "gyromouse_sb_crew_veterancy",
   performanceHud: "gyromouse_sb_performance_hud",
 } as const;
 
@@ -56,6 +59,28 @@ const DEFAULT_USER_SLOTS: FleetSlot[] = [
   { id: "sc_3", hullClass: "strike_craft", groupId: 3 },
   { id: "sc_4", hullClass: "strike_craft", groupId: 3 },
 ];
+
+function isFleetSlots(value: unknown): value is FleetSlot[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (slot) =>
+        slot !== null &&
+        typeof slot === "object" &&
+        typeof slot.id === "string" &&
+        typeof slot.hullClass === "string" &&
+        Object.hasOwn(HULL_PROFILES, slot.hullClass) &&
+        Number.isInteger(slot.groupId) &&
+        (slot.wingSize === undefined || [0, 8, 16].includes(slot.wingSize)) &&
+        (slot.escortCount === undefined || [0, 1, 2].includes(slot.escortCount)) &&
+        (slot.carrierAnchorId === undefined || typeof slot.carrierAnchorId === "string"),
+    )
+  );
+}
+
+function isCrewVeterancy(value: unknown): value is CrewVeterancy {
+  return value === "recruit" || value === "pilot" || value === "veteran" || value === "ace";
+}
 
 function slotsFromComposition(composition: FleetComposition[]): FleetSlot[] {
   return composition.flatMap((entry, index) =>
@@ -120,7 +145,7 @@ export default function App() {
       const raw = localStorage.getItem(STORAGE_KEYS.userSlots);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (isFleetSlots(parsed)) return parsed;
       }
     } catch {
       // ignore storage errors
@@ -128,10 +153,31 @@ export default function App() {
     return DEFAULT_USER_SLOTS;
   });
   const [budgetLimit] = useState<number>(30000);
-  const [selectedMap, setSelectedMap] = useState<BattleMapId>("empty_void");
-  const [crewVeterancy, setCrewVeterancy] = useState<Record<"blue" | "red", CrewVeterancy>>({
-    blue: "pilot",
-    red: "pilot",
+  const [selectedMap, setSelectedMap] = useState<BattleMapId>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.selectedMap);
+      const map = BATTLE_MAPS.find((entry) => entry.id === saved);
+      if (map) return map.id;
+    } catch {
+      // ignore storage errors
+    }
+    return "empty_void";
+  });
+  const [crewVeterancy, setCrewVeterancy] = useState<Record<"blue" | "red", CrewVeterancy>>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.crewVeterancy);
+      const saved: unknown = raw ? JSON.parse(raw) : null;
+      if (saved && typeof saved === "object") {
+        const tiers = saved as Partial<Record<"blue" | "red", unknown>>;
+        return {
+          blue: isCrewVeterancy(tiers.blue) ? tiers.blue : "pilot",
+          red: isCrewVeterancy(tiers.red) ? tiers.red : "pilot",
+        };
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return { blue: "pilot", red: "pilot" };
   });
   const [enemyPresetId, setEnemyPresetId] = useState<string>(() => {
     try {
@@ -153,7 +199,7 @@ export default function App() {
       const raw = localStorage.getItem(STORAGE_KEYS.redSlots);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (isFleetSlots(parsed)) return parsed;
       }
     } catch {
       // ignore storage errors
@@ -202,6 +248,22 @@ export default function App() {
       // ignore
     }
   }, [enemyPresetId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.selectedMap, selectedMap);
+    } catch {
+      // ignore storage errors
+    }
+  }, [selectedMap]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.crewVeterancy, JSON.stringify(crewVeterancy));
+    } catch {
+      // ignore storage errors
+    }
+  }, [crewVeterancy]);
 
   // Simulation State
   const [sim, setSim] = useState<ClientCombatSimulation>(() => {

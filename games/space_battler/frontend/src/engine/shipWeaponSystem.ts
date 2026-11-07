@@ -316,7 +316,12 @@ export class ShipWeaponSystem {
     this.context.shieldHaven.releaseGuests(ship.id);
     this.context.stats[ship.team].shipsLost += 1;
     this.context.onShipDestroyed?.(ship);
-    const killerName = attackerTeam === 0 ? "Terran fleet" : "Alien swarm";
+    const killerName =
+      attackerTeam === undefined
+        ? "environmental hazards"
+        : attackerTeam === 0
+          ? "Terran fleet"
+          : "Alien swarm";
     this.context.addCombatLog(
       `${ship.name} eliminated by ${killerName}!`,
       attackerTeam ?? (ship.team === 0 ? 1 : 0),

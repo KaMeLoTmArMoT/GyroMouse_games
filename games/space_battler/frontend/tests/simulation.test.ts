@@ -140,7 +140,7 @@ describe("capital kinetic wrecks", () => {
     expect(sim.ships.some((s) => s.isDebris)).toBe(false);
   });
 
-  it("softly separates ships from wrecks without ramming damage or seeker locks", () => {
+  it("separates ships from wrecks with kinetic damage and excludes wreck seeker locks", () => {
     const owner = stationary(ship("cruiser", 0, [0, 0]));
     const target = stationary(ship("cruiser", 1, [900, 0]));
     const sim = simulate([owner, target]);
@@ -160,8 +160,8 @@ describe("capital kinetic wrecks", () => {
     expect(vecDistance(owner.pos, wrecks[0].pos)).toBeGreaterThanOrEqual(
       owner.size + wrecks[0].size,
     );
-    expect(owner.shieldCurrent).toBe(before);
-    expect(wrecks[0].hullCurrent).toBe(75);
+    expect(owner.shieldCurrent).toBeLessThan(before);
+    expect(wrecks[0].hullCurrent).toBeLessThan(75);
     expect(owner.navigationTargetId).toBe(target.id);
     expect(shot.targetId).toBe(target.id);
   });
@@ -415,7 +415,7 @@ describe("channeled beam lasers", () => {
     expect(damage).toBeCloseTo(
       (shooter.turrets[0].weapon.damage * shooter.turrets[0].weapon.shieldMultiplier) / 4,
     );
-    if (reason === "range") target.pos = [2000, 0];
+    if (reason === "range") target.pos = [shooter.turrets[0].weapon.range + 200, 0];
     else shooter.isAlive = false;
     advance(sim, 1);
     expect(target.shieldMax - target.shieldCurrent).toBeCloseTo(damage);
@@ -1446,7 +1446,7 @@ describe("tactical maneuvers", () => {
 });
 
 describe("arena containment and matchup rebalance", () => {
-  it("smoothly bends outward thrust inward and preserves tangential travel", () => {
+  it("anticipates the hazard and requests ordinary inward thrust outside it", () => {
     const cruiser = ship("cruiser", 0, [ARENA_RADIUS - 600, 0]);
     expect(arenaVelocity(cruiser, [50, 25])).toEqual([50, 25]);
     cruiser.pos[0] = ARENA_RADIUS;
@@ -1456,11 +1456,11 @@ describe("arena containment and matchup rebalance", () => {
     const soft = arenaVelocity(cruiser, [50, 25]);
     expect(soft[0]).toBeLessThan(0);
     cruiser.pos[0] = ARENA_HARD_PULL_RADIUS;
-    expect(arenaVelocity(cruiser, [50, 25])[0]).toBeLessThan(soft[0]);
+    expect(arenaVelocity(cruiser, [50, 25])).toEqual(soft);
   });
 
   it.each(["strike_craft", "corvette", "cruiser", "battleship"] as const)(
-    "returns an outward-moving %s from beyond the hard pull radius without teleporting",
+    "returns an outward-moving %s from the hazard zone without teleporting",
     (hull) => {
       const start: Vector2 = [ARENA_HARD_PULL_RADIUS + 10, 0];
       const s = ship(hull, 0, [...start]);

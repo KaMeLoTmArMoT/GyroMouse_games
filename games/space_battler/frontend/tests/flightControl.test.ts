@@ -639,14 +639,14 @@ describe("flight behavior contracts", () => {
   );
 
   it.each(["battleship", "dreadnought", "cruiser", "missile_frigate"] as const)(
-    "%s clamps inherited drift in the post-turn frame after arena corrections",
+    "%s clamps inherited drift in the post-turn frame during safe inward approach",
     (hull) => {
       const approaching = ship(hull);
       const target = ship("battleship", 1);
-      approaching.pos = [2300, 500];
+      approaching.pos = [-ARENA_RADIUS + 300, 500];
       approaching.heading = Math.PI / 4;
       approaching.velocity = [0, approaching.maxSpeed];
-      target.pos = [4500, 500];
+      target.pos = [approaching.pos[0] + 2200, 500];
       target.maxSpeed = target.turnRate = 0;
       target.turrets = [];
       approaching.turrets = [];

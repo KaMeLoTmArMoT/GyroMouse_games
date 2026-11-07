@@ -11,6 +11,7 @@ import {
   hostileFlakThreats,
   updateShipNavigation,
 } from "../src/engine/shipNavigationSystem";
+import { flakThreatRadius } from "../src/engine/shipProfiles";
 import type {
   GroupOrder,
   HullClass,
@@ -124,7 +125,9 @@ describe("fighter flak denial", () => {
 
   it("ignores dead, docked, debris, friendly, and distant flak hulls", () => {
     const craft = ship("pilot", "strike_craft", [0, 0]);
-    const valid = ship("valid", "corvette", [600, 0], 1);
+    const valid = ship("valid", "corvette", [0, 0], 1);
+    const radius = flakThreatRadius(valid);
+    valid.pos = [radius, 0];
     const dead = ship("dead", "corvette", [10, 0], 1);
     dead.isAlive = false;
     const docked = ship("docked", "corvette", [10, 0], 1);
@@ -138,7 +141,7 @@ describe("fighter flak denial", () => {
         docked,
         debris,
         ship("ally", "corvette", [10, 0]),
-        ship("far", "corvette", [601, 0], 1),
+        ship("far", "corvette", [radius + 1, 0], 1),
       ]),
     ).toEqual([valid]);
   });

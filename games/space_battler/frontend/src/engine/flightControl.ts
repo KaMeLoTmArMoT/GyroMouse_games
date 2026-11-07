@@ -5,6 +5,7 @@ import type {
   TurretMountState,
   Vector2,
 } from "../types/combat";
+import { ARENA_RADIUS, arenaAnticipation, arenaVelocity } from "./arenaBoundary";
 import {
   closeToKillTarget,
   damagedTargetPriority,
@@ -41,6 +42,12 @@ import { distanceSquared, navigationContext } from "./navigationContext";
 import { escortCapitalStandoff, isCapitalShip } from "./shieldGeometry";
 import { type CapitalFlightDoctrine, SHIP_DOCTRINES } from "./shipDoctrines";
 
+export {
+  ARENA_HARD_PULL_RADIUS,
+  ARENA_RADIUS,
+  arenaVelocity,
+  configureArena,
+} from "./arenaBoundary";
 // Keep simulation callers on the existing API while sharing the underlying behavior blocks.
 export { calculateSeparation, calculateSeparation as separation, limitVelocity };
 
@@ -132,51 +139,6 @@ export function debrisAvoidanceVelocity(
     }
   }
   return strongest > 0 ? limitVelocity(result, ship.maxSpeed) : desired;
-}
-
-export let ARENA_RADIUS = 1900;
-export let ARENA_HARD_PULL_RADIUS = 2200;
-
-export function configureArena(radius: number, hardPullRadius: number): void {
-  ARENA_RADIUS = radius;
-  ARENA_HARD_PULL_RADIUS = hardPullRadius;
-}
-
-function arenaAnticipation(distance: number): number {
-  const width = Math.min(550, ARENA_RADIUS);
-  const t = clamp((distance - (ARENA_RADIUS - width)) / width, 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
-// Preserve tangential motion while smoothly replacing outward thrust with inward steering.
-export function arenaVelocity(ship: ShipState, desired: Vector2): Vector2 {
-  const distance = vecDistance([0, 0], ship.pos);
-  if (distance <= ARENA_RADIUS - Math.min(550, ARENA_RADIUS)) return desired;
-  const outward = vecScale(ship.pos, 1 / distance);
-  const radial = vecDot(desired, outward);
-  const outwardMotion = Math.max(0, vecDot(ship.velocity, outward));
-  const outwardThrust = Math.max(0, radial);
-  const anticipation = arenaAnticipation(distance);
-  const tangent: Vector2 = [-outward[1], outward[0]];
-  const tangentDirection = vecDot(desired, tangent) || vecDot(ship.velocity, tangent) || 1;
-  let corrected = vecSub(
-    desired,
-    vecScale(outward, anticipation * (outwardThrust + outwardMotion * 0.5)),
-  );
-  corrected = vecAdd(
-    corrected,
-    vecScale(tangent, Math.sign(tangentDirection) * anticipation * outwardThrust * 0.75),
-  );
-  if (distance <= ARENA_RADIUS) return limitVelocity(corrected, ship.maxSpeed);
-  const t = clamp((distance - ARENA_RADIUS) / (ARENA_HARD_PULL_RADIUS - ARENA_RADIUS), 0, 1);
-  const blend = t * t * (3 - 2 * t);
-  return limitVelocity(
-    vecSub(
-      corrected,
-      vecScale(outward, blend * (Math.max(0, vecDot(corrected, outward)) + ship.maxSpeed)),
-    ),
-    ship.maxSpeed,
-  );
 }
 
 export const FIGHTER_DISPERSAL_RADIUS = 200;
@@ -953,7 +915,7 @@ export function capitalIntent(
       },
     );
     if (ship.skirmishCycle.phase === "breakoff" && intent.rangePhase !== "approach") {
-      const corrected = arenaVelocity(ship, intent.velocity);
+      const corrected = arenaVelocity(ship, intent.velocity, ships);
       if (vecDistance([0, 0], corrected) > 1e-6) {
         const heading = Math.atan2(corrected[1], corrected[0]);
         intent = {

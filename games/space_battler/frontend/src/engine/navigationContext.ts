@@ -1,5 +1,8 @@
 import type { ShipState } from "../types/combat";
 import { isCapitalShip } from "./shieldGeometry";
+import { flakThreatRadius } from "./shipProfiles";
+
+export { CORVETTE_FLAK_THREAT_RADIUS } from "./shipProfiles";
 
 const contexts = new WeakMap<ShipState[], NavigationContext>();
 
@@ -55,7 +58,8 @@ export class NavigationContext {
         this.anchors.set(ship, anchor);
         let threats = 0;
         for (const peer of flak) {
-          if (distanceSquared(ship, peer) <= 600 * 600 && ++threats >= 2) break;
+          const radius = flakThreatRadius(peer);
+          if (radius > 0 && distanceSquared(ship, peer) <= radius ** 2 && ++threats >= 2) break;
         }
         this.safe.set(ship, threats < 2);
         if (ship.hullClass === "strike_craft")

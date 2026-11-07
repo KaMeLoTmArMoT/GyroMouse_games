@@ -11,6 +11,7 @@ import type {
   Vector2,
   WeaponType,
 } from "../types/combat";
+import { applyArenaRadiation, radiationIntensity } from "./arenaBoundary";
 import {
   type BattleMapId,
   createMapObstacles,
@@ -346,7 +347,7 @@ export class ClientCombatSimulation {
           turret.cooldownTimer = Math.max(0, turret.cooldownTimer - dt);
       if (ship.shieldDelayTimer > 0) {
         ship.shieldDelayTimer = Math.max(0, ship.shieldDelayTimer - dt);
-      } else if (ship.shieldCurrent < ship.shieldMax) {
+      } else if (ship.shieldCurrent < ship.shieldMax && radiationIntensity(ship.pos) === 0) {
         const before = this.observer ? ship.shieldCurrent : 0;
         ship.shieldCurrent = Math.min(ship.shieldMax, ship.shieldCurrent + ship.shieldRegen * dt);
         this.observer?.onShieldRegen(ship, ship.shieldCurrent - before);
@@ -471,6 +472,16 @@ export class ClientCombatSimulation {
       this.onBeamFire,
       (recipient, amount) => this.observer?.onShieldRegen(recipient, amount),
     );
+    for (const ship of aliveShips) {
+      if (!ship.isAlive || radiationIntensity(ship.pos) === 0) continue;
+      const before = this.observer
+        ? [ship.shieldCurrent, ship.armorCurrent, ship.hullCurrent]
+        : null;
+      applyArenaRadiation(ship, dt);
+      if (before) this.observer?.onDamage(ship, undefined, undefined, "radiation", before);
+      if (ship.shieldCurrent <= 0) this.shieldHaven.releaseGuests(ship.id);
+      if (ship.hullCurrent <= 0) this.weapons.destroyShip(ship);
+    }
     this.shieldHaven.cleanup(combatShips);
     this.activeBeams = [
       ...this.beamLaserSystem.collectActiveBeams(),

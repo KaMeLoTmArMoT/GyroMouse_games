@@ -9,6 +9,7 @@ import {
   shieldRepulsorRadius,
 } from "./shieldGeometry";
 import { havenHullClearance, sharesShieldHaven } from "./shieldHaven";
+import { HULL_PROFILES } from "./shipProfiles";
 import type { ClientCombatSimulation } from "./simulation";
 
 const MAX_REPULSOR_STEP = 4;
@@ -34,15 +35,27 @@ function shipMass(hull: ShipState["hullClass"]): number {
   }
 }
 
+/** Fragments retain their parent density; 2D collider area determines their remaining mass. */
+export function wreckMassFactor(wreck: ShipState): number {
+  return shipMass(wreck.hullClass) * (wreck.size / HULL_PROFILES[wreck.hullClass].size) ** 2;
+}
+
+export function wreckImpactDamage(wreck: ShipState, relativeSpeed: number): number {
+  return 0.5 * wreckMassFactor(wreck) * relativeSpeed ** 1.5;
+}
+
 export class CollisionContactSolver {
   private contacts = new Set<number>();
   private readonly contactIds = new WeakMap<ShipState, number>();
   private nextContactId = 0;
-  private readonly context: Pick<ClientCombatSimulation, "shieldHaven" | "observer">;
+  private readonly context: Pick<
+    ClientCombatSimulation,
+    "shieldHaven" | "observer" | "onWeaponImpact"
+  >;
   private readonly destroyShip: (ship: ShipState, attackerTeam?: number) => void;
 
   constructor(
-    context: Pick<ClientCombatSimulation, "shieldHaven" | "observer">,
+    context: Pick<ClientCombatSimulation, "shieldHaven" | "observer" | "onWeaponImpact">,
     destroyShip: (ship: ShipState, attackerTeam?: number) => void,
   ) {
     this.context = context;
@@ -93,7 +106,7 @@ export class CollisionContactSolver {
         const nested = sharesShieldHaven(a, b);
         const hullClearance = nested ? havenHullClearance(a, b) : a.size + b.size;
         const repulsorZone = debrisContact
-          ? hullClearance + 7.5
+          ? hullClearance
           : nested
             ? hullClearance
             : Math.max(
@@ -107,8 +120,8 @@ export class CollisionContactSolver {
         if (d >= repulsorZone) continue;
         const normal: Vector2 =
           d > 0.001 ? vecNormalize(vecSub(a.pos, b.pos)) : [0, a.id < b.id ? -1 : 1];
-        const massA = a.isDebris ? 4 : shipMass(a.hullClass);
-        const massB = b.isDebris ? 4 : shipMass(b.hullClass);
+        const massA = a.isDebris ? wreckMassFactor(a) : shipMass(a.hullClass);
+        const massB = b.isDebris ? wreckMassFactor(b) : shipMass(b.hullClass);
         const totalMass = massA + massB;
         // Tethers are kinematic for unrelated contacts; hull penetration breaks attachment.
         if (nested) {
@@ -127,6 +140,23 @@ export class CollisionContactSolver {
         const pushRatioB = fixedB ? 0 : fixedA ? 1 : massA / totalMass;
         // Cancel only closing normal velocity so hulls slide tangentially.
         const closingSpeed = vecDot(vecSub(a.velocity, b.velocity), normal);
+        if (
+          debrisContact &&
+          a.isDebris !== b.isDebris &&
+          closingSpeed < 0 &&
+          !this.contacts.has(pair)
+        ) {
+          const wreck = a.isDebris ? a : b;
+          const vessel = a.isDebris ? b : a;
+          if (isCapitalShip(wreck)) {
+            const relSpeed = Math.hypot(
+              a.velocity[0] - b.velocity[0],
+              a.velocity[1] - b.velocity[1],
+            );
+            this.applyWreckImpact(vessel, wreck, wreckImpactDamage(wreck, relSpeed));
+            contacts.add(pair);
+          }
+        }
         if (closingSpeed < 0) {
           a.velocity = vecSub(a.velocity, vecScale(normal, closingSpeed * pushRatioA));
           b.velocity = vecAdd(b.velocity, vecScale(normal, closingSpeed * pushRatioB));
@@ -176,6 +206,30 @@ export class CollisionContactSolver {
       }
     }
     this.contacts = contacts;
+  }
+
+  private applyWreckImpact(ship: ShipState, wreck: ShipState, damage: number): void {
+    const { observer, shieldHaven, onWeaponImpact } = this.context;
+    const before = [ship.shieldCurrent, ship.armorCurrent, ship.hullCurrent];
+    const shieldDamage = Math.min(ship.shieldCurrent, damage);
+    ship.shieldCurrent -= shieldDamage;
+    const armorDamage = Math.min(ship.armorCurrent, damage - shieldDamage);
+    ship.armorCurrent -= armorDamage;
+    ship.hullCurrent = Math.max(0, ship.hullCurrent - (damage - shieldDamage - armorDamage));
+    ship.shieldDelayTimer =
+      ship.shieldRechargeDelay ?? HULL_PROFILES[ship.hullClass].shieldRechargeDelay;
+    wreck.hullCurrent = Math.max(0, wreck.hullCurrent - damage);
+    observer?.onDamage(ship, wreck.id, undefined, "ram", before);
+    onWeaponImpact?.(
+      ship,
+      wreck.pos,
+      shieldDamage > 0,
+      armorDamage > 0,
+      ship.hullCurrent < before[2],
+    );
+    if (ship.shieldCurrent <= 0) shieldHaven.releaseGuests(ship.id);
+    if (wreck.hullCurrent <= 0) this.destroyShip(wreck);
+    if (ship.hullCurrent <= 0) this.destroyShip(ship);
   }
 
   resolveCruiserClearance(aliveShips: ShipState[]): void {

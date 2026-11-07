@@ -8,7 +8,7 @@ export interface CombatObserver {
     target: Readonly<ShipState>,
     sourceId: string | undefined,
     mountId: string | undefined,
-    weapon: WeaponType | "ram",
+    weapon: WeaponType | "ram" | "radiation",
     before: readonly number[],
   ): void;
   onShieldRegen(ship: Readonly<ShipState>, amount: number): void;
@@ -37,7 +37,7 @@ export interface DamageRecord extends LayerDamage {
   sourceId: string | null;
   mountId: string | null;
   targetId: string;
-  weapon: WeaponType | "ram";
+  weapon: WeaponType | "ram" | "radiation";
 }
 export interface BatteryTelemetry {
   shipId: string;
@@ -150,7 +150,7 @@ export class CombatTelemetry implements CombatObserver {
     target: Readonly<ShipState>,
     sourceId: string | undefined,
     mountId: string | undefined,
-    weapon: WeaponType | "ram",
+    weapon: WeaponType | "ram" | "radiation",
     before: readonly number[],
   ): void {
     const shield = Math.max(0, before[0] - target.shieldCurrent);

@@ -6,7 +6,6 @@ import { friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import { capitalFinishPriority, damagedTargetPriority, squadFocusPriority } from "./fireControl";
 import { clampLateralVelocity, emergencySkirmishBreakout } from "./flightBehaviors";
 import {
-  ARENA_HARD_PULL_RADIUS,
   ARENA_RADIUS,
   arenaVelocity,
   capitalIntent,
@@ -37,10 +36,12 @@ import { navigationContext } from "./navigationContext";
 import { obstacleCourseCorrection } from "./obstacleNavigation";
 import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
+import { CORVETTE_FLAK_THREAT_RADIUS, flakThreatRadius, HULL_PROFILES } from "./shipProfiles";
 import type { ClientCombatSimulation } from "./simulation";
 
-export const FLAK_DENIAL_RADIUS = 520;
-export const FLAK_THREAT_RANGE = 600;
+// The denial band keeps three hull radii of clearance; threat awareness keeps six.
+export const FLAK_DENIAL_RADIUS = CORVETTE_FLAK_THREAT_RADIUS - HULL_PROFILES.corvette.size * 3;
+export const FLAK_THREAT_RANGE = CORVETTE_FLAK_THREAT_RADIUS;
 
 export function hostileFlakThreats(ship: ShipState, ships: ShipState[]): ShipState[] {
   return ships.filter(
@@ -50,7 +51,8 @@ export function hostileFlakThreats(ship: ShipState, ships: ShipState[]): ShipSta
       !enemy.isDebris &&
       enemy.team !== ship.team &&
       enemy.hullClass === "corvette" &&
-      vecDistance(ship.pos, enemy.pos) <= FLAK_THREAT_RANGE,
+      flakThreatRadius(enemy) > 0 &&
+      vecDistance(ship.pos, enemy.pos) <= flakThreatRadius(enemy),
   );
 }
 
@@ -196,7 +198,7 @@ function selectNavigationTarget(
   let hasCloseCapitalThreat = false;
   for (const enemy of aliveShips) {
     if (!navigationCandidate(ship, enemy, aliveShips)) continue;
-    const safe = !fighter || safeNavigationTarget(ship, enemy, aliveShips);
+    const safe = !fighter || safeNavigationTarget(enemy, aliveShips);
     if (safe && !hasSafeTarget) {
       hasSafeTarget = true;
       hasCapital = false;
@@ -237,7 +239,7 @@ function selectNavigationTarget(
       : ship;
   for (const enemy of aliveShips) {
     if (!navigationCandidate(ship, enemy, aliveShips)) continue;
-    if (fighter && hasSafeTarget && !safeNavigationTarget(ship, enemy, aliveShips)) continue;
+    if (fighter && hasSafeTarget && !safeNavigationTarget(enemy, aliveShips)) continue;
     if (pack) {
       const distanceSquared = navigationDistanceSquared(hunter, enemy);
       if (distanceSquared <= 600 * 600 && withinPursuitTheater(hunter, enemy, aliveShips)) {
@@ -380,7 +382,7 @@ function closeNavigationThreat(enemy: ShipState, ship: ShipState, rangeSquared: 
   );
 }
 
-function safeNavigationTarget(ship: ShipState, enemy: ShipState, ships: ShipState[]): boolean {
+function safeNavigationTarget(enemy: ShipState, ships: ShipState[]): boolean {
   const context = navigationContext(ships);
   if (context) return context.safe.get(enemy) ?? true;
   let threats = 0;
@@ -389,9 +391,10 @@ function safeNavigationTarget(ship: ShipState, enemy: ShipState, ships: ShipStat
       flak.isAlive &&
       !flak.isDocked &&
       !flak.isDebris &&
-      flak.team !== ship.team &&
+      flak.team === enemy.team &&
       flak.hullClass === "corvette" &&
-      navigationDistanceSquared(flak, enemy) <= FLAK_THREAT_RANGE * FLAK_THREAT_RANGE &&
+      flakThreatRadius(flak) > 0 &&
+      navigationDistanceSquared(flak, enemy) <= flakThreatRadius(flak) ** 2 &&
       ++threats >= 2
     )
       return false;
@@ -585,6 +588,13 @@ export function updateShipNavigation(
     intendedVelocity = thrusterVelocity;
     targetHeading = Math.atan2(route[1], route[0]);
   }
+  const returningToArena = vecDistance([0, 0], ship.pos) > ARENA_RADIUS;
+  const boundaryVelocity = arenaVelocity(ship, intendedVelocity, aliveShips);
+  if (boundaryVelocity !== intendedVelocity) {
+    intendedVelocity = boundaryVelocity;
+    thrusterVelocity = boundaryVelocity;
+    if (returningToArena) targetHeading = Math.atan2(boundaryVelocity[1], boundaryVelocity[0]);
+  }
   const allShips = context.ships ?? aliveShips;
   const tacticalTick = fighterTacticalTick(ship, context.timeElapsed, aliveShips);
   let obstacleDecision = obstacleDecisions.get(ship);
@@ -619,16 +629,6 @@ export function updateShipNavigation(
     thrusterVelocity = debrisVelocity;
     targetHeading = Math.atan2(debrisVelocity[1], debrisVelocity[0]);
   }
-  if (thrusterVelocity) {
-    thrusterVelocity = arenaVelocity(ship, thrusterVelocity);
-  } else if (vecDistance([0, 0], ship.pos) > ARENA_RADIUS) {
-    const inward = arenaVelocity(ship, [
-      Math.cos(targetHeading) * desiredSpeed,
-      Math.sin(targetHeading) * desiredSpeed,
-    ]);
-    targetHeading = Math.atan2(inward[1], inward[0]);
-    desiredSpeed = vecDistance([0, 0], inward);
-  }
   const angleDiff = normalizeAngle(targetHeading - ship.heading);
   const turnStep = clamp(
     angleDiff,
@@ -659,12 +659,7 @@ export function updateShipNavigation(
     vecScale(forwardVector, newForwardSpeed),
     vecScale(rightVector, newLateralSpeed),
   );
-  // Emergency acceleration beyond the soft band; no teleporting or position clamping.
-  const containedVelocity =
-    vecDistance([0, 0], ship.pos) > ARENA_HARD_PULL_RADIUS
-      ? vecSub(newVelocity, vecScale(vecNormalize(ship.pos), 600 * dt))
-      : newVelocity;
-  let controlledVelocity = containedVelocity;
+  let controlledVelocity = newVelocity;
   // Wings can cross another capital's shield while intercepting or rejoining.
   // Preserve tangential flight, but bound closing speed by the remaining clearance.
   if (ship.hullClass === "strike_craft") {
@@ -685,7 +680,8 @@ export function updateShipNavigation(
     !evadingOrdnance &&
     !maintainingStandoff &&
     !avoidingDebris &&
-    !avoidingObstacle
+    !avoidingObstacle &&
+    !returningToArena
   ) {
     const flight = SHIP_DOCTRINES[ship.hullClass].flight;
     if (flight.kind === "capital" || flight.kind === "skirmish")
