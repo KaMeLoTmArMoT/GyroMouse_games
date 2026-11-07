@@ -18,8 +18,14 @@ import { useEffect, useState } from "react";
 import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { FleetBuilder } from "./components/FleetBuilder";
 import { spaceAudio } from "./engine/audioEngine";
+import { CARRIER_FABRICATION_INTERVAL, carrierFabricationProgress } from "./engine/carrierHangar";
 import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
 import { FLEET_PRESETS } from "./engine/fleetPresets";
+import {
+  HARMONIC_ACTIVE_SECONDS,
+  HARMONIC_CYCLE_SECONDS,
+  HARMONIC_RANGE,
+} from "./engine/harmonicShieldSystem";
 import { normalizeAngle } from "./engine/math2d";
 import { type FleetComposition, SCENARIOS } from "./engine/scenarios";
 import { isCapitalShip } from "./engine/shieldGeometry";
@@ -1048,6 +1054,110 @@ export default function App() {
                         Hardpoints & Live Cooldowns
                       </div>
                       <div className="space-y-1.5">
+                        {selectedShip.hullClass === "tender" &&
+                          (() => {
+                            const state = sim.harmonicShields.getTenderState(
+                              selectedShip.id,
+                              sim.timeElapsed,
+                            );
+                            const recipient = sim.ships.find(
+                              (ship) => ship.id === state?.recipientId,
+                            );
+                            const cooling = !state?.active && (state?.cooldownRemaining ?? 0) > 0;
+                            const progress = state?.active
+                              ? (state.timeRemaining / HARMONIC_ACTIVE_SECONDS) * 100
+                              : cooling
+                                ? Math.min(
+                                    100,
+                                    (state.cooldownRemaining /
+                                      (HARMONIC_CYCLE_SECONDS - HARMONIC_ACTIVE_SECONDS)) *
+                                      100,
+                                  )
+                                : 0;
+                            return (
+                              <div className="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] font-mono select-text">
+                                <div className="text-zinc-200 font-medium">
+                                  Harmonic Shield Conduit
+                                </div>
+                                <div
+                                  className={
+                                    state?.active
+                                      ? "text-cyan-400"
+                                      : cooling
+                                        ? "text-amber-400"
+                                        : "text-emerald-400"
+                                  }
+                                >
+                                  {state?.active
+                                    ? `TRANSFERRING (${state.timeRemaining.toFixed(1)}s remaining)`
+                                    : cooling
+                                      ? `RECHARGING (${state?.cooldownRemaining.toFixed(1)}s)`
+                                      : "STANDBY / READY"}
+                                </div>
+                                {state?.active && (
+                                  <div className="text-cyan-300">
+                                    Recipient:{" "}
+                                    {recipient
+                                      ? `${recipient.name} (${recipient.id})`
+                                      : state.recipientId}
+                                  </div>
+                                )}
+                                <div className="h-1 bg-zinc-800 rounded-full overflow-hidden my-1">
+                                  <div
+                                    className={`h-full transition-all ${state?.active ? "bg-cyan-400" : "bg-amber-500"}`}
+                                    style={{ width: `${progress}%` }}
+                                  />
+                                </div>
+                                <div className="text-[9px] text-zinc-500 flex justify-between select-all">
+                                  <span>Arc: 360° Omnidirectional</span>
+                                  <span>Range: {HARMONIC_RANGE}u</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        {selectedShip.hullClass === "carrier" &&
+                          (() => {
+                            const fabrication = carrierFabricationProgress(
+                              selectedShip,
+                              sim.timeElapsed,
+                            );
+                            const craft = sim.ships.filter(
+                              (ship) =>
+                                ship.isAlive &&
+                                !ship.isDebris &&
+                                ship.team === selectedShip.team &&
+                                ship.flagshipId === selectedShip.id &&
+                                ship.hullClass === "strike_craft",
+                            );
+                            const active = craft.filter((ship) => !ship.isDocked).length;
+                            const ready = craft.filter(
+                              (ship) => ship.isDocked && ship.hangarTurnaroundUntil === undefined,
+                            ).length;
+                            const full = fabrication.currentWings >= fabrication.maxWings;
+                            return (
+                              <div className="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] font-mono select-text">
+                                <div className="text-zinc-200 font-medium">
+                                  Strike Wing Fabrication (+2 Viper)
+                                </div>
+                                <div className={full ? "text-emerald-400" : "text-amber-400"}>
+                                  {full
+                                    ? `HANGAR AT MAX CAPACITY (${fabrication.currentWings}/${fabrication.maxWings})`
+                                    : `FABRICATING (${fabrication.timerRemaining.toFixed(1)}s)`}
+                                </div>
+                                <div className="h-1 bg-zinc-800 rounded-full overflow-hidden my-1">
+                                  <div
+                                    className={`h-full transition-all ${full ? "bg-emerald-400" : "bg-cyan-400"}`}
+                                    style={{
+                                      width: `${full ? 100 : Math.max(0, Math.min(100, (1 - fabrication.timerRemaining / CARRIER_FABRICATION_INTERVAL) * 100))}%`,
+                                    }}
+                                  />
+                                </div>
+                                <div className="text-zinc-500">
+                                  {active} active / {ready} ready in hangar
+                                </div>
+                              </div>
+                            );
+                          })()}
                         {selectedShip.turrets.map((t) => {
                           const minDeg = Math.round(t.baseArc[0] * (180 / Math.PI));
                           const maxDeg = Math.round(t.baseArc[1] * (180 / Math.PI));

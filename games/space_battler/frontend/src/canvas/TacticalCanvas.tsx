@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { spaceAudio } from "../engine/audioEngine";
+import { carrierFabricationProgress } from "../engine/carrierHangar";
 import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
 import { HARMONIC_RANGE } from "../engine/harmonicShieldSystem";
 import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
@@ -790,6 +791,7 @@ function drawTacticalTrajectory(
 
   // 1. Target Lock & Engagement Line
   const targetId =
+    ship.navigationTargetId ??
     ship.maneuverTargetId ??
     ship.dogfightTargetId ??
     ship.turrets.find((t) => t.currentTargetId)?.currentTargetId ??
@@ -939,6 +941,22 @@ function drawTacticalTrajectory(
   const line2 = target
     ? `TGT: ${target.name} [${Math.round(Math.hypot(target.pos[0] - ship.pos[0], target.pos[1] - ship.pos[1]))}u]`
     : null;
+  const sideTarget = ship.navigationTargetId
+    ? sim.ships.find(
+        (candidate) =>
+          candidate.isAlive &&
+          candidate.team !== ship.team &&
+          candidate.id !== ship.navigationTargetId &&
+          candidate.id !== targetId &&
+          ship.turrets.some(
+            (turret) =>
+              turret.currentTargetKind !== "missile" && turret.currentTargetId === candidate.id,
+          ),
+      )
+    : undefined;
+  const sideLine = sideTarget
+    ? `SIDE TGT: ${sideTarget.name} (${Math.round(Math.hypot(sideTarget.pos[0] - ship.pos[0], sideTarget.pos[1] - ship.pos[1]))}u)`
+    : null;
   const relatedWings = wings.filter((wing) => {
     if (!wing.members.some((id) => sim.ships.some((member) => member.id === id && member.isAlive)))
       return false;
@@ -964,6 +982,12 @@ function drawTacticalTrajectory(
     ).length;
     const airborne = auxiliaries.filter((craft) => !craft.isDocked).length;
     wingLines.push(`HANGAR: ${repairing} in repair • ${ready} ready • ${airborne} airborne`);
+    const fabrication = carrierFabricationProgress(ship, sim.timeElapsed);
+    wingLines.push(
+      fabrication.currentWings >= fabrication.maxWings
+        ? "FAB: FULL"
+        : `FAB: +2 in ${Math.ceil(fabrication.timerRemaining)}s`,
+    );
   }
   if (ship.hullClass === "strike_craft" && wingLines.length === 0)
     wingLines.push("ECHELON PENDING");
@@ -972,8 +996,14 @@ function drawTacticalTrajectory(
   ctx.font = "10px monospace";
   const w1 = ctx.measureText(line1).width;
   const w2 = line2 ? ctx.measureText(line2).width : 0;
-  const boxW = Math.max(w1, w2, ...wingLines.map((line) => ctx.measureText(line).width)) + 16;
-  const boxH = 18 + (line2 ? 13 : 0) + wingLines.length * 13;
+  const boxW =
+    Math.max(
+      w1,
+      w2,
+      sideLine ? ctx.measureText(sideLine).width : 0,
+      ...wingLines.map((line) => ctx.measureText(line).width),
+    ) + 16;
+  const boxH = 18 + (line2 ? 13 : 0) + (sideLine ? 13 : 0) + wingLines.length * 13;
 
   ctx.fillStyle = "rgba(10, 15, 26, 0.85)";
   ctx.strokeStyle = primaryColor;
@@ -995,9 +1025,13 @@ function drawTacticalTrajectory(
     ctx.fillStyle = "rgba(244, 114, 182, 0.9)";
     ctx.fillText(line2, pillX, pillY + 22);
   }
+  if (sideLine) {
+    ctx.fillStyle = "#c4b5fd";
+    ctx.fillText(sideLine, pillX, pillY + 22 + (line2 ? 13 : 0));
+  }
   ctx.fillStyle = "#fbbf24";
   wingLines.forEach((line, index) => {
-    ctx.fillText(line, pillX, pillY + 22 + (line2 ? 13 : 0) + index * 13);
+    ctx.fillText(line, pillX, pillY + 22 + (line2 ? 13 : 0) + (sideLine ? 13 : 0) + index * 13);
   });
   ctx.restore();
 }
