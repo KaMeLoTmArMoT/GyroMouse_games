@@ -54,8 +54,8 @@ describe("FleetBuilder presentation", () => {
     expect(markup).toContain('aria-label="blue carrier"');
     expect(markup).toContain("Blue Active Roster");
     expect(markup).toContain("Red Active Roster");
-    expect(markup).toMatch(/Blue Crew Veterancy · Draft[\s\S]*?value="pilot" selected=""/);
-    expect(markup).toMatch(/Red Crew Veterancy · Draft[\s\S]*?value="ace" selected=""/);
+    expect(markup).toMatch(/Blue Crew Veterancy[\s\S]*?value="pilot" selected=""/);
+    expect(markup).toMatch(/Red Crew Veterancy[\s\S]*?value="ace" selected=""/);
     expect(markup).toContain("Blue Budget");
     expect(markup).toContain("Red Budget");
     expect(markup).not.toContain("Armament Loadout");

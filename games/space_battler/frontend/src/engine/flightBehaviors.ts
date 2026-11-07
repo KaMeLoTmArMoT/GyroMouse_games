@@ -15,6 +15,7 @@ import {
   activeShieldRadius,
   capitalSeparationDistance,
   escortCapitalStandoff,
+  isCapitalShip,
   shieldEnvelopeRadius,
 } from "./shieldGeometry";
 import { havenHullClearance, sharesShieldHaven } from "./shieldHaven";
@@ -214,6 +215,43 @@ export function HitAndRunSkirmishBlock(
 
 export function formationVelocity(ship: ShipState, anchor: ShipState, station: Vector2): Vector2 {
   return vecAdd(anchor.velocity, vecScale(vecSub(station, ship.pos), 0.6));
+}
+
+// Only supporting capitals anchor skirmishers: other frigates must not pull the tether outward.
+export function skirmishFleetVelocity(
+  ship: ShipState,
+  desired: Vector2,
+  ships: ShipState[],
+): Vector2 {
+  let position: Vector2 = [0, 0];
+  let velocity: Vector2 = [0, 0];
+  let count = 0;
+  for (const peer of ships) {
+    if (
+      peer.id === ship.id ||
+      !peer.isAlive ||
+      peer.isDocked ||
+      peer.isDebris ||
+      peer.team !== ship.team ||
+      !isCapitalShip(peer)
+    )
+      continue;
+    position = vecAdd(position, peer.pos);
+    velocity = vecAdd(velocity, peer.velocity);
+    count++;
+  }
+  if (!count) return desired;
+  position = vecScale(position, 1 / count);
+  velocity = vecScale(velocity, 1 / count);
+  const distance = vecDistance(ship.pos, position);
+  if (distance < 1200) return desired;
+  const outward = vecNormalize(vecSub(ship.pos, position));
+  const radial = vecDot(vecSub(desired, velocity), outward);
+  // Brake before 1400u, then return inward while preserving tangential skirmish thrust.
+  const safeRadial = clamp((1400 - distance) * 0.5, -ship.maxSpeed, ship.maxSpeed);
+  return radial > safeRadial
+    ? limitVelocity(vecSub(desired, vecScale(outward, radial - safeRadial)), ship.maxSpeed)
+    : desired;
 }
 
 export function LowHealthRetreatBlock(

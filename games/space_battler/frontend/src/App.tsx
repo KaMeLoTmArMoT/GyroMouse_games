@@ -267,6 +267,7 @@ export default function App() {
     redSlots: FleetSlot[],
   ): ClientCombatSimulation {
     const s = new ClientCombatSimulation();
+    s.crewVeterancy = { 0: crewVeterancy.blue, 1: crewVeterancy.red };
 
     // 1. Build Blue Force (Spawn at -1100u with wide tactical stance)
     const blueShips = buildFleetFromSlots(blueSlots, 0, -1100, 0);

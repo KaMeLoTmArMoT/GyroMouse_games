@@ -2,6 +2,7 @@
 
 import { ChevronDown, ChevronUp, Copy, Plus, Shield, Swords, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { CrewVeterancy } from "../engine/crewVeterancy";
 import { type FleetSlot, fleetSlotCost } from "../engine/fleetBuilder";
 import { FLEET_PRESETS } from "../engine/fleetPresets";
 import { SCENARIOS } from "../engine/scenarios";
@@ -10,7 +11,7 @@ import type { HullClass } from "../types/combat";
 import { DoctrineDialog } from "./DoctrineDialog";
 import { GroupPreview, ShipPreview, useDelayedPreview } from "./FleetPreviews";
 
-export type CrewVeterancy = "recruit" | "pilot" | "veteran" | "ace";
+export type { CrewVeterancy } from "../engine/crewVeterancy";
 
 interface FleetBuilderProps {
   blueSlots: FleetSlot[];
@@ -920,7 +921,7 @@ function FleetBuilderPanel({
               )}
             </div>
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-              {redTeam ? "Red" : "Blue"} Crew Veterancy · Draft
+              {redTeam ? "Red" : "Blue"} Crew Veterancy
               <select
                 value={crewVeterancy[team]}
                 onChange={(event) =>

@@ -1,9 +1,10 @@
 import type { GroupOrder, ShipState, Vector2 } from "../types/combat";
 import { moveCarrierLaunch } from "./carrierHangar";
+import { type CrewVeterancy, crewDecisionPeriod } from "./crewVeterancy";
 import type { FighterMissionSystem } from "./fighterMissionSystem";
 import { friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import { damagedTargetPriority, squadFocusPriority } from "./fireControl";
-import { clampLateralVelocity } from "./flightBehaviors";
+import { clampLateralVelocity, skirmishFleetVelocity } from "./flightBehaviors";
 import {
   ARENA_HARD_PULL_RADIUS,
   ARENA_RADIUS,
@@ -67,7 +68,12 @@ const fighterDecisions = new WeakMap<
  * decisions across the 60 physics frames per second, avoiding synchronized CPU
  * spikes on frames 0 or 30 while preserving each pilot's decision cadence.
  */
-export function fighterTacticalTick(ship: ShipState, time: number, ships: ShipState[]): number {
+export function fighterTacticalTick(
+  ship: ShipState,
+  time: number,
+  ships: ShipState[],
+  tier: CrewVeterancy = "pilot",
+): number {
   let state = fighterDecisions.get(ship);
   if (!state) {
     state = { tick: 0, nextAt: time };
@@ -85,7 +91,7 @@ export function fighterTacticalTick(ship: ShipState, time: number, ships: ShipSt
           enemy.team !== ship.team &&
           vecDistance(ship.pos, enemy.pos) <= FLAK_THREAT_RANGE,
       );
-    const period = 1 / (combat ? 12 : 5);
+    const period = crewDecisionPeriod(tier, combat);
     let seed = 2166136261;
     for (const char of ship.id) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
     seed = Math.imul(seed ^ (seed >>> 16), 0x85ebca6b);
@@ -400,6 +406,7 @@ export function updateShipNavigation(
   let evadingOrdnance = false;
   let maintainingStandoff = false;
   let thrustMultiplier = 1;
+  let constrainedSkirmish = false;
   if (ship.hullClass === "tender") {
     const rescueTarget = tenderRescueTarget(ship, aliveShips);
     if (
@@ -550,7 +557,13 @@ export function updateShipNavigation(
     targetHeading = Math.atan2(debrisVelocity[1], debrisVelocity[0]);
   }
   if (thrusterVelocity) {
+    const unconstrained = thrusterVelocity;
     thrusterVelocity = arenaVelocity(ship, thrusterVelocity);
+    if (ship.hullClass === "missile_frigate") {
+      thrusterVelocity = skirmishFleetVelocity(ship, thrusterVelocity, aliveShips);
+      constrainedSkirmish = vecDistance(unconstrained, thrusterVelocity) > 1e-6;
+      if (constrainedSkirmish) targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
+    }
   } else if (vecDistance([0, 0], ship.pos) > ARENA_RADIUS) {
     const inward = arenaVelocity(ship, [
       Math.cos(targetHeading) * desiredSpeed,
@@ -610,7 +623,13 @@ export function updateShipNavigation(
         controlledVelocity = vecSub(controlledVelocity, vecScale(toward, closing - safeClosing));
     }
   }
-  if (rangePhase && !evadingOrdnance && !maintainingStandoff && !avoidingDebris) {
+  if (
+    rangePhase &&
+    !evadingOrdnance &&
+    !maintainingStandoff &&
+    !avoidingDebris &&
+    !(constrainedSkirmish && rangePhase !== "approach")
+  ) {
     const flight = SHIP_DOCTRINES[ship.hullClass].flight;
     if (flight.kind === "capital" || flight.kind === "skirmish")
       controlledVelocity = clampLateralVelocity(

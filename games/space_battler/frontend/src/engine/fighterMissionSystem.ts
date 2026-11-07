@@ -1,4 +1,5 @@
 import type { FighterPhase, ShipState, Vector2, WingPhase } from "../types/combat";
+import { CREW_TACTICS, type CrewContext } from "./crewVeterancy";
 import { fighterRecoveryDirection, friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import {
   dogfightTarget,
@@ -64,7 +65,8 @@ export interface FighterWingVisual {
   heading: number;
 }
 
-type MissionContext = Pick<ClientCombatSimulation, "timeElapsed" | "orders" | "projectiles">;
+type MissionContext = Pick<ClientCombatSimulation, "timeElapsed" | "orders" | "projectiles"> &
+  CrewContext;
 
 export class FighterMissionSystem {
   private wings: FighterWing[] = [];
@@ -191,7 +193,12 @@ export class FighterMissionSystem {
       if (ship.hullClass !== "strike_craft") continue;
       const threats = hostileFlakThreats(ship, aliveShips);
       flak.set(ship, threats);
-      const tick = fighterTacticalTick(ship, timeElapsed, aliveShips);
+      const tick = fighterTacticalTick(
+        ship,
+        timeElapsed,
+        aliveShips,
+        this.context.crewVeterancy?.[ship.team],
+      );
       if (tick !== this.decisions.get(ship)) {
         this.decisions.set(ship, tick);
         reassess.add(ship);
@@ -365,7 +372,9 @@ export class FighterMissionSystem {
     const wing = this.wings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
     if (!wing) return { heading: ship.heading, speed: 0 };
     const phase = ship.havenState === "seeking" ? "recover" : (ship.fighterPhase ?? wing.phase);
-    const tick = fighterTacticalTick(ship, timeElapsed, aliveShips);
+    const tier = this.context.crewVeterancy?.[ship.team] ?? "pilot";
+    const tactics = CREW_TACTICS[tier];
+    const tick = fighterTacticalTick(ship, timeElapsed, aliveShips, tier);
     const previous = this.steering.get(ship);
     if (previous && previous.tick === tick && previous.phase === phase) return previous;
     // Safe haven management retains shield health, distance, and occupancy scoring.
@@ -500,6 +509,7 @@ export class FighterMissionSystem {
         horizon: Math.min(2, p.lifetime),
       }));
     const craftRadius = shieldEnvelopeRadius(ship);
+    const projectileMargin = 75 * tactics.margin;
     const obstacles = aliveShips
       .filter(
         (s) =>
@@ -580,8 +590,9 @@ export class FighterMissionSystem {
         const rx = r[0] + ux * tStar;
         const ry = r[1] + uy * tStar;
         const dStar = Math.sqrt(rx * rx + ry * ry);
-        if (tStar > 0.04 && dStar < 75) {
-          const missileDanger = ((75 - dStar) / 75) * (1 - tStar / horizon) * 4.5;
+        if (tStar > 0.04 && dStar < projectileMargin) {
+          const missileDanger =
+            ((projectileMargin - dStar) / projectileMargin) * (1 - tStar / horizon) * 4.5;
           dangerScore += missileDanger;
         }
       }
@@ -630,9 +641,11 @@ export class FighterMissionSystem {
         bestSector = k;
       }
     }
-    // Trained pilots commit to an evasive line for 150ms; phase changes break the hold.
+    // Commitment is tier-specific; mission phase changes still break the hold.
     const hold =
-      previous?.evasive && previous.phase === phase && timeElapsed - previous.committedAt < 0.15;
+      previous?.evasive &&
+      previous.phase === phase &&
+      timeElapsed - previous.committedAt < tactics.hold;
     if (hold && ship.lastSelectedSector !== undefined) bestSector = ship.lastSelectedSector;
     const changed = ship.lastSelectedSector !== bestSector || previous?.phase !== phase;
     ship.lastSelectedSector = bestSector;
@@ -655,6 +668,7 @@ export class FighterMissionSystem {
       evaluatedAt: timeElapsed,
       evasive: Boolean(hold) || maxDangerObserved > 0.4,
     };
+    ship.evasionUntil = decision.evasive ? decision.committedAt + tactics.hold : undefined;
     this.steering.set(ship, decision);
     return decision;
   }

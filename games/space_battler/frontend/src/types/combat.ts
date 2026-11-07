@@ -141,6 +141,7 @@ export interface ShipState {
   lastManeuverShot?: number;
   escapeSide?: number;
   escapeUntil?: number;
+  evasionUntil?: number;
 }
 
 export interface ProjectileState {

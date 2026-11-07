@@ -76,6 +76,7 @@ export function redeployFleetRemnants(ships: ShipState[]): void {
       ship.lastManeuverShot = undefined;
       ship.escapeSide = undefined;
       ship.escapeUntil = undefined;
+      ship.evasionUntil = undefined;
       for (const turret of ship.turrets) {
         turret.cooldownTimer = 0;
         turret.currentLocalAngle = clamp(0, ...turret.baseArc);

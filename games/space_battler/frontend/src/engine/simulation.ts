@@ -20,6 +20,7 @@ import {
 import { moveCarrierRecovery, updateCarrierHangars } from "./carrierHangar";
 import { CollisionContactSolver } from "./collisionContactSolver";
 import type { CombatObserver } from "./combatTelemetry";
+import type { CrewVeterancy } from "./crewVeterancy";
 import { FighterMissionSystem, type FighterWingVisual } from "./fighterMissionSystem";
 import { acquireMountTarget } from "./fireControl";
 import { redeployFleetRemnants } from "./fleetBuilder";
@@ -49,6 +50,7 @@ export class ClientCombatSimulation {
   }
   activeBeams: ActiveBeam[] = [];
   orders: Map<number, GroupOrder> = new Map();
+  crewVeterancy: Partial<Record<number, CrewVeterancy>> = {};
   timeElapsed = 0;
   private accumulator = 0;
   private previousPositions = new Map<string, Vector2>();
