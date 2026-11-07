@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { TacticalCanvas } from "./canvas/TacticalCanvas";
-import { FleetBuilder } from "./components/FleetBuilder";
+import { type CrewVeterancy, FleetBuilder } from "./components/FleetBuilder";
 import { spaceAudio } from "./engine/audioEngine";
 import { CARRIER_FABRICATION_INTERVAL, carrierFabricationProgress } from "./engine/carrierHangar";
 import { buildFleetFromSlots, type FleetSlot } from "./engine/fleetBuilder";
@@ -113,6 +113,10 @@ export default function App() {
     return DEFAULT_USER_SLOTS;
   });
   const [budgetLimit] = useState<number>(30000);
+  const [crewVeterancy, setCrewVeterancy] = useState<Record<"blue" | "red", CrewVeterancy>>({
+    blue: "pilot",
+    red: "pilot",
+  });
   const [enemyPresetId, setEnemyPresetId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.enemyPreset);
@@ -493,6 +497,10 @@ export default function App() {
           redSlots={redSlots}
           onUpdateBlueSlots={updateBlueSlots}
           onUpdateRedSlots={updateRedSlots}
+          crewVeterancy={crewVeterancy}
+          onUpdateCrewVeterancy={(team, tier) =>
+            setCrewVeterancy((current) => ({ ...current, [team]: tier }))
+          }
           budgetLimit={budgetLimit}
           enemyPresetId={enemyPresetId}
           onSelectEnemyPreset={selectEnemyPreset}

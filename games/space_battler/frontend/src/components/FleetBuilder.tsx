@@ -10,11 +10,15 @@ import type { HullClass } from "../types/combat";
 import { DoctrineDialog } from "./DoctrineDialog";
 import { GroupPreview, ShipPreview, useDelayedPreview } from "./FleetPreviews";
 
+export type CrewVeterancy = "recruit" | "pilot" | "veteran" | "ace";
+
 interface FleetBuilderProps {
   blueSlots: FleetSlot[];
   redSlots: FleetSlot[];
   onUpdateBlueSlots: (newSlots: FleetSlot[]) => void;
   onUpdateRedSlots: (newSlots: FleetSlot[]) => void;
+  crewVeterancy: Record<"blue" | "red", CrewVeterancy>;
+  onUpdateCrewVeterancy: (team: "blue" | "red", tier: CrewVeterancy) => void;
   budgetLimit: number;
   enemyPresetId: string;
   onSelectEnemyPreset: (presetId: string) => void;
@@ -486,6 +490,8 @@ function FleetBuilderPanel({
   redSlots,
   onUpdateBlueSlots,
   onUpdateRedSlots,
+  crewVeterancy,
+  onUpdateCrewVeterancy,
   budgetLimit,
   team,
   activeTeam,
@@ -913,6 +919,24 @@ function FleetBuilderPanel({
                 </div>
               )}
             </div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              {redTeam ? "Red" : "Blue"} Crew Veterancy · Draft
+              <select
+                value={crewVeterancy[team]}
+                onChange={(event) =>
+                  onUpdateCrewVeterancy(team, event.target.value as CrewVeterancy)
+                }
+                className={`mt-1 w-full rounded-lg border bg-zinc-950 p-1.5 text-xs font-mono text-zinc-200 focus:outline-none ${redTeam ? "border-red-900/40 focus:border-red-500" : "border-zinc-800 focus:border-cyan-500"}`}
+              >
+                <option value="recruit">Recruit · Новачок</option>
+                <option value="pilot">Pilot · Пілот</option>
+                <option value="veteran">Veteran · Ветеран</option>
+                <option value="ace">Ace · Ас</option>
+              </select>
+              <span className="mt-1 block normal-case font-normal tracking-normal text-zinc-500">
+                Preview only; combat uses current settings.
+              </span>
+            </label>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
