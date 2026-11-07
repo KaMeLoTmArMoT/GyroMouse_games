@@ -14,6 +14,7 @@ import type {
 import {
   type BattleMapId,
   createMapObstacles,
+  type MapObstacle,
   resolveMapContacts,
   updateMapObstacles,
 } from "./battleMaps";
@@ -45,13 +46,16 @@ export type { FlakBurstCallback } from "./projectileEngine";
 const FIXED_STEP = 1 / 60;
 
 export class ClientCombatSimulation {
-  readonly mapObstacles;
+  mapObstacles: MapObstacle[];
   readonly selectedMap: BattleMapId;
   constructor(selectedMap: BattleMapId = "empty_void") {
     this.selectedMap = selectedMap;
     this.mapObstacles = createMapObstacles(selectedMap);
   }
   readonly shieldHaven = new ShieldHavenSystem();
+  private readonly releaseMapGuest = (ship: ShipState): void => {
+    if (ship.havenState === "tethered") this.shieldHaven.release(ship.id);
+  };
   readonly harmonicShields = new HarmonicShieldSystem();
   ships: ShipState[] = [];
   get projectiles(): ProjectileState[] {
@@ -87,6 +91,7 @@ export class ClientCombatSimulation {
   private readonly beamLaserSystem = new BeamLaserSystem({
     getTime: () => this.timeElapsed,
     getProjectiles: () => this.projectiles,
+    getMapObstacles: () => this.mapObstacles,
     updateTurretAim: (turret, dt, ship, targetPos) =>
       this.weapons.updateTurretAim(turret, dt, ship, targetPos),
     applyShipDamage: (channel, damage, origin) =>
@@ -278,6 +283,7 @@ export class ClientCombatSimulation {
     this.previousPositions.clear();
     this.accumulator = 0;
     this.timeElapsed = 0;
+    this.mapObstacles = createMapObstacles(this.selectedMap);
     this.audioEvents = [];
     for (const ship of this.ships)
       this.emitAudioEvent("warp_ingress", ship.pos, ship.team, ship.id);
@@ -399,9 +405,13 @@ export class ClientCombatSimulation {
     this.contactSolver.resolveCruiserClearance(aliveShips);
     this.shieldHaven.attachGuests(aliveShips, dt);
     this.resolveShipCollisions(collisionShips, dt, true, repulsorSteps);
-    resolveMapContacts(aliveShips, this.mapObstacles, (ship) => {
-      if (ship.havenState === "tethered") this.shieldHaven.release(ship.id);
-    });
+    resolveMapContacts(
+      collisionShips,
+      this.mapObstacles,
+      this.previousPositions,
+      dt,
+      this.releaseMapGuest,
+    );
     this.shieldHaven.refreshAmplification(combatShips);
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
@@ -540,6 +550,11 @@ export class ClientCombatSimulation {
   }
 
   private updateProjectiles(dt: number, aliveShips: ShipState[]): void {
-    this.projectileEngine.updateProjectiles(dt, aliveShips, this.previousPositions);
+    this.projectileEngine.updateProjectiles(
+      dt,
+      aliveShips,
+      this.previousPositions,
+      this.mapObstacles,
+    );
   }
 }

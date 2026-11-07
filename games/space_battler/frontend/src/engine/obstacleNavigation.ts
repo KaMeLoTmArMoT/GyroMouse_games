@@ -10,7 +10,7 @@ export function obstacleCourseCorrection(
   vx: number,
   vy: number,
   attackTarget: ShipState | null = null,
-  mapObstacles: readonly MapObstacle[] = [],
+  mapObstacles?: readonly MapObstacle[],
 ): number {
   const speed = Math.hypot(vx, vy);
   if (speed < 1) return 0;
@@ -54,6 +54,7 @@ export function obstacleCourseCorrection(
     const tangent = Math.asin(Math.min(1, clearance / Math.max(1, distance)));
     correction = normalizeAngle(bearing + side * (tangent + 0.08) - heading);
   }
+  if (!mapObstacles) return correction;
   for (const obstacle of mapObstacles) {
     const rx = obstacle.pos[0] - ship.pos[0];
     const ry = obstacle.pos[1] - ship.pos[1];

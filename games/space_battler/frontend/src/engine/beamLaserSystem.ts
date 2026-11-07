@@ -5,6 +5,7 @@ import type {
   Vector2,
   WeaponDefinition,
 } from "../types/combat";
+import { type MapObstacle, mapObstacleHitFraction } from "./battleMaps";
 import { inMountArc, mountPosition } from "./fireControl";
 import { vecAdd, vecDistance, vecNormalize, vecScale, vecSub } from "./math2d";
 import { activeShieldRadius } from "./shieldGeometry";
@@ -42,6 +43,7 @@ export type BeamFireCallback = (
 interface BeamLaserContext {
   getTime(): number;
   getProjectiles(): readonly ProjectileState[];
+  getMapObstacles?(): readonly MapObstacle[];
   updateTurretAim(
     turret: TurretMountState,
     dt: number,
@@ -72,17 +74,19 @@ export class BeamLaserSystem {
     target: ShipState | ProjectileState,
     kind: BeamChannel["kind"],
   ): void {
-    this.channels.set(turret, {
+    const channel: BeamChannel = {
       ship,
       turret,
       target,
       kind,
       weapon: { ...turret.weapon },
       frames: 0,
-    });
+    };
+    this.channels.set(turret, channel);
+    const visual = this.context.getMapObstacles?.().length ? this.beamVisual(channel) : null;
     this.context.onBeamFire(
-      mountPosition(ship, turret),
-      target.pos,
+      visual?.from ?? mountPosition(ship, turret),
+      visual?.to ?? target.pos,
       ship.team === 0 ? "#38bdf8" : "#ef4444",
       2.8,
       ship.team,
@@ -117,9 +121,18 @@ export class BeamLaserSystem {
     channel.frames++;
     if (aimed && channel.frames % BEAM_TICK_FRAMES === 0) {
       const damage = channel.weapon.damage / BEAM_TICKS;
-      if (channel.kind === "ship") {
-        this.context.applyShipDamage(channel, damage, mountPosition(channel.ship, channel.turret));
-      } else {
+      const from = mountPosition(channel.ship, channel.turret);
+      const distance = vecDistance(from, channel.target.pos);
+      const targetRadius =
+        channel.kind === "ship" ? activeShieldRadius(channel.target as ShipState) : 0;
+      const obstacles = this.context.getMapObstacles?.();
+      const blocked =
+        obstacles &&
+        mapObstacleHitFraction(obstacles, from, channel.target.pos) <
+          Math.max(0, 1 - targetRadius / Math.max(distance, 1e-9));
+      if (!blocked && channel.kind === "ship") {
+        this.context.applyShipDamage(channel, damage, from);
+      } else if (!blocked) {
         this.context.damageMissile(channel, damage);
       }
     }
@@ -161,6 +174,14 @@ export class BeamLaserSystem {
       target.pos,
       vecScale(direction, Math.min(radius, vecDistance(from, target.pos))),
     );
+    const obstacles = this.context.getMapObstacles?.();
+    if (obstacles) {
+      const t = mapObstacleHitFraction(obstacles, from, to);
+      if (Number.isFinite(t)) {
+        to[0] = from[0] + (to[0] - from[0]) * t;
+        to[1] = from[1] + (to[1] - from[1]) * t;
+      }
+    }
     return { id: `${ship.id}:${turret.id}`, from, to, ownerTeam: ship.team };
   }
 }

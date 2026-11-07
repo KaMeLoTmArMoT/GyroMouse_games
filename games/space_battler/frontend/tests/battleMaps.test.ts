@@ -38,10 +38,10 @@ describe("battle arenas", () => {
     expect(
       Math.abs(obstacleCourseCorrection(ship, [ship], 100, 0, null, obstacles)),
     ).toBeGreaterThan(0);
-    ship.pos = [-300, 0];
-    resolveMapContacts([ship], obstacles);
-    expect(Math.hypot(...ship.pos)).toBeCloseTo(obstacles[0].radius + ship.size);
-    expect(ship.velocity[0]).toBeCloseTo(0);
+    ship.pos = [-280, 0];
+    resolveMapContacts([ship], obstacles, new Map([[ship.id, [-600, 0]]]), 1 / 60);
+    expect(Math.hypot(...ship.pos)).toBeGreaterThanOrEqual(obstacles[0].radius + ship.size);
+    expect(ship.velocity[0]).toBeLessThan(0);
   });
 
   it("culls off-screen obstacles before issuing canvas drawing calls", () => {
@@ -70,7 +70,7 @@ describe("battle arenas", () => {
       arc: vi.fn(),
     } as unknown as CanvasRenderingContext2D;
     const asteroid = createMapObstacles("megaboulder")[0];
-    const station = createMapObstacles("orbital_ruins")[0];
+    const station = createMapObstacles("orbital_station")[0];
     renderMapObstacles(ctx, [asteroid, station], {
       minX: -500,
       minY: -500,

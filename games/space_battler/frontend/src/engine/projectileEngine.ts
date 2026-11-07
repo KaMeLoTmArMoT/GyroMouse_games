@@ -1,4 +1,5 @@
 import type { ProjectileState, ShipState, Vector2, WeaponDefinition } from "../types/combat";
+import { circleContactFraction, type MapObstacle } from "./battleMaps";
 import { sweptHit } from "./fireControl";
 import { clamp, normalizeAngle, vecAdd, vecDistance, vecDot, vecScale, vecSub } from "./math2d";
 import { activeShieldRadius } from "./shieldGeometry";
@@ -40,6 +41,7 @@ export class ProjectileEngine {
     dt: number,
     aliveShips: ShipState[],
     previousPositions: ReadonlyMap<string, Vector2>,
+    mapObstacles?: readonly MapObstacle[],
   ): void {
     const active: ProjectileState[] = [];
     const starts = new Map(this.projectiles.map((p) => [p.id, p.pos]));
@@ -93,6 +95,7 @@ export class ProjectileEngine {
       let first = Infinity;
       let victim: ShipState | null = null;
       let intercepted: ProjectileState | null = null;
+      let blocked = false;
       // Rails share the first-hit sweep; they do not pierce subsequent targets.
       for (const ship of aliveShips) {
         if (!ship.isAlive || ship.team === p.ownerTeam) continue;
@@ -138,9 +141,30 @@ export class ProjectileEngine {
         }
       }
       // Motion is clipped to remaining fuel; no missile can steer or survive beyond it.
+      if (mapObstacles) {
+        for (const obstacle of mapObstacles) {
+          const fraction = step / dt;
+          const t = circleContactFraction(
+            start[0] - obstacle.previousPos[0],
+            start[1] - obstacle.previousPos[1],
+            end[0] - start[0] - (obstacle.pos[0] - obstacle.previousPos[0]) * fraction,
+            end[1] - start[1] - (obstacle.pos[1] - obstacle.previousPos[1]) * fraction,
+            obstacle.radius,
+          );
+          if (t <= first && Number.isFinite(t)) {
+            first = t;
+            victim = null;
+            intercepted = null;
+            blocked = true;
+          }
+        }
+      }
       p.lifetime = Math.max(0, p.lifetime - dt);
       p.pos = vecAdd(start, vecScale(vecSub(end, start), Math.min(first, 1)));
-      if (flak && (Number.isFinite(first) || p.lifetime <= 1e-9)) {
+      if (blocked) {
+        p.hp = 0;
+        p.lifetime = 0;
+      } else if (flak && (Number.isFinite(first) || p.lifetime <= 1e-9)) {
         const elapsed = step * Math.min(first, 1);
         const positions = new Map<string, Vector2>();
         for (const ship of aliveShips) {
