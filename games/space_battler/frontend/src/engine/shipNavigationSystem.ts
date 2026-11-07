@@ -1,6 +1,7 @@
 import type { GroupOrder, ShipState, Vector2 } from "../types/combat";
 import { moveCarrierLaunch } from "./carrierHangar";
 import type { FighterMissionSystem } from "./fighterMissionSystem";
+import { friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import { damagedTargetPriority, squadFocusPriority } from "./fireControl";
 import { clampLateralVelocity } from "./flightBehaviors";
 import {
@@ -280,10 +281,22 @@ export function updateShipNavigation(
       rangePhase = undefined;
     }
   }
-  const intendedVelocity: Vector2 = thrusterVelocity ?? [
+  let intendedVelocity: Vector2 = thrusterVelocity ?? [
     Math.cos(targetHeading) * desiredSpeed,
     Math.sin(targetHeading) * desiredSpeed,
   ];
+  if (ship.hullClass === "strike_craft" && ship.fighterPhase === "egress") {
+    const speed = vecDistance([0, 0], intendedVelocity);
+    const route = friendlyShieldRecoveryDirection(
+      ship,
+      vecAdd(ship.pos, vecScale(vecNormalize(intendedVelocity), 900)),
+      aliveShips,
+      vecNormalize(intendedVelocity),
+    );
+    thrusterVelocity = vecScale(route, speed);
+    intendedVelocity = thrusterVelocity;
+    targetHeading = Math.atan2(route[1], route[0]);
+  }
   const allShips = context.ships ?? aliveShips;
   const debrisVelocity = debrisAvoidanceVelocity(ship, intendedVelocity, allShips);
   const avoidingDebris = vecDistance(debrisVelocity, intendedVelocity) > 1e-6;

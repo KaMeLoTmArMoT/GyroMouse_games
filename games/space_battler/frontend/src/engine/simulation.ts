@@ -296,6 +296,7 @@ export class ClientCombatSimulation {
   private tick(dt: number): void {
     this.timeElapsed += dt;
     this.ships = this.ships.filter((ship) => !ship.isDebris || ship.isAlive);
+    updateCarrierHangars(this.ships, this.timeElapsed);
     const combatShips = this.ships.filter((ship) => !ship.isDebris);
     const wrecks = this.ships.filter((ship) => ship.isDebris);
     const wreckStarts = new Map(wrecks.map((ship) => [ship.id, [...ship.pos] as Vector2]));
@@ -305,7 +306,6 @@ export class ClientCombatSimulation {
       wreck.pos = vecAdd(wreck.pos, vecScale(wreck.velocity, dt));
       wreck.heading = normalizeAngle(wreck.heading + (wreck.angularVelocity ?? 0) * dt);
     }
-    updateCarrierHangars(combatShips, this.timeElapsed);
     // Observe broken shields before this step's regeneration can obscure the entry trigger.
     const externalShips = combatShips.filter((ship) => !ship.isDocked && !ship.carrierRecovering);
     this.shieldHaven.update(externalShips, this.timeElapsed);
@@ -358,7 +358,7 @@ export class ClientCombatSimulation {
     for (const ship of aliveShips) {
       const target = navigationTargets.get(ship.id) ?? null;
       const previous = { pos: ship.pos, velocity: ship.velocity, heading: ship.heading };
-      if (!moveCarrierRecovery(ship, aliveShips, dt, this.timeElapsed))
+      if (!moveCarrierRecovery(ship, aliveShips, dt, this.timeElapsed, this.projectiles))
         this.updateShipMovement(ship, target, aliveShips, dt);
       movements.set(ship.id, {
         pos: ship.pos,

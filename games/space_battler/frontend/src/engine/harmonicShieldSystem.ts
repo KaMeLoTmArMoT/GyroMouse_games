@@ -42,6 +42,29 @@ export class HarmonicShieldSystem {
     this.cycles.clear();
   }
 
+  getTenderState(
+    tenderId: string,
+    time: number,
+  ): {
+    active: boolean;
+    recipientId: string | null;
+    timeRemaining: number;
+    cooldownRemaining: number;
+  } | null {
+    const cycle = this.cycles.get(tenderId);
+    if (!cycle?.donor.isAlive) return null;
+    const active =
+      cycle.recipient !== null &&
+      time < cycle.activeUntil - 1e-9 &&
+      eligibleHarmonicRecipient(cycle.donor, cycle.recipient);
+    return {
+      active,
+      recipientId: active ? (cycle.recipient?.id ?? null) : null,
+      timeRemaining: active ? Math.max(0, cycle.activeUntil - time) : 0,
+      cooldownRemaining: active ? 0 : Math.max(0, cycle.readyAt - time),
+    };
+  }
+
   cleanup(ships: readonly ShipState[], time: number): void {
     const present = new Set(ships);
     for (const [id, cycle] of this.cycles) {

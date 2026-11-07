@@ -1,12 +1,92 @@
-import type { ShipState, Vector2 } from "../types/combat";
+import type { ProjectileState, ShipState, Vector2 } from "../types/combat";
 import { fighterRecoveryDirection, recoveryApproachVelocity } from "./fighterRecovery";
 import { rotatePoint, vecAdd, vecDistance, vecScale, vecSub } from "./math2d";
 import { shieldHavenSlotPosition } from "./shieldHaven";
+import { HULL_PROFILES, instantiateTurrets } from "./shipProfiles";
 
 export const HANGAR_TURNAROUND = 4.5;
 export const TRACTOR_DURATION = 0.7;
 export const CATAPULT_DURATION = 0.75;
 export const LAUNCH_BOOST = 180;
+export const CARRIER_FABRICATION_INTERVAL = 20;
+const CARRIER_WING_CAPACITY = 16;
+const fabrication = new WeakMap<
+  ShipState,
+  { started: number; serial: number; ships: ShipState[] }
+>();
+
+export function carrierFabricationProgress(carrier: ShipState, time: number) {
+  const state = fabrication.get(carrier);
+  return {
+    timerRemaining: carrier.isAlive
+      ? Math.max(0, CARRIER_FABRICATION_INTERVAL - (time - (state?.started ?? time)))
+      : 0,
+    currentWings: (state?.ships ?? []).filter(
+      (ship) =>
+        ship.isAlive &&
+        !ship.isDebris &&
+        ship.team === carrier.team &&
+        ship.flagshipId === carrier.id &&
+        ship.hullClass === "strike_craft",
+    ).length,
+    maxWings: CARRIER_WING_CAPACITY,
+  };
+}
+
+function fabricateCarrierWings(ships: ShipState[], time: number): void {
+  for (const carrier of ships.filter((ship) => ship.hullClass === "carrier" && !ship.isDebris)) {
+    if (!carrier.isAlive) continue;
+    let state = fabrication.get(carrier);
+    if (!state || time < state.started) {
+      state = { started: time, serial: 0, ships };
+      fabrication.set(carrier, state);
+    }
+    state.ships = ships;
+    const cycles = Math.floor((time - state.started + 1e-9) / CARRIER_FABRICATION_INTERVAL);
+    if (cycles < 1) continue;
+    state.started += cycles * CARRIER_FABRICATION_INTERVAL;
+    const count = Math.min(
+      cycles * 2,
+      CARRIER_WING_CAPACITY - carrierFabricationProgress(carrier, time).currentWings,
+    );
+    const profile = HULL_PROFILES.strike_craft;
+    for (let i = 0; i < count; i++) {
+      let id: string;
+      do {
+        id = `${carrier.id}_fabricated_${state.serial++}`;
+      } while (ships.some((ship) => ship.id === id));
+      ships.push({
+        id,
+        name: `Raider ${id}`,
+        team: carrier.team,
+        groupId: carrier.groupId,
+        hullClass: "strike_craft",
+        flagshipId: carrier.id,
+        pos: [...carrier.pos],
+        velocity: [...carrier.velocity],
+        heading: carrier.heading,
+        maxSpeed: profile.speed,
+        turnRate: profile.turnRate,
+        size: profile.size,
+        shieldMax: profile.shieldMax,
+        shieldCurrent: profile.shieldMax,
+        shieldRegen: profile.shieldRegen,
+        shieldDelayTimer: 0,
+        shieldRechargeDelay: profile.shieldRechargeDelay,
+        armorMax: profile.armorMax,
+        armorCurrent: profile.armorMax,
+        armorRating: profile.armorRating,
+        hullMax: profile.hullMax,
+        hullCurrent: profile.hullMax,
+        cost: profile.cost,
+        isAlive: true,
+        isDocked: true,
+        hangarLaunchAt: time + 1 + Math.floor(i / 8) * 2.5,
+        turrets: instantiateTurrets(profile, id, state.serial),
+      });
+    }
+  }
+}
 const tractors = new WeakMap<ShipState, { started: number; local: Vector2 }>();
 const launches = new WeakMap<ShipState, { started: number; side: number }>();
 
@@ -28,6 +108,7 @@ export function carrierRecoveryPoint(carrier: ShipState, craft: ShipState): Vect
 
 export function storeCarrierAuxiliaries(ships: ShipState[]): void {
   for (const carrier of ships.filter((ship) => ship.hullClass === "carrier")) {
+    fabrication.set(carrier, { started: 0, serial: 0, ships });
     let fighter = 0;
     for (const craft of ships.filter((ship) => ship.flagshipId === carrier.id)) {
       if (craft.hullClass !== "strike_craft" && craft.hullClass !== "corvette") continue;
@@ -45,6 +126,7 @@ export function storeCarrierAuxiliaries(ships: ShipState[]): void {
 }
 
 export function updateCarrierHangars(ships: ShipState[], time: number): void {
+  fabricateCarrierWings(ships, time);
   for (const craft of ships) {
     if (!craft.isAlive || !craft.flagshipId) continue;
     const carrier = ships.find(
@@ -112,6 +194,7 @@ export function moveCarrierRecovery(
   ships: ShipState[],
   dt: number,
   time = 0,
+  projectiles: readonly ProjectileState[] = [],
 ): boolean {
   if (!craft.carrierRecovering) return false;
   const carrier = ships.find((ship) => ship.id === craft.flagshipId && ship.isAlive);
@@ -147,7 +230,7 @@ export function moveCarrierRecovery(
     craft.heading = carrier.heading;
     return true;
   }
-  const direction = fighterRecoveryDirection(craft, destination, ships, time);
+  const direction = fighterRecoveryDirection(craft, destination, ships, time, projectiles);
   craft.velocity = recoveryApproachVelocity(craft, carrier, destination, direction, dt);
   craft.heading = Math.atan2(direction[1], direction[0]);
   craft.pos = vecAdd(craft.pos, vecScale(craft.velocity, dt));

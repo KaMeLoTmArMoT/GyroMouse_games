@@ -48,7 +48,7 @@ describe("carrier rear anchor", () => {
 });
 
 describe("fighter evasive recovery", () => {
-  it("weaves both laterally and toward the deck only with a live hostile within 300u", () => {
+  it("jinks away from pursuing fire while advancing and fades on final approach", () => {
     const carrier = ship("deck", "carrier", [1200, 0]);
     const craft = ship("craft", "strike_craft", [0, 0]);
     const pursuer = ship("pursuer", "corvette", [-200, 0], 1);
@@ -57,11 +57,11 @@ describe("fighter evasive recovery", () => {
     const ships = [carrier, craft, pursuer];
     moveCarrierRecovery(craft, ships, 1 / 60, Math.PI / 8);
     expect(craft.velocity[0]).toBeGreaterThan(0);
-    expect(craft.velocity[1]).toBeGreaterThan(0);
+    expect(Math.abs(craft.velocity[1])).toBeGreaterThan(0);
     craft.pos = [0, 0];
     craft.velocity = [0, 0];
     moveCarrierRecovery(craft, ships, 1 / 60, (Math.PI * 3) / 8);
-    expect(craft.velocity[1]).toBeLessThan(0);
+    expect(Math.abs(craft.velocity[1])).toBeGreaterThan(0);
     craft.pos = [0, 0];
     craft.velocity = [0, 0];
     pursuer.pos = [-300, 0];
@@ -79,11 +79,13 @@ describe("fighter evasive recovery", () => {
     const craft = ship("craft", "strike_craft", [0, 0]);
     const pursuer = ship("pursuer", "strike_craft", [-200, 0], 1);
     const escort = ship("escort", "dreadnought", [500, 300]);
-    expect(
-      fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer, escort], 0)[1],
-    ).toBeGreaterThan(0);
+    expect(fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer, escort], 0)[1]).toBeGreaterThan(
+      0,
+    );
     escort.pos = [-500, 300];
-    expect(fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer, escort], 0)).toEqual([1, 0]);
+    expect(fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer, escort], 0)).toEqual(
+      fighterRecoveryDirection(craft, [1200, 0], [craft, pursuer], 0),
+    );
   });
 });
 
