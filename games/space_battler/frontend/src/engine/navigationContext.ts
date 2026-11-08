@@ -23,11 +23,13 @@ export class NavigationContext {
   readonly dogfightAssignments: AssignmentCounts = new Map();
 
   constructor(ships: ShipState[]) {
+    const activeShips: ShipState[] = [];
     for (const ship of ships) {
       this.byId.set(ship.id, ship);
       if (!ship.isAlive) continue;
       this.adjust(this.dogfightAssignments, ship, ship.dogfightTargetId, 1);
       if (ship.isDocked || ship.isDebris) continue;
+      activeShips.push(ship);
       const team = this.teams.get(ship.team) ?? [];
       team.push(ship);
       this.teams.set(ship.team, team);
@@ -71,7 +73,7 @@ export class NavigationContext {
           if (radius > 0 && distanceSquared(ship, peer) <= radius ** 2 && ++threats >= 2) break;
         }
         this.safe.set(ship, threats < 2);
-        const density = countTacticalDensity(ship, ships);
+        const density = countTacticalDensity(ship, activeShips);
         this.localDensity.set(ship, density);
         this.isolated.set(ship, (density.get(ship.team) ?? 0) <= 2);
       }
@@ -136,10 +138,11 @@ export function navigationSpatialScale(ship: ShipState): number {
   const envelopeScale =
     shieldEnvelopeRadius(ship) /
     shieldEnvelopeRadius({ hullClass: ship.hullClass, size: profile.size });
-  const stockRange = Math.max(...profile.turrets.map((turret) => turret.weapon.range));
-  const weaponScale = ship.turrets.length
-    ? Math.max(...ship.turrets.map((turret) => turret.weapon.range)) / stockRange
-    : envelopeScale;
+  let stockRange = -Infinity;
+  for (const turret of profile.turrets) stockRange = Math.max(stockRange, turret.weapon.range);
+  let weaponRange = -Infinity;
+  for (const turret of ship.turrets) weaponRange = Math.max(weaponRange, turret.weapon.range);
+  const weaponScale = ship.turrets.length ? weaponRange / stockRange : envelopeScale;
   return (envelopeScale + weaponScale) / 2;
 }
 
@@ -162,15 +165,14 @@ export function tacticalDensity(ship: ShipState, ships: ShipState[]): Map<number
 
 function countTacticalDensity(ship: ShipState, ships: ShipState[]): Map<number, number> {
   const density = new Map<number, number>();
-  const radiusSquared = tacticalSupportRadius(ship) ** 2;
+  const radius = tacticalSupportRadius(ship);
+  const radiusSquared = radius ** 2;
   for (const peer of ships) {
-    if (
-      !peer.isAlive ||
-      peer.isDocked ||
-      peer.isDebris ||
-      distanceSquared(ship, peer) > radiusSquared
-    )
-      continue;
+    if (!peer.isAlive || peer.isDocked || peer.isDebris) continue;
+    const dx = ship.pos[0] - peer.pos[0];
+    const dy = ship.pos[1] - peer.pos[1];
+    if (Math.abs(dx) > radius || Math.abs(dy) > radius) continue;
+    if (dx * dx + dy * dy > radiusSquared) continue;
     density.set(peer.team, (density.get(peer.team) ?? 0) + 1);
   }
   return density;

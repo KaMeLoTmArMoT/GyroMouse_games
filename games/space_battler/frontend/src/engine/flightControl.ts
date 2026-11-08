@@ -352,18 +352,25 @@ export function escortVelocity(
     let threat: ShipState | undefined;
     let bestDistance = Infinity;
     let threatDistance = Infinity;
+    const enemies = navigationContext(ships)?.teamEnemies.get(ship.team) ?? ships;
     for (const ally of ships) {
       if (
         !ally.isAlive ||
         ally.isDocked ||
         ally.isDebris ||
         ally.team !== ship.team ||
-        !["carrier", "battleship", "dreadnought"].includes(ally.hullClass)
+        (ally.hullClass !== "carrier" &&
+          ally.hullClass !== "battleship" &&
+          ally.hullClass !== "dreadnought")
       )
         continue;
-      const distance = vecDistance(ship.pos, ally.pos);
-      if (distance > 1200 || distance > bestDistance) continue;
-      for (const enemy of ships) {
+      const dx = ship.pos[0] - ally.pos[0];
+      const dy = ship.pos[1] - ally.pos[1];
+      const distanceSquared = dx * dx + dy * dy;
+      if (distanceSquared > 1440000) continue;
+      const distance = Math.sqrt(distanceSquared);
+      if (distance > bestDistance) continue;
+      for (const enemy of enemies) {
         if (
           !enemy.isAlive ||
           enemy.isDocked ||
@@ -372,8 +379,11 @@ export function escortVelocity(
           enemy.hullClass !== "strike_craft"
         )
           continue;
-        const proximity = vecDistance(ally.pos, enemy.pos);
-        if (proximity > 900) continue;
+        const proxX = ally.pos[0] - enemy.pos[0];
+        const proxY = ally.pos[1] - enemy.pos[1];
+        const proximitySquared = proxX * proxX + proxY * proxY;
+        if (proximitySquared > 810000) continue;
+        const proximity = Math.sqrt(proximitySquared);
         if (
           distance < bestDistance ||
           (distance === bestDistance &&
@@ -409,6 +419,11 @@ export function escortVelocity(
   if (target && !withinPursuitTheater(ship, target, ships)) target = null;
   let anchor = ships.find((s) => s.isAlive && s.team === ship.team && s.id === ship.flagshipId);
   if (!anchor) {
+    const flagshipCounts = new Map<string, number>();
+    for (const peer of ships) {
+      if (peer.flagshipId !== undefined)
+        flagshipCounts.set(peer.flagshipId, (flagshipCounts.get(peer.flagshipId) ?? 0) + 1);
+    }
     const capitals = ships.filter(
       (s) =>
         s.isAlive &&
@@ -420,18 +435,17 @@ export function escortVelocity(
     );
     capitals.sort(
       (a, b) =>
-        ships.filter((s) => s.flagshipId === a.id).length -
-          ships.filter((s) => s.flagshipId === b.id).length || a.id.localeCompare(b.id),
+        (flagshipCounts.get(a.id) ?? 0) - (flagshipCounts.get(b.id) ?? 0) ||
+        a.id.localeCompare(b.id),
     );
     anchor = capitals[0];
     ship.flagshipId = anchor?.id;
   }
-  const engagementDistance =
-    target?.hullClass === "corvette"
-      ? Math.max(300, ...ship.turrets.map((t) => t.weapon.range * 0.8))
-      : target?.hullClass === "cruiser"
-        ? 230
-        : 300;
+  let engagementDistance = target?.hullClass === "cruiser" ? 230 : 300;
+  if (target?.hullClass === "corvette") {
+    for (const turret of ship.turrets)
+      engagementDistance = Math.max(engagementDistance, turret.weapon.range * 0.8);
+  }
   if (!anchor) return target ? orbitVelocity(ship, target, engagementDistance) : [0, 0];
   const index = Number(ship.id.split("_").at(-1)) || 0;
   const side = index % 2 === 0 ? 1 : -1;

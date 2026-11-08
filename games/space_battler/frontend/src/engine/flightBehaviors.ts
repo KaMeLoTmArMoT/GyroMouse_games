@@ -11,6 +11,7 @@ import {
   vecScale,
   vecSub,
 } from "./math2d";
+import { navigationContext } from "./navigationContext";
 import {
   activeShieldRadius,
   capitalSeparationDistance,
@@ -483,7 +484,10 @@ function torpedoEscape(
   const skirmisher = ship.hullClass === "missile_frigate";
   const retained = skirmisher && (ship.escapeUntil ?? 0) > time;
   let closestArrival = Infinity;
-  let escapeVelocity: Vector2 | null = null;
+  let velX = velocity[0];
+  let velY = velocity[1];
+  let escaping = false;
+  const escapeRadiusSquared = (activeShieldRadius(ship) + 25) ** 2;
   for (const missile of projectiles) {
     if (
       missile.ownerTeam === ship.team ||
@@ -492,21 +496,30 @@ function torpedoEscape(
       missile.lifetime <= 0
     )
       continue;
-    const relative = vecSub(ship.pos, missile.pos);
-    const closing = vecSub(ship.velocity, missile.velocity);
-    const arrival = -vecDot(relative, closing) / Math.max(1, vecDot(closing, closing));
+    const relX = ship.pos[0] - missile.pos[0];
+    const relY = ship.pos[1] - missile.pos[1];
+    const closX = ship.velocity[0] - missile.velocity[0];
+    const closY = ship.velocity[1] - missile.velocity[1];
+    const arrival = -(relX * closX + relY * closY) / Math.max(1, closX * closX + closY * closY);
     if (arrival <= 0 || arrival > Math.min(skirmisher ? 2 : 1.5, missile.lifetime)) continue;
-    const closest = vecAdd(relative, vecScale(closing, arrival));
-    if (!retained && vecDistance([0, 0], closest) > activeShieldRadius(ship) + 25) continue;
-    const direction = vecNormalize(missile.velocity);
-    const lateral: Vector2 = [-direction[1], direction[0]];
+    const closestX = relX + closX * arrival;
+    const closestY = relY + closY * arrival;
+    if (!retained && closestX * closestX + closestY * closestY > escapeRadiusSquared) continue;
+    const speed = Math.sqrt(
+      missile.velocity[0] * missile.velocity[0] + missile.velocity[1] * missile.velocity[1],
+    );
+    const lateralX = -(speed < 1e-6 ? 0 : missile.velocity[1] / speed);
+    const lateralY = speed < 1e-6 ? 0 : missile.velocity[0] / speed;
     const escapeSign = retained
       ? (ship.escapeSide ?? side)
-      : Math.sign(vecDot(relative, lateral)) || side;
+      : Math.sign(relX * lateralX + relY * lateralY) || side;
     if (skirmisher) {
       if (arrival < closestArrival) {
         closestArrival = arrival;
-        escapeVelocity = vecScale(lateral, escapeSign * ship.maxSpeed);
+        escaping = true;
+        const strength = escapeSign * ship.maxSpeed;
+        velX = lateralX * strength;
+        velY = lateralY * strength;
         // Finish the jink instead of cancelling as soon as lateral thrust predicts a miss.
         if (!retained) {
           ship.escapeSide = escapeSign;
@@ -514,10 +527,14 @@ function torpedoEscape(
         }
       }
     } else {
-      velocity = vecAdd(velocity, vecScale(lateral, escapeSign * ship.maxSpeed * 2));
+      escaping = true;
+      const strength = escapeSign * ship.maxSpeed * 2;
+      velX += lateralX * strength;
+      velY += lateralY * strength;
     }
   }
-  return escapeVelocity ?? velocity;
+  // Callers use tuple identity to distinguish an active escape from the normal course.
+  return escaping ? [velX, velY] : velocity;
 }
 
 // Predict the finite gimbal corridor before firing, and also avoid shells already in flight.
@@ -537,14 +554,21 @@ export function OrdnanceAvoidanceBlock(
       velocity,
       time,
     );
-  let avoidance: Vector2 = [0, 0];
-  let beamAvoidance: Vector2 = [0, 0];
+  let avoidanceX = 0;
+  let avoidanceY = 0;
+  let beamAvoidanceX = 0;
+  let beamAvoidanceY = 0;
   let closestBeam = Infinity;
-  for (const enemy of ships) {
+  const beamVulnerable = ship.hullClass === "corvette" || ship.hullClass === "strike_craft";
+  const strikeCraft = ship.hullClass === "strike_craft";
+  const enemies = navigationContext(ships)?.teamEnemies.get(ship.team) ?? ships;
+  for (const enemy of enemies) {
     if (!enemy.isAlive || enemy.team === ship.team) continue;
+    const forwardX = Math.cos(enemy.heading);
+    const forwardY = Math.sin(enemy.heading);
     for (const turret of enemy.turrets) {
       if (
-        (ship.hullClass === "corvette" || ship.hullClass === "strike_craft") &&
+        beamVulnerable &&
         (enemy.hullClass === "cruiser" || enemy.hullClass === "battleship") &&
         turret.weapon.weaponType === "beam_laser"
       ) {
@@ -552,30 +576,33 @@ export function OrdnanceAvoidanceBlock(
         const distance = vecDistance(ship.pos, mountPosition(enemy, turret));
         if (vecDot(beam, beam) > 0 && distance < closestBeam) {
           closestBeam = distance;
-          beamAvoidance = beam;
+          beamAvoidanceX = beam[0];
+          beamAvoidanceY = beam[1];
         }
       }
       if (!turret.isSpinalGimbal) continue;
-      const muzzle = mountPosition(enemy, turret);
-      const forward: Vector2 = [Math.cos(enemy.heading), Math.sin(enemy.heading)];
-      const lateral: Vector2 = [-forward[1], forward[0]];
-      const relative = vecSub(ship.pos, muzzle);
-      const x = vecDot(relative, forward);
+      const lateralX = -forwardY;
+      const lateralY = forwardX;
+      const muzzleX = enemy.pos[0] + (turret.offset[0] * forwardX - turret.offset[1] * forwardY);
+      const muzzleY = enemy.pos[1] + (turret.offset[0] * forwardY + turret.offset[1] * forwardX);
+      const relX = ship.pos[0] - muzzleX;
+      const relY = ship.pos[1] - muzzleY;
+      const x = relX * forwardX + relY * forwardY;
       const arrival =
         Math.max(0, turret.cooldownTimer) + Math.max(0, x) / turret.weapon.projectileSpeed;
       if (arrival > 1.5) continue;
-      const predicted = vecAdd(
-        relative,
-        vecScale(vecSub(ship.velocity, enemy.velocity), clamp(arrival, 0.2, 1.5)),
-      );
-      const futureX = vecDot(predicted, forward);
-      const y = vecDot(relative, lateral);
-      const futureY = vecDot(predicted, lateral);
+      const predictionTime = clamp(arrival, 0.2, 1.5);
+      const predictedX = relX + (ship.velocity[0] - enemy.velocity[0]) * predictionTime;
+      const predictedY = relY + (ship.velocity[1] - enemy.velocity[1]) * predictionTime;
+      const futureX = predictedX * forwardX + predictedY * forwardY;
+      const y = relX * lateralX + relY * lateralY;
+      const futureY = predictedX * lateralX + predictedY * lateralY;
       const lateralDistance = y * futureY < 0 ? 0 : Math.min(Math.abs(y), Math.abs(futureY));
       const width =
         shieldEnvelopeRadius(ship) +
         35 +
-        Math.max(x, futureX) * Math.tan(Math.max(...turret.baseArc.map(Math.abs)) + 0.05);
+        Math.max(x, futureX) *
+          Math.tan(Math.max(Math.abs(turret.baseArc[0]), Math.abs(turret.baseArc[1])) + 0.05);
       if (
         Math.max(x, futureX) <= 0 ||
         Math.min(x, futureX) > turret.weapon.range + ship.size ||
@@ -591,27 +618,39 @@ export function OrdnanceAvoidanceBlock(
               : -1;
         ship.escapeUntil = time + 1;
       }
-      avoidance = vecAdd(avoidance, vecScale(lateral, (ship.escapeSide ?? 1) * ship.maxSpeed * 2));
+      const strength = (ship.escapeSide ?? 1) * ship.maxSpeed * 2;
+      avoidanceX += lateralX * strength;
+      avoidanceY += lateralY * strength;
     }
   }
+  const escapeRadiusSquared = (ship.size + 45) ** 2;
   for (const p of projectiles) {
     if (
       p.ownerTeam === ship.team ||
-      (p.weaponType !== "railgun" &&
-        !(ship.hullClass === "strike_craft" && p.weaponType === "missile")) ||
+      (p.weaponType !== "railgun" && !(strikeCraft && p.weaponType === "missile")) ||
       p.hp <= 0 ||
       p.lifetime <= 0
     )
       continue;
-    const relative = vecSub(ship.pos, p.pos);
-    const v = vecSub(ship.velocity, p.velocity);
-    const t = clamp(-vecDot(relative, v) / Math.max(1, vecDot(v, v)), 0, Math.min(1.5, p.lifetime));
-    const closest = vecAdd(relative, vecScale(v, t));
-    if (vecDistance([0, 0], closest) > ship.size + 45) continue;
-    const direction = vecNormalize(p.velocity);
-    const lateral: Vector2 = [-direction[1], direction[0]];
-    const side = Math.sign(vecDot(relative, lateral)) || ship.escapeSide || 1;
-    avoidance = vecAdd(avoidance, vecScale(lateral, side * ship.maxSpeed * 2));
+    const relX = ship.pos[0] - p.pos[0];
+    const relY = ship.pos[1] - p.pos[1];
+    const vx = ship.velocity[0] - p.velocity[0];
+    const vy = ship.velocity[1] - p.velocity[1];
+    const t = clamp(
+      -(relX * vx + relY * vy) / Math.max(1, vx * vx + vy * vy),
+      0,
+      Math.min(1.5, p.lifetime),
+    );
+    const closestX = relX + vx * t;
+    const closestY = relY + vy * t;
+    if (closestX * closestX + closestY * closestY > escapeRadiusSquared) continue;
+    const speed = Math.sqrt(p.velocity[0] * p.velocity[0] + p.velocity[1] * p.velocity[1]);
+    const lateralX = -(speed < 1e-6 ? 0 : p.velocity[1] / speed);
+    const lateralY = speed < 1e-6 ? 0 : p.velocity[0] / speed;
+    const side = Math.sign(relX * lateralX + relY * lateralY) || ship.escapeSide || 1;
+    const strength = side * ship.maxSpeed * 2;
+    avoidanceX += lateralX * strength;
+    avoidanceY += lateralY * strength;
   }
-  return vecAdd(velocity, vecAdd(avoidance, beamAvoidance));
+  return [velocity[0] + (avoidanceX + beamAvoidanceX), velocity[1] + (avoidanceY + beamAvoidanceY)];
 }
