@@ -63,10 +63,17 @@ export function previewKeelHeight(ship: ShipState): number {
   return ship.size * (isHeavyHull(ship) ? 0.32 : 0.24);
 }
 
-export function previewBridge(ship: ShipState): { x: number; height: number } {
+export function previewBridge(ship: ShipState): { x: number; y: number; height: number } {
+  if (ship.hullClass === "carrier")
+    return { x: -ship.size * 0.55, y: ship.size * 0.34, height: ship.size * 0.18 };
+  if (ship.hullClass === "corvette") return { x: ship.size * 0.44, y: 0, height: ship.size * 0.06 };
   return isHeavyHull(ship)
-    ? { x: -ship.size * (ship.hullClass === "dreadnought" ? 0.78 : 0.48), height: ship.size * 0.18 }
-    : { x: -ship.size * 0.3, height: ship.size * 0.12 };
+    ? {
+        x: -ship.size * (ship.hullClass === "dreadnought" ? 0.78 : 0.48),
+        y: 0,
+        height: ship.size * 0.18,
+      }
+    : { x: -ship.size * 0.3, y: 0, height: ship.size * 0.12 };
 }
 
 export function previewTerraceHeight(ship: ShipState, turret: TurretMountState): number {
@@ -253,12 +260,15 @@ export function drawPreviewSuperstructure(
   const s = ship.size;
   const alien = ship.team !== 0;
   if (isHeavyHull(ship)) {
-    const center = previewBridge(ship).x;
+    const bridge = previewBridge(ship);
+    const center = bridge.x;
     const [ux, uy] = rotatePoint([0, -s * 0.18 * depth], -ship.heading);
     ctx.save();
+    ctx.translate(0, bridge.y);
     for (let i = 0; i <= 18; i++) {
       const upper = i > 10;
-      const halfWidth = s * (upper ? 0.105 : 0.16);
+      const halfWidth =
+        s * (ship.hullClass === "carrier" ? (upper ? 0.055 : 0.08) : upper ? 0.105 : 0.16);
       const front = center + s * (upper ? 0.1 : 0.19);
       const back = center - s * (upper ? 0.13 : 0.21);
       ctx.save();
@@ -284,14 +294,15 @@ export function drawPreviewSuperstructure(
     ctx.strokeStyle = alien ? "#ffb07d" : "#b9efff";
     ctx.lineWidth = Math.max(0.5, s * 0.018);
     ctx.beginPath();
-    ctx.moveTo(center + s * 0.07 + ux, -s * 0.06 + uy);
+    ctx.moveTo(center + s * 0.07 + ux, -s * (ship.hullClass === "carrier" ? 0.035 : 0.06) + uy);
     ctx.lineTo(center + s * 0.1 + ux, uy);
-    ctx.lineTo(center + s * 0.07 + ux, s * 0.06 + uy);
+    ctx.lineTo(center + s * 0.07 + ux, s * (ship.hullClass === "carrier" ? 0.035 : 0.06) + uy);
     ctx.stroke();
     ctx.restore();
     return;
   }
-  const [ux, uy] = rotatePoint([0, -s * 0.12 * depth], -ship.heading);
+  const bridge = previewBridge(ship);
+  const [ux, uy] = rotatePoint([0, -bridge.height * depth], -ship.heading);
   const roof = () => {
     ctx.beginPath();
     ctx.moveTo(-s * 0.12, 0);
@@ -303,6 +314,7 @@ export function drawPreviewSuperstructure(
     ctx.closePath();
   };
   ctx.save();
+  ctx.translate(bridge.x + s * 0.3, bridge.y);
   for (let i = 0; i <= 12; i++) {
     ctx.save();
     ctx.translate((ux * i) / 12, (uy * i) / 12);

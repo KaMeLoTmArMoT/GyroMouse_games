@@ -12,6 +12,7 @@ import {
   isLightHull,
   traceLightHull,
 } from "./lightHullDepth";
+import { deckDetailCenter, drawPreviewDeckDetail, previewDeckDetails } from "./previewDeckDetails";
 import {
   drawPreviewKeel,
   drawPreviewSuperstructure,
@@ -231,19 +232,30 @@ export function renderShipPreview(
   ctx.restore();
   const sin = Math.sin(ship.heading);
   const cos = Math.cos(ship.heading);
-  const elements: { depth: number; turret: TurretMountState | null }[] = ship.turrets.map(
-    (turret) => ({
-      depth:
-        (turret.offset[0] * sin + turret.offset[1] * cos) * Math.sin(elevation) -
-        (previewTerraceHeight(ship, turret) + turret.baseRadius * 0.35) * Math.cos(elevation),
-      turret,
-    }),
-  );
+  // Camera-space depth, rather than projected screen Y, keeps near objects in front.
+  const elements: {
+    depth: number;
+    turret?: TurretMountState;
+    detail?: ReturnType<typeof previewDeckDetails>[number];
+  }[] = ship.turrets.map((turret) => ({
+    depth:
+      (turret.offset[0] * sin + turret.offset[1] * cos) * Math.cos(elevation) +
+      (previewTerraceHeight(ship, turret) + turret.baseRadius * 0.35) * Math.sin(elevation),
+    turret,
+  }));
   const bridge = previewBridge(ship);
   elements.push({
-    depth: bridge.x * sin * Math.sin(elevation) - bridge.height * Math.cos(elevation),
-    turret: null,
+    depth:
+      (bridge.x * sin + bridge.y * cos) * Math.cos(elevation) + bridge.height * Math.sin(elevation),
   });
+  for (const detail of previewDeckDetails(ship)) {
+    const [x, y] = deckDetailCenter(detail, ship.size);
+    elements.push({
+      depth:
+        (x * sin + y * cos) * Math.cos(elevation) + detail.height * ship.size * Math.sin(elevation),
+      detail,
+    });
+  }
   elements.sort((a, b) => a.depth - b.depth);
   for (const element of elements) {
     if (element.turret) {
@@ -254,6 +266,11 @@ export function renderShipPreview(
       ctx.save();
       ctx.translate(0, -previewTerraceHeight(ship, element.turret) * depth);
       renderTurret(ctx, ship, element.turret, isBlue ? "#38bdf8" : "#f87171", depth);
+      ctx.restore();
+    } else if (element.detail) {
+      ctx.save();
+      ctx.rotate(ship.heading);
+      drawPreviewDeckDetail(ctx, ship, element.detail, depth);
       ctx.restore();
     } else {
       ctx.save();

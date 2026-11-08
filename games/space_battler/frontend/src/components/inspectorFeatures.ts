@@ -91,7 +91,7 @@ export function inspectorFeatures(
         `Turn rate: ${profile.turnRateDisplay}`,
         `Doctrine: ${profile.desc}`,
       ],
-      [bridge.x, 0],
+      [bridge.x, bridge.y],
       bridge.height * depth,
       ship.size * 0.12,
     ),

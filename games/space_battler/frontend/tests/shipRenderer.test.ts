@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { traceHeavyHull } from "../src/canvas/capitalHullDepth";
 import { engineNozzles } from "../src/canvas/effects";
+import { drawPreviewDeckDetail, previewDeckDetails } from "../src/canvas/previewDeckDetails";
 import * as previewDepth from "../src/canvas/previewDepth";
 import { previewDepthFactor } from "../src/canvas/previewDepth";
 import { renderShip, renderShipPreview } from "../src/canvas/shipRenderer";
@@ -39,6 +40,68 @@ afterEach(() => {
 });
 
 describe("cached battlefield hulls", () => {
+  it("projects low deck details vertically for every hull and faction", () => {
+    for (const team of [0, 1] as const) {
+      for (const hullClass of [
+        "strike_craft",
+        "corvette",
+        "missile_frigate",
+        "tender",
+        "cruiser",
+        "battleship",
+        "dreadnought",
+        "carrier",
+      ] as const) {
+        const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
+        const details = previewDeckDetails(ship);
+        expect(details.length).toBeGreaterThan(0);
+        ship.heading = Math.PI / 3;
+        for (const detail of details) {
+          expect(detail.height).toBeGreaterThan(0);
+          expect(detail.height).toBeLessThanOrEqual(0.08);
+          const { ctx, calls } = context();
+          const depth = previewDepthFactor(Math.PI / 6);
+          drawPreviewDeckDetail(ctx, ship, detail, depth);
+          const [ux, uy] = rotatePoint([0, -detail.height * ship.size * depth], -ship.heading);
+          const [x, y] = detail.points[0];
+          expect(calls.get("moveTo")).toHaveBeenCalledWith(x * ship.size + ux, y * ship.size + uy);
+          expect(rotatePoint([ux, uy], ship.heading)[1]).toBeCloseTo(
+            -detail.height * ship.size * depth,
+          );
+        }
+      }
+    }
+  });
+
+  it("keeps the corvette bridge clear of its turrets and occludes by camera depth", () => {
+    const [ship] = buildFleetFromSlots(
+      [{ id: "corvette-bridge", hullClass: "corvette", groupId: 1 }],
+      0,
+      0,
+      0,
+    );
+    const bridge = previewDepth.previewBridge(ship);
+    for (const turret of ship.turrets) {
+      expect(turret.offset[0] + turret.baseRadius).toBeLessThan(bridge.x - ship.size * 0.18);
+    }
+    const order: string[] = [];
+    vi.spyOn(previewDepth, "drawPreviewSuperstructure").mockImplementation(() =>
+      order.push("bridge"),
+    );
+    vi.spyOn(turretRenderer, "renderTurret").mockImplementation((_ctx, _ship, turret) => {
+      order.push(String(ship.turrets.indexOf(turret)));
+    });
+    for (const [heading, expected] of [
+      [0, ["0", "bridge", "1"]],
+      [Math.PI, ["1", "bridge", "0"]],
+    ] as const) {
+      ship.heading = heading;
+      order.length = 0;
+      renderShipPreview(context().ctx, ship, 0, Math.PI / 36);
+      expect(order).toEqual(expected);
+    }
+  });
+
   it("reuses every hull/team sprite while drawing turrets and HUD at frame time", () => {
     const create = vi.fn();
     const hullSprites = new Set<unknown>();
@@ -241,7 +304,7 @@ describe("cached battlefield hulls", () => {
             const bridge = features.find((feature) => feature.id === "bridge");
             if (!bridge) throw new Error("Bridge target missing");
             const bridgeGeometry = previewDepth.previewBridge(ship);
-            const [x, y] = rotatePoint([bridgeGeometry.x, 0], heading);
+            const [x, y] = rotatePoint([bridgeGeometry.x, bridgeGeometry.y], heading);
             expect(bridge.x).toBeCloseTo(360 + x * scale);
             expect(bridge.y).toBeCloseTo(
               240 + (y * Math.sin(elevation) - bridgeGeometry.height * Math.cos(elevation)) * scale,
@@ -276,16 +339,16 @@ describe("cached battlefield hulls", () => {
           name: String(index),
           depth:
             (turret.offset[0] * Math.sin(heading) + turret.offset[1] * Math.cos(heading)) *
-              Math.sin(elevation) -
+              Math.cos(elevation) +
             (previewDepth.previewTerraceHeight(ship, turret) + turret.baseRadius * 0.35) *
-              Math.cos(elevation),
+              Math.sin(elevation),
         }));
         const bridge = previewDepth.previewBridge(ship);
         expected.push({
           name: "bridge",
           depth:
-            bridge.x * Math.sin(heading) * Math.sin(elevation) -
-            bridge.height * Math.cos(elevation),
+            (bridge.x * Math.sin(heading) + bridge.y * Math.cos(heading)) * Math.cos(elevation) +
+            bridge.height * Math.sin(elevation),
         });
         expected.sort((a, b) => a.depth - b.depth);
         expect(order).toEqual(expected.map((element) => element.name));
@@ -423,9 +486,8 @@ describe("cached battlefield hulls", () => {
       const lightIndex = moves.mock.calls.findIndex(
         ([x, y]) => x === -ship.size * 0.8 && y === ship.size * 0.31,
       );
-      const firstTurret = [...ship.turrets].sort((a, b) => a.offset[1] - b.offset[1])[0];
       const turretIndex = translations.mock.calls.findIndex(
-        ([x, y]) => x === firstTurret.offset[0] && y === firstTurret.offset[1],
+        ([x, y]) => ship.turrets.some((turret) => x === turret.offset[0] && y === turret.offset[1]),
       );
       expect(lightIndex).toBeGreaterThanOrEqual(0);
       expect(turretIndex).toBeGreaterThanOrEqual(0);
