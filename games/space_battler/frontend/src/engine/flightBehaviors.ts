@@ -656,7 +656,8 @@ export function OrdnanceAvoidanceBlock(
       avoidanceY += lateralY * strength;
     }
   }
-  const escapeRadiusSquared = (ship.size + 45) ** 2;
+  const escapeRadius = ship.size + 45;
+  const escapeRadiusSquared = escapeRadius ** 2;
   for (const p of projectiles) {
     if (
       p.ownerTeam === ship.team ||
@@ -669,11 +670,14 @@ export function OrdnanceAvoidanceBlock(
     const relY = ship.pos[1] - p.pos[1];
     const vx = ship.velocity[0] - p.velocity[0];
     const vy = ship.velocity[1] - p.velocity[1];
-    const t = clamp(
-      -(relX * vx + relY * vy) / Math.max(1, vx * vx + vy * vy),
-      0,
-      Math.min(1.5, p.lifetime),
-    );
+    const horizon = Math.min(1.5, p.lifetime);
+    // Bound the swept approach per axis; distant fast incoming shots remain eligible.
+    if (
+      Math.abs(relX) > escapeRadius + Math.abs(vx) * horizon ||
+      Math.abs(relY) > escapeRadius + Math.abs(vy) * horizon
+    )
+      continue;
+    const t = clamp(-(relX * vx + relY * vy) / Math.max(1, vx * vx + vy * vy), 0, horizon);
     const closestX = relX + vx * t;
     const closestY = relY + vy * t;
     if (closestX * closestX + closestY * closestY > escapeRadiusSquared) continue;

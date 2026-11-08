@@ -1,4 +1,4 @@
-import type { ShipState } from "../types/combat";
+import type { ShipState, Vector2 } from "../types/combat";
 import { SeparationSpatialGrid } from "./separationSpatialGrid";
 import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { flakThreatRadius, HULL_PROFILES } from "./shipProfiles";
@@ -59,6 +59,7 @@ export class NavigationNeighborhoodCache {
 }
 
 type AssignmentCounts = Map<number, Map<number, Map<string, number>>>;
+type WingCenters = Map<number, Map<string, { pos: Vector2; count: number }>>;
 
 export class NavigationContext {
   readonly byId = new Map<string, ShipState>();
@@ -76,6 +77,7 @@ export class NavigationContext {
   readonly capitalAssignments = new Map<number, Map<string, number>>();
   readonly navigationAssignments: AssignmentCounts = new Map();
   readonly dogfightAssignments: AssignmentCounts = new Map();
+  wingCenters: WingCenters | undefined;
   readonly activeWrecks: ShipState[];
   readonly separationGrid: SeparationSpatialGrid;
 
@@ -190,6 +192,31 @@ export class NavigationContext {
         });
       }
     }
+  }
+
+  /** Snapshot once per wing update, including the legacy dispersal's docked/debris members. */
+  updateWingCenters(ships: ShipState[]): WingCenters {
+    const teams: WingCenters = new Map();
+    for (const ship of ships) {
+      if (!ship.isAlive || ship.hullClass !== "strike_craft") continue;
+      const wings = teams.get(ship.team) ?? new Map<string, { pos: Vector2; count: number }>();
+      const key = `${ship.groupId}:${ship.wingIndex ?? "unassigned"}`;
+      const wing = wings.get(key) ?? { pos: [0, 0] as Vector2, count: 0 };
+      wing.pos[0] += ship.pos[0];
+      wing.pos[1] += ship.pos[1];
+      wing.count++;
+      wings.set(key, wing);
+      teams.set(ship.team, wings);
+    }
+    for (const wings of teams.values()) {
+      for (const wing of wings.values()) {
+        const scale = 1 / wing.count;
+        wing.pos[0] *= scale;
+        wing.pos[1] *= scale;
+      }
+    }
+    this.wingCenters = teams;
+    return teams;
   }
 
   setSafeHaven(ship: ShipState, targetId: string | null): void {

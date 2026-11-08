@@ -3,8 +3,9 @@ import { CREW_TACTICS, type CrewContext } from "./crewVeterancy";
 import { fighterRecoveryDirection, friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import {
   dogfightTarget,
-  fighterDispersal,
+  FIGHTER_DISPERSAL_RADIUS,
   fighterIngressHeading,
+  limitVelocity,
   safeRally,
   separation,
   spinalEscape,
@@ -216,8 +217,31 @@ export class FighterMissionSystem {
     return vecAdd(wing.rally, rotatePoint([-Math.abs(slot) * 30, slot * 50], wing.heading));
   }
 
+  private wingDispersal(ship: ShipState, aliveShips: ShipState[]): Vector2 {
+    if (ship.hullClass !== "strike_craft") return [0, 0];
+    const navigation = navigationContext(aliveShips) ?? prepareNavigationContext(aliveShips);
+    const centers = navigation.wingCenters ?? navigation.updateWingCenters(aliveShips);
+    const wings = centers.get(ship.team);
+    const ownKey = `${ship.groupId}:${ship.wingIndex ?? "unassigned"}`;
+    const own = wings?.get(ownKey);
+    if (!own || !wings) return [0, 0];
+    let repulsion: Vector2 = [0, 0];
+    for (const [wingKey, wing] of wings) {
+      if (wingKey === ownKey) continue;
+      const delta = vecSub(own.pos, wing.pos);
+      const distance = vecDistance([0, 0], delta);
+      if (distance >= FIGHTER_DISPERSAL_RADIUS) continue;
+      const away: Vector2 =
+        distance > 1e-6 ? vecScale(delta, 1 / distance) : [0, ownKey < wingKey ? -1 : 1];
+      const falloff = (1 - distance / FIGHTER_DISPERSAL_RADIUS) ** 2;
+      repulsion = vecAdd(repulsion, vecScale(away, ship.maxSpeed * 0.8 * falloff));
+    }
+    return limitVelocity(repulsion, ship.maxSpeed);
+  }
+
   updateWings(aliveShips: ShipState[]): void {
     const navigation = navigationContext(aliveShips) ?? prepareNavigationContext(aliveShips);
+    navigation.updateWingCenters(aliveShips);
     const wingMembers = new Map<string, ShipState[]>();
     const wingsByGroup = new Map<string, FighterWing[]>();
     const memberWings = new Map<string, string>();
@@ -545,7 +569,7 @@ export class FighterMissionSystem {
     const laneAvoidance = spinalEscape(ship, aliveShips, projectiles, timeElapsed);
     const avoid = vecAdd(
       laneAvoidance,
-      vecAdd(separation(ship, aliveShips), fighterDispersal(ship, aliveShips)),
+      vecAdd(separation(ship, aliveShips), this.wingDispersal(ship, aliveShips)),
     );
     const recoveryDir =
       phase === "recover" || phase === "egress"
