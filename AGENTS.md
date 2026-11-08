@@ -14,15 +14,15 @@
 ## Rules
 Do not run `npm run build` or `npm run dev` if i don't ask for it.
 STRICTLY FORBIDDEN: NEVER add mouse movement/cursor tilt controls (e.g. `mouseEnabled`, `pointermove` for game steering) to games unless explicitly requested. Controls must remain strictly keyboard-driven (WASD / Arrow keys / Space).
-STRICTLY FORBIDDEN: NEVER modify, rescale, or rebalance core combat/simulation hyperparameters (weapon damage, fire rates, cooldowns, ship speeds, turn rates, hull/armor/shield values, ship/shield sizes, `ARENA_RADIUS`, or simulation timestep) without explicit prior discussion, thorough analytical justification, and user approval. Calibrated balance values are sacred; solve fleet placement, positioning, and navigation challenges via geometry, inward compaction, and algorithmic optimizations, NEVER by casually tweaking hyperparameter constants.
 
-### Space Battler engine scale and determinism
-- STRICTLY FORBIDDEN: add nested O(N) full-population scans in 60 Hz update loops, such as scanning `aliveShips` for every ship or weapon mount.
-- REQUIRE: share phase-local blackboards such as `NavigationContext`, team worklists, or reusable spatial grids such as `separationSpatialGrid` for repeated queries. Keep indexes current when phase state changes and use conservative spatial bounds.
-- REQUIRE: preserve existing deterministic tie-breaking and floating-point accumulation order. Use the appropriate stable ID rule (for example `ship.id < peer.id`) for ties and ascending source indices for order-sensitive reductions; verify equivalent combat state.
+### Space Battler
+- Never change calibrated combat/simulation hyperparameters (damage, fire rates, cooldowns, speeds, turn rates, hull/armor/shield values, ship/shield sizes, `ARENA_RADIUS`, timestep) without prior discussion, analytical justification, and user approval. Solve placement and navigation with geometry, compaction, and algorithms.
+- No nested full-population scans in 60 Hz loops. Share phase-local blackboards, team worklists, or spatial grids; keep indexes current and bounds conservative.
+- Preserve deterministic tie-breaking and floating-point accumulation order (stable IDs and ascending source indices); verify equivalent combat state.
+- Use targeted benchmarks or bisection/golden-section search for balance exploration; avoid long brute-force sweeps. See `games/space_battler/docs/profiling_and_optimization.md`.
 
 ## Testing & Validation
-No test runner configured — validate changes manually via `npm run dev` and visual check in browser.
+Space Battler fast tests: `npm run test:fast --prefix games/space_battler/frontend`. For other games, validate visually when a dev server is authorized.
 
 ## Cross-Agent Bridge (CAB) Non-Blocking Execution
 When delegating tasks via CAB (`cab.cmd` / `cab-orchestrator`):
@@ -34,7 +34,6 @@ When delegating tasks via CAB (`cab.cmd` / `cab-orchestrator`):
   - **Sol**: `azure/gpt-6.1-sol` (core engine refactoring, physics, math algorithms)
   - **Terra**: `azure/gpt-6.1-terra` (frontend UI, React components, canvas rendering, SVG design)
 - Background tasks are tracked via `manage_task` (status/kill) without busy-polling; wait for reactive notifications.
-- When performing balance exploration or parameter sweeps, avoid brute-force grid sweeps with high iteration counts (e.g. 25k ticks) that risk 10-minute timeouts; use bisection, golden-section search, or targeted headless benchmarks instead.
 
 
 ## Gotchas

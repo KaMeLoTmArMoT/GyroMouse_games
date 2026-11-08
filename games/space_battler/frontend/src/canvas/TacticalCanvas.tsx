@@ -303,8 +303,6 @@ export function TacticalCanvas({
           const viewport = worldViewport(canvas.width, canvas.height / verticalScale, camera);
 
           drawTacticalGrid(ctx, sim.timeElapsed, camera.pitchDeg);
-          renderMapObstacles(ctx, sim.mapObstacles, viewport, (camera.pitchDeg * Math.PI) / 180);
-
           const selectedTender = sim.ships.find(
             (ship) =>
               ship.id === selectedShipId &&
@@ -470,16 +468,25 @@ export function TacticalCanvas({
           const visibleShips = sim.ships.filter((ship) => !ship.isDocked);
           renderHavenTethers(ctx, visibleShips, sim.timeElapsed, selectedShipId);
 
-          // Draw Ships
+          // Draw ships and obstacles back-to-front in world Y, including at 90°.
           const ingressGates = new Map(
             effectsRef.current.warpGates.map((gate) => [gate.shipId, gate]),
           );
-          const shipsToRender =
-            camera.pitchDeg < 89.5
-              ? [...visibleShips].sort((a, b) => a.pos[1] - b.pos[1])
-              : visibleShips;
-          for (const ship of shipsToRender) {
-            if (ship.isDocked) continue;
+          const depthItems = [
+            ...sim.mapObstacles.map((obstacle) => ({ kind: "obstacle" as const, obstacle })),
+            ...visibleShips.map((ship) => ({ kind: "ship" as const, ship })),
+          ];
+          depthItems.sort((a, b) => {
+            const aY = a.kind === "obstacle" ? a.obstacle.pos[1] : a.ship.pos[1];
+            const bY = b.kind === "obstacle" ? b.obstacle.pos[1] : b.ship.pos[1];
+            return aY - bY;
+          });
+          for (const item of depthItems) {
+            if (item.kind === "obstacle") {
+              renderMapObstacles(ctx, [item.obstacle], viewport);
+              continue;
+            }
+            const ship = item.ship;
             if (
               ship.id !== selectedShipId &&
               !discVisible(

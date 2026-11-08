@@ -48,7 +48,7 @@ describe("visual sprite caching", () => {
     expect(shieldGlowSprite(0.631)).toBeNull();
   });
 
-  it("rebakes asteroid geometry only when its pitch or orientation changes", () => {
+  it("reuses flat asteroid geometry across position, pitch, and rotation changes", () => {
     const baked: ReturnType<typeof context>[] = [];
     vi.stubGlobal(
       "OffscreenCanvas",
@@ -76,17 +76,26 @@ describe("visual sprite caching", () => {
     renderMapObstacles(ctx, [asteroid], view, Math.PI / 3);
     expect(baked).toHaveLength(1);
     expect(calls.get("drawImage")?.mock.calls[0][0]).toBe(calls.get("drawImage")?.mock.calls[1][0]);
-    expect(baked[0].calls.get("createLinearGradient")?.mock.calls.length).toBeGreaterThan(1);
+    expect(baked[0].calls.get("createLinearGradient")).toHaveBeenCalledTimes(1);
+    expect(baked[0].calls.get("ellipse")).toHaveBeenCalledTimes(3);
 
     asteroid.rotation = 0.2;
     renderMapObstacles(ctx, [asteroid], view, Math.PI / 3);
     renderMapObstacles(ctx, [asteroid], view, Math.PI / 4);
-    expect(baked).toHaveLength(3);
+    expect(baked).toHaveLength(1);
 
     asteroid.rotationSpeed = 0.1;
     renderMapObstacles(ctx, [asteroid], view, Math.PI / 4);
-    expect(baked).toHaveLength(3);
-    expect(calls.get("createLinearGradient")).toHaveBeenCalled();
+    expect(baked).toHaveLength(1);
+    expect(calls.get("drawImage")).toHaveBeenCalledTimes(5);
+    for (const [image] of calls.get("drawImage")?.mock.calls ?? []) {
+      expect(image).toBe(calls.get("drawImage")?.mock.calls[0][0]);
+    }
+
+    vi.stubGlobal("OffscreenCanvas", undefined);
+    renderMapObstacles(ctx, [asteroid], view, Math.PI / 4);
+    expect(calls.get("createLinearGradient")).toHaveBeenCalledTimes(1);
+    expect(calls.get("ellipse")).toHaveBeenCalledTimes(3);
   });
 
   it("reuses a rotating station sprite without resolution jitter at a zoom boundary", () => {

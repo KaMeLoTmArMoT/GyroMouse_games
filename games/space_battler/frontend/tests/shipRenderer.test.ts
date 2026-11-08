@@ -137,18 +137,15 @@ describe("cached battlefield hulls", () => {
       );
       for (const ship of ships) {
         const { ctx, calls } = context();
-        const light = ["strike_craft", "corvette", "missile_frigate"].includes(ship.hullClass);
-        const deckIndex = light ? 4 : 0;
         renderShip(ctx, ship, false, [], 0);
-        const first = calls.get("drawImage")?.mock.calls[deckIndex]?.[0];
+        const first = calls.get("drawImage")?.mock.calls[0]?.[0];
         hullSprites.add(first);
         ship.heading += 0.7;
         ship.velocity = [ship.maxSpeed, 0];
         ship.turrets[0].currentLocalAngle += 0.3;
         renderShip(ctx, ship, false, [], 2);
-        const imagesPerFrame = 1 + (light ? 4 + ship.turrets.length * 2 : 0);
-        expect(calls.get("drawImage")).toHaveBeenCalledTimes(imagesPerFrame * 2);
-        expect(calls.get("drawImage")?.mock.calls[imagesPerFrame + deckIndex]?.[0]).toBe(first);
+        expect(calls.get("drawImage")).toHaveBeenCalledTimes(2);
+        expect(calls.get("drawImage")?.mock.calls[1]?.[0]).toBe(first);
         expect(calls.get("rotate")).toHaveBeenCalledWith(ship.heading);
         expect(calls.get("rotate")).toHaveBeenCalledWith(
           ship.heading + ship.turrets[0].currentLocalAngle,
@@ -158,7 +155,7 @@ describe("cached battlefield hulls", () => {
         ship.turrets[0].offset[0] += 1;
         ship.size += 0.5;
         renderShip(ctx, ship);
-        const resized = calls.get("drawImage")?.mock.calls[imagesPerFrame * 2 + deckIndex]?.[0];
+        const resized = calls.get("drawImage")?.mock.calls[2]?.[0];
         expect(resized).not.toBe(first);
         hullSprites.add(resized);
       }
@@ -167,7 +164,7 @@ describe("cached battlefield hulls", () => {
     expect(create.mock.calls.length).toBeGreaterThanOrEqual(32);
   });
 
-  it("caches the stationary barbette and rotating turret separately without canvas shadows", () => {
+  it("draws light turret and bridge details at both top-down and tilted elevations", () => {
     const offscreens: ReturnType<typeof context>[] = [];
     vi.stubGlobal(
       "OffscreenCanvas",
@@ -190,30 +187,31 @@ describe("cached battlefield hulls", () => {
       0,
     );
     ship.turrets[0].baseRadius = 2.73;
+    const turret = vi.spyOn(turretRenderer, "renderTurret");
+    const bridge = vi.spyOn(previewDepth, "drawPreviewSuperstructure");
     const { ctx, calls } = context();
     renderShip(ctx, ship);
-    expect(offscreens).toHaveLength(4);
-    const keelSprite = calls.get("drawImage")?.mock.calls[0]?.[0];
-    const barbetteSprite = calls.get("drawImage")?.mock.calls[5]?.[0];
-    const turretSprite = calls.get("drawImage")?.mock.calls[6]?.[0];
-    expect(offscreens[2].calls.get("scale")).toHaveBeenCalledWith(4, 4);
-    expect(offscreens[2].calls.get("ellipse")).toHaveBeenCalled();
-    expect(offscreens[2].calls.get("arc")).toHaveBeenCalled();
-    expect(offscreens.every(({ ctx: canvas }) => !("shadowBlur" in canvas))).toBe(true);
-    const strokes = offscreens[3].calls.get("stroke")?.mock.calls.length;
+    expect(offscreens).toHaveLength(1);
+    const deckSprite = calls.get("drawImage")?.mock.calls[0]?.[0];
+    expect(turret).toHaveBeenCalledTimes(ship.turrets.length);
+    expect(turret.mock.calls.find((call) => call[2] === ship.turrets[0])?.[4]).toBeCloseTo(0);
+    expect(bridge.mock.calls[0][2]).toBe(1e-9);
     ship.turrets[0].currentLocalAngle = 0.8;
     ship.heading = Math.PI / 2;
-    renderShip(ctx, ship);
-    expect(offscreens).toHaveLength(4);
-    expect(offscreens[3].calls.get("stroke")?.mock.calls.length).toBe(strokes);
-    const secondKeel = calls.get("drawImage")?.mock.calls[7];
-    expect(secondKeel?.[0]).toBe(keelSprite);
-    const keelWidth = (keelSprite as { width: number }).width / 4;
-    expect(secondKeel?.[1]).toBeCloseTo(-keelWidth / 2 + ship.size * 0.24);
-    expect(secondKeel?.[2]).toBeCloseTo(-keelWidth / 2);
-    expect(calls.get("drawImage")?.mock.calls[12]?.[0]).toBe(barbetteSprite);
-    expect(calls.get("drawImage")?.mock.calls[13]?.[0]).toBe(turretSprite);
-    expect(calls.get("translate")).toHaveBeenCalledWith(0, -ship.turrets[0].baseRadius * 0.7);
+    const elevation = Math.PI / 6;
+    const depth = previewDepthFactor(elevation);
+    renderShip(ctx, ship, false, [], 0, elevation);
+    expect(offscreens).toHaveLength(1);
+    expect(calls.get("drawImage")?.mock.calls[1]?.[0]).toBe(deckSprite);
+    expect(turret).toHaveBeenCalledTimes(ship.turrets.length * 2);
+    expect(turret.mock.calls.slice(ship.turrets.length).every((call) => call[4] === depth)).toBe(
+      true,
+    );
+    expect(bridge.mock.calls[1][2]).toBe(depth);
+    expect(calls.get("translate")).toHaveBeenCalledWith(
+      0,
+      -ship.turrets[0].baseRadius * 0.25 * depth,
+    );
     expect(calls.get("rotate")).toHaveBeenCalledWith(ship.heading + 0.8);
   });
 

@@ -7,12 +7,7 @@ import { traceHeavyHull } from "./capitalHullDepth";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
 import { shieldGlowSprite } from "./glowSprites";
 import { drawHullArmor } from "./hullArmor";
-import {
-  drawLightHullExtrusion,
-  drawLightHullKeel,
-  isLightHull,
-  traceLightHull,
-} from "./lightHullDepth";
+import { traceLightHull } from "./lightHullDepth";
 import { deckDetailCenter, drawPreviewDeckDetail, previewDeckDetails } from "./previewDeckDetails";
 import {
   drawPreviewKeel,
@@ -28,9 +23,9 @@ import { renderTurret } from "./turretRenderer";
 
 // Size and hardpoint layout are fixed configuration of each bounded cache instance.
 // Rasterize at 3 pixels/world unit, above the battlefield's maximum 2.5x zoom.
-const hullSprites = new Map<string, { deck: ShipSpriteCache; keel?: ShipSpriteCache }>();
+const hullSprites = new Map<string, ShipSpriteCache>();
 
-function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState, withKeel = true): boolean {
+function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState): boolean {
   if (typeof OffscreenCanvas === "undefined") return false;
   const transform = ctx.getTransform();
   // The largest singular value is independent of ship heading under pitch.
@@ -48,70 +43,52 @@ function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState, withKeel
     ship.hullClass === "carrier" ? cameraScale : null,
     ship.turrets.map((turret) => [turret.offset, turret.baseRadius, turret.weapon.weaponType]),
   ]);
-  let sprites = hullSprites.get(key);
+  let deck = hullSprites.get(key);
   const extent = ship.size * 1.6 + 4;
-  if (!sprites) {
+  if (!deck) {
     const snapshot = {
       ...ship,
       turrets: ship.turrets.map((turret) => ({ ...turret, offset: [...turret.offset] as Vector2 })),
     };
-    const deck = new ShipSpriteCache(
-      Math.ceil(extent * 2 * resolution),
-      (offscreen, _, team, pixels) => {
-        offscreen.translate(pixels / 2, pixels / 2);
-        offscreen.scale(resolution, resolution);
-        // Both 2D contexts expose the same hull drawing operations.
-        const hullContext = offscreen as unknown as CanvasRenderingContext2D;
-        if (team === 0)
-          drawTerranHull(
-            hullContext,
-            snapshot,
-            "#38bdf8",
-            "#0f172a",
-            "#0284c7",
-            undefined,
-            true,
-            resolution / cameraScale,
-          );
-        else
-          drawAlienHull(
-            hullContext,
-            snapshot,
-            "#f87171",
-            "#450a0a",
-            "#dc2626",
-            undefined,
-            true,
-            resolution / cameraScale,
-          );
-        drawHullArmor(hullContext, snapshot);
-      },
-    );
-    const keel = isLightHull(snapshot)
-      ? new ShipSpriteCache(Math.ceil(extent * 2 * resolution), (offscreen, _, _team, pixels) => {
-          offscreen.translate(pixels / 2, pixels / 2);
-          offscreen.scale(resolution, resolution);
-          drawLightHullKeel(offscreen as unknown as CanvasRenderingContext2D, snapshot);
-        })
-      : undefined;
-    sprites = { deck, keel };
+    deck = new ShipSpriteCache(Math.ceil(extent * 2 * resolution), (offscreen, _, team, pixels) => {
+      offscreen.translate(pixels / 2, pixels / 2);
+      offscreen.scale(resolution, resolution);
+      // Both 2D contexts expose the same hull drawing operations.
+      const hullContext = offscreen as unknown as CanvasRenderingContext2D;
+      if (team === 0)
+        drawTerranHull(
+          hullContext,
+          snapshot,
+          "#38bdf8",
+          "#0f172a",
+          "#0284c7",
+          undefined,
+          true,
+          resolution / cameraScale,
+        );
+      else
+        drawAlienHull(
+          hullContext,
+          snapshot,
+          "#f87171",
+          "#450a0a",
+          "#dc2626",
+          undefined,
+          true,
+          resolution / cameraScale,
+        );
+      drawHullArmor(hullContext, snapshot);
+    });
     const oldest = hullSprites.keys().next().value;
     if (hullSprites.size >= 32 && oldest !== undefined) hullSprites.delete(oldest);
-    hullSprites.set(key, sprites);
+    hullSprites.set(key, deck);
   }
-  const sprite = sprites.deck.get(ship.hullClass, ship.team);
+  const sprite = deck.get(ship.hullClass, ship.team);
   if (!sprite) return false;
   const width = sprite.width / resolution;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  const keel = withKeel ? sprites.keel?.get(ship.hullClass, ship.team) : null;
-  if (keel) {
-    const [dx, dy] = rotatePoint([0, ship.size * 0.24], -ship.heading);
-    // Sweep a cached solid profile, keeping the projected keel below the turning deck.
-    for (let i = 4; i >= 1; i--)
-      ctx.drawImage(keel, -width / 2 + (dx * i) / 4, -width / 2 + (dy * i) / 4, width, width);
-  }
   ctx.drawImage(sprite, -width / 2, -width / 2, width, width);
   ctx.restore();
   drawAnimatedHullDetails(ctx, ship);
@@ -243,7 +220,7 @@ export function renderShipPreview(
     depth,
     battlefield ? Math.max(4, Math.min(24, Math.ceil(projectedKeel * 2))) : 24,
   );
-  if (battlefield && drawCachedHull(ctx, ship, false)) {
+  if (battlefield && drawCachedHull(ctx, ship)) {
     if (ship.hullClass === "tender") drawTenderLight(ctx, ship, time);
     if (ship.hullClass === "carrier") drawCarrierRecessLights(ctx, ship, time);
   } else {
@@ -297,7 +274,8 @@ export function renderShipPreview(
     } else {
       ctx.save();
       ctx.rotate(ship.heading);
-      drawPreviewSuperstructure(ctx, ship, depth);
+      // Keep light-hull roofs visible at exactly top-down, where depth is zero.
+      drawPreviewSuperstructure(ctx, ship, Math.max(depth, 1e-9));
       ctx.restore();
     }
   }
@@ -343,8 +321,6 @@ export function renderShip(
   const [x, y] = ship.pos;
   const isBlue = ship.team === 0; // Blue = Terran (Battlestar style), Red = Alien/Cylon (sleek curves)
   const primaryColor = isBlue ? "#38bdf8" : "#f87171"; // Sky-400 vs Red-400
-  const hullDarkColor = isBlue ? "#0f172a" : "#450a0a"; // Deep slate vs Deep blood red
-  const accentColor = isBlue ? "#0284c7" : "#dc2626";
 
   ctx.save();
   ctx.translate(x, y);
@@ -366,68 +342,25 @@ export function renderShip(
     }
   }
 
-  // Tilted hulls use the inspector's camera-space depth and painter ordering.
-  if (elevation < (89.5 * Math.PI) / 180) {
-    renderShipPreview(ctx, ship, time, elevation, true);
-    ctx.save();
-    ctx.rotate(ship.heading);
-    if (hasFighterHazard(ship)) {
-      drawCoolantTrail(ctx, ship, time);
-      drawHazardBeacon(ctx, ship, time);
-    }
-    drawHullDamage(ctx, ship, decals);
-    ctx.restore();
-  } else {
-    // 2. Render Hull (rotated by ship heading)
-    ctx.save();
-    ctx.rotate(ship.heading);
-
-    drawEngineGlow(ctx, ship);
-    if (hasFighterHazard(ship)) drawCoolantTrail(ctx, ship, time);
-
-    if (drawCachedHull(ctx, ship)) {
-      if (ship.hullClass === "tender") drawTenderLight(ctx, ship, time);
-      if (ship.hullClass === "carrier") drawCarrierRecessLights(ctx, ship, time);
-    } else if (isBlue) {
-      if (isLightHull(ship))
-        drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
-      drawTerranHull(
-        ctx,
-        ship,
-        primaryColor,
-        hullDarkColor,
-        accentColor,
-        ship.hullClass === "tender" ? time : undefined,
-      );
-      drawHullArmor(ctx, ship);
-    } else {
-      if (isLightHull(ship))
-        drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
-      drawAlienHull(
-        ctx,
-        ship,
-        primaryColor,
-        hullDarkColor,
-        accentColor,
-        ship.hullClass === "tender" ? time : undefined,
-      );
-      drawHullArmor(ctx, ship);
-    }
-
-    drawHullDamage(ctx, ship, decals);
-    if (hasFighterHazard(ship)) drawHazardBeacon(ctx, ship, time);
-
-    ctx.restore();
-
-    // 3. Render Independent Turrets
-    for (const turret of ship.turrets) {
-      renderTurret(ctx, ship, turret, primaryColor);
-    }
+  // Use the same detailed deck and turret painter at every camera elevation.
+  renderShipPreview(ctx, ship, time, elevation, true);
+  ctx.save();
+  ctx.rotate(ship.heading);
+  if (hasFighterHazard(ship)) {
+    drawCoolantTrail(ctx, ship, time);
+    drawHazardBeacon(ctx, ship, time);
   }
+  drawHullDamage(ctx, ship, decals);
+  ctx.restore();
 
   // 4. Render the authoritative shield envelope, including capital haven umbrellas.
   if (ship.shieldCurrent > 0) {
-    drawShieldDome(ctx, shieldEnvelopeRadius(ship), ship.shieldCurrent / ship.shieldMax, elevation);
+    drawShieldSphere(
+      ctx,
+      shieldEnvelopeRadius(ship),
+      ship.shieldCurrent / ship.shieldMax,
+      elevation,
+    );
   }
 
   // 5. Compact Status HUD Bar
@@ -436,33 +369,23 @@ export function renderShip(
   ctx.restore();
 }
 
-function drawShieldDome(
+function drawShieldSphere(
   ctx: CanvasRenderingContext2D,
   radius: number,
   strength: number,
   elevation: number,
 ): void {
   const verticalScale = Math.sin(elevation);
-  const top = radius / verticalScale;
-  const centerY = (radius - top) / 2;
-  const halfHeight = (radius + top) / 2;
-  const curve = 0.55228475;
+  const projectedRadius = radius / verticalScale;
 
   ctx.save();
-  // The upper hemisphere reaches above the ground-plane circle; its lower rim
-  // stays on that circle so shield impacts still meet the envelope.
+  // Undo the camera's Y compression so the sphere remains circular on screen.
   ctx.beginPath();
-  ctx.moveTo(-radius, 0);
-  ctx.bezierCurveTo(-radius, -top * curve, -radius * curve, -top, 0, -top);
-  ctx.bezierCurveTo(radius * curve, -top, radius, -top * curve, radius, 0);
-  ctx.bezierCurveTo(radius, radius * curve, radius * curve, radius, 0, radius);
-  ctx.bezierCurveTo(-radius * curve, radius, -radius, radius * curve, -radius, 0);
-  ctx.closePath();
+  ctx.ellipse(0, 0, radius, projectedRadius, 0, 0, Math.PI * 2);
 
   ctx.save();
   ctx.clip();
-  ctx.translate(0, centerY);
-  ctx.scale(1, halfHeight / radius);
+  ctx.scale(1, 1 / verticalScale);
   const sprite = shieldGlowSprite(strength);
   if (sprite) {
     ctx.drawImage(sprite, -radius, -radius, radius * 2, radius * 2);

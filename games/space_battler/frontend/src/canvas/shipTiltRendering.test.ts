@@ -98,4 +98,28 @@ describe("tilted battlefield rendering", () => {
     expect(calls.get("drawImage")).toBeUndefined();
     expect(calls.get("fill")).toHaveBeenCalled();
   });
+
+  it.each(["strike_craft", "carrier"] as const)(
+    "renders %s superstructure at both tilted and top-down elevations",
+    (hullClass) => {
+      vi.stubGlobal("OffscreenCanvas", undefined);
+      const [ship] = buildFleetFromSlots(
+        [{ id: "unified-detail", hullClass, groupId: 1 }],
+        0,
+        0,
+        0,
+      );
+      const { ctx } = context();
+      const keel = vi.spyOn(previewDepth, "drawPreviewKeel");
+      const superstructure = vi.spyOn(previewDepth, "drawPreviewSuperstructure");
+
+      renderShip(ctx, ship, false, [], 0, Math.PI / 6);
+      renderShip(ctx, ship, false, [], 0, Math.PI / 2);
+
+      expect(keel).toHaveBeenCalledTimes(2);
+      expect(superstructure).toHaveBeenCalledTimes(2);
+      expect(superstructure.mock.calls[0][2]).toBeGreaterThan(1);
+      expect(superstructure.mock.calls[1][2]).toBeGreaterThanOrEqual(1e-9);
+    },
+  );
 });
