@@ -98,12 +98,9 @@ export function renderTurret(
   ctx.save();
   ctx.translate(x, y);
   if (previewDepth !== undefined) {
-    const collarHeight = r * 0.55 * previewDepth;
+    const collarHeight = r * 0.35 * previewDepth;
     drawBarbette(ctx, ship, r, collarHeight);
     ctx.translate(0, -collarHeight);
-    const cupolaHeight = r * 0.5 * previewDepth;
-    drawBarbette(ctx, ship, r * 0.85, cupolaHeight);
-    ctx.translate(0, -cupolaHeight);
   } else if (lightShip) {
     renderBarbette(ctx, ship, r);
     ctx.translate(0, -r * 0.7);

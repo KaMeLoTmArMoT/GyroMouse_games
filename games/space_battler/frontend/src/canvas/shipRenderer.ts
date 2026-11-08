@@ -11,11 +11,7 @@ import {
   isLightHull,
   traceLightHull,
 } from "./lightHullDepth";
-import {
-  drawPreviewCapitalKeel,
-  drawPreviewSuperstructure,
-  previewDepthFactor,
-} from "./previewDepth";
+import { drawPreviewKeel, drawPreviewSuperstructure, previewDepthFactor } from "./previewDepth";
 import { ShipSpriteCache } from "./shipSpriteCache";
 import { renderTurret } from "./turretRenderer";
 
@@ -220,16 +216,31 @@ export function renderShipPreview(
   ctx.save();
   ctx.rotate(ship.heading);
   drawEngineGlow(ctx, ship);
-  if (isLightHull(ship))
-    drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.3 * depth], -ship.heading), 24);
-  else drawPreviewCapitalKeel(ctx, ship, depth);
+  drawPreviewKeel(ctx, ship, depth);
   if (isBlue) drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
   else drawAlienHull(ctx, ship, "#f87171", "#450a0a", "#dc2626", time);
   drawHullArmor(ctx, ship);
-  drawPreviewSuperstructure(ctx, ship, depth);
   ctx.restore();
-  for (const turret of ship.turrets)
-    renderTurret(ctx, ship, turret, isBlue ? "#38bdf8" : "#f87171", depth);
+  const sin = Math.sin(ship.heading);
+  const cos = Math.cos(ship.heading);
+  const elements: { depth: number; turret: TurretMountState | null }[] = ship.turrets.map(
+    (turret) => ({
+      depth: turret.offset[0] * sin + turret.offset[1] * cos,
+      turret,
+    }),
+  );
+  elements.push({ depth: -ship.size * 0.3 * sin, turret: null });
+  elements.sort((a, b) => a.depth - b.depth);
+  for (const element of elements) {
+    if (element.turret)
+      renderTurret(ctx, ship, element.turret, isBlue ? "#38bdf8" : "#f87171", depth);
+    else {
+      ctx.save();
+      ctx.rotate(ship.heading);
+      drawPreviewSuperstructure(ctx, ship, depth);
+      ctx.restore();
+    }
+  }
 }
 
 export function renderShip(

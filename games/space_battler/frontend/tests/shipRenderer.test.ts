@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as previewDepth from "../src/canvas/previewDepth";
 import { previewDepthFactor } from "../src/canvas/previewDepth";
 import { renderShip, renderShipPreview } from "../src/canvas/shipRenderer";
+import * as turretRenderer from "../src/canvas/turretRenderer";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import type { ShipState } from "../src/types/combat";
 
@@ -27,7 +29,10 @@ function context() {
   return { ctx, calls };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("cached battlefield hulls", () => {
   it("reuses every hull/team sprite while drawing turrets and HUD at frame time", () => {
@@ -155,7 +160,7 @@ describe("cached battlefield hulls", () => {
           for (const elevation of [Math.PI / 36, Math.PI / 6, Math.PI / 2]) {
             const { ctx, calls } = context();
             renderShipPreview(ctx, ship, 0, elevation);
-            const length = ship.size * 0.3 * previewDepthFactor(elevation);
+            const length = ship.size * 0.24 * previewDepthFactor(elevation);
             const x = Math.sin(heading) * length;
             const y = Math.cos(heading) * length;
             if (elevation === Math.PI / 2) {
@@ -169,11 +174,60 @@ describe("cached battlefield hulls", () => {
             ).toBe(true);
             expect(
               (x * Math.sin(heading) + y * Math.cos(heading)) * Math.sin(elevation),
-            ).toBeCloseTo(ship.size * 0.3 * Math.cos(elevation));
+            ).toBeCloseTo(ship.size * 0.24 * Math.cos(elevation));
           }
         }
       }
     }
+  });
+
+  it("paints turrets and the bridge back-to-front as the ship rotates", () => {
+    vi.stubGlobal("OffscreenCanvas", undefined);
+    const [ship] = buildFleetFromSlots(
+      [{ id: "sorting", hullClass: "battleship", groupId: 1 }],
+      0,
+      0,
+      0,
+    );
+    const order: string[] = [];
+    vi.spyOn(previewDepth, "drawPreviewSuperstructure").mockImplementation(() => {
+      order.push("bridge");
+    });
+    vi.spyOn(turretRenderer, "renderTurret").mockImplementation((_ctx, _ship, turret) => {
+      order.push(String(ship.turrets.indexOf(turret)));
+    });
+    for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      ship.heading = heading;
+      order.length = 0;
+      renderShipPreview(context().ctx, ship);
+      const expected = ship.turrets.map((turret, index) => ({
+        name: String(index),
+        depth: turret.offset[0] * Math.sin(heading) + turret.offset[1] * Math.cos(heading),
+      }));
+      expected.push({ name: "bridge", depth: -ship.size * 0.3 * Math.sin(heading) });
+      expected.sort((a, b) => a.depth - b.depth);
+      expect(order).toEqual(expected.map((element) => element.name));
+    }
+  });
+
+  it("flares the preview keel at the chine and exposes aft-facing thruster ports", () => {
+    const [ship] = buildFleetFromSlots(
+      [{ id: "chine", hullClass: "corvette", groupId: 1 }],
+      0,
+      0,
+      0,
+    );
+    const front = context();
+    ship.heading = Math.PI / 2;
+    previewDepth.drawPreviewKeel(front.ctx, ship, 1);
+    expect(front.calls.get("scale")?.mock.calls[0][0]).toBeCloseTo(0.84);
+    expect(front.calls.get("scale")).toHaveBeenCalledWith(1.03, 1.03);
+    const aft = context();
+    ship.heading = -Math.PI / 2;
+    previewDepth.drawPreviewKeel(aft.ctx, ship, 1);
+    expect(aft.calls.get("fill")?.mock.calls.length).toBe(
+      (front.calls.get("fill")?.mock.calls.length ?? 0) + 4,
+    );
   });
 
   it("retains the hull clip for Terran capital details after preview lighting", () => {
@@ -192,8 +246,9 @@ describe("cached battlefield hulls", () => {
       const lightIndex = moves.mock.calls.findIndex(
         ([x, y]) => x === -ship.size * 0.8 && y === ship.size * 0.31,
       );
+      const firstTurret = [...ship.turrets].sort((a, b) => a.offset[1] - b.offset[1])[0];
       const turretIndex = translations.mock.calls.findIndex(
-        ([x, y]) => x === ship.turrets[0].offset[0] && y === ship.turrets[0].offset[1],
+        ([x, y]) => x === firstTurret.offset[0] && y === firstTurret.offset[1],
       );
       expect(lightIndex).toBeGreaterThanOrEqual(0);
       expect(turretIndex).toBeGreaterThanOrEqual(0);

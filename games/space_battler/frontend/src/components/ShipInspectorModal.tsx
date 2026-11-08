@@ -179,7 +179,7 @@ export function ShipInspectorModal({
             current.yaw -= (event.clientX - current.x) * 0.01;
             current.pitch = Math.max(
               -MAX_PITCH,
-              Math.min(MAX_PITCH, current.pitch - (event.clientY - current.y) * 0.01),
+              Math.min(MAX_PITCH, current.pitch + (event.clientY - current.y) * 0.01),
             );
             current.x = event.clientX;
             current.y = event.clientY;

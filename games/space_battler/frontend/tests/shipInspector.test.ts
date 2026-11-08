@@ -90,13 +90,13 @@ describe("ship inspector", () => {
     step(100);
     expect(headings[2]).toBeCloseTo(headings[1] - 1);
     let [xScale, yScale] = ctx.scale.mock.calls.at(-1) as number[];
-    expect(yScale / xScale).toBeCloseTo(Math.sin((85 * Math.PI) / 180));
-    expect(vi.mocked(renderShipPreview).mock.calls.at(-1)?.[3]).toBeCloseTo((85 * Math.PI) / 180);
+    expect(yScale / xScale).toBeCloseTo(Math.sin((5 * Math.PI) / 180));
+    expect(vi.mocked(renderShipPreview).mock.calls.at(-1)?.[3]).toBeCloseTo((5 * Math.PI) / 180);
     canvas.props.onPointerMove({ ...pointer, clientX: 200, clientY: 2000 });
     step(150);
     [xScale, yScale] = ctx.scale.mock.calls.at(-1) as number[];
-    expect(yScale / xScale).toBeCloseTo(Math.sin((5 * Math.PI) / 180));
-    expect(vi.mocked(renderShipPreview).mock.calls.at(-1)?.[3]).toBeCloseTo((5 * Math.PI) / 180);
+    expect(yScale / xScale).toBeCloseTo(Math.sin((85 * Math.PI) / 180));
+    expect(vi.mocked(renderShipPreview).mock.calls.at(-1)?.[3]).toBeCloseTo((85 * Math.PI) / 180);
     step(200);
     expect(headings.at(-1)).toBe(headings.at(-2));
     canvas.props.onPointerUp(pointer);
