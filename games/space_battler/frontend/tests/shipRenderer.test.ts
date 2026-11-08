@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { engineNozzles } from "../src/canvas/effects";
 import * as previewDepth from "../src/canvas/previewDepth";
 import { previewDepthFactor } from "../src/canvas/previewDepth";
 import { renderShip, renderShipPreview } from "../src/canvas/shipRenderer";
@@ -155,7 +156,7 @@ describe("cached battlefield hulls", () => {
   it("projects the preview keel vertically at every heading and elevation", () => {
     vi.stubGlobal("OffscreenCanvas", undefined);
     for (const team of [0, 1] as const) {
-      for (const hullClass of ["strike_craft", "corvette", "missile_frigate"] as const) {
+      for (const hullClass of ["strike_craft", "corvette", "missile_frigate", "tender"] as const) {
         const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
         for (const heading of [0, Math.PI / 4, Math.PI / 2]) {
           ship.heading = heading;
@@ -210,7 +211,7 @@ describe("cached battlefield hulls", () => {
 
   it("aligns inspector targets with the restored turret and bridge heights", () => {
     for (const team of [0, 1] as const) {
-      for (const hullClass of ["corvette", "battleship"] as const) {
+      for (const hullClass of ["corvette", "missile_frigate", "tender", "battleship"] as const) {
         const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
         for (const heading of [0, Math.PI / 4, -Math.PI / 2]) {
           for (const elevation of [Math.PI / 36, Math.PI / 6, (85 * Math.PI) / 180]) {
@@ -231,8 +232,7 @@ describe("cached battlefield hulls", () => {
             const [x, y] = rotatePoint([-ship.size * 0.3, 0], heading);
             expect(bridge.x).toBeCloseTo(360 + x * scale);
             expect(bridge.y).toBeCloseTo(
-              240 +
-                (y * Math.sin(elevation) - ship.size * 0.12 * Math.cos(elevation)) * scale,
+              240 + (y * Math.sin(elevation) - ship.size * 0.12 * Math.cos(elevation)) * scale,
             );
           }
         }
@@ -287,6 +287,71 @@ describe("cached battlefield hulls", () => {
     expect(aft.calls.get("fill")?.mock.calls.length).toBe(
       (front.calls.get("fill")?.mock.calls.length ?? 0) + 4,
     );
+  });
+
+  it("uses the tender's actual deck outline and shaded keel for both factions", () => {
+    for (const team of [0, 1] as const) {
+      const [ship] = buildFleetFromSlots(
+        [{ id: "tender", hullClass: "tender", groupId: 1 }],
+        team,
+        0,
+        0,
+      );
+      const { ctx, calls } = context();
+      previewDepth.drawPreviewKeel(ctx, ship, 1);
+      expect(calls.get("createLinearGradient")).toHaveBeenCalledTimes(25);
+      if (team === 0)
+        expect(calls.get("lineTo")).toHaveBeenCalledWith(-ship.size * 0.82, -ship.size * 0.34);
+      else expect(calls.get("bezierCurveTo")).toHaveBeenCalled();
+    }
+  });
+
+  it("aligns aft thruster targets with the recessed stern ports", () => {
+    for (const team of [0, 1] as const) {
+      for (const hullClass of ["strike_craft", "corvette", "missile_frigate", "tender"] as const) {
+        const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
+        const yaw = -Math.PI / 2;
+        const elevation = Math.PI / 6;
+        const scale = 160 / ship.size;
+        const [, y] = engineNozzles(ship)[0];
+        const keelScale = 1.03 - (0.6 - 1 / 3) * 0.285;
+        const [x, projectedY] = rotatePoint(
+          [previewDepth.sternEdge(ship, y) * ship.size * keelScale, y * ship.size * keelScale],
+          yaw,
+        );
+        const engine = inspectorFeatures(ship, yaw, elevation, 1).find(
+          (feature) => feature.id === "engine-0",
+        );
+        expect(engine?.x).toBeCloseTo(360 + x * scale);
+        expect(engine?.y).toBeCloseTo(
+          240 +
+            (projectedY * Math.sin(elevation) + ship.size * 0.24 * 0.6 * Math.cos(elevation)) *
+              scale,
+        );
+      }
+    }
+  });
+
+  it("sweeps low-profile light turrets vertically at any turret bearing", () => {
+    for (const hullClass of ["corvette", "missile_frigate", "tender"] as const) {
+      for (const team of [0, 1] as const) {
+        const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
+        ship.heading = 0.7;
+        const turret = ship.turrets[0];
+        turret.currentLocalAngle = -0.3;
+        const depth = previewDepthFactor(Math.PI / 36);
+        const { ctx, calls } = context();
+        turretRenderer.renderTurret(ctx, ship, turret, "#38bdf8", depth);
+        const collar = turret.baseRadius * 0.25 * depth;
+        const cupola = turret.baseRadius * 0.1 * depth;
+        expect(calls.get("translate")).toHaveBeenCalledWith(0, -collar);
+        const [ux, uy] = rotatePoint([0, -cupola], -(ship.heading + turret.currentLocalAngle));
+        expect(calls.get("translate")).toHaveBeenCalledWith(ux, uy);
+        expect((collar + cupola) * Math.sin(Math.PI / 36)).toBeCloseTo(
+          turret.baseRadius * 0.35 * Math.cos(Math.PI / 36),
+        );
+      }
+    }
   });
 
   it("retains the hull clip for Terran capital details after preview lighting", () => {

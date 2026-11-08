@@ -1,6 +1,7 @@
 import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState } from "../types/combat";
 import { isLightHull } from "./lightHullDepth";
+import { isPreviewLightHull } from "./previewDepth";
 
 const lightTurretSprites = new Map<string, OffscreenCanvas>();
 const barbetteSprites = new Map<string, OffscreenCanvas>();
@@ -98,7 +99,7 @@ export function renderTurret(
   ctx.save();
   ctx.translate(x, y);
   if (previewDepth !== undefined) {
-    const collarHeight = r * 0.35 * previewDepth;
+    const collarHeight = r * (isPreviewLightHull(ship) ? 0.25 : 0.35) * previewDepth;
     drawBarbette(ctx, ship, r, collarHeight);
     ctx.translate(0, -collarHeight);
   } else if (lightShip) {
@@ -106,6 +107,12 @@ export function renderTurret(
     ctx.translate(0, -r * 0.7);
   }
   ctx.rotate(ship.heading + turret.currentLocalAngle);
+
+  if (previewDepth !== undefined && isPreviewLightHull(ship)) {
+    drawPreviewCupola(ctx, ship, turret, primaryColor, previewDepth);
+    ctx.restore();
+    return;
+  }
 
   if (lightShip && typeof OffscreenCanvas !== "undefined") {
     const transform = ctx.getTransform();
@@ -156,6 +163,46 @@ export function renderTurret(
 
   drawTurretBody(ctx, ship, turret, primaryColor);
   ctx.restore();
+}
+
+/** Sweep a low, tapered armor housing upwards independently of turret bearing. */
+function drawPreviewCupola(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  turret: TurretMountState,
+  primaryColor: string,
+  depth: number,
+): void {
+  const r = turret.baseRadius ?? 4;
+  const length = turret.barrelLength ?? 10;
+  const missile = turret.weapon.weaponType === "missile";
+  const [ux, uy] = rotatePoint([0, -r * 0.1 * depth], -(ship.heading + turret.currentLocalAngle));
+  for (let i = 0; i <= 10; i++) {
+    const fraction = i / 10;
+    ctx.save();
+    ctx.translate(ux * fraction, uy * fraction);
+    ctx.scale(1 - fraction * 0.1, 1 - fraction * 0.1);
+    const armor = ctx.createLinearGradient(0, -r, 0, r);
+    armor.addColorStop(0, ship.team === 0 ? "#7597a7" : "#ba7780");
+    armor.addColorStop(0.5, ship.team === 0 ? "#36576a" : "#793541");
+    armor.addColorStop(1, ship.team === 0 ? "#152c3b" : "#42131d");
+    ctx.fillStyle = armor;
+    ctx.beginPath();
+    ctx.moveTo(-r, -r * 0.6);
+    ctx.lineTo(-r * 0.65, -r);
+    ctx.lineTo(missile ? length * 0.75 : r * 0.7, -r);
+    ctx.lineTo(missile ? length : r * 1.05, -r * 0.55);
+    ctx.lineTo(missile ? length : r * 1.05, r * 0.55);
+    ctx.lineTo(missile ? length * 0.75 : r * 0.7, r);
+    ctx.lineTo(-r * 0.65, r);
+    ctx.lineTo(-r, r * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.translate(ux, uy);
+  ctx.scale(0.9, 0.9);
+  drawTurretBody(ctx, ship, turret, primaryColor);
 }
 
 function drawTurretBody(

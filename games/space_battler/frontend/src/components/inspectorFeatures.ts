@@ -1,5 +1,5 @@
 import { engineNozzles } from "../canvas/effects";
-import { previewDepthFactor } from "../canvas/previewDepth";
+import { isPreviewLightHull, previewDepthFactor, sternEdge } from "../canvas/previewDepth";
 import { rotatePoint } from "../engine/math2d";
 import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { ShipState, Vector2 } from "../types/combat";
@@ -55,19 +55,24 @@ export function inspectorFeatures(
       turret.baseRadius * 1.3,
     );
   });
-  const nozzles = engineNozzles(ship).map(([x, y], index) =>
-    feature(
+  const nozzles = engineNozzles(ship).map(([x, y], index) => {
+    const aftPort = isPreviewLightHull(ship) && Math.sin(yaw) < -0.01;
+    const keelFraction = 0.6;
+    const keelScale = 1.03 - (keelFraction - 1 / 3) * 0.285;
+    return feature(
       `engine-${index}`,
       "Main thruster",
       [
         `Max speed: ${ship.maxSpeed} u/s`,
         `Propulsion: ${ship.hullClass.replaceAll("_", " ")} drive array`,
       ],
-      [x * ship.size, y * ship.size],
-      0,
+      aftPort
+        ? [sternEdge(ship, y) * ship.size * keelScale, y * ship.size * keelScale]
+        : [x * ship.size, y * ship.size],
+      aftPort ? -ship.size * 0.24 * keelFraction * depth : 0,
       ship.size * 0.08,
-    ),
-  );
+    );
+  });
   return [
     ...turrets,
     feature(
