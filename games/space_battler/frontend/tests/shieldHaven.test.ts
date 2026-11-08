@@ -901,6 +901,98 @@ describe("recovery episode lifecycle", () => {
   });
 });
 
+describe("batched haven maintenance", () => {
+  it("reuses recovered slots in the same update while keeping remaining tether counts", () => {
+    const parent = ship("parent", "battleship");
+    const guests = Array.from({ length: 7 }, (_, i) => guest(`guest_${i}`));
+    const ships = [parent, ...guests];
+    const system = new ShieldHavenSystem();
+    system.update(ships, 1);
+    const leases = guests.map((craft) => system.getLease(craft.id));
+    for (const craft of guests.slice(0, 6)) {
+      const lease = system.getLease(craft.id);
+      if (!lease) throw new Error("Expected reservation");
+      craft.pos = shieldHavenSlotPosition(parent, lease.slotId);
+    }
+    system.attachGuests(ships, 1 / 60);
+    expect(parent.havenGuestCount).toBe(6);
+    guests[0].shieldCurrent = guests[0].shieldMax * 0.75;
+    guests[1].shieldCurrent = guests[1].shieldMax * 0.75;
+
+    system.update([...ships].reverse(), 2);
+
+    for (const craft of guests.slice(0, 2)) {
+      expect(system.getLease(craft.id)).toBeNull();
+      expect(craft.havenState).toBe("releasing");
+      expect(craft.recoveryStarted).toBeUndefined();
+      expect(craft.recoveredHull).toBe(craft.hullCurrent);
+    }
+    for (let i = 2; i < 6; i++) expect(system.getLease(guests[i].id)).toBe(leases[i]);
+    expect(system.getLease(guests[6].id)?.slotId).toBe(leases[0]?.slotId);
+    expect(guests[6].havenState).toBe("approaching");
+    expect(parent.havenGuestCount).toBe(4);
+  });
+
+  it("synchronizes leases and aura before a standalone healthy request returns", () => {
+    const parent = ship("parent", "battleship");
+    const craft = guest();
+    const healthy = ship("healthy", "strike_craft", [-1000, 0]);
+    const donor = ship("donor", "tender", [500, 0]);
+    const ships = [parent, craft, healthy, donor];
+    const system = new ShieldHavenSystem();
+    const lease = system.request(craft, ships, 1);
+    if (!lease) throw new Error("Expected reservation");
+    craft.pos = shieldHavenSlotPosition(parent, lease.slotId);
+    system.attachGuests(ships, 1 / 60);
+    expect(parent.havenGuestCount).toBe(1);
+    expect(parent.havenRadiusMultiplier).toBe(1.2);
+    parent.shieldCurrent = 0;
+    donor.isAlive = false;
+
+    expect(system.request(healthy, ships, 2)).toBeNull();
+
+    expect(system.getLease(craft.id)).toBeNull();
+    expect(system.protectedParent(craft)).toBeNull();
+    expect(craft.havenState).toBe("releasing");
+    expect(parent.havenGuestCount).toBe(0);
+    expect(parent.havenRadiusMultiplier).toBe(1);
+  });
+
+  it("drops removed fleet membership and refreshes aura from one-shot iterables", () => {
+    const parent = ship("parent", "battleship");
+    const craft = guest();
+    const donor = ship("donor", "tender", [300, 400]);
+    const system = new ShieldHavenSystem();
+    const ships = [parent, craft, donor];
+    const lease = system.request(craft, ships, 1);
+    if (!lease) throw new Error("Expected reservation");
+    craft.pos = shieldHavenSlotPosition(parent, lease.slotId);
+    system.attachGuests(ships, 1 / 60);
+    expect(parent.havenRadiusMultiplier).toBe(1.2);
+    expect(system.overflowMultiplier(parent)).toBe(0.9);
+
+    system.cleanup([craft]);
+
+    expect(system.getLease(craft.id)).toBeNull();
+    expect(system.protectedParent(craft)).toBeNull();
+    expect(craft.havenState).toBe("none");
+    expect(craft.havenParentId).toBeNull();
+    expect(parent.havenState).toBe("none");
+    expect(system.overflowMultiplier(parent)).toBe(1);
+    system.refreshAmplification(ships.values());
+    expect(parent.havenRadiusMultiplier).toBe(1.2);
+    donor.pos = [300, 400.001];
+    system.refreshAmplification(ships.values());
+    expect(parent.havenRadiusMultiplier).toBe(1);
+    donor.pos = [300, 400];
+    system.refreshAmplification(ships.values());
+    expect(parent.havenRadiusMultiplier).toBe(1.2);
+    donor.isAlive = false;
+    system.refreshAmplification(ships.values());
+    expect(parent.havenRadiusMultiplier).toBe(1);
+  });
+});
+
 describe("simulation-owned haven allocation", () => {
   it.each(["recover", "seeking"] as const)(
     "turns a %s fighter nose-first toward the parent-local retreat waypoint",

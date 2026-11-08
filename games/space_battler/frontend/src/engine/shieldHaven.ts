@@ -111,10 +111,16 @@ function eligibleParent(guest: ShipState, parent: ShipState): boolean {
 export class ShieldHavenSystem {
   private leases = new Map<string, ShieldHavenLease>();
   private ships = new Map<string, ShipState>();
+  private currentShips = new Map<string, ShipState>();
   private tenders = new Map<number, ShipState[]>();
+  private amplificationTenders = new Map<number, ShipState[]>();
+  private amplificationFleet: ShipState[] = [];
 
-  private tenderTeams(ships: Iterable<ShipState>): Map<number, ShipState[]> {
-    const teams = new Map<number, ShipState[]>();
+  private tenderTeams(
+    ships: Iterable<ShipState>,
+    teams: Map<number, ShipState[]>,
+  ): Map<number, ShipState[]> {
+    for (const team of teams.values()) team.length = 0;
     for (const donor of ships) {
       if (!donor.isAlive || donor.hullClass !== "tender") continue;
       const team = teams.get(donor.team);
@@ -128,17 +134,25 @@ export class ShieldHavenSystem {
     const tenders = teams.get(parent.team);
     if (!tenders || !parent.isAlive || !isCapitalShip(parent)) return false;
     for (const donor of tenders) {
-      if (donor.isAlive && vecDistance(donor.pos, parent.pos) <= 500) return true;
+      if (!donor.isAlive) continue;
+      const dx = donor.pos[0] - parent.pos[0];
+      const dy = donor.pos[1] - parent.pos[1];
+      if (dx * dx + dy * dy <= 250000) return true;
     }
     return false;
   }
 
+  private applyAmplification(ships: Iterable<ShipState>, teams: Map<number, ShipState[]>): void {
+    for (const ship of ships)
+      ship.havenRadiusMultiplier = this.hasTenderAura(ship, teams) ? 1.2 : 1;
+  }
+
   /** One strongest aura, shared by hitboxes, repulsors, rendering and haven corridors. */
   refreshAmplification(ships: Iterable<ShipState> = this.ships.values()): void {
-    const fleet = [...ships];
-    const tenders = this.tenderTeams(fleet);
-    for (const ship of fleet)
-      ship.havenRadiusMultiplier = tenders.size && this.hasTenderAura(ship, tenders) ? 1.2 : 1;
+    const fleet = this.amplificationFleet;
+    for (const ship of ships) fleet.push(ship);
+    this.applyAmplification(fleet, this.tenderTeams(fleet, this.amplificationTenders));
+    fleet.length = 0;
   }
 
   /** Snapshot before shield damage releases the guest's authoritative lease. */
@@ -165,12 +179,21 @@ export class ShieldHavenSystem {
   }
 
   releaseGuests(parentId: string): void {
-    for (const [guestId, lease] of this.leases) {
-      if (lease.parentId === parentId) this.release(guestId);
+    let released = false;
+    for (const lease of this.leases.values()) {
+      if (lease.parentId !== parentId) continue;
+      this.releasePrepared(lease.guestId);
+      released = true;
     }
+    if (released) this.updateGuestCounts();
   }
 
   release(guestId: string): void {
+    this.releasePrepared(guestId);
+    this.updateGuestCounts();
+  }
+
+  private releasePrepared(guestId: string): void {
     const guest = this.ships.get(guestId);
     const lease = this.leases.get(guestId);
     const parent = lease && this.ships.get(lease.parentId);
@@ -186,7 +209,6 @@ export class ShieldHavenSystem {
       } else if (guest.havenState !== "releasing") resetHaven(guest);
     }
     this.leases.delete(guestId);
-    this.updateGuestCounts();
   }
 
   clear(): void {
@@ -197,21 +219,28 @@ export class ShieldHavenSystem {
     }
     this.leases.clear();
     this.ships.clear();
+    this.currentShips.clear();
     this.tenders.clear();
+    this.amplificationTenders.clear();
+    this.amplificationFleet.length = 0;
   }
 
   /** Remove unsafe leases immediately after combat, without starting new episodes. */
   cleanup(ships: readonly ShipState[]): void {
-    this.refreshAmplification(ships);
-    const byId = new Map(ships.map((ship) => [ship.id, ship]));
+    this.tenderTeams(ships, this.tenders);
+    this.applyAmplification(ships, this.tenders);
+    // Keep previous objects in this.ships until removed fleet members have been reset.
+    const byId = this.currentShips;
+    byId.clear();
     for (const ship of ships) {
+      byId.set(ship.id, ship);
       this.ships.set(ship.id, ship);
       ship.havenState ??= "none";
       ship.havenParentId ??= null;
       ship.havenSlotId ??= null;
     }
-    for (const [guestId, lease] of this.leases) {
-      const guest = byId.get(guestId);
+    for (const lease of this.leases.values()) {
+      const guest = byId.get(lease.guestId);
       const parent = byId.get(lease.parentId);
       if (
         !guest ||
@@ -221,22 +250,29 @@ export class ShieldHavenSystem {
         parent.shieldCurrent <= 0 ||
         parent.shieldCurrent < parent.shieldMax * 0.1
       )
-        this.release(guestId);
+        this.releasePrepared(lease.guestId);
     }
-    for (const [id, ship] of this.ships) {
-      if (!byId.has(id) || !ship.isAlive) {
+    for (const ship of this.ships.values()) {
+      if (!byId.has(ship.id) || !ship.isAlive) {
         resetHaven(ship);
-        this.ships.delete(id);
+        this.ships.delete(ship.id);
       } else if (ship.havenState === "releasing" && !byId.get(ship.havenParentId ?? "")?.isAlive) {
         resetHaven(ship);
       }
     }
-    this.tenders = this.tenderTeams(this.ships.values());
     this.updateGuestCounts();
   }
 
   request(guest: ShipState, ships: readonly ShipState[], time: number): ShieldHavenLease | null {
     this.cleanup(ships);
+    return this.requestPrepared(guest, ships, time);
+  }
+
+  private requestPrepared(
+    guest: ShipState,
+    ships: readonly ShipState[],
+    time: number,
+  ): ShieldHavenLease | null {
     if (!eligibleGuest(guest)) return null;
     if (guest.havenState === "releasing") return null;
     const existing = this.getLease(guest.id);
@@ -286,12 +322,12 @@ export class ShieldHavenSystem {
         guest.recoveryStarted < time &&
         guest.shieldCurrent >= guest.shieldMax * 0.75
       ) {
-        this.release(guest.id);
+        this.releasePrepared(guest.id);
         guest.recoveredHull = guest.hullCurrent;
         guest.recoveryStarted = undefined;
         continue;
       }
-      this.request(guest, ships, time);
+      this.requestPrepared(guest, ships, time);
     }
     this.updateGuestCounts();
   }
