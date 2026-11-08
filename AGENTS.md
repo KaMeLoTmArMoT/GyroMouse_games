@@ -14,9 +14,23 @@
 ## Rules
 Do not run `npm run build` or `npm run dev` if i don't ask for it.
 STRICTLY FORBIDDEN: NEVER add mouse movement/cursor tilt controls (e.g. `mouseEnabled`, `pointermove` for game steering) to games unless explicitly requested. Controls must remain strictly keyboard-driven (WASD / Arrow keys / Space).
+STRICTLY FORBIDDEN: NEVER modify, rescale, or rebalance core combat/simulation hyperparameters (weapon damage, fire rates, cooldowns, ship speeds, turn rates, hull/armor/shield values, ship/shield sizes, `ARENA_RADIUS`, or simulation timestep) without explicit prior discussion, thorough analytical justification, and user approval. Calibrated balance values are sacred; solve fleet placement, positioning, and navigation challenges via geometry, inward compaction, and algorithmic optimizations, NEVER by casually tweaking hyperparameter constants.
 
 ## Testing & Validation
 No test runner configured — validate changes manually via `npm run dev` and visual check in browser.
+
+## Cross-Agent Bridge (CAB) Non-Blocking Execution
+When delegating tasks via CAB (`cab.cmd` / `cab-orchestrator`):
+- Run tasks with non-blocking execution via `run_command` with low wait timeout (`WaitMsBeforeAsync: 500` or `1000`) so the orchestrator does not block synchronously waiting on long sub-agent execution.
+- Command format:
+  `cab.cmd --engine opencode --model <model> --effort <effort> --repo . --mode execute --timeout <seconds> --prompt-file scratch/<task_file>.md`
+- Subagent model assignments:
+  - **Astra**: `azure/gpt-6-astra` (simulation balance, math specs, economic modeling)
+  - **Sol**: `azure/gpt-6.1-sol` (core engine refactoring, physics, math algorithms)
+  - **Terra**: `azure/gpt-6.1-terra` (frontend UI, React components, canvas rendering, SVG design)
+- Background tasks are tracked via `manage_task` (status/kill) without busy-polling; wait for reactive notifications.
+- When performing balance exploration or parameter sweeps, avoid brute-force grid sweeps with high iteration counts (e.g. 25k ticks) that risk 10-minute timeouts; use bisection, golden-section search, or targeted headless benchmarks instead.
+
 
 ## Gotchas
 - Rapier3D physics requires `setSleeping(false)` on marble body or it freezes on low input.

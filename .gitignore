@@ -28,3 +28,16 @@ Thumbs.db
 # Vite cache
 .vite/
 test/
+
+# Python cache & build
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Scratch files
+scratch/
+games/space_battler/scratch/
+*.pyc
