@@ -5,16 +5,7 @@ import type {
   Vector2,
   WeaponDefinition,
 } from "../types/combat";
-import {
-  clamp,
-  normalizeAngle,
-  rotatePoint,
-  vecAdd,
-  vecDistance,
-  vecDot,
-  vecScale,
-  vecSub,
-} from "./math2d";
+import { clamp, normalizeAngle, rotatePoint, vecAdd, vecDot, vecSub } from "./math2d";
 import { navigationContext } from "./navigationContext";
 import {
   isHeavyTorpedo,
@@ -84,18 +75,27 @@ export function slewTurret(turret: TurretMountState, desiredLocal: number, dt: n
 
 // Projectiles do not inherit shooter velocity, so intercepts use absolute target velocity.
 export function interceptTime(relative: Vector2, velocity: Vector2, speed: number): number | null {
-  const a = vecDot(velocity, velocity) - speed * speed;
-  const b = 2 * vecDot(relative, velocity);
-  const c = vecDot(relative, relative);
+  return interceptTimeScalar(relative[0], relative[1], velocity[0], velocity[1], speed);
+}
+
+function interceptTimeScalar(
+  relativeX: number,
+  relativeY: number,
+  velocityX: number,
+  velocityY: number,
+  speed: number,
+): number | null {
+  const a = velocityX * velocityX + velocityY * velocityY - speed * speed;
+  const b = 2 * (relativeX * velocityX + relativeY * velocityY);
+  const c = relativeX * relativeX + relativeY * relativeY;
   if (c < 1e-8) return 0;
   if (Math.abs(a) < 1e-8) return b < 0 ? -c / b : null;
   const discriminant = b * b - 4 * a * c;
   if (discriminant < 0) return null;
-  const roots = [
-    (-b - Math.sqrt(discriminant)) / (2 * a),
-    (-b + Math.sqrt(discriminant)) / (2 * a),
-  ].filter((t) => t >= 0);
-  return roots.length ? Math.min(...roots) : null;
+  const root = Math.sqrt(discriminant);
+  const first = (-b - root) / (2 * a);
+  const second = (-b + root) / (2 * a);
+  return first >= 0 ? (second >= 0 ? Math.min(first, second) : first) : second >= 0 ? second : null;
 }
 
 // Earliest contact along a relative swept segment, including initial overlap.
@@ -245,29 +245,67 @@ export function acquireMountTarget(
   missileLocks: MissileLock[] = [],
 ): FireSolution | null {
   const muzzle = mountPosition(ship, turret);
+  const muzzleX = muzzle[0];
+  const muzzleY = muzzle[1];
   const weapon = turret.weapon;
   const rangeSq = weapon.range * weapon.range;
+  const lifetime = projectileLifetime(weapon);
+  const circular = fullCircle(turret);
+  const [minArc, maxArc] = turret.baseArc;
+  const wrapped = minArc > maxArc;
+  const trackingSpeed = Math.max(0.01, turret.trackingSpeed);
   turret.sideTargetId = undefined;
   const defense = pointDefenseMode(weapon);
-  const defendedShips = (
-    defendedContexts.get(ships) ?? prepareFireControlContext(ships, false)
-  ).get(ship) ?? [ship];
-  type RankedSolution = FireSolution & { priority: number };
-  let best: RankedSolution | undefined;
-  let current: RankedSolution | undefined;
-  let finishBest: RankedSolution | undefined;
-  let finishCurrent: RankedSolution | undefined;
+  let defendedShips: ShipState[] | undefined;
+  const defendedFleet = () =>
+    (defendedShips ??= (defendedContexts.get(ships) ?? prepareFireControlContext(ships, false)).get(
+      ship,
+    ) ?? [ship]);
+  let bestTarget: ShipState | ProjectileState | undefined;
+  let bestKind: FireSolution["kind"] = "ship";
+  let bestAimX = 0;
+  let bestAimY = 0;
+  let bestScore = 0;
+  let bestPriority = 0;
+  let currentTarget: ShipState | ProjectileState | undefined;
+  let currentKind: FireSolution["kind"] = "ship";
+  let currentAimX = 0;
+  let currentAimY = 0;
+  let currentScore = 0;
+  let currentFinishScore = 0;
+  let currentPriority = 0;
+  let finishTarget: ShipState | ProjectileState | undefined;
+  let finishKind: FireSolution["kind"] = "ship";
+  let finishAimX = 0;
+  let finishAimY = 0;
+  let finishScore = 0;
+  let finishPriority = 0;
   let hasPrimary = false;
   let hasShip = false;
-  const better = (a: RankedSolution, b: RankedSolution | undefined) =>
-    !b ||
-    a.priority > b.priority ||
-    (a.priority === b.priority &&
-      (a.score > b.score || (a.score === b.score && a.target.id.localeCompare(b.target.id) < 0)));
+  const better = (
+    target: ShipState | ProjectileState,
+    score: number,
+    priority: number,
+    incumbent: ShipState | ProjectileState | undefined,
+    incumbentScore: number,
+    incumbentPriority: number,
+  ) =>
+    !incumbent ||
+    priority > incumbentPriority ||
+    (priority === incumbentPriority &&
+      (score > incumbentScore ||
+        (score === incumbentScore && target.id.localeCompare(incumbent.id) < 0)));
   const inRange = (target: ShipState | ProjectileState) => {
-    const dx = muzzle[0] - target.pos[0];
-    const dy = muzzle[1] - target.pos[1];
+    const dx = muzzleX - target.pos[0];
+    const dy = muzzleY - target.pos[1];
     return dx * dx + dy * dy <= rangeSq;
+  };
+  const inArc = (x: number, y: number) => {
+    if (circular) return true;
+    const bearing = normalizeAngle(Math.atan2(y - muzzleY, x - muzzleX) - ship.heading);
+    return wrapped
+      ? bearing >= minArc || bearing <= maxArc
+      : bearing >= minArc && bearing <= maxArc;
   };
   const evaluate = (
     target: ShipState | ProjectileState,
@@ -275,33 +313,38 @@ export function acquireMountTarget(
     role: number,
     priority = 0,
   ) => {
-    if (!inRange(target) || !inMountArc(ship, turret, target.pos)) return;
-    const distance = vecDistance(muzzle, target.pos);
-    let aim = target.pos;
+    // Callers have already checked range and the current-position arc before scoring.
+    const dx = target.pos[0] - muzzleX;
+    const dy = target.pos[1] - muzzleY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    let aimX = target.pos[0];
+    let aimY = target.pos[1];
     if (weapon.projectileSpeed > 0) {
-      const t = interceptTime(vecSub(target.pos, muzzle), target.velocity, weapon.projectileSpeed);
-      const lifetime = projectileLifetime(weapon);
+      const t = interceptTimeScalar(
+        dx,
+        dy,
+        target.velocity[0],
+        target.velocity[1],
+        weapon.projectileSpeed,
+      );
       if (t === null || t > lifetime) return;
-      aim = vecAdd(target.pos, vecScale(target.velocity, t));
-      if (!inMountArc(ship, turret, aim)) return;
+      aimX += target.velocity[0] * t;
+      aimY += target.velocity[1] * t;
+      if (!inArc(aimX, aimY)) return;
     }
-    const direction = vecSub(aim, muzzle);
-    const local = normalizeAngle(Math.atan2(direction[1], direction[0]) - ship.heading);
+    const local = normalizeAngle(Math.atan2(aimY - muzzleY, aimX - muzzleX) - ship.heading);
     const error = local - turret.currentLocalAngle;
-    const turn =
-      Math.abs(
-        fullCircle(turret) || turret.baseArc[0] > turret.baseArc[1] ? normalizeAngle(error) : error,
-      ) / Math.max(0.01, turret.trackingSpeed);
-    const solution: RankedSolution = {
-      kind,
-      target,
-      aim,
-      score: role - distance / weapon.range - 0.4 * turn,
-      priority,
-    };
-    if (better(solution, best)) best = solution;
+    const turn = Math.abs(circular || wrapped ? normalizeAngle(error) : error) / trackingSpeed;
+    const score = role - distance / weapon.range - 0.4 * turn;
+    if (better(target, score, priority, bestTarget, bestScore, bestPriority)) {
+      bestTarget = target;
+      bestKind = kind;
+      bestAimX = aimX;
+      bestAimY = aimY;
+      bestScore = score;
+      bestPriority = priority;
+    }
     const retained = target.id === turret.currentTargetId && kind === turret.currentTargetKind;
-    if (retained) current = solution;
     let bonus = 0;
     if (kind === "ship") {
       hasShip = true;
@@ -314,9 +357,24 @@ export function acquireMountTarget(
         Math.max(1, weapon.damage);
       if (salvos <= 2) bonus = 3;
     }
-    const finish = bonus ? { ...solution, score: solution.score + bonus } : solution;
-    if (better(finish, finishBest)) finishBest = finish;
-    if (retained) finishCurrent = finish;
+    const candidateFinishScore = bonus ? score + bonus : score;
+    if (better(target, candidateFinishScore, priority, finishTarget, finishScore, finishPriority)) {
+      finishTarget = target;
+      finishKind = kind;
+      finishAimX = aimX;
+      finishAimY = aimY;
+      finishScore = candidateFinishScore;
+      finishPriority = priority;
+    }
+    if (retained) {
+      currentTarget = target;
+      currentKind = kind;
+      currentAimX = aimX;
+      currentAimY = aimY;
+      currentScore = score;
+      currentFinishScore = candidateFinishScore;
+      currentPriority = priority;
+    }
   };
 
   // Preserve projectile order within each target's payloads without rescanning
@@ -337,18 +395,25 @@ export function acquireMountTarget(
     }
   }
 
-  for (const enemy of ships) {
-    if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team) continue;
+  const enemies =
+    navigationContext(ships)?.teamEnemies.get(ship.team) ??
+    ships.filter((enemy) => enemy.isAlive && enemy.team !== ship.team);
+  for (const enemy of enemies) {
+    if (!enemy.isAlive || enemy.isDocked || enemy.isDebris) continue;
     if (!inRange(enemy)) continue;
+    if (!inArc(enemy.pos[0], enemy.pos[1])) continue;
     if (weapon.weaponType === "missile") {
       let incoming = 0;
       let inFlightDamage = 0;
       let insuranceDamage = 0;
-      for (const missile of missilesByTarget.get(enemy.id) ?? []) {
-        if (missile.ownerTeam !== enemy.team) {
-          incoming += missileWeight(enemy, isHeavyTorpedo(missile));
-          inFlightDamage += missile.damage;
-          insuranceDamage = Math.max(insuranceDamage, missile.damage);
+      const incomingMissiles = missilesByTarget.get(enemy.id);
+      if (incomingMissiles) {
+        for (const missile of incomingMissiles) {
+          if (missile.ownerTeam !== enemy.team) {
+            incoming += missileWeight(enemy, isHeavyTorpedo(missile));
+            inFlightDamage += missile.damage;
+            insuranceDamage = Math.max(insuranceDamage, missile.damage);
+          }
         }
       }
       for (const lock of missileLocks) {
@@ -387,17 +452,24 @@ export function acquireMountTarget(
     if (weapon.weaponType !== "point_defense") role += capitalFinishPriority(ship, enemy, ships);
     let priority = 0;
     if (enemy.hullClass === "strike_craft") {
-      if (defense === "flak" && vecDistance(muzzle, enemy.pos) < 350) priority = 3;
-      if (
-        defense === "rotary" &&
-        (enemy.fighterPhase === "attack" ||
-          defendedShips.some(
-            (defended) =>
-              vecDot(vecSub(enemy.pos, defended.pos), vecSub(enemy.velocity, defended.velocity)) <
-              0,
-          ))
-      )
-        priority = 2;
+      const dx = muzzleX - enemy.pos[0];
+      const dy = muzzleY - enemy.pos[1];
+      if (defense === "flak" && Math.sqrt(dx * dx + dy * dy) < 350) priority = 3;
+      if (defense === "rotary") {
+        if (enemy.fighterPhase === "attack") priority = 2;
+        else {
+          for (const defended of defendedFleet()) {
+            if (
+              (enemy.pos[0] - defended.pos[0]) * (enemy.velocity[0] - defended.velocity[0]) +
+                (enemy.pos[1] - defended.pos[1]) * (enemy.velocity[1] - defended.velocity[1]) <
+              0
+            ) {
+              priority = 2;
+              break;
+            }
+          }
+        }
+      }
     }
     evaluate(enemy, "ship", role, priority);
   }
@@ -415,15 +487,19 @@ export function acquireMountTarget(
         continue;
       // Range and current-bearing arc are prerequisites for evaluate(); reject
       // impossible shots before testing trajectories against the defended fleet.
-      if (!inRange(missile) || !inMountArc(ship, turret, missile.pos)) continue;
+      if (!inRange(missile) || !inArc(missile.pos[0], missile.pos[1])) continue;
       let arrival = Infinity;
       let urgentTorpedo = false;
-      for (const defended of defendedShips) {
-        const r = vecSub(missile.pos, defended.pos);
-        const v = vecSub(missile.velocity, defended.velocity);
-        const t = -vecDot(r, v) / Math.max(vecDot(v, v), 1e-6);
+      for (const defended of defendedFleet()) {
+        const rx = missile.pos[0] - defended.pos[0];
+        const ry = missile.pos[1] - defended.pos[1];
+        const vx = missile.velocity[0] - defended.velocity[0];
+        const vy = missile.velocity[1] - defended.velocity[1];
+        const t = -(rx * vx + ry * vy) / Math.max(vx * vx + vy * vy, 1e-6);
         if (t < 0 || t > missile.lifetime) continue;
-        if (vecDistance([0, 0], vecAdd(r, vecScale(v, t))) < defended.size + 80) {
+        const closestX = rx + vx * t;
+        const closestY = ry + vy * t;
+        if (Math.sqrt(closestX * closestX + closestY * closestY) < defended.size + 80) {
           arrival = Math.min(arrival, t);
           if (
             isHeavyTorpedo(missile) &&
@@ -431,7 +507,7 @@ export function acquireMountTarget(
               defended.hullClass === "battleship" ||
               defended.hullClass === "dreadnought" ||
               defended.hullClass === "cruiser") &&
-            vecDistance(missile.pos, defended.pos) < 300
+            Math.sqrt(rx * rx + ry * ry) < 300
           )
             urgentTorpedo = true;
         }
@@ -447,18 +523,30 @@ export function acquireMountTarget(
     }
   }
   if (!hasPrimary) {
-    best = finishBest;
-    current = finishCurrent;
+    bestTarget = finishTarget;
+    bestKind = finishKind;
+    bestAimX = finishAimX;
+    bestAimY = finishAimY;
+    bestScore = finishScore;
+    bestPriority = finishPriority;
+    currentScore = currentFinishScore;
   }
-  if (!best) return null;
-  const selected =
+  if (!bestTarget) return null;
+  const retainCurrent =
     defense !== "laser" &&
-    current &&
-    best.priority === current.priority &&
-    best.score <= current.score + 0.2 * Math.max(Math.abs(current.score), 1)
-      ? current
-      : best;
-  if (selected.kind === "ship" && selected.target.id !== primary?.id)
-    turret.sideTargetId = selected.target.id;
-  return selected;
+    currentTarget &&
+    bestPriority === currentPriority &&
+    bestScore <= currentScore + 0.2 * Math.max(Math.abs(currentScore), 1);
+  const target = retainCurrent ? currentTarget : bestTarget;
+  const kind = retainCurrent ? currentKind : bestKind;
+  if (kind === "ship" && target.id !== primary?.id) turret.sideTargetId = target.id;
+  return {
+    kind,
+    target,
+    aim:
+      weapon.projectileSpeed > 0
+        ? [retainCurrent ? currentAimX : bestAimX, retainCurrent ? currentAimY : bestAimY]
+        : target.pos,
+    score: retainCurrent ? currentScore : bestScore,
+  };
 }

@@ -11,6 +11,7 @@ import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { HullClass } from "../types/combat";
 import { DoctrineDialog } from "./DoctrineDialog";
 import { GroupPreview, ShipPreview, useDelayedPreview } from "./FleetPreviews";
+import { ShipInspectorModal } from "./ShipInspectorModal";
 
 export type { CrewVeterancy } from "../engine/crewVeterancy";
 
@@ -528,6 +529,7 @@ function FleetBuilderPanel({
   const previewTeam = redTeam ? 1 : 0;
   const [selectedGroup, setSelectedGroup] = useState<number>(1);
   const [doctrineHull, setDoctrineHull] = useState<HullClass | null>(null);
+  const [inspectorHull, setInspectorHull] = useState<HullClass | null>(null);
   const shipPreview = useDelayedPreview<HullClass>(250);
   const groupPreview = useDelayedPreview<number>(200);
   const slots = team === "blue" ? blueSlots : redSlots;
@@ -537,6 +539,16 @@ function FleetBuilderPanel({
   const selectedCarrier = carriers.find((slot) => slot.id === selectedCarrierId) ?? carriers[0];
   const currentCost = slots.reduce((acc, slot) => acc + fleetSlotCost(slot), 0);
   const remainingBudget = budgetLimit - currentCost;
+
+  const inspectShip = (hull: HullClass) => {
+    shipPreview.hide();
+    setInspectorHull(hull);
+  };
+
+  const inspectCard = (event: React.MouseEvent, hull: HullClass) => {
+    if ((event.target as HTMLElement).closest("button, input, select, a")) return;
+    inspectShip(hull);
+  };
 
   // Group counts calculation
   const groupCounts = slots.reduce<Record<number, number>>((acc, s) => {
@@ -741,6 +753,7 @@ function FleetBuilderPanel({
             return (
               <div
                 key={hull}
+                onClick={(event) => inspectCard(event, hull)}
                 className={`p-2 rounded-xl border transition-all flex flex-col justify-between select-text relative ${
                   isInspecting
                     ? redTeam
@@ -753,14 +766,20 @@ function FleetBuilderPanel({
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div
+                      <button
+                        type="button"
+                        onClick={() => inspectShip(hull)}
+                        onKeyDown={(event) => event.stopPropagation()}
                         onMouseEnter={() => shipPreview.show(hull)}
                         onMouseLeave={shipPreview.hide}
+                        onFocus={() => shipPreview.show(hull)}
+                        onBlur={shipPreview.hide}
+                        aria-label={`Inspect ${spec.name}`}
                         title={`${spec.desc} Size: ${HULL_PROFILES[hull].size}u`}
-                        className={`w-9 h-9 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 ${redTeam ? "text-red-400" : "text-cyan-400"}`}
+                        className={`w-9 h-9 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 cursor-pointer ${redTeam ? "text-red-400" : "text-cyan-400"}`}
                       >
                         <ShipSilhouette hullClass={hull} team={previewTeam} className="w-7 h-7" />
-                      </div>
+                      </button>
                       <div className="min-w-0">
                         <div
                           className="font-semibold text-sm text-zinc-100 select-all truncate"
@@ -1042,18 +1061,23 @@ function FleetBuilderPanel({
                         </div>
                       )}
                       <div
+                        onClick={(event) => inspectCard(event, stack.hullClass)}
                         className={`p-2.5 rounded-lg bg-zinc-900 border ${theme.border} text-xs flex items-center justify-between select-text hover:bg-zinc-800/60 transition-colors gap-2`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div
-                            className={`w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 ${redTeam ? "text-red-400" : "text-cyan-400"}`}
+                          <button
+                            type="button"
+                            onClick={() => inspectShip(stack.hullClass)}
+                            onKeyDown={(event) => event.stopPropagation()}
+                            aria-label={`Inspect ${HULL_SPECS[stack.hullClass].name}`}
+                            className={`w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 cursor-pointer ${redTeam ? "text-red-400" : "text-cyan-400"}`}
                           >
                             <ShipSilhouette
                               hullClass={stack.hullClass}
                               team={previewTeam}
                               className="w-5 h-5"
                             />
-                          </div>
+                          </button>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span
@@ -1236,6 +1260,13 @@ function FleetBuilderPanel({
           hull={doctrineHull}
           redTeam={redTeam}
           onClose={() => setDoctrineHull(null)}
+        />
+      )}
+      {inspectorHull && (
+        <ShipInspectorModal
+          hull={inspectorHull}
+          team={previewTeam}
+          onClose={() => setInspectorHull(null)}
         />
       )}
     </div>

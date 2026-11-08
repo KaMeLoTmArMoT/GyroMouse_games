@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 import { TacticalCanvas } from "../src/canvas/TacticalCanvas";
 import { FleetBuilder } from "../src/components/FleetBuilder";
+import { ShipInspectorModal } from "../src/components/ShipInspectorModal";
 import type { ClientCombatSimulation } from "../src/engine/simulation";
 
 const hooks = vi.hoisted(() => ({
@@ -236,5 +237,62 @@ describe("fleet builder matchups", () => {
     tree = renderBuilder();
     expectRoster(tree, "Red", 0);
     expect(button(tree, "Engage Fleet Simulator").props.disabled).toBe(true);
+  });
+
+  it("opens the correct faction and hull from the catalog and roster without enlisting", () => {
+    selectMatchup("scenario:1bb-vs-27sc");
+    let tree = renderBuilder();
+    const inspect = (label: string, index = 0) => {
+      const buttons = elements(tree).filter(
+        (element) =>
+          element.type === "button" &&
+          (element.props as unknown as { "aria-label"?: string })["aria-label"] === label,
+      );
+      expect(buttons[index]).toBeDefined();
+      buttons[index].props.onClick();
+    };
+    inspect("Inspect Sovereign Battleship");
+    tree = renderBuilder();
+    let modal = elements(tree).find((element) => element.type === ShipInspectorModal);
+    expect(modal?.props).toMatchObject({ hull: "battleship", team: 0 });
+    expectRoster(tree, "Blue", 1);
+    if (!modal) throw new Error("Inspector missing");
+    (modal.props as unknown as { onClose: () => void }).onClose();
+
+    button(renderBuilder(), "Opposing Force (Red)").props.onClick();
+    tree = renderBuilder();
+    inspect("Inspect Viper Fighter", 1);
+    tree = renderBuilder();
+    modal = elements(tree).find((element) => element.type === ShipInspectorModal);
+    expect(modal?.props).toMatchObject({ hull: "strike_craft", team: 1 });
+    expectRoster(tree, "Red", 27);
+  });
+
+  it("opens card backgrounds while leaving embedded controls independent", () => {
+    selectMatchup("scenario:1bb-vs-27sc");
+    let tree = renderBuilder();
+    const card = elements(tree).find(
+      (element) => element.type === "div" && element.key === "battleship",
+    );
+    if (!card) throw new Error("Catalog card missing");
+    const click = card.props.onClick as unknown as (event: unknown) => void;
+    click({ target: { closest: () => ({}) } });
+    expect(elements(renderBuilder()).some((element) => element.type === ShipInspectorModal)).toBe(
+      false,
+    );
+    click({ target: { closest: () => null } });
+    tree = renderBuilder();
+    let modal = elements(tree).find((element) => element.type === ShipInspectorModal);
+    expect(modal?.props).toMatchObject({ hull: "battleship", team: 0 });
+    if (!modal) throw new Error("Inspector missing");
+    (modal.props as unknown as { onClose: () => void }).onClose();
+    tree = renderBuilder();
+    const roster = elements(tree).find((element) => element.key === "1_battleship");
+    const row =
+      roster && elements(roster).find((element) => element.type === "div" && element.props.onClick);
+    if (!row) throw new Error("Roster row missing");
+    (row.props.onClick as unknown as (event: unknown) => void)({ target: { closest: () => null } });
+    modal = elements(renderBuilder()).find((element) => element.type === ShipInspectorModal);
+    expect(modal?.props).toMatchObject({ hull: "battleship", team: 0 });
   });
 });
