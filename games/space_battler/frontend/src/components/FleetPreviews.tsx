@@ -60,8 +60,9 @@ export function ShipPreview({ hull, team }: { hull: HullClass; team: 0 | 1 }) {
       ctx.fillStyle = halo;
       ctx.fillRect(0, 0, 240, 144);
       ctx.translate(120, 68);
-      ctx.transform(50 / ship.size, 0, 7 / ship.size, 34 / ship.size, 0, 0);
-      ship.heading = time / 5000;
+      // Orthographic projection at 30° above the deck, with a rotating three-quarter view.
+      ctx.scale(50 / ship.size, (50 * Math.sin(Math.PI / 6)) / ship.size);
+      ship.heading = Math.PI / 4 + time / 5000;
       renderShipPreview(ctx, ship, time / 1000);
       ctx.restore();
       frame = requestAnimationFrame(draw);

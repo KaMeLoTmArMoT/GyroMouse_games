@@ -1,7 +1,80 @@
 import { rotatePoint } from "../engine/math2d";
 import type { ShipState, TurretMountState } from "../types/combat";
+import { isLightHull } from "./lightHullDepth";
 
 const lightTurretSprites = new Map<string, OffscreenCanvas>();
+const barbetteSprites = new Map<string, OffscreenCanvas>();
+
+function drawBarbette(ctx: CanvasRenderingContext2D, ship: ShipState, r: number): void {
+  const height = r * 0.7;
+  const radius = r * 1.35;
+  const depth = r * 0.85;
+  ctx.fillStyle = "rgba(2, 6, 23, 0.72)";
+  ctx.beginPath();
+  ctx.ellipse(r * 0.45, r * 0.5, radius * 1.1, depth * 1.05, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const flank = ctx.createLinearGradient(-radius, 0, radius, 0);
+  flank.addColorStop(0, ship.team === 0 ? "#41647a" : "#974655");
+  flank.addColorStop(0.5, ship.team === 0 ? "#20384c" : "#5b1c29");
+  flank.addColorStop(1, "#080e19");
+  ctx.fillStyle = flank;
+  ctx.strokeStyle = ship.team === 0 ? "#0b1b2b" : "#300810";
+  ctx.lineWidth = Math.max(0.4, r * 0.12);
+  ctx.beginPath();
+  ctx.moveTo(-radius, -height);
+  ctx.lineTo(-radius, 0);
+  ctx.bezierCurveTo(-radius, depth * 1.3, radius, depth * 1.3, radius, 0);
+  ctx.lineTo(radius, -height);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = ship.team === 0 ? "#3b5d73" : "#88404c";
+  ctx.strokeStyle = ship.team === 0 ? "#7dd3fc" : "#fb7185";
+  ctx.beginPath();
+  ctx.ellipse(0, -height, radius, depth, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = ship.team === 0 ? "#e0f2fe" : "#ffe4e6";
+  ctx.lineWidth = Math.max(0.4, r * 0.13);
+  ctx.beginPath();
+  ctx.ellipse(0, -height, radius * 0.9, depth * 0.86, 0, Math.PI * 1.08, Math.PI * 1.86);
+  ctx.stroke();
+}
+
+function renderBarbette(ctx: CanvasRenderingContext2D, ship: ShipState, r: number): void {
+  if (typeof OffscreenCanvas !== "undefined") {
+    const transform = ctx.getTransform();
+    const scale = Math.max(
+      Math.hypot(transform.a, transform.b),
+      Math.hypot(transform.c, transform.d),
+    );
+    const resolution = Math.max(3, 2 ** Math.ceil(Math.log2(scale)));
+    const key = JSON.stringify([ship.team, r, resolution]);
+    let sprite = barbetteSprites.get(key);
+    if (!sprite) {
+      const pixels = Math.ceil((r * 3 + 2) * 2 * resolution);
+      const canvas = new OffscreenCanvas(pixels, pixels);
+      const offscreen = canvas.getContext("2d");
+      if (offscreen) {
+        offscreen.translate(pixels / 2, pixels / 2);
+        offscreen.scale(resolution, resolution);
+        drawBarbette(offscreen as unknown as CanvasRenderingContext2D, ship, r);
+        sprite = canvas;
+        const oldest = barbetteSprites.keys().next().value;
+        if (barbetteSprites.size >= 64 && oldest !== undefined) barbetteSprites.delete(oldest);
+        barbetteSprites.set(key, sprite);
+      }
+    }
+    if (sprite) {
+      const width = sprite.width / resolution;
+      ctx.drawImage(sprite, -width / 2, -width / 2, width, width);
+      return;
+    }
+  }
+  drawBarbette(ctx, ship, r);
+}
 
 export function renderTurret(
   ctx: CanvasRenderingContext2D,
@@ -12,13 +85,14 @@ export function renderTurret(
   const [x, y] = rotatePoint(turret.offset, ship.heading);
   const r = turret.baseRadius ?? 4;
   const length = turret.barrelLength ?? 10;
-  const lightShip =
-    ship.hullClass === "strike_craft" ||
-    ship.hullClass === "corvette" ||
-    ship.hullClass === "missile_frigate";
+  const lightShip = isLightHull(ship);
 
   ctx.save();
   ctx.translate(x, y);
+  if (lightShip) {
+    renderBarbette(ctx, ship, r);
+    ctx.translate(0, -r * 0.7);
+  }
   ctx.rotate(ship.heading + turret.currentLocalAngle);
 
   if (lightShip && typeof OffscreenCanvas !== "undefined") {
@@ -87,16 +161,6 @@ function drawTurretBody(
   const metal = ship.team === 0 ? "#94a3b8" : "#fca5a5";
   const lens = ship.team === 0 ? "#38bdf8" : "#ef4444";
 
-  if (elevated) {
-    // Solid offsets give the rotating housing a raised lower edge without a canvas blur.
-    ctx.fillStyle = ship.team === 0 ? "#020617" : "#200306";
-    ctx.beginPath();
-    ctx.ellipse(0, r * 0.28, r * 1.12, r * 0.95, 0, 0, Math.PI * 2);
-    ctx.fill();
-    if (turret.weapon.weaponType === "missile") {
-      ctx.fillRect(-r, -r * 0.52, length + r, r * 1.6);
-    }
-  }
   ctx.fillStyle = armor;
   ctx.strokeStyle = primaryColor;
   ctx.lineWidth = 0.8;
@@ -116,6 +180,7 @@ function drawTurretBody(
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      if (elevated) drawBarrelJoint(ctx, r, recess, metal);
       for (const side of [-1, 1]) {
         const y = side * r * (flak ? 0.5 : 0.38);
         ctx.strokeStyle = metal;
@@ -150,6 +215,7 @@ function drawTurretBody(
       ctx.arc(0, 0, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      if (elevated) drawBarrelJoint(ctx, r, recess, metal);
       if (heavy) {
         ctx.strokeStyle = metal;
         ctx.lineWidth = 0.7;
@@ -257,6 +323,7 @@ function drawTurretBody(
       ctx.arc(0, 0, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      if (elevated) drawBarrelJoint(ctx, r, recess, metal);
       ctx.strokeStyle = metal;
       ctx.lineWidth = r * 0.65;
       ctx.beginPath();
@@ -283,4 +350,19 @@ function drawTurretBody(
     }
     ctx.stroke();
   }
+}
+
+function drawBarrelJoint(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  recess: string,
+  metal: string,
+): void {
+  ctx.fillStyle = recess;
+  ctx.strokeStyle = metal;
+  ctx.lineWidth = Math.max(0.35, r * 0.12);
+  ctx.beginPath();
+  ctx.ellipse(r * 0.38, 0, r * 0.38, r * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
 }

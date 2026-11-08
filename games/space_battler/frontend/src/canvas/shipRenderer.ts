@@ -4,12 +4,18 @@ import { rotatePoint } from "../engine/math2d";
 import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
+import {
+  drawLightHullExtrusion,
+  drawLightHullKeel,
+  isLightHull,
+  traceLightHull,
+} from "./lightHullDepth";
 import { ShipSpriteCache } from "./shipSpriteCache";
 import { renderTurret } from "./turretRenderer";
 
 // Size and hardpoint layout are fixed configuration of each bounded cache instance.
 // Rasterize at 3 pixels/world unit, above the battlefield's maximum 2.5x zoom.
-const hullSprites = new Map<string, ShipSpriteCache>();
+const hullSprites = new Map<string, { deck: ShipSpriteCache; keel?: ShipSpriteCache }>();
 
 function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState): boolean {
   if (typeof OffscreenCanvas === "undefined") return false;
@@ -24,14 +30,14 @@ function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState): boolean
     ship.hullClass === "carrier" ? cameraScale : null,
     ship.turrets.map((turret) => [turret.offset, turret.baseRadius, turret.weapon.weaponType]),
   ]);
-  let cache = hullSprites.get(key);
+  let sprites = hullSprites.get(key);
   const extent = ship.size * 1.6 + 4;
-  if (!cache) {
+  if (!sprites) {
     const snapshot = {
       ...ship,
       turrets: ship.turrets.map((turret) => ({ ...turret, offset: [...turret.offset] as Vector2 })),
     };
-    cache = new ShipSpriteCache(
+    const deck = new ShipSpriteCache(
       Math.ceil(extent * 2 * resolution),
       (offscreen, _, team, pixels) => {
         offscreen.translate(pixels / 2, pixels / 2);
@@ -62,16 +68,31 @@ function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState): boolean
           );
       },
     );
+    const keel = isLightHull(snapshot)
+      ? new ShipSpriteCache(Math.ceil(extent * 2 * resolution), (offscreen, _, _team, pixels) => {
+          offscreen.translate(pixels / 2, pixels / 2);
+          offscreen.scale(resolution, resolution);
+          drawLightHullKeel(offscreen as unknown as CanvasRenderingContext2D, snapshot);
+        })
+      : undefined;
+    sprites = { deck, keel };
     const oldest = hullSprites.keys().next().value;
     if (hullSprites.size >= 32 && oldest !== undefined) hullSprites.delete(oldest);
-    hullSprites.set(key, cache);
+    hullSprites.set(key, sprites);
   }
-  const sprite = cache.get(ship.hullClass, ship.team);
+  const sprite = sprites.deck.get(ship.hullClass, ship.team);
   if (!sprite) return false;
   const width = sprite.width / resolution;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
+  const keel = sprites.keel?.get(ship.hullClass, ship.team);
+  if (keel) {
+    const [dx, dy] = rotatePoint([0, ship.size * 0.24], -ship.heading);
+    // Sweep a cached solid profile, keeping the projected keel below the turning deck.
+    for (let i = 4; i >= 1; i--)
+      ctx.drawImage(keel, -width / 2 + (dx * i) / 4, -width / 2 + (dy * i) / 4, width, width);
+  }
   ctx.drawImage(sprite, -width / 2, -width / 2, width, width);
   ctx.restore();
   drawAnimatedHullDetails(ctx, ship);
@@ -183,16 +204,19 @@ function drawAnimatedHullDetails(ctx: CanvasRenderingContext2D, ship: ShipState)
 /** Draw the same hull and hardpoints as the battlefield, without combat HUD overlays. */
 export function renderShipPreview(ctx: CanvasRenderingContext2D, ship: ShipState, time = 0): void {
   const isBlue = ship.team === 0;
-  // Offset the lower hull in screen space so the deck keeps a visible armored edge while rotating.
-  ctx.save();
-  ctx.translate(0, ship.size * 0.12);
-  ctx.rotate(ship.heading);
-  if (isBlue) drawTerranHull(ctx, ship, "#164e63", "#020617", "#082f49");
-  else drawAlienHull(ctx, ship, "#7f1d1d", "#260606", "#991b1b");
-  ctx.restore();
+  if (!isLightHull(ship)) {
+    ctx.save();
+    ctx.translate(0, ship.size * 0.12);
+    ctx.rotate(ship.heading);
+    if (isBlue) drawTerranHull(ctx, ship, "#164e63", "#020617", "#082f49");
+    else drawAlienHull(ctx, ship, "#7f1d1d", "#260606", "#991b1b");
+    ctx.restore();
+  }
   ctx.save();
   ctx.rotate(ship.heading);
   drawEngineGlow(ctx, ship);
+  if (isLightHull(ship))
+    drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
   if (isBlue) drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
   else drawAlienHull(ctx, ship, "#f87171", "#450a0a", "#dc2626", time);
   ctx.restore();
@@ -273,6 +297,8 @@ export function renderShip(
     if (ship.hullClass === "tender") drawTenderLight(ctx, ship, time);
     if (ship.hullClass === "carrier") drawCarrierRecessLights(ctx, ship, time);
   } else if (isBlue) {
+    if (isLightHull(ship))
+      drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
     drawTerranHull(
       ctx,
       ship,
@@ -282,6 +308,8 @@ export function renderShip(
       ship.hullClass === "tender" ? time : undefined,
     );
   } else {
+    if (isLightHull(ship))
+      drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
     drawAlienHull(
       ctx,
       ship,
@@ -758,30 +786,6 @@ function drawLightHullDepth(ctx: CanvasRenderingContext2D, ship: ShipState): voi
   }
 }
 
-/** Stationary barbettes are part of the hull sprite; turret housings rotate above them. */
-function drawLightMounts(ctx: CanvasRenderingContext2D, ship: ShipState): void {
-  const alien = ship.team !== 0;
-  for (const turret of ship.turrets) {
-    const [x, y] = turret.offset;
-    const r = (turret.baseRadius ?? 4) * 1.45;
-    ctx.fillStyle = "rgba(2, 6, 23, 0.8)";
-    ctx.beginPath();
-    ctx.ellipse(x, y + r * 0.2, r * 1.1, r, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = alien ? "#71313d" : "#334155";
-    ctx.strokeStyle = alien ? "#fb7185" : "#7dd3fc";
-    ctx.lineWidth = Math.max(0.4, r * 0.12);
-    ctx.beginPath();
-    ctx.ellipse(x, y, r, r * 0.85, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = alien ? "#fecdd3" : "#e0f2fe";
-    ctx.beginPath();
-    ctx.ellipse(x, y, r * 0.82, r * 0.68, 0, Math.PI * 1.1, Math.PI * 1.8);
-    ctx.stroke();
-  }
-}
-
 function drawTerranHull(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
@@ -814,27 +818,8 @@ function drawTerranHull(
   ctx.beginPath();
   switch (ship.hullClass) {
     case "strike_craft":
-      // Terran Viper / Dart: faceted wedge with twin tail thrusters
-      ctx.moveTo(s * 1.1, 0);
-      ctx.lineTo(-s * 0.7, -s * 0.55);
-      ctx.lineTo(-s * 0.5, -s * 0.2);
-      ctx.lineTo(-s * 0.85, 0);
-      ctx.lineTo(-s * 0.5, s * 0.2);
-      ctx.lineTo(-s * 0.7, s * 0.55);
-      ctx.closePath();
-      break;
-
     case "corvette":
-      // Terran Aegis: angular escort with armored side sponsons
-      ctx.moveTo(s * 1.15, 0);
-      ctx.lineTo(s * 0.4, -s * 0.45);
-      ctx.lineTo(-s * 0.5, -s * 0.58);
-      ctx.lineTo(-s * 0.95, -s * 0.32);
-      ctx.lineTo(-s * 0.75, 0);
-      ctx.lineTo(-s * 0.95, s * 0.32);
-      ctx.lineTo(-s * 0.5, s * 0.58);
-      ctx.lineTo(s * 0.4, s * 0.45);
-      ctx.closePath();
+      traceLightHull(ctx, ship);
       break;
 
     case "cruiser":
@@ -876,7 +861,6 @@ function drawTerranHull(
     if (ship.hullClass === "corvette")
       drawTerranCorvetteDetails(ctx, ship, accentColor, staticOnly);
     else drawTerranStrikeDetails(ctx, ship, accentColor, true);
-    drawLightMounts(ctx, ship);
     ctx.restore();
     if (ship.hullClass === "strike_craft" && !staticOnly) drawAnimatedHullDetails(ctx, ship);
     return;
@@ -956,23 +940,8 @@ function drawAlienHull(
   ctx.beginPath();
   switch (ship.hullClass) {
     case "strike_craft":
-      // Cylon Raider / Bio-Crescent: curved swept-forward wings
-      ctx.moveTo(s * 0.85, -s * 0.6884);
-      ctx.quadraticCurveTo(s * 0.15, -s * 0.1252, -s * 0.65, -s * 0.3505);
-      ctx.lineTo(-s * 0.35, 0);
-      ctx.lineTo(-s * 0.65, s * 0.3505);
-      ctx.quadraticCurveTo(s * 0.15, s * 0.1252, s * 0.85, s * 0.6884);
-      ctx.quadraticCurveTo(s * 0.55, 0, s * 0.85, -s * 0.6884);
-      ctx.closePath();
-      break;
-
     case "corvette":
-      // Alien Sentinel: predatory stingray / manta silhouette
-      ctx.moveTo(s * 1.15, 0);
-      ctx.quadraticCurveTo(s * 0.25, -s * 0.7916, -s * 0.75, -s * 0.548);
-      ctx.quadraticCurveTo(-s * 0.45, 0, -s * 0.75, s * 0.548);
-      ctx.quadraticCurveTo(s * 0.25, s * 0.7916, s * 1.15, 0);
-      ctx.closePath();
+      traceLightHull(ctx, ship);
       break;
 
     case "cruiser":
@@ -1005,7 +974,6 @@ function drawAlienHull(
     drawLightHullDepth(ctx, ship);
     if (ship.hullClass === "corvette") drawAlienCorvetteDetails(ctx, ship, accentColor);
     else drawAlienStrikeDetails(ctx, ship, accentColor);
-    drawLightMounts(ctx, ship);
     ctx.restore();
     return;
   }
@@ -1065,23 +1033,8 @@ function drawNewHull(
     ctx.lineTo(s * 0.14, s * 0.67);
     ctx.lineTo(s * 0.3, s * 0.48);
     ctx.lineTo(s * 0.85, s * 0.4);
-  } else if (alien) {
-    ctx.moveTo(s * 1.2, 0);
-    ctx.quadraticCurveTo(s * 0.35, -s * 0.48, -s * 0.85, -s * 0.42);
-    ctx.lineTo(-s * 0.92, -s * 0.15);
-    ctx.lineTo(-s * 0.65, 0);
-    ctx.lineTo(-s * 0.92, s * 0.15);
-    ctx.lineTo(-s * 0.85, s * 0.42);
-    ctx.quadraticCurveTo(s * 0.35, s * 0.48, s * 1.2, 0);
   } else {
-    ctx.moveTo(s * 1.2, 0);
-    ctx.lineTo(s * 0.4, -s * 0.3);
-    ctx.lineTo(-s * 0.55, -s * 0.46);
-    ctx.lineTo(-s * 0.95, -s * 0.34);
-    ctx.lineTo(-s * 0.78, 0);
-    ctx.lineTo(-s * 0.95, s * 0.34);
-    ctx.lineTo(-s * 0.55, s * 0.46);
-    ctx.lineTo(s * 0.4, s * 0.3);
+    traceLightHull(ctx, ship);
   }
   ctx.closePath();
   const light = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.7);
@@ -1163,7 +1116,6 @@ function drawNewHull(
     ctx.ellipse(s * x, s * y, s * 0.045, s * 0.025, 0, 0, Math.PI * 2);
     ctx.fill();
   }
-  if (!dread) drawLightMounts(ctx, ship);
   ctx.restore();
 }
 
