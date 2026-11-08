@@ -162,6 +162,37 @@ describe("cached battlefield hulls", () => {
     }
   });
 
+  it("retains the hull clip for Terran capital details after preview lighting", () => {
+    vi.stubGlobal("OffscreenCanvas", undefined);
+    for (const hullClass of ["cruiser", "battleship"] as const) {
+      const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], 0, 0, 0);
+      ship.heading = 0;
+      const { ctx, calls } = context();
+      renderShipPreview(ctx, ship, 0);
+
+      const moves = calls.get("moveTo");
+      const translations = calls.get("translate");
+      expect(moves).toBeDefined();
+      expect(translations).toBeDefined();
+      if (!moves || !translations) throw new Error("Preview did not draw the hull or turret");
+      const lightIndex = moves.mock.calls.findIndex(
+        ([x, y]) => x === -ship.size * 0.8 && y === ship.size * 0.31,
+      );
+      const turretIndex = translations.mock.calls.findIndex(
+        ([x, y]) => x === ship.turrets[0].offset[0] && y === ship.turrets[0].offset[1],
+      );
+      expect(lightIndex).toBeGreaterThanOrEqual(0);
+      expect(turretIndex).toBeGreaterThanOrEqual(0);
+      const lightOrder = moves.mock.invocationCallOrder[lightIndex];
+      const turretOrder = translations.mock.invocationCallOrder[turretIndex];
+      expect(
+        calls
+          .get("clip")
+          ?.mock.invocationCallOrder.filter((order) => order > lightOrder && order < turretOrder),
+      ).toEqual([]);
+    }
+  });
+
   it("retains procedural hulls when offscreen rendering is unavailable", () => {
     vi.stubGlobal("OffscreenCanvas", undefined);
     const [ship] = buildFleetFromSlots(

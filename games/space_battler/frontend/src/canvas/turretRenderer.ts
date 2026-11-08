@@ -7,31 +7,35 @@ const barbetteSprites = new Map<string, OffscreenCanvas>();
 
 function drawBarbette(ctx: CanvasRenderingContext2D, ship: ShipState, r: number): void {
   const height = r * 0.7;
-  const radius = r * 1.35;
-  const depth = r * 0.85;
-  ctx.fillStyle = "rgba(2, 6, 23, 0.72)";
+  const radius = r * 1.05;
+  const foot = r * 1.55;
+  const depth = r * 0.72;
+  ctx.fillStyle = "rgba(2, 6, 23, 0.28)";
   ctx.beginPath();
-  ctx.ellipse(r * 0.45, r * 0.5, radius * 1.1, depth * 1.05, 0, 0, Math.PI * 2);
+  ctx.ellipse(r * 0.15, r * 0.35, foot, depth * 1.15, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const flank = ctx.createLinearGradient(-radius, 0, radius, 0);
-  flank.addColorStop(0, ship.team === 0 ? "#41647a" : "#974655");
-  flank.addColorStop(0.5, ship.team === 0 ? "#20384c" : "#5b1c29");
-  flank.addColorStop(1, "#080e19");
+  const flank = ctx.createLinearGradient(-foot, -height, foot, depth);
+  flank.addColorStop(0, ship.team === 0 ? "#7099af" : "#bc7079");
+  flank.addColorStop(0.5, ship.team === 0 ? "#36566b" : "#793642");
+  flank.addColorStop(1, ship.team === 0 ? "#172c3c" : "#40121c");
   ctx.fillStyle = flank;
   ctx.strokeStyle = ship.team === 0 ? "#0b1b2b" : "#300810";
   ctx.lineWidth = Math.max(0.4, r * 0.12);
   ctx.beginPath();
   ctx.moveTo(-radius, -height);
-  ctx.lineTo(-radius, 0);
-  ctx.bezierCurveTo(-radius, depth * 1.3, radius, depth * 1.3, radius, 0);
+  ctx.lineTo(-foot, 0);
+  ctx.bezierCurveTo(-foot, depth * 1.3, foot, depth * 1.3, foot, 0);
   ctx.lineTo(radius, -height);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = ship.team === 0 ? "#3b5d73" : "#88404c";
-  ctx.strokeStyle = ship.team === 0 ? "#7dd3fc" : "#fb7185";
+  const top = ctx.createLinearGradient(0, -height - depth, 0, -height + depth);
+  top.addColorStop(0, ship.team === 0 ? "#7699aa" : "#b66c76");
+  top.addColorStop(1, ship.team === 0 ? "#29465a" : "#632733");
+  ctx.fillStyle = top;
+  ctx.strokeStyle = ship.team === 0 ? "#63879c" : "#a35c69";
   ctx.beginPath();
   ctx.ellipse(0, -height, radius, depth, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -126,7 +130,6 @@ export function renderTurret(
           ship,
           turret,
           primaryColor,
-          true,
         );
         sprite = canvas;
         const oldest = lightTurretSprites.keys().next().value;
@@ -143,7 +146,7 @@ export function renderTurret(
     }
   }
 
-  drawTurretBody(ctx, ship, turret, primaryColor, lightShip);
+  drawTurretBody(ctx, ship, turret, primaryColor);
   ctx.restore();
 }
 
@@ -152,7 +155,6 @@ function drawTurretBody(
   ship: ShipState,
   turret: TurretMountState,
   primaryColor: string,
-  elevated: boolean,
 ): void {
   const r = turret.baseRadius ?? 4;
   const length = turret.barrelLength ?? 10;
@@ -180,13 +182,14 @@ function drawTurretBody(
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      if (elevated) drawBarrelJoint(ctx, r, recess, metal);
+      drawCupolaBevel(ctx, ship, r, length);
       for (const side of [-1, 1]) {
         const y = side * r * (flak ? 0.5 : 0.38);
+        drawBarrelJoint(ctx, r, recess, metal, y);
         ctx.strokeStyle = metal;
         ctx.lineWidth = Math.max(0.7, r * (flak ? 0.5 : 0.3));
         ctx.beginPath();
-        ctx.moveTo(0, y);
+        ctx.moveTo(r * 0.55, y);
         ctx.lineTo(length, y);
         ctx.stroke();
         ctx.fillStyle = recess;
@@ -200,6 +203,7 @@ function drawTurretBody(
           ctx.lineTo(length - brake * 0.3, y + brake * 0.35);
           ctx.stroke();
         }
+        drawMuzzle(ctx, length, y, r, brake * 0.4, recess, metal);
       }
       if (!flak) {
         ctx.fillStyle = lens;
@@ -215,7 +219,8 @@ function drawTurretBody(
       ctx.arc(0, 0, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      if (elevated) drawBarrelJoint(ctx, r, recess, metal);
+      drawCupolaBevel(ctx, ship, r, length);
+      drawBarrelJoint(ctx, r, recess, metal);
       if (heavy) {
         ctx.strokeStyle = metal;
         ctx.lineWidth = 0.7;
@@ -230,13 +235,14 @@ function drawTurretBody(
       }
       const width = r * (heavy ? 0.65 : 0.3);
       ctx.fillStyle = recess;
-      ctx.fillRect(0, -width / 2, length, width);
+      ctx.fillRect(r * 0.55, -width / 2, length - r * 0.55, width);
       ctx.strokeStyle = metal;
-      ctx.strokeRect(0, -width / 2, length, width);
+      ctx.strokeRect(r * 0.55, -width / 2, length - r * 0.55, width);
       ctx.fillStyle = lens;
       ctx.beginPath();
       ctx.arc(length, 0, r * (heavy ? 0.3 : 0.4), 0, Math.PI * 2);
       ctx.fill();
+      drawMuzzle(ctx, length, 0, r, width * 0.5, recess, metal);
       break;
     }
     case "railgun": {
@@ -252,6 +258,7 @@ function drawTurretBody(
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      drawCupolaBevel(ctx, ship, r, length);
       for (const side of [-1, 1]) {
         ctx.fillStyle = recess;
         ctx.fillRect(-r * 0.85, side * r * 0.65 - r * 0.12, r * 1.25, r * 0.24);
@@ -264,10 +271,11 @@ function drawTurretBody(
           ctx.stroke();
         }
         const y = side * r * 0.35;
+        drawBarrelJoint(ctx, r, recess, metal, y);
         ctx.strokeStyle = metal;
         ctx.lineWidth = Math.max(1, r * 0.22);
         ctx.beginPath();
-        ctx.moveTo(0, y);
+        ctx.moveTo(r * 0.55, y);
         ctx.lineTo(length, y);
         ctx.stroke();
         ctx.strokeStyle = primaryColor;
@@ -285,6 +293,7 @@ function drawTurretBody(
         ctx.moveTo(length - r * 0.25, y - r * 0.14);
         ctx.lineTo(length - r * 0.25, y + r * 0.14);
         ctx.stroke();
+        drawMuzzle(ctx, length, y, r, r * 0.19, recess, metal);
       }
       break;
     }
@@ -300,6 +309,7 @@ function drawTurretBody(
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      drawCupolaBevel(ctx, ship, r, length);
       ctx.strokeStyle = metal;
       ctx.lineWidth = Math.max(0.7, r * (heavy ? 0.22 : 0.16));
       for (const side of [-1, 1]) {
@@ -316,6 +326,8 @@ function drawTurretBody(
         ctx.fillStyle = recess;
         ctx.fillRect(length * 0.75, -r * 0.3, length * 0.25, r * 0.6);
       }
+      for (const y of heavy ? [-r * 0.35, r * 0.35] : [0])
+        drawMuzzle(ctx, length, y, r, r * (heavy ? 0.18 : 0.3), recess, metal);
       break;
     }
     case "plasma": {
@@ -323,33 +335,44 @@ function drawTurretBody(
       ctx.arc(0, 0, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      if (elevated) drawBarrelJoint(ctx, r, recess, metal);
+      drawCupolaBevel(ctx, ship, r, length);
+      drawBarrelJoint(ctx, r, recess, metal);
       ctx.strokeStyle = metal;
       ctx.lineWidth = r * 0.65;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
+      ctx.moveTo(r * 0.55, 0);
       ctx.lineTo(length, 0);
       ctx.stroke();
       ctx.fillStyle = lens;
       ctx.beginPath();
       ctx.arc(length, 0, r * 0.3, 0, Math.PI * 2);
       ctx.fill();
+      drawMuzzle(ctx, length, 0, r, r * 0.3, recess, metal);
       break;
     }
   }
-  if (elevated) {
-    ctx.strokeStyle = ship.team === 0 ? "rgba(224, 242, 254, 0.85)" : "rgba(254, 205, 211, 0.85)";
-    ctx.lineWidth = Math.max(0.35, r * 0.16);
-    ctx.beginPath();
-    if (turret.weapon.weaponType === "missile") {
-      ctx.moveTo(-r * 0.85, -r * 0.73);
-      ctx.lineTo(length * 0.7, -r * 0.73);
-      ctx.lineTo(length * 0.92, -r * 0.48);
-    } else {
-      ctx.arc(0, 0, r * 0.8, Math.PI * 1.12, Math.PI * 1.73);
-    }
-    ctx.stroke();
-  }
+}
+
+/** Shade the existing housing path before adding barrels and fittings. */
+function drawCupolaBevel(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  r: number,
+  length: number,
+): void {
+  ctx.save();
+  ctx.clip();
+  const bevel = ctx.createLinearGradient(0, -r, 0, r);
+  bevel.addColorStop(0, ship.team === 0 ? "rgba(224, 242, 254, 0.75)" : "rgba(255, 205, 211, 0.7)");
+  bevel.addColorStop(
+    0.2,
+    ship.team === 0 ? "rgba(125, 180, 205, 0.38)" : "rgba(210, 110, 120, 0.35)",
+  );
+  bevel.addColorStop(0.5, "rgba(0, 0, 0, 0)");
+  bevel.addColorStop(1, "rgba(0, 0, 0, 0.65)");
+  ctx.fillStyle = bevel;
+  ctx.fillRect(-r * 1.3, -r * 1.2, length + r * 2.6, r * 2.4);
+  ctx.restore();
 }
 
 function drawBarrelJoint(
@@ -357,12 +380,31 @@ function drawBarrelJoint(
   r: number,
   recess: string,
   metal: string,
+  y = 0,
 ): void {
   ctx.fillStyle = recess;
   ctx.strokeStyle = metal;
   ctx.lineWidth = Math.max(0.35, r * 0.12);
   ctx.beginPath();
-  ctx.ellipse(r * 0.38, 0, r * 0.38, r * 0.55, 0, 0, Math.PI * 2);
+  ctx.ellipse(r * 0.55, y, r * 0.3, r * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawMuzzle(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  radius: number,
+  recess: string,
+  metal: string,
+): void {
+  ctx.fillStyle = recess;
+  ctx.strokeStyle = metal;
+  ctx.lineWidth = Math.max(0.3, r * 0.1);
+  ctx.beginPath();
+  ctx.ellipse(x, y, r * 0.17, radius, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 }

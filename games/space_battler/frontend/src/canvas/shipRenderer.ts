@@ -4,6 +4,7 @@ import { rotatePoint } from "../engine/math2d";
 import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
+import { drawHullArmor } from "./hullArmor";
 import {
   drawLightHullExtrusion,
   drawLightHullKeel,
@@ -66,6 +67,7 @@ function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState): boolean
             true,
             resolution / cameraScale,
           );
+        drawHullArmor(hullContext, snapshot);
       },
     );
     const keel = isLightHull(snapshot)
@@ -219,6 +221,7 @@ export function renderShipPreview(ctx: CanvasRenderingContext2D, ship: ShipState
     drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
   if (isBlue) drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
   else drawAlienHull(ctx, ship, "#f87171", "#450a0a", "#dc2626", time);
+  drawHullArmor(ctx, ship);
   ctx.restore();
   for (const turret of ship.turrets)
     renderTurret(ctx, ship, turret, isBlue ? "#38bdf8" : "#f87171");
@@ -307,6 +310,7 @@ export function renderShip(
       accentColor,
       ship.hullClass === "tender" ? time : undefined,
     );
+    drawHullArmor(ctx, ship);
   } else {
     if (isLightHull(ship))
       drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
@@ -318,6 +322,7 @@ export function renderShip(
       accentColor,
       ship.hullClass === "tender" ? time : undefined,
     );
+    drawHullArmor(ctx, ship);
   }
 
   drawHullDamage(ctx, ship, decals);
@@ -786,6 +791,28 @@ function drawLightHullDepth(ctx: CanvasRenderingContext2D, ship: ShipState): voi
   }
 }
 
+function drawPreviewDeckLight(ctx: CanvasRenderingContext2D, ship: ShipState, time: number): void {
+  const s = ship.size;
+  ctx.save();
+  const light = ctx.createLinearGradient(-s, -s * 0.6, s, s * 0.6);
+  light.addColorStop(0, "rgba(186, 230, 253, 0.25)");
+  light.addColorStop(0.45, "rgba(56, 189, 248, 0.06)");
+  light.addColorStop(1, "rgba(2, 6, 23, 0.45)");
+  ctx.fillStyle = light;
+  ctx.fillRect(-s * 1.3, -s, s * 2.6, s * 2);
+  ctx.strokeStyle = `rgba(186, 230, 253, ${0.2 + 0.12 * Math.sin(time * 1.5)})`;
+  ctx.lineWidth = Math.max(0.6, s * 0.018);
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.8, side * s * 0.31);
+    ctx.lineTo(-s * 0.4, side * s * 0.26);
+    ctx.lineTo(s * 0.35, side * s * 0.22);
+    ctx.lineTo(s * 0.85, 0);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawTerranHull(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
@@ -866,31 +893,10 @@ function drawTerranHull(
     return;
   }
 
-  if (previewTime !== undefined) {
-    ctx.save();
-    ctx.clip();
-    const light = ctx.createLinearGradient(-s, -s * 0.6, s, s * 0.6);
-    light.addColorStop(0, "rgba(186, 230, 253, 0.25)");
-    light.addColorStop(0.45, "rgba(56, 189, 248, 0.06)");
-    light.addColorStop(1, "rgba(2, 6, 23, 0.45)");
-    ctx.fillStyle = light;
-    ctx.fillRect(-s * 1.3, -s, s * 2.6, s * 2);
-    ctx.strokeStyle = `rgba(186, 230, 253, ${0.2 + 0.12 * Math.sin(previewTime * 1.5)})`;
-    ctx.lineWidth = Math.max(0.6, s * 0.018);
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(-s * 0.8, side * s * 0.31);
-      ctx.lineTo(-s * 0.4, side * s * 0.26);
-      ctx.lineTo(s * 0.35, side * s * 0.22);
-      ctx.lineTo(s * 0.85, 0);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
   if (ship.hullClass === "cruiser") {
     ctx.save();
     ctx.clip();
+    if (previewTime !== undefined) drawPreviewDeckLight(ctx, ship, previewTime);
     drawTerranCruiserDetails(ctx, ship, accentColor);
     ctx.restore();
     return;
@@ -899,6 +905,7 @@ function drawTerranHull(
   if (ship.hullClass === "battleship") {
     ctx.save();
     ctx.clip();
+    if (previewTime !== undefined) drawPreviewDeckLight(ctx, ship, previewTime);
     ctx.fillStyle = "#0c4a6e";
     ctx.fillRect(-s * 1.18, -s * 0.35, s * 0.32, s * 0.32);
     ctx.fillRect(-s * 1.18, s * 0.03, s * 0.32, s * 0.32);

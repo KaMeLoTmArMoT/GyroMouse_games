@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { renderShipPreview } from "../canvas/shipRenderer";
 import { buildFleetFromSlots, GROUP_ANCHORS } from "../engine/fleetBuilder";
-import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { HullClass } from "../types/combat";
 
 export function useDelayedPreview<T>(delay: number) {
@@ -39,9 +38,9 @@ export function ShipPreview({ hull, team }: { hull: HullClass; team: 0 | 1 }) {
     const ctx = element?.getContext("2d");
     if (!element || !ctx) return;
     const pixelRatio = window.devicePixelRatio || 1;
-    element.width = Math.round(240 * pixelRatio);
-    element.height = Math.round(144 * pixelRatio);
-    ctx.setTransform(element.width / 240, 0, 0, element.height / 144, 0, 0);
+    element.width = Math.round(280 * pixelRatio);
+    element.height = Math.round(168 * pixelRatio);
+    ctx.setTransform(element.width / 280, 0, 0, element.height / 168, 0, 0);
     ctx.imageSmoothingQuality = "high";
     const ship = buildFleetFromSlots(
       [{ id: "preview", hullClass: hull, groupId: 1 }],
@@ -52,16 +51,16 @@ export function ShipPreview({ hull, team }: { hull: HullClass; team: 0 | 1 }) {
     ship.velocity = [ship.maxSpeed * 0.65, 0];
     let frame: number;
     const draw = (time: number) => {
-      ctx.clearRect(0, 0, 240, 144);
+      ctx.clearRect(0, 0, 280, 168);
       ctx.save();
-      const halo = ctx.createRadialGradient(120, 72, 4, 120, 72, 100);
+      const halo = ctx.createRadialGradient(140, 84, 4, 140, 84, 116);
       halo.addColorStop(0, team === 1 ? "rgba(220, 38, 38, 0.18)" : "rgba(8, 145, 178, 0.18)");
       halo.addColorStop(1, team === 1 ? "rgba(220, 38, 38, 0)" : "rgba(8, 145, 178, 0)");
       ctx.fillStyle = halo;
-      ctx.fillRect(0, 0, 240, 144);
-      ctx.translate(120, 68);
+      ctx.fillRect(0, 0, 280, 168);
+      ctx.translate(140, 79);
       // Orthographic projection at 30° above the deck, with a rotating three-quarter view.
-      ctx.scale(50 / ship.size, (50 * Math.sin(Math.PI / 6)) / ship.size);
+      ctx.scale(58 / ship.size, (58 * Math.sin(Math.PI / 6)) / ship.size);
       ship.heading = Math.PI / 4 + time / 5000;
       renderShipPreview(ctx, ship, time / 1000);
       ctx.restore();
@@ -73,21 +72,15 @@ export function ShipPreview({ hull, team }: { hull: HullClass; team: 0 | 1 }) {
 
   return (
     <div
-      className={`absolute z-20 top-2 right-2 w-56 pointer-events-none rounded-lg border bg-zinc-950/95 shadow-xl text-center ${team === 1 ? "border-red-500/50 shadow-red-950/40" : "border-cyan-500/50 shadow-cyan-950/40"}`}
+      className={`absolute z-20 top-2 right-2 w-72 pointer-events-none rounded-lg border bg-zinc-950/95 shadow-xl ${team === 1 ? "border-red-500/50 shadow-red-950/40" : "border-cyan-500/50 shadow-cyan-950/40"}`}
     >
       <canvas
         ref={canvas}
-        width={240}
-        height={144}
-        className="w-48 h-auto mx-auto"
+        width={280}
+        height={168}
+        className="w-full h-auto rounded-lg"
         aria-hidden="true"
       />
-      <div
-        className={`text-[11px] font-mono pb-2 ${team === 1 ? "text-red-200" : "text-cyan-200"}`}
-      >
-        SIZE {HULL_PROFILES[hull].size}u
-      </div>
-      <p className="px-2 pb-2 text-xs text-zinc-300">{HULL_PROFILES[hull].desc}</p>
     </div>
   );
 }
