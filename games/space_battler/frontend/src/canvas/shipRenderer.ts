@@ -19,6 +19,7 @@ import {
   drawPreviewTerrace,
   previewBridge,
   previewDepthFactor,
+  previewKeelHeight,
   previewTerraceHeight,
 } from "./previewDepth";
 import { ShipSpriteCache } from "./shipSpriteCache";
@@ -28,10 +29,15 @@ import { renderTurret } from "./turretRenderer";
 // Rasterize at 3 pixels/world unit, above the battlefield's maximum 2.5x zoom.
 const hullSprites = new Map<string, { deck: ShipSpriteCache; keel?: ShipSpriteCache }>();
 
-function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState): boolean {
+function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState, withKeel = true): boolean {
   if (typeof OffscreenCanvas === "undefined") return false;
   const transform = ctx.getTransform();
-  const cameraScale = Number(Math.hypot(transform.a, transform.b).toPrecision(6));
+  // The largest singular value is independent of ship heading under pitch.
+  const sum = transform.a ** 2 + transform.b ** 2 + transform.c ** 2 + transform.d ** 2;
+  const determinant = transform.a * transform.d - transform.b * transform.c;
+  const cameraScale = Number(
+    Math.sqrt((sum + Math.sqrt(Math.max(0, sum ** 2 - 4 * determinant ** 2))) / 2).toPrecision(6),
+  );
   const resolution = Math.max(3, 2 ** Math.ceil(Math.log2(cameraScale)));
   const key = JSON.stringify([
     ship.hullClass,
@@ -98,7 +104,7 @@ function drawCachedHull(ctx: CanvasRenderingContext2D, ship: ShipState): boolean
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  const keel = sprites.keel?.get(ship.hullClass, ship.team);
+  const keel = withKeel ? sprites.keel?.get(ship.hullClass, ship.team) : null;
   if (keel) {
     const [dx, dy] = rotatePoint([0, ship.size * 0.24], -ship.heading);
     // Sweep a cached solid profile, keeping the projected keel below the turning deck.
@@ -219,16 +225,31 @@ export function renderShipPreview(
   ship: ShipState,
   time = 0,
   elevation = Math.PI / 6,
+  battlefield = false,
 ): void {
   const isBlue = ship.team === 0;
   const depth = previewDepthFactor(elevation);
+  const transform = battlefield ? ctx.getTransform() : null;
+  const projectedKeel = transform
+    ? previewKeelHeight(ship) * Math.cos(elevation) * Math.hypot(transform.a, transform.b)
+    : 0;
   ctx.save();
   ctx.rotate(ship.heading);
   drawEngineGlow(ctx, ship);
-  drawPreviewKeel(ctx, ship, depth);
-  if (isBlue) drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
-  else drawAlienHull(ctx, ship, "#f87171", "#450a0a", "#dc2626", time);
-  drawHullArmor(ctx, ship);
+  drawPreviewKeel(
+    ctx,
+    ship,
+    depth,
+    battlefield ? Math.max(4, Math.min(24, Math.ceil(projectedKeel * 2))) : 24,
+  );
+  if (battlefield && drawCachedHull(ctx, ship, false)) {
+    if (ship.hullClass === "tender") drawTenderLight(ctx, ship, time);
+    if (ship.hullClass === "carrier") drawCarrierRecessLights(ctx, ship, time);
+  } else {
+    if (isBlue) drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
+    else drawAlienHull(ctx, ship, "#f87171", "#450a0a", "#dc2626", time);
+    drawHullArmor(ctx, ship);
+  }
   ctx.restore();
   const sin = Math.sin(ship.heading);
   const cos = Math.cos(ship.heading);
@@ -346,7 +367,7 @@ export function renderShip(
 
   // Tilted hulls use the inspector's camera-space depth and painter ordering.
   if (elevation < (89.5 * Math.PI) / 180) {
-    renderShipPreview(ctx, ship, time, elevation);
+    renderShipPreview(ctx, ship, time, elevation, true);
     ctx.save();
     ctx.rotate(ship.heading);
     if (hasFighterHazard(ship)) {

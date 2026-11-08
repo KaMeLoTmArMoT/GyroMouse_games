@@ -13,16 +13,32 @@ export class PerformanceSamples {
   realTimeFactor: number | null = null;
   private rtfStart: { wallMs: number; simTime: number } | null = null;
   private graphElapsed = 0;
+  private graphFrameCount = 0;
 
   addFrame = (duration: number) => {
+    if (!Number.isFinite(duration) || duration <= 0) return;
     this.frames.push(duration);
     if (this.frames.length > HISTORY_SIZE) this.frames.shift();
-    this.graphElapsed += duration;
-    const count = Math.floor(this.graphElapsed / GRAPH_SAMPLE_MS);
-    this.graphElapsed %= GRAPH_SAMPLE_MS;
-    for (let i = 0; i < Math.min(count, HISTORY_SIZE); i++) this.graphFrames.push(duration);
-    if (this.graphFrames.length > HISTORY_SIZE) {
-      this.graphFrames.splice(0, this.graphFrames.length - HISTORY_SIZE);
+    let remaining = duration;
+    while (remaining > 0) {
+      const portion = Math.min(remaining, GRAPH_SAMPLE_MS - this.graphElapsed);
+      this.graphElapsed += portion;
+      this.graphFrameCount += portion / duration;
+      remaining -= portion;
+      if (this.graphElapsed < GRAPH_SAMPLE_MS - 1e-9) break;
+      // Integrate frame intervals over each time window, avoiding phase aliasing
+      // while preserving the duration and magnitude of long stalls.
+      this.graphFrames.push(this.graphElapsed / this.graphFrameCount);
+      this.graphElapsed = 0;
+      this.graphFrameCount = 0;
+      const fullWindows = Math.floor(remaining / GRAPH_SAMPLE_MS);
+      remaining -= fullWindows * GRAPH_SAMPLE_MS;
+      for (let i = 0; i < Math.min(fullWindows, HISTORY_SIZE); i++) {
+        this.graphFrames.push(duration);
+      }
+      if (this.graphFrames.length > HISTORY_SIZE) {
+        this.graphFrames.splice(0, this.graphFrames.length - HISTORY_SIZE);
+      }
     }
   };
 
@@ -118,7 +134,7 @@ export function PerformanceHud({ samples, speed }: { samples: PerformanceSamples
     });
   }, [snapshot.graphFrames]);
 
-  const frame = snapshot.frames.at(-1);
+  const frame = snapshot.graphFrames.at(-1);
   const sorted = [...snapshot.frames].sort((a, b) => b - a);
   const step = snapshot.steps.length
     ? (snapshot.steps.reduce((sum, value) => sum + value, 0) * 1000) / snapshot.steps.length

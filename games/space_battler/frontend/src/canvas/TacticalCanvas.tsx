@@ -175,7 +175,7 @@ export function TacticalCanvas({
     sim.onVictory = (winnerTeam) => spaceAudio.playVictory(winnerTeam);
 
     let animId: number;
-    let lastTime = performance.now();
+    let lastTime: number | null = null;
     let focused = document.hasFocus();
     const handleBlur = () => {
       focused = false;
@@ -183,13 +183,13 @@ export function TacticalCanvas({
     };
     const handleFocus = () => {
       focused = true;
-      lastTime = performance.now();
+      lastTime = null;
       performanceSamples?.resetSimulationClock();
     };
     const handleVisibilityChange = () => {
-      lastTime = performance.now();
+      lastTime = null;
       performanceSamples?.resetSimulationClock();
-      if (document.hidden) presenter.frame(lastTime, 0, 0);
+      if (document.hidden) presenter.frame(performance.now(), 0, 0);
     };
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", handleFocus);
@@ -197,7 +197,7 @@ export function TacticalCanvas({
 
     const renderLoop = (now: number) => {
       const renderStart = performance.now();
-      const rawDt = (now - lastTime) / 1000;
+      const rawDt = lastTime === null ? 0 : (now - lastTime) / 1000;
       lastTime = now;
       const dt = Math.max(0, Math.min(rawDt, 0.033));
       if (performanceSamples && focused && !document.hidden && rawDt > 0) {
@@ -288,7 +288,7 @@ export function TacticalCanvas({
           ctx.scale(camera.zoom, camera.zoom * verticalScale);
           const viewport = worldViewport(canvas.width, canvas.height / verticalScale, camera);
 
-          drawTacticalGrid(ctx, sim.timeElapsed);
+          drawTacticalGrid(ctx, sim.timeElapsed, camera.pitchDeg);
           renderMapObstacles(ctx, sim.mapObstacles, viewport);
 
           const selectedTender = sim.ships.find(
@@ -916,9 +916,11 @@ function drawRadiationInterference(
   ctx.restore();
 }
 
-function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number): void {
+function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number, pitchDeg: number): void {
   const gridSize = 100;
   const radius = ARENA_RADIUS;
+  const tilt = Math.cos((pitchDeg * Math.PI) / 180);
+  const verticalScale = pitchVerticalScale(pitchDeg);
 
   ctx.save();
 
@@ -926,7 +928,15 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number): void {
   ctx.beginPath();
   ctx.arc(0, 0, radius, 0, Math.PI * 2);
   ctx.clip();
-  ctx.strokeStyle = "rgba(30, 41, 59, 0.4)";
+  if (tilt > 0.01) {
+    const fade = ctx.createLinearGradient(0, -radius, 0, radius);
+    fade.addColorStop(0, "rgba(30, 56, 75, 0.08)");
+    fade.addColorStop(0.55, "rgba(30, 56, 75, 0.2)");
+    fade.addColorStop(1, "rgba(30, 56, 75, 0.32)");
+    ctx.strokeStyle = fade;
+  } else {
+    ctx.strokeStyle = "rgba(30, 41, 59, 0.4)";
+  }
   ctx.lineWidth = 1;
 
   ctx.beginPath();
@@ -942,11 +952,24 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number): void {
   ctx.restore();
 
   const shimmer = 0.2 + 0.05 * Math.sin(time * 0.7);
-  ctx.strokeStyle = `rgba(103, 232, 249, ${shimmer})`;
+  ctx.strokeStyle = `rgba(103, 232, 249, ${shimmer * (1 - tilt * 0.45)})`;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(0, 0, radius, 0, Math.PI * 2);
   ctx.stroke();
+  if (tilt > 0.01) {
+    // A faint raised rear arc and uprights give the shield a volume, while the
+    // original ground-plane boundary remains in its authoritative position.
+    const height = (Math.min(radius * 0.08, 180) * tilt) / verticalScale;
+    ctx.strokeStyle = `rgba(103, 232, 249, ${0.12 * tilt})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-radius, 0);
+    ctx.lineTo(-radius, -height);
+    ctx.ellipse(0, -height, radius, radius, 0, Math.PI, Math.PI * 2);
+    ctx.lineTo(radius, 0);
+    ctx.stroke();
+  }
   ctx.strokeStyle = "rgba(251, 191, 36, 0.2)";
   ctx.lineWidth = 1;
   ctx.setLineDash([12, 10]);
@@ -960,15 +983,22 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number): void {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const shieldLabel = "CONTAINMENT SHIELD BOUNDARY • 100% ATTENUATION";
-  ctx.fillText(shieldLabel, 0, -radius + 18);
-  ctx.fillText(shieldLabel, 0, radius - 18);
+  const label = (text: string, y: number) => {
+    ctx.save();
+    ctx.translate(0, y);
+    ctx.scale(1, 1 / verticalScale);
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  };
+  label(shieldLabel, -radius + 18 / verticalScale);
+  label(shieldLabel, radius - 18 / verticalScale);
   ctx.fillStyle = "rgba(251, 191, 36, 0.55)";
   const bufferLabel = "IONIZING BUFFER ZONE • PARTIAL DAMPENING";
   const bufferCenter = (radius + ARENA_HARD_PULL_RADIUS) / 2;
-  ctx.fillText(bufferLabel, 0, -bufferCenter);
-  ctx.fillText(bufferLabel, 0, bufferCenter);
-  ctx.fillText("☢ DEEP COSMIC RADIATION HAZARD", 0, -ARENA_HARD_PULL_RADIUS - 20);
-  ctx.fillText("☢ DEEP COSMIC RADIATION HAZARD", 0, ARENA_HARD_PULL_RADIUS + 20);
+  label(bufferLabel, -bufferCenter);
+  label(bufferLabel, bufferCenter);
+  label("☢ DEEP COSMIC RADIATION HAZARD", -ARENA_HARD_PULL_RADIUS - 20 / verticalScale);
+  label("☢ DEEP COSMIC RADIATION HAZARD", ARENA_HARD_PULL_RADIUS + 20 / verticalScale);
 
   ctx.restore();
 }

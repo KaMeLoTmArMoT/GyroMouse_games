@@ -133,6 +133,7 @@ export function drawPreviewKeel(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
   depth: number,
+  slices = 24,
 ): void {
   const s = ship.size;
   const [dx, dy] = rotatePoint([0, previewKeelHeight(ship) * depth], -ship.heading);
@@ -140,8 +141,8 @@ export function drawPreviewKeel(
   const alien = ship.team !== 0;
   const light = isPreviewLightHull(ship);
   ctx.save();
-  for (let i = 24; i >= 0; i--) {
-    const fraction = i / 24;
+  for (let i = slices; i >= 0; i--) {
+    const fraction = i / slices;
     // The widest belt is one third of the way down from the dorsal deck.
     const scale = fraction <= 1 / 3 ? 1 + fraction * 0.09 : 1.03 - (fraction - 1 / 3) * 0.285;
     ctx.save();
@@ -165,7 +166,7 @@ export function drawPreviewKeel(
     else if (isHeavyHull(ship)) traceHeavyHull(ctx, ship);
     else traceCapitalKeel(ctx, ship);
     ctx.fill();
-    if (i === 8) {
+    if (i === Math.round(slices / 3)) {
       ctx.strokeStyle = alien ? "#c16773" : "#81adbf";
       ctx.lineWidth = Math.max(0.5, s * 0.012);
       ctx.stroke();
