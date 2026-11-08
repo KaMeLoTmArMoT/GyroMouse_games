@@ -104,7 +104,7 @@ export function ShipInspectorModal({
       ctx.globalAlpha = 1;
 
       ship.heading = current.yaw;
-      renderShipPreview(ctx, ship, time / 1000);
+      renderShipPreview(ctx, ship, time / 1000, elevation);
       ctx.restore();
       frame = requestAnimationFrame(draw);
     };
@@ -176,7 +176,7 @@ export function ShipInspectorModal({
           onPointerMove={(event) => {
             const current = view.current;
             if (current.pointer !== event.pointerId) return;
-            current.yaw += (event.clientX - current.x) * 0.01;
+            current.yaw -= (event.clientX - current.x) * 0.01;
             current.pitch = Math.max(
               -MAX_PITCH,
               Math.min(MAX_PITCH, current.pitch - (event.clientY - current.y) * 0.01),

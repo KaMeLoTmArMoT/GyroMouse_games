@@ -33,28 +33,22 @@ export function drawHullArmor(ctx: CanvasRenderingContext2D, ship: ShipState): v
   ctx.closePath();
   ctx.fill();
 
-  // The fairings widen into the deck and taper toward each authoritative mount.
+  // Flush collars remain concentric with the authoritative mounts as the guns turn.
   for (const turret of ship.turrets) {
     const [x, y] = turret.offset;
-    const r = turret.baseRadius ?? 4;
-    const ramp = ctx.createLinearGradient(x, y - r * 1.45, x, y + r * 1.45);
-    ramp.addColorStop(0, alien ? "rgba(251, 146, 160, 0.12)" : "rgba(186, 230, 253, 0.15)");
-    ramp.addColorStop(0.35, alien ? "rgba(180, 75, 88, 0.75)" : "rgba(94, 140, 165, 0.75)");
-    ramp.addColorStop(0.65, alien ? "rgba(100, 35, 47, 0.8)" : "rgba(43, 72, 91, 0.8)");
-    ramp.addColorStop(1, "rgba(2, 6, 23, 0.35)");
-    ctx.fillStyle = ramp;
+    const r = (turret.baseRadius ?? 4) * 1.12;
+    ctx.fillStyle = alien ? "#4b1823" : "#1b3445";
     ctx.beginPath();
     if (alien) {
-      ctx.moveTo(x - r * 1.9, y);
-      ctx.bezierCurveTo(x - r * 1.45, y - r * 1.5, x + r * 1.1, y - r * 1.5, x + r * 1.6, y);
-      ctx.bezierCurveTo(x + r * 1.1, y + r * 1.5, x - r * 1.45, y + r * 1.5, x - r * 1.9, y);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
     } else {
-      ctx.moveTo(x - r * 2, y);
-      ctx.lineTo(x - r * 1.2, y - r * 1.4);
-      ctx.lineTo(x + r * 0.9, y - r * 1.25);
-      ctx.lineTo(x + r * 1.6, y);
-      ctx.lineTo(x + r * 0.9, y + r * 1.25);
-      ctx.lineTo(x - r * 1.2, y + r * 1.4);
+      for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI * (i + 0.5)) / 4;
+        const px = x + Math.cos(angle) * r;
+        const py = y + Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
     }
     ctx.closePath();
     ctx.fill();

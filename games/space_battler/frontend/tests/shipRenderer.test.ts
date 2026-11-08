@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { previewDepthFactor } from "../src/canvas/previewDepth";
 import { renderShip, renderShipPreview } from "../src/canvas/shipRenderer";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import type { ShipState } from "../src/types/combat";
@@ -125,7 +126,7 @@ describe("cached battlefield hulls", () => {
     const turretSprite = calls.get("drawImage")?.mock.calls[6]?.[0];
     expect(offscreens[2].calls.get("scale")).toHaveBeenCalledWith(4, 4);
     expect(offscreens[2].calls.get("ellipse")).toHaveBeenCalled();
-    expect(offscreens[2].calls.get("bezierCurveTo")).toHaveBeenCalled();
+    expect(offscreens[2].calls.get("arc")).toHaveBeenCalled();
     expect(offscreens.every(({ ctx: canvas }) => !("shadowBlur" in canvas))).toBe(true);
     const strokes = offscreens[3].calls.get("stroke")?.mock.calls.length;
     ship.turrets[0].currentLocalAngle = 0.8;
@@ -144,20 +145,33 @@ describe("cached battlefield hulls", () => {
     expect(calls.get("rotate")).toHaveBeenCalledWith(ship.heading + 0.8);
   });
 
-  it("keeps the preview keel below the deck as each light hull rotates", () => {
+  it("projects the preview keel vertically at every heading and elevation", () => {
     vi.stubGlobal("OffscreenCanvas", undefined);
     for (const team of [0, 1] as const) {
       for (const hullClass of ["strike_craft", "corvette", "missile_frigate"] as const) {
         const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
-        ship.heading = Math.PI / 2;
-        const { ctx, calls } = context();
-        renderShipPreview(ctx, ship, 0);
-        const keelTranslation = calls
-          .get("translate")
-          ?.mock.calls.find(
-            ([x, y]) => Math.abs(x - ship.size * 0.24) < 1e-10 && Math.abs(y) < 1e-10,
-          );
-        expect(keelTranslation).toBeDefined();
+        for (const heading of [0, Math.PI / 4, Math.PI / 2]) {
+          ship.heading = heading;
+          for (const elevation of [Math.PI / 36, Math.PI / 6, Math.PI / 2]) {
+            const { ctx, calls } = context();
+            renderShipPreview(ctx, ship, 0, elevation);
+            const length = ship.size * 0.3 * previewDepthFactor(elevation);
+            const x = Math.sin(heading) * length;
+            const y = Math.cos(heading) * length;
+            if (elevation === Math.PI / 2) {
+              expect(Math.abs(length)).toBeLessThan(1e-10);
+              continue;
+            }
+            expect(
+              calls.get("translate")?.mock.calls.some(([tx, ty]) => {
+                return Math.abs(tx - x) < 1e-10 && Math.abs(ty - y) < 1e-10;
+              }),
+            ).toBe(true);
+            expect(
+              (x * Math.sin(heading) + y * Math.cos(heading)) * Math.sin(elevation),
+            ).toBeCloseTo(ship.size * 0.3 * Math.cos(elevation));
+          }
+        }
       }
     }
   });

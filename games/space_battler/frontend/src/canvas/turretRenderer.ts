@@ -5,17 +5,19 @@ import { isLightHull } from "./lightHullDepth";
 const lightTurretSprites = new Map<string, OffscreenCanvas>();
 const barbetteSprites = new Map<string, OffscreenCanvas>();
 
-function drawBarbette(ctx: CanvasRenderingContext2D, ship: ShipState, r: number): void {
-  const height = r * 0.7;
+function drawBarbette(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  r: number,
+  height: number,
+): void {
   const radius = r * 1.05;
-  const foot = r * 1.55;
-  const depth = r * 0.72;
-  ctx.fillStyle = "rgba(2, 6, 23, 0.28)";
+  ctx.fillStyle = "rgba(2, 6, 23, 0.3)";
   ctx.beginPath();
-  ctx.ellipse(r * 0.15, r * 0.35, foot, depth * 1.15, 0, 0, Math.PI * 2);
+  ctx.arc(0, 0, r * 1.12, 0, Math.PI * 2);
   ctx.fill();
 
-  const flank = ctx.createLinearGradient(-foot, -height, foot, depth);
+  const flank = ctx.createLinearGradient(-radius, 0, radius, 0);
   flank.addColorStop(0, ship.team === 0 ? "#7099af" : "#bc7079");
   flank.addColorStop(0.5, ship.team === 0 ? "#36566b" : "#793642");
   flank.addColorStop(1, ship.team === 0 ? "#172c3c" : "#40121c");
@@ -24,26 +26,27 @@ function drawBarbette(ctx: CanvasRenderingContext2D, ship: ShipState, r: number)
   ctx.lineWidth = Math.max(0.4, r * 0.12);
   ctx.beginPath();
   ctx.moveTo(-radius, -height);
-  ctx.lineTo(-foot, 0);
-  ctx.bezierCurveTo(-foot, depth * 1.3, foot, depth * 1.3, foot, 0);
+  ctx.lineTo(-radius, 0);
+  ctx.ellipse(0, 0, radius, radius, 0, Math.PI, 0, true);
   ctx.lineTo(radius, -height);
+  ctx.ellipse(0, -height, radius, radius, 0, 0, Math.PI);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
 
-  const top = ctx.createLinearGradient(0, -height - depth, 0, -height + depth);
+  const top = ctx.createLinearGradient(0, -height - radius, 0, -height + radius);
   top.addColorStop(0, ship.team === 0 ? "#7699aa" : "#b66c76");
   top.addColorStop(1, ship.team === 0 ? "#29465a" : "#632733");
   ctx.fillStyle = top;
   ctx.strokeStyle = ship.team === 0 ? "#63879c" : "#a35c69";
   ctx.beginPath();
-  ctx.ellipse(0, -height, radius, depth, 0, 0, Math.PI * 2);
+  ctx.arc(0, -height, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   ctx.strokeStyle = ship.team === 0 ? "#e0f2fe" : "#ffe4e6";
   ctx.lineWidth = Math.max(0.4, r * 0.13);
   ctx.beginPath();
-  ctx.ellipse(0, -height, radius * 0.9, depth * 0.86, 0, Math.PI * 1.08, Math.PI * 1.86);
+  ctx.arc(0, -height, radius * 0.9, Math.PI * 1.08, Math.PI * 1.86);
   ctx.stroke();
 }
 
@@ -64,7 +67,7 @@ function renderBarbette(ctx: CanvasRenderingContext2D, ship: ShipState, r: numbe
       if (offscreen) {
         offscreen.translate(pixels / 2, pixels / 2);
         offscreen.scale(resolution, resolution);
-        drawBarbette(offscreen as unknown as CanvasRenderingContext2D, ship, r);
+        drawBarbette(offscreen as unknown as CanvasRenderingContext2D, ship, r, r * 0.7);
         sprite = canvas;
         const oldest = barbetteSprites.keys().next().value;
         if (barbetteSprites.size >= 64 && oldest !== undefined) barbetteSprites.delete(oldest);
@@ -77,7 +80,7 @@ function renderBarbette(ctx: CanvasRenderingContext2D, ship: ShipState, r: numbe
       return;
     }
   }
-  drawBarbette(ctx, ship, r);
+  drawBarbette(ctx, ship, r, r * 0.7);
 }
 
 export function renderTurret(
@@ -85,6 +88,7 @@ export function renderTurret(
   ship: ShipState,
   turret: TurretMountState,
   primaryColor: string,
+  previewDepth?: number,
 ): void {
   const [x, y] = rotatePoint(turret.offset, ship.heading);
   const r = turret.baseRadius ?? 4;
@@ -93,7 +97,14 @@ export function renderTurret(
 
   ctx.save();
   ctx.translate(x, y);
-  if (lightShip) {
+  if (previewDepth !== undefined) {
+    const collarHeight = r * 0.55 * previewDepth;
+    drawBarbette(ctx, ship, r, collarHeight);
+    ctx.translate(0, -collarHeight);
+    const cupolaHeight = r * 0.5 * previewDepth;
+    drawBarbette(ctx, ship, r * 0.85, cupolaHeight);
+    ctx.translate(0, -cupolaHeight);
+  } else if (lightShip) {
     renderBarbette(ctx, ship, r);
     ctx.translate(0, -r * 0.7);
   }

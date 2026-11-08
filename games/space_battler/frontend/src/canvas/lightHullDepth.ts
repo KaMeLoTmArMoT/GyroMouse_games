@@ -78,9 +78,11 @@ export function drawLightHullExtrusion(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
   offset: Vector2,
+  steps = 8,
 ): void {
   const [dx, dy] = offset;
   const length = Math.hypot(dx, dy);
+  if (length < 1e-10) return;
   const gx = (dx / length) * ship.size;
   const gy = (dy / length) * ship.size;
   const side = ctx.createLinearGradient(-gx, -gy, gx, gy);
@@ -90,12 +92,12 @@ export function drawLightHullExtrusion(
   ctx.save();
   ctx.fillStyle = side;
   // Successive overlapping profiles cover the area between the deck and keel.
-  for (let i = 8; i >= 0; i--) {
+  for (let i = steps; i >= 0; i--) {
     ctx.save();
-    ctx.translate((dx * i) / 8, (dy * i) / 8);
+    ctx.translate((dx * i) / steps, (dy * i) / steps);
     traceLightHull(ctx, ship);
     ctx.fill();
-    if (i === 8) {
+    if (i === steps) {
       ctx.strokeStyle = ship.team === 0 ? "#101e2c" : "#300a10";
       ctx.lineWidth = Math.max(0.6, ship.size * 0.025);
       ctx.stroke();

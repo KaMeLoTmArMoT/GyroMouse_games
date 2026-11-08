@@ -11,6 +11,11 @@ import {
   isLightHull,
   traceLightHull,
 } from "./lightHullDepth";
+import {
+  drawPreviewCapitalKeel,
+  drawPreviewSuperstructure,
+  previewDepthFactor,
+} from "./previewDepth";
 import { ShipSpriteCache } from "./shipSpriteCache";
 import { renderTurret } from "./turretRenderer";
 
@@ -204,27 +209,27 @@ function drawAnimatedHullDetails(ctx: CanvasRenderingContext2D, ship: ShipState)
 }
 
 /** Draw the same hull and hardpoints as the battlefield, without combat HUD overlays. */
-export function renderShipPreview(ctx: CanvasRenderingContext2D, ship: ShipState, time = 0): void {
+export function renderShipPreview(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  time = 0,
+  elevation = Math.PI / 6,
+): void {
   const isBlue = ship.team === 0;
-  if (!isLightHull(ship)) {
-    ctx.save();
-    ctx.translate(0, ship.size * 0.12);
-    ctx.rotate(ship.heading);
-    if (isBlue) drawTerranHull(ctx, ship, "#164e63", "#020617", "#082f49");
-    else drawAlienHull(ctx, ship, "#7f1d1d", "#260606", "#991b1b");
-    ctx.restore();
-  }
+  const depth = previewDepthFactor(elevation);
   ctx.save();
   ctx.rotate(ship.heading);
   drawEngineGlow(ctx, ship);
   if (isLightHull(ship))
-    drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
+    drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.3 * depth], -ship.heading), 24);
+  else drawPreviewCapitalKeel(ctx, ship, depth);
   if (isBlue) drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
   else drawAlienHull(ctx, ship, "#f87171", "#450a0a", "#dc2626", time);
   drawHullArmor(ctx, ship);
+  drawPreviewSuperstructure(ctx, ship, depth);
   ctx.restore();
   for (const turret of ship.turrets)
-    renderTurret(ctx, ship, turret, isBlue ? "#38bdf8" : "#f87171");
+    renderTurret(ctx, ship, turret, isBlue ? "#38bdf8" : "#f87171", depth);
 }
 
 export function renderShip(
