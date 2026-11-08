@@ -18,7 +18,7 @@ import {
   isCapitalShip,
   shieldEnvelopeRadius,
 } from "./shieldGeometry";
-import { havenHullClearance, sharesShieldHaven } from "./shieldHaven";
+import { sharesShieldHaven } from "./shieldHaven";
 import type { RetreatThresholds, SkirmishFlightDoctrine, StandoffSettings } from "./shipDoctrines";
 
 export interface FlightIntent {
@@ -53,70 +53,94 @@ export function clampLateralVelocity(
   );
 }
 
+// Scalar form of havenHullClearance's rotated elliptical support bound.
+function havenHullSupport(ship: ShipState, normalX: number, normalY: number): number {
+  if (!isCapitalShip(ship)) return ship.size;
+  const cos = Math.cos(-ship.heading);
+  const sin = Math.sin(-ship.heading);
+  const localX = normalX * cos - normalY * sin;
+  const localY = normalX * sin + normalY * cos;
+  return ship.size * Math.hypot(localX, localY * 0.75);
+}
+
 export function calculateSeparation(ship: ShipState, ships: ShipState[]): Vector2 {
-  let result: Vector2 = [0, 0];
-  const capital =
-    ship.hullClass === "dreadnought" ||
-    ship.hullClass === "battleship" ||
-    ship.hullClass === "carrier" ||
-    ship.hullClass === "cruiser";
+  let resultX = 0;
+  let resultY = 0;
+  const capital = isCapitalShip(ship);
+  const hullClass = ship.hullClass;
+  const size = ship.size;
+  const envelope = Math.max(size, shieldEnvelopeRadius(ship));
+  const radius = activeShieldRadius(ship);
+  const maxSpeed = ship.maxSpeed;
+  const x = ship.pos[0];
+  const y = ship.pos[1];
+  const vx = ship.velocity[0];
+  const vy = ship.velocity[1];
   const hasHeavyPeer =
     capital &&
     ships.some((peer) => peer.isAlive && peer.id !== ship.id && peer.hullClass !== "strike_craft");
   for (const peer of ships) {
     if (!peer.isAlive || peer.id === ship.id) continue;
     if (hasHeavyPeer && peer.hullClass === "strike_craft") continue;
-    const weight =
-      capital && ship.hullClass !== "cruiser" && peer.hullClass === "corvette" ? 0.05 : 1;
-    const dx = ship.pos[0] - peer.pos[0];
-    const dy = ship.pos[1] - peer.pos[1];
-    const closingBound =
-      Math.abs(ship.velocity[0] - peer.velocity[0]) + Math.abs(ship.velocity[1] - peer.velocity[1]);
+    const weight = capital && hullClass !== "cruiser" && peer.hullClass === "corvette" ? 0.05 : 1;
+    const dx = x - peer.pos[0];
+    const dy = y - peer.pos[1];
+    const dvx = vx - peer.velocity[0];
+    const dvy = vy - peer.velocity[1];
+    const closingBound = Math.abs(dvx) + Math.abs(dvy);
+    const capitalClearance = capitalSeparationDistance(ship, peer);
+    const escortClearance = escortCapitalStandoff(ship, peer);
     const clearanceBound = Math.max(
-      capitalSeparationDistance(ship, peer),
-      escortCapitalStandoff(ship, peer),
-      Math.max(ship.size, shieldEnvelopeRadius(ship)) +
-        Math.max(peer.size, shieldEnvelopeRadius(peer)) +
-        30,
+      capitalClearance,
+      escortClearance,
+      envelope + Math.max(peer.size, shieldEnvelopeRadius(peer)) + 30,
     );
     const marginBound =
       clearanceBound + (closingBound * closingBound) / 440 + closingBound * 0.15 + 90;
-    if (dx * dx + dy * dy >= marginBound * marginBound) continue;
-    const distance = vecDistance(ship.pos, peer.pos);
-    const away: Vector2 =
-      distance > 1e-6
-        ? vecScale(vecSub(ship.pos, peer.pos), 1 / distance)
-        : [0, ship.id < peer.id ? -1 : 1];
-    const closing = Math.max(0, -vecDot(vecSub(ship.velocity, peer.velocity), away));
+    const distanceSquared = dx * dx + dy * dy;
+    if (distanceSquared >= marginBound * marginBound) continue;
+    const distance = Math.sqrt(distanceSquared);
+    const inverseDistance = 1 / distance;
+    const awayX = distance > 1e-6 ? dx * inverseDistance : 0;
+    const awayY = distance > 1e-6 ? dy * inverseDistance : ship.id < peer.id ? -1 : 1;
+    const closing = Math.max(0, -(dvx * awayX + dvy * awayY));
     const wingmate =
-      ship.hullClass === "strike_craft" &&
-      peer.hullClass === "strike_craft" &&
-      ship.team === peer.team;
+      hullClass === "strike_craft" && peer.hullClass === "strike_craft" && ship.team === peer.team;
     const nested = sharesShieldHaven(ship, peer);
-    const escortStandoff = nested ? 0 : escortCapitalStandoff(ship, peer);
-    const clearance = nested
-      ? havenHullClearance(ship, peer)
-      : Math.max(
-          capitalSeparationDistance(ship, peer),
-          escortStandoff,
-          activeShieldRadius(ship) + activeShieldRadius(peer) + (wingmate ? 8 : 30),
-        );
+    const escortStandoff = nested ? 0 : escortClearance;
+    let clearance: number;
+    if (nested) {
+      // Haven support uses vecNormalize's division, not separation's reciprocal multiply.
+      const normalX = distance > 1e-6 ? dx / distance : awayX;
+      const normalY = distance > 1e-6 ? dy / distance : awayY;
+      clearance =
+        havenHullSupport(ship, normalX, normalY) + havenHullSupport(peer, normalX, normalY);
+    } else {
+      clearance = Math.max(
+        capitalClearance,
+        escortStandoff,
+        radius + activeShieldRadius(peer) + (wingmate ? 8 : 30),
+      );
+    }
     const margin = nested ? clearance : clearance + (closing * closing) / 440 + closing * 0.15;
     if (escortStandoff > 0) {
       // Start braking outside the buffer; full outward thrust at its edge prevents
       // station attraction or an attack orbit from settling inside physical clearance.
       const escortMargin = margin + 90;
-      if (distance < escortMargin)
-        result = vecAdd(
-          result,
-          vecScale(away, weight * ship.maxSpeed * 2 * Math.min(1, (escortMargin - distance) / 90)),
-        );
+      if (distance < escortMargin) {
+        const strength = weight * maxSpeed * 2 * Math.min(1, (escortMargin - distance) / 90);
+        resultX += awayX * strength;
+        resultY += awayY * strength;
+      }
       continue;
     }
-    if (distance < margin)
-      result = vecAdd(result, vecScale(away, weight * ship.maxSpeed * 2 * (1 - distance / margin)));
+    if (distance < margin) {
+      const strength = weight * maxSpeed * 2 * (1 - distance / margin);
+      resultX += awayX * strength;
+      resultY += awayY * strength;
+    }
   }
-  return result;
+  return [resultX, resultY];
 }
 
 function relativeVelocity(

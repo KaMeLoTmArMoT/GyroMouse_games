@@ -32,6 +32,11 @@ interface ProjectileContext {
 export class ProjectileEngine {
   projectiles: ProjectileState[] = [];
   private readonly context: ProjectileContext;
+  private readonly sweepShips: ShipState[] = [];
+  // Source-ordered old X/Y and full-tick displacement X/Y, reused between phases.
+  private shipSweeps = new Float64Array(0);
+  private readonly relativeStart: Vector2 = [0, 0];
+  private readonly relativeEnd: Vector2 = [0, 0];
 
   constructor(context: ProjectileContext) {
     this.context = context;
@@ -43,6 +48,22 @@ export class ProjectileEngine {
     previousPositions: ReadonlyMap<string, Vector2>,
     mapObstacles?: readonly MapObstacle[],
   ): void {
+    const shipCount = aliveShips.length;
+    if (this.shipSweeps.length < shipCount * 4)
+      this.shipSweeps = new Float64Array(Math.max(shipCount * 4, this.shipSweeps.length * 2));
+    const shipSweeps = this.shipSweeps;
+    const sweepShips = this.sweepShips;
+    sweepShips.length = shipCount;
+    for (let i = 0; i < shipCount; i++) {
+      const ship = aliveShips[i];
+      const old = previousPositions.get(ship.id) ?? ship.pos;
+      const offset = i * 4;
+      sweepShips[i] = ship;
+      shipSweeps[offset] = old[0];
+      shipSweeps[offset + 1] = old[1];
+      shipSweeps[offset + 2] = ship.pos[0] - old[0];
+      shipSweeps[offset + 3] = ship.pos[1] - old[1];
+    }
     const active: ProjectileState[] = [];
     const starts = new Map(this.projectiles.map((p) => [p.id, p.pos]));
     for (const p of this.projectiles) {
@@ -92,32 +113,45 @@ export class ProjectileEngine {
       const start = starts.get(p.id) ?? p.pos;
       const end = vecAdd(start, vecScale(p.velocity, step));
       const flak = p.weapon.flak;
+      const fraction = step / dt;
       let first = Infinity;
       let victim: ShipState | null = null;
+      let victimDistance = Infinity;
       let intercepted: ProjectileState | null = null;
       let blocked = false;
       // Rails share the first-hit sweep; they do not pierce subsequent targets.
-      for (const ship of aliveShips) {
+      for (let i = 0; i < shipCount; i++) {
+        const ship = sweepShips[i];
         if (!ship.isAlive || ship.team === p.ownerTeam) continue;
-        const old = previousPositions.get(ship.id) ?? ship.pos;
-        const finish = vecAdd(old, vecScale(vecSub(ship.pos, old), step / dt));
-        const t = sweptHit(
-          vecSub(start, old),
-          vecSub(end, finish),
-          activeShieldRadius(ship) + (flak?.triggerRadius ?? 0),
-        );
+        const offset = i * 4;
+        const r0x = start[0] - shipSweeps[offset];
+        const r0y = start[1] - shipSweeps[offset + 1];
+        const r1x = end[0] - (shipSweeps[offset] + shipSweeps[offset + 2] * fraction);
+        const r1y = end[1] - (shipSweeps[offset + 1] + shipSweeps[offset + 3] * fraction);
+        // Damage from earlier projectiles can change the shield envelope in this phase.
+        const radius = activeShieldRadius(ship) + (flak?.triggerRadius ?? 0);
+        if (
+          (r0x > radius && r1x > radius) ||
+          (r0x < -radius && r1x < -radius) ||
+          (r0y > radius && r1y > radius) ||
+          (r0y < -radius && r1y < -radius)
+        )
+          continue;
+        this.relativeStart[0] = r0x;
+        this.relativeStart[1] = r0y;
+        this.relativeEnd[0] = r1x;
+        this.relativeEnd[1] = r1y;
+        const t = sweptHit(this.relativeStart, this.relativeEnd, radius);
         if (t !== null) {
-          const distToShip = vecDistance(start, old);
+          const distToShip = Math.sqrt(r0x * r0x + r0y * r0y);
           const isBetter =
             t < first ||
             (t === first &&
-              (ship.id === p.targetId ||
-                (victim !== null &&
-                  distToShip <
-                    vecDistance(start, previousPositions.get(victim.id) ?? victim.pos))));
+              (ship.id === p.targetId || (victim !== null && distToShip < victimDistance)));
           if (isBetter) {
             first = t;
             victim = ship;
+            victimDistance = distToShip;
           }
         }
       }

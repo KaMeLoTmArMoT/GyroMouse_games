@@ -940,13 +940,11 @@ export function capitalIntent(
         };
       }
     }
+    const sep = calculateSeparation(ship, ships);
     const velocity = defensiveStandoff(
       ship,
       ships,
-      vecAdd(
-        vecAdd(intent.velocity, skirmishSpacing(ship, ships)),
-        calculateSeparation(ship, ships),
-      ),
+      vecAdd(vecAdd(intent.velocity, skirmishSpacing(ship, ships)), sep),
       Math.max(doctrine.desiredDistance, (gun?.weapon.range ?? 0) * 0.9),
     );
     const evasiveVelocity = OrdnanceAvoidanceBlock(
@@ -958,7 +956,6 @@ export function capitalIntent(
       velocity,
     );
     if (evasiveVelocity !== velocity) {
-      const sep = calculateSeparation(ship, ships);
       const combined = vecAdd(evasiveVelocity, sep);
       return {
         ...intent,
