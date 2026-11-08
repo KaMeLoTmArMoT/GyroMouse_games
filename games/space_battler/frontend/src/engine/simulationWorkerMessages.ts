@@ -9,6 +9,7 @@ import type {
 import type { BattleMapId } from "./battleMaps";
 import type { CrewVeterancy } from "./crewVeterancy";
 import type { FleetSlot } from "./fleetBuilder";
+import type { SimulationPresentationMetadata } from "./simulationPresentationMetadata";
 
 export interface SimulationWorkerConfig {
   selectedMap?: BattleMapId;
@@ -79,7 +80,15 @@ export type SimulationWorkerEvent = SimulationWorkerEventPayload & {
 
 export type SimulationWorkerResponse =
   | { type: "READY"; epoch: number }
-  | { type: "SNAPSHOT"; epoch: number; buffer: ArrayBuffer; byteLength: number }
+  | {
+      type: "SNAPSHOT";
+      epoch: number;
+      buffer: ArrayBuffer;
+      byteLength: number;
+      presentation?: SimulationPresentationMetadata;
+      stepDurationMs?: number;
+      sentAtMs?: number;
+    }
   | { type: "EVENTS"; epoch: number; events: SimulationWorkerEvent[] }
   | { type: "ACK"; epoch: number; requestId: number; tick: number }
   | { type: "ERROR"; epoch: number; requestId?: number; message: string }

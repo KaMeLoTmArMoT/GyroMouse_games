@@ -1,3 +1,4 @@
+import type { ProjectileState, ShipState } from "../types/combat";
 import { SimulationWorkerHost } from "./simulationWorkerHost";
 import type {
   SimulationWorkerCommand,
@@ -24,10 +25,13 @@ export class SimulationWorkerClient {
   // retain typed views across worker messages; copy long-lived React telemetry.
   latestSnapshot: RenderInterpolationState | null = null;
   previousSnapshot: RenderInterpolationState | null = null;
+  readonly shipDefinitions = new Map<string, ShipState>();
+  readonly projectileDefinitions = new Map<string, ProjectileState>();
   private worker: Worker | null = null;
   private localHost: SimulationWorkerHost | null = null;
   private buffers: ArrayBuffer[] = [];
   private events: SimulationWorkerEvent[] = [];
+  private transportSamples: Array<{ stepDurationMs: number; snapshotLatencyMs: number }> = [];
   private requestSequence = 0;
   private pending = new Map<
     number,
@@ -96,6 +100,12 @@ export class SimulationWorkerClient {
     return events;
   }
 
+  drainTransportSamples(): Array<{ stepDurationMs: number; snapshotLatencyMs: number }> {
+    const samples = this.transportSamples;
+    this.transportSamples = [];
+    return samples;
+  }
+
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
     if (this.status === "disposed" || this.status === "failed") return Promise.resolve();
@@ -153,11 +163,34 @@ export class SimulationWorkerClient {
             throw new RangeError("Incorrect simulation snapshot byte length");
           const state = new RenderInterpolationState();
           unpackSimulationSnapshot(message.buffer, state);
+          state.presentation = message.presentation ?? null;
+          for (const ship of state.presentation?.newShips ?? [])
+            this.shipDefinitions.set(ship.id, ship);
+          for (const projectile of state.presentation?.newProjectiles ?? [])
+            this.projectileDefinitions.set(projectile.id, projectile);
+          state.receivedAtMs = performance.now();
+          if (message.sentAtMs !== undefined) {
+            this.transportSamples.push({
+              stepDurationMs: message.stepDurationMs ?? 0,
+              snapshotLatencyMs: Math.max(
+                0,
+                performance.timeOrigin + state.receivedAtMs - message.sentAtMs,
+              ),
+            });
+            if (this.transportSamples.length > 160) this.transportSamples.shift();
+          }
           if (state.views?.header[SnapshotHeader.epoch] !== this.epoch)
             throw new RangeError("Incorrect simulation snapshot epoch");
           const recycled = this.previousSnapshot?.views?.buffer;
           this.previousSnapshot = this.latestSnapshot;
           this.latestSnapshot = state;
+          const projectileIds = new Set([
+            ...(this.previousSnapshot?.presentation?.projectileIds ?? []),
+            ...(state.presentation?.projectileIds ?? []),
+          ]);
+          for (const id of this.projectileDefinitions.keys()) {
+            if (!projectileIds.has(id)) this.projectileDefinitions.delete(id);
+          }
           if (recycled) this.buffers.push(recycled);
           while (this.buffers.length > 0) {
             const buffer = this.buffers.pop();
@@ -212,6 +245,9 @@ export class SimulationWorkerClient {
     this.previousSnapshot = null;
     this.buffers = [];
     this.events = [];
+    this.transportSamples = [];
+    this.shipDefinitions.clear();
+    this.projectileDefinitions.clear();
   }
 
   private finishDisposal(): void {

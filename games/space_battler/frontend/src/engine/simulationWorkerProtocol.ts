@@ -1,5 +1,6 @@
 import type { HullClass, WeaponType } from "../types/combat";
 import type { ClientCombatSimulation } from "./simulation";
+import type { SimulationPresentationMetadata } from "./simulationPresentationMetadata";
 
 // Presentation-only, native-endian protocol for same-browser transfer. Never feed
 // Float32 render values back into the double-precision authoritative simulation.
@@ -273,9 +274,11 @@ export function packSimulationSnapshot(
 
 /** One instance per pinned interpolation endpoint; no reconstructed ShipState
  * objects. Views remain valid only while their buffer is owned and not recycled.
- * This decodes the render schema; interpolation and metadata join are Phase 2.
+ * Metadata joins/interpolation write into separately owned presentation objects.
  */
 export class RenderInterpolationState {
+  presentation: SimulationPresentationMetadata | null = null;
+  receivedAtMs = 0;
   views: SimulationSnapshotViews | null = null;
   shipCount = 0;
   projectileCount = 0;

@@ -88,7 +88,7 @@ export function renderHavenSlots(
   ctx: CanvasRenderingContext2D,
   parent: ShipState,
   ships: readonly ShipState[],
-  haven: ShieldHavenSystem,
+  haven: Pick<ShieldHavenSystem, "getLease">,
   time: number,
 ): void {
   if (!parent.isAlive || !isCapitalShip(parent)) return;

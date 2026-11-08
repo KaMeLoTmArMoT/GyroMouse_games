@@ -1,5 +1,6 @@
 import { buildFleetFromSlots } from "./fleetBuilder";
 import { ClientCombatSimulation } from "./simulation";
+import { SimulationPresentationMetadataPacker } from "./simulationPresentationMetadata";
 import type {
   SimulationWorkerCommand,
   SimulationWorkerEvent,
@@ -23,6 +24,8 @@ export class SimulationWorkerHost {
   private snapshotSequence = 0;
   private commandSequence = 0;
   private eventSequence = 0;
+  private readonly presentation = new SimulationPresentationMetadataPacker();
+  private stepDurationMs = 0;
   private events: SimulationWorkerEvent[] = [];
   private buffers: ArrayBuffer[] = [];
   private steps: Array<{ requestId: number; remaining: number }> = [];
@@ -165,7 +168,9 @@ export class SimulationWorkerHost {
     if (!step || !sim) return;
     if (sim.winner !== -1) {
       this.tick++;
-      sim.update(1 / 60);
+      sim.update(1 / 60, (duration) => {
+        this.stepDurationMs = duration;
+      });
       this.dirty = true;
     }
     this.publish();
@@ -206,7 +211,18 @@ export class SimulationWorkerHost {
     header[SnapshotHeader.nextEventSequence] = this.eventSequence + 1;
     const { byteLength } = packSimulationSnapshot(this.simulation, buffer);
     this.dirty = false;
-    this.send({ type: "SNAPSHOT", epoch: this.epoch, buffer, byteLength }, [buffer]);
+    this.send(
+      {
+        type: "SNAPSHOT",
+        epoch: this.epoch,
+        buffer,
+        byteLength,
+        presentation: this.presentation.pack(this.simulation),
+        stepDurationMs: this.stepDurationMs,
+        sentAtMs: performance.timeOrigin + performance.now(),
+      },
+      [buffer],
+    );
   }
 
   private emit(payload: SimulationWorkerEventPayload): void {

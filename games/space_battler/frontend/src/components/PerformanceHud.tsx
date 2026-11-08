@@ -6,6 +6,9 @@ const GRAPH_SAMPLE_MS = 50;
 export class PerformanceSamples {
   frames: number[] = [];
   steps: number[] = [];
+  workerSteps: number[] = [];
+  renderFrames: number[] = [];
+  snapshotLatencies: number[] = [];
   graphFrames: number[] = [];
   private graphElapsed = 0;
 
@@ -25,6 +28,19 @@ export class PerformanceSamples {
     this.steps.push(duration);
     if (this.steps.length > HISTORY_SIZE) this.steps.shift();
   };
+
+  addRender = (duration: number) => {
+    this.renderFrames.push(duration);
+    if (this.renderFrames.length > HISTORY_SIZE) this.renderFrames.shift();
+  };
+
+  addTransport = (stepDurationMs: number, snapshotLatencyMs: number) => {
+    this.addStep(stepDurationMs);
+    this.workerSteps.push(stepDurationMs);
+    this.snapshotLatencies.push(snapshotLatencyMs);
+    if (this.workerSteps.length > HISTORY_SIZE) this.workerSteps.shift();
+    if (this.snapshotLatencies.length > HISTORY_SIZE) this.snapshotLatencies.shift();
+  };
 }
 
 function lowFps(sortedSlowestFirst: number[], fraction: number): string {
@@ -42,6 +58,9 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
     frames: [] as number[],
     steps: [] as number[],
     graphFrames: [] as number[],
+    workerStep: null as number | null,
+    renderFrame: null as number | null,
+    snapshotLatency: null as number | null,
   });
 
   useEffect(() => {
@@ -50,6 +69,9 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
         frames: [...samples.frames],
         steps: [...samples.steps],
         graphFrames: [...samples.graphFrames],
+        workerStep: samples.workerSteps.at(-1) ?? null,
+        renderFrame: samples.renderFrames.at(-1) ?? null,
+        snapshotLatency: samples.snapshotLatencies.at(-1) ?? null,
       });
     update();
     const interval = window.setInterval(update, 250);
@@ -106,6 +128,23 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
                 : `${step.toFixed(1)} μs`}
           </span>
         </span>
+        {snapshot.workerStep !== null && (
+          <>
+            <span className="col-span-2">
+              Worker step <span className="text-zinc-100">{snapshot.workerStep.toFixed(2)} ms</span>
+            </span>
+            <span className="col-span-2">
+              Render{" "}
+              <span className="text-zinc-100">{snapshot.renderFrame?.toFixed(2) ?? "—"} ms</span>
+            </span>
+            <span className="col-span-2">
+              Snapshot latency{" "}
+              <span className="text-zinc-100">
+                {snapshot.snapshotLatency?.toFixed(2) ?? "—"} ms
+              </span>
+            </span>
+          </>
+        )}
       </div>
       <canvas
         ref={graphRef}

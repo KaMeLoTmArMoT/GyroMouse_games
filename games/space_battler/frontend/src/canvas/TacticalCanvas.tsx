@@ -1,6 +1,6 @@
 // React 2.5D Tactical Canvas Component with click/hover ship selection, pan/zoom, and live range cones
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { PerformanceSamples } from "../components/PerformanceHud";
 import { spaceAudio } from "../engine/audioEngine";
 import { carrierFabricationProgress } from "../engine/carrierHangar";
@@ -12,6 +12,7 @@ import {
   type FighterWingVisual,
   WING_WAVE_DELAY,
 } from "../engine/simulation";
+import type { SimulationWorkerClient } from "../engine/simulationWorkerClient";
 import type { ShipState } from "../types/combat";
 import { VisualEffectsManager } from "./effects";
 import { drawGlowLine } from "./glowSprites";
@@ -25,10 +26,16 @@ import {
 } from "./projectileRenderer";
 import { projectileAtPoint } from "./projectileSelection";
 import { renderShip } from "./shipRenderer";
+import { SimulationPresenter, type TacticalPresentationState } from "./simulationPresenter";
 import { discVisible, segmentVisible, type Viewport, worldViewport } from "./viewport";
+import { dispatchWorkerPresentationEvents } from "./workerPresentationEvents";
 
 interface TacticalCanvasProps {
   sim: ClientCombatSimulation;
+  // Optional caller-owned transport. With a client, sim supplies only map/crew
+  // setup; rendering, hit-testing and effects use an independent presentation.
+  // Route tactical commands through client.command and dispose on battle reset.
+  workerClient?: SimulationWorkerClient;
   speed: number;
   ingressRevision: number;
   selectedShipId?: string | null;
@@ -40,6 +47,7 @@ interface TacticalCanvasProps {
 
 export function TacticalCanvas({
   sim,
+  workerClient,
   speed,
   ingressRevision,
   selectedShipId,
@@ -51,6 +59,8 @@ export function TacticalCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const effectsRef = useRef<VisualEffectsManager>(new VisualEffectsManager());
   const pendingIngressRef = useRef(false);
+  const presenter = useMemo(() => new SimulationPresenter(sim, workerClient), [sim, workerClient]);
+  const presentation = presenter.state;
 
   const cameraRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.85 });
   const isDraggingRef = useRef(false);
@@ -78,7 +88,7 @@ export function TacticalCanvas({
       ) {
         return;
       }
-      const ship = sim.ships.find((s) => s.id === selectedShipId && s.isAlive);
+      const ship = presentation.ships.find((s) => s.id === selectedShipId && s.isAlive);
       if (ship) {
         cameraRef.current.x = -ship.pos[0] * cameraRef.current.zoom;
         cameraRef.current.y = -ship.pos[1] * cameraRef.current.zoom;
@@ -87,10 +97,11 @@ export function TacticalCanvas({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [sim, selectedShipId]);
+  }, [presentation, selectedShipId]);
 
   useEffect(() => {
     // Keep sound and visual effects on the same combat events.
+    const directSimulation = sim;
     sim.onBeamFire = (from, to, color, width, ownerTeam, channeled) => {
       if (!channeled) effectsRef.current.addBeam(from, to, color, width, ownerTeam, 0.16);
       spaceAudio.playWeapon("beam_laser");
@@ -144,6 +155,7 @@ export function TacticalCanvas({
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const renderLoop = (now: number) => {
+      const renderStart = performance.now();
       const rawDt = (now - lastTime) / 1000;
       lastTime = now;
       const dt = Math.max(0, Math.min(rawDt, 0.033));
@@ -151,11 +163,29 @@ export function TacticalCanvas({
         performanceSamples.addFrame(rawDt * 1000);
       }
 
+      const previousProjectiles = presenter.state.projectiles.slice();
+      const activeSpeed = focused && !document.hidden ? speed : 0;
+      if (workerClient) {
+        presenter.frame(now, dt, activeSpeed, performanceSamples, (events) =>
+          dispatchWorkerPresentationEvents(
+            events,
+            (id) => presenter.shipById(id),
+            effectsRef.current,
+            spaceAudio,
+          ),
+        );
+      }
+      const sim = presenter.state;
+
       if (speed > 0 && focused && !document.hidden) {
-        if (pendingIngressRef.current) {
-          effectsRef.current.triggerFleetWarpIn(sim.ships);
-          if (sim.drainAudioEvents().some((event) => event.type === "warp_ingress")) {
-            spaceAudio.playCombatEvent("warp_ingress");
+        if (pendingIngressRef.current && sim.ships.length > 0) {
+          if (!workerClient) {
+            effectsRef.current.triggerFleetWarpIn(sim.ships);
+            if (
+              directSimulation.drainAudioEvents().some((event) => event.type === "warp_ingress")
+            ) {
+              spaceAudio.playCombatEvent("warp_ingress");
+            }
           }
           pendingIngressRef.current = false;
           const canvas = canvasRef.current;
@@ -175,8 +205,7 @@ export function TacticalCanvas({
             followRef.current = false;
           }
         }
-        const previousProjectiles = sim.projectiles.slice();
-        sim.update(dt * speed, performanceSamples?.addStep);
+        if (!workerClient) presenter.frame(now, dt, speed, performanceSamples);
         effectsRef.current.update(dt * speed, sim.ships, sim.projectiles);
         effectsRef.current.captureExpiredProjectiles(previousProjectiles, sim.projectiles);
         effectsRef.current.updateWarpGates(Math.min(dt, 0.05));
@@ -510,6 +539,7 @@ export function TacticalCanvas({
         }
       }
 
+      performanceSamples?.addRender(performance.now() - renderStart);
       animId = requestAnimationFrame(renderLoop);
     };
 
@@ -528,7 +558,15 @@ export function TacticalCanvas({
       sim.onShipDestroyed = undefined;
       sim.onVictory = undefined;
     };
-  }, [sim, speed, selectedShipId, selectedProjectileId, performanceSamples]);
+  }, [
+    sim,
+    workerClient,
+    presenter,
+    speed,
+    selectedShipId,
+    selectedProjectileId,
+    performanceSamples,
+  ]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -581,7 +619,7 @@ export function TacticalCanvas({
       let clickedShip: string | null = null;
       let minD = 50; // max click radius
 
-      for (const ship of sim.ships) {
+      for (const ship of presentation.ships) {
         if (!ship.isAlive || ship.isDocked) continue;
         const dx = ship.pos[0] - worldX;
         const dy = ship.pos[1] - worldY;
@@ -605,7 +643,7 @@ export function TacticalCanvas({
     const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
     const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
     return projectileAtPoint(
-      sim.projectiles,
+      presentation.projectiles,
       (x - canvas.width / 2 - camera.x) / camera.zoom,
       (y - canvas.height / 2 - camera.y) / camera.zoom,
       (camera.zoom * rect.width) / canvas.width,
@@ -634,7 +672,7 @@ export function TacticalCanvas({
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     const shipId = shipAtPoint(e);
-    const ship = sim.ships.find((s) => s.id === shipId && s.isAlive && !s.isDocked);
+    const ship = presentation.ships.find((s) => s.id === shipId && s.isAlive && !s.isDocked);
     if (ship) {
       cameraRef.current.x = -ship.pos[0] * cameraRef.current.zoom;
       cameraRef.current.y = -ship.pos[1] * cameraRef.current.zoom;
@@ -866,7 +904,7 @@ function drawRadiationWarning(ctx: CanvasRenderingContext2D, ship: ShipState, ti
 function drawTacticalTrajectory(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
-  sim: ClientCombatSimulation,
+  sim: TacticalPresentationState,
   wings: FighterWingVisual[],
 ): void {
   if (ship.isDebris) {
