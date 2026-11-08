@@ -3,7 +3,6 @@ import { sharesCarrierCorridor } from "./carrierHangar";
 import { vecAdd, vecDistance, vecDot, vecNormalize, vecScale, vecSub } from "./math2d";
 import {
   activeShieldRadius,
-  capitalSeparationDistance,
   isCapitalShip,
   shieldEnvelopeRadius,
   shieldRepulsorRadius,
@@ -85,7 +84,7 @@ export class CollisionContactSolver {
       }
       return id;
     });
-    // Conservative bounds include capital stand-off, contact hysteresis and telemetry.
+    // Conservative bounds include shield pressure, contact hysteresis and telemetry.
     const envelopes = aliveShips.map(
       (ship) => Math.max(isCapitalShip(ship) ? 210 : 0, ship.size, shieldEnvelopeRadius(ship)) + 25,
     );
@@ -153,10 +152,7 @@ export class CollisionContactSolver {
           ? hullClearance
           : nested
             ? hullClearance
-            : Math.max(
-                capitalSeparationDistance(a, b),
-                shieldRepulsorRadius(a) + shieldRepulsorRadius(b) + 20,
-              );
+            : shieldRepulsorRadius(a) + shieldRepulsorRadius(b) + 20;
         const low = Math.min(ids[i], ids[j]);
         const high = Math.max(ids[i], ids[j]);
         const pair = (high * (high + 1)) / 2 + low;

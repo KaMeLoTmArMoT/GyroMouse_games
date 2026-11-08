@@ -13,6 +13,7 @@ import {
 } from "../src/engine/math2d";
 import {
   activeShieldRadius,
+  capitalSeparationDistance,
   shieldEnvelopeRadius,
   shieldRepulsorRadius,
 } from "../src/engine/shieldGeometry";
@@ -188,29 +189,34 @@ function havenAttack(sim: ClientCombatSimulation, craft: ShipState, type: Weapon
 }
 
 describe("capital tactical separation and soft contacts", () => {
-  it.each(["battleship", "dreadnought", "cruiser"] as const)(
-    "starts %s separation at 420u hostile and 300u friendly even without shields",
+  it.each(["battleship", "dreadnought", "cruiser", "carrier"] as const)(
+    "scales %s tactical separation with both hull sizes even without shields",
     (hull) => {
       const capital = ship("capital", hull);
-      const peer = ship("peer", hull, [400, 0], 1);
-      capital.shieldCurrent = peer.shieldCurrent = 0;
-      expect(calculateSeparation(capital, [capital, peer])[0]).toBeLessThan(0);
-      peer.pos = [420, 0];
-      expect(calculateSeparation(capital, [capital, peer])).toEqual([0, 0]);
-      peer.team = capital.team;
-      expect(calculateSeparation(capital, [capital, peer])).toEqual([0, 0]);
-      peer.pos = [280, 0];
-      expect(calculateSeparation(capital, [capital, peer])[0]).toBeLessThan(0);
-      peer.pos = [300, 0];
-      expect(calculateSeparation(capital, [capital, peer])).toEqual([0, 0]);
+      capital.shieldCurrent = 0;
+      for (const peerHull of ["battleship", "dreadnought", "cruiser", "carrier"] as const) {
+        for (const team of [0, 1]) {
+          const peer = ship("peer", peerHull, [0, 0], team);
+          peer.shieldCurrent = 0;
+          const clearance = (capital.size + peer.size) * (team === 0 ? 1.8 : 2.5) + 30;
+          expect(capitalSeparationDistance(capital, peer)).toBeCloseTo(clearance);
+          expect(capitalSeparationDistance(peer, capital)).toBeCloseTo(clearance);
+          peer.pos = [clearance - 1, 0];
+          expect(calculateSeparation(capital, [capital, peer])[0]).toBeLessThan(0);
+          peer.pos = [clearance, 0];
+          expect(calculateSeparation(capital, [capital, peer])).toEqual([0, 0]);
+        }
+      }
     },
   );
 
   it.each([0, 1])(
-    "restores capital standoff against team %s without ramming or launching",
+    "restores shield contact clearance against team %s without ramming or launching",
     (team) => {
       const a = ship("a", "battleship");
-      const b = ship("b", "battleship", [240, 0], team);
+      const b = ship("b", "battleship", [0, 0], team);
+      const clearance = shieldRepulsorRadius(a) + shieldRepulsorRadius(b) + 20;
+      b.pos = [clearance - 8, 0];
       a.velocity = [20, 0];
       b.velocity = [-20, 0];
       const sim = new ClientCombatSimulation();
@@ -222,7 +228,8 @@ describe("capital tactical separation and soft contacts", () => {
         expect(vecDistance(previous[0], a.pos)).toBeLessThanOrEqual(4 + 1e-6);
         expect(vecDistance(previous[1], b.pos)).toBeLessThanOrEqual(4 + 1e-6);
       }
-      expect(vecDistance(a.pos, b.pos)).toBeCloseTo(team === 0 ? 300 : 420);
+      expect(vecDistance(a.pos, b.pos)).toBeCloseTo(clearance);
+      expect(vecDistance(a.pos, b.pos)).toBeLessThan(capitalSeparationDistance(a, b));
       expect(a.velocity).toEqual([0, 0]);
       expect(b.velocity).toEqual([0, 0]);
       expect(a.shieldCurrent).toBe(a.shieldMax);

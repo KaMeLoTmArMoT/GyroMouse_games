@@ -4,7 +4,7 @@ import { sweptHit } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { clamp, vecAdd, vecDistance, vecScale, vecSub } from "../src/engine/math2d";
 import { ProjectileEngine } from "../src/engine/projectileEngine";
-import { activeShieldRadius } from "../src/engine/shieldGeometry";
+import { activeShieldRadius, shieldRepulsorRadius } from "../src/engine/shieldGeometry";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import { WasmHotLoops } from "../src/engine/wasmHotLoops";
 import type { HullClass, ProjectileState, ShipState } from "../src/types/combat";
@@ -422,17 +422,24 @@ describe("hot-loop engine integration", () => {
   });
 
   it("preserves capital repulsor chains and contacts created outside the initial hull-overlap bound", () => {
+    const capital = ship("capital", "battleship", 0);
+    const spacing = shieldRepulsorRadius(capital) * 2 + 10;
     const capitals = Array.from({ length: 12 }, (_, i) =>
-      ship(`capital-${i}`, "battleship", i * 250),
+      ship(`capital-${i}`, "battleship", i * spacing),
     );
     expect(collisionRun(capitals, false)).toEqual(collisionRun(capitals, true));
-    // Overlapping equal-mass hulls push the first ship toward an initially excluded third ship.
+    // Overlapping equal-mass hulls create a third contact outside the initial contact envelope.
     const overlapping = [
       ship("a", "battleship", 0),
       ship("b", "battleship", 1),
-      ship("c", "battleship", -479, 0, 1),
+      ship("c", "battleship", 0, 0, 1),
     ];
     overlapping[0].shieldCurrent = overlapping[1].shieldCurrent = overlapping[2].shieldCurrent = 0;
+    const clearance =
+      shieldRepulsorRadius(overlapping[0]) + shieldRepulsorRadius(overlapping[2]) + 20;
+    const hullPush = (overlapping[0].size + overlapping[1].size - 1) / 2;
+    overlapping[2].pos = [-clearance - hullPush + 10, 0];
+    expect(vecDistance(overlapping[0].pos, overlapping[2].pos)).toBeGreaterThan(clearance);
     const actual = collisionRun(overlapping, false);
     expect(actual).toEqual(collisionRun(overlapping, true));
     expect(actual.budgets[0].some(([id]) => id === "c")).toBe(true);

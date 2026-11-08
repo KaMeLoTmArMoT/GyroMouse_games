@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { CombatTelemetry } from "../src/engine/combatTelemetry";
 import { buildFleetFromSlots, fleetSlotCost } from "../src/engine/fleetBuilder";
+import { calculateSeparation } from "../src/engine/flightBehaviors";
 import { supportVelocity } from "../src/engine/flightControl";
 import { HarmonicShieldSystem } from "../src/engine/harmonicShieldSystem";
 import { vecDistance } from "../src/engine/math2d";
@@ -315,7 +316,7 @@ describe("tender fleet and support flight", () => {
     expect(fleetSlotCost({ id: "tender", hullClass: "tender", groupId: 1 })).toBe(1250);
   });
 
-  it("holds a rear station at 425u and retreats away from enemies when isolated or damaged", () => {
+  it("holds an ordinary rear station at 425u and retreats away from enemies when isolated", () => {
     const donor = ship("donor", "tender", [-425, 0]);
     const parent = ship("parent", "battleship");
     const enemy = ship("enemy", "battleship", [1000, 0], 1);
@@ -323,9 +324,26 @@ describe("tender fleet and support flight", () => {
     expect(orbit[0]).toBeCloseTo(0);
     expect(orbit[1]).toBeCloseTo(0);
     expect(supportVelocity(donor, [donor, enemy])[0]).toBeLessThan(0);
-    donor.hullCurrent = 200;
-    expect(supportVelocity(donor, [donor, parent, enemy])[0]).toBeLessThan(0);
   });
+
+  it.each(["battleship", "dreadnought", "carrier"] as const)(
+    "moves a damaged tender into the %s shield shadow without separation ejection",
+    (hull) => {
+      const donor = ship("donor", "tender", [-425, 0]);
+      const parent = ship("parent", hull);
+      donor.hullCurrent = 200;
+      const ships = [donor, parent];
+      expect(supportVelocity(donor, ships)[0]).toBeGreaterThan(0);
+      const clearance = activeShieldRadius(parent) + activeShieldRadius(donor) + 30;
+      donor.pos = [-clearance, 0];
+      expect(supportVelocity(donor, ships)).toEqual([0, 0]);
+      expect(calculateSeparation(donor, ships)).toEqual([0, 0]);
+      expect(calculateSeparation(parent, ships)).toEqual([0, 0]);
+      donor.pos = [-clearance + 1, 0];
+      expect(calculateSeparation(donor, ships)[0]).toBeLessThan(0);
+      expect(supportVelocity(donor, ships)[0]).toBeLessThan(0);
+    },
+  );
 
   it("advances with healthy frigates instead of retreating at the opening", () => {
     const donor = ship("donor", "tender", [-600, 0]);

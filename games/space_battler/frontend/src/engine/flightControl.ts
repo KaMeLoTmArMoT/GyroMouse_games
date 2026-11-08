@@ -39,7 +39,12 @@ import {
   vecSub,
 } from "./math2d";
 import { antiKitePursuitLimit, distanceSquared, navigationContext } from "./navigationContext";
-import { escortCapitalStandoff, isCapitalShip } from "./shieldGeometry";
+import {
+  activeShieldRadius,
+  escortCapitalStandoff,
+  isCapitalShip,
+  isHeavyCapitalShip,
+} from "./shieldGeometry";
 import { type CapitalFlightDoctrine, SHIP_DOCTRINES } from "./shipDoctrines";
 
 export {
@@ -223,8 +228,9 @@ export function tenderRescueTarget(ship: ShipState, ships: ShipState[]): ShipSta
       )
     )
       continue;
-    const risk = rescueRouteRisk(ship, peer, ships);
-    // Dense capital crossfire is a route veto, never a distance veto.
+    // Heavy capitals provide a shield shadow: crossfire changes our station,
+    // rather than vetoing or penalizing the very rescue they need.
+    const risk = isHeavyCapitalShip(peer) ? 0 : rescueRouteRisk(ship, peer, ships);
     if (risk >= 1.5) continue;
     const importance =
       peer.hullClass === "dreadnought"
@@ -295,16 +301,19 @@ export function supportVelocity(
   const doctrine = SHIP_DOCTRINES[ship.hullClass].flight;
   if (doctrine.kind !== "support") return [0, 0];
   const context = navigationContext(ships);
-  const allies = (context?.teams.get(ship.team) ?? ships).filter(
-    (peer) =>
-      peer.isAlive &&
-      !peer.isDocked &&
-      peer.team === ship.team &&
-      peer.id !== ship.id &&
-      peer.hullClass !== "tender" &&
-      rescueRouteRisk(ship, peer, ships) < 1.5 &&
-      (peer.hullClass !== "strike_craft" || peer.shieldCurrent < peer.shieldMax),
-  );
+  const allies = rescueTarget
+    ? []
+    : (context?.teams.get(ship.team) ?? ships).filter(
+        (peer) =>
+          peer.isAlive &&
+          !peer.isDocked &&
+          !peer.isDebris &&
+          peer.team === ship.team &&
+          peer.id !== ship.id &&
+          peer.hullClass !== "tender" &&
+          (isHeavyCapitalShip(peer) || rescueRouteRisk(ship, peer, ships) < 1.5) &&
+          (peer.hullClass !== "strike_craft" || peer.shieldCurrent < peer.shieldMax),
+      );
   const anchor =
     rescueTarget ??
     allies.sort(
@@ -322,6 +331,13 @@ export function supportVelocity(
   const threat = enemies[0];
   const isolated = !anchor;
   const damaged = ship.hullCurrent / ship.hullMax < (doctrine.retreat.hullRatio ?? 0);
+  if (
+    anchor &&
+    isHeavyCapitalShip(anchor) &&
+    (rescueTarget || damaged || rescueRouteRisk(ship, anchor, ships) >= 1.5)
+  ) {
+    return formationVelocity(ship, anchor, tenderShieldShadowStation(ship, anchor, ships));
+  }
   if ((isolated || damaged) && threat) {
     const away = vecNormalize(vecSub(ship.pos, threat.pos));
     const retreat = vecScale(away, ship.maxSpeed);
@@ -338,6 +354,63 @@ export function supportVelocity(
     : ([Math.cos(anchor.heading), Math.sin(anchor.heading)] as Vector2);
   const station = vecSub(anchor.pos, vecScale(forward, doctrine.desiredDistance));
   return formationVelocity(ship, anchor, station);
+}
+
+function tenderShieldShadowStation(
+  ship: ShipState,
+  anchor: ShipState,
+  ships: ShipState[],
+): Vector2 {
+  let incoming: Vector2 = [0, 0];
+  let nearest: ShipState | undefined;
+  let nearestDistance = Infinity;
+  // Preserve source accumulation order and reuse the phase-local enemy worklist.
+  for (const enemy of navigationContext(ships)?.teamEnemies.get(ship.team) ?? ships) {
+    if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team) continue;
+    let range = 0;
+    for (const turret of enemy.turrets) {
+      if (turret.weapon.weaponType !== "point_defense")
+        range = Math.max(range, turret.weapon.range);
+    }
+    if (range <= 0) continue;
+    const delta = vecSub(enemy.pos, anchor.pos);
+    const distance = Math.hypot(...delta);
+    if (
+      distance < nearestDistance ||
+      (distance === nearestDistance && enemy.id < (nearest?.id ?? "\uffff"))
+    ) {
+      nearest = enemy;
+      nearestDistance = distance;
+    }
+    incoming = vecAdd(incoming, vecScale(vecNormalize(delta), clamp(1 - distance / range, 0, 1)));
+  }
+  const forward =
+    Math.hypot(...incoming) > 1e-6
+      ? vecNormalize(incoming)
+      : nearest && nearestDistance > 1e-6
+        ? vecNormalize(vecSub(nearest.pos, anchor.pos))
+        : ([Math.cos(anchor.heading), Math.sin(anchor.heading)] as Vector2);
+  // Tenders are not haven guests. Stay immediately behind the contact envelope
+  // so the capital intercepts incoming shots without repulsor/separation ejection.
+  const clearance = activeShieldRadius(anchor) + activeShieldRadius(ship) + 30;
+  const rear = vecScale(forward, -1);
+  const offset = vecSub(ship.pos, anchor.pos);
+  const station = vecScale(rear, clearance);
+  const route = vecSub(station, offset);
+  const t = clamp(-vecDot(offset, route) / Math.max(1, vecDot(route, route)), 0, 1);
+  if (
+    vecDot(offset, rear) < clearance &&
+    (vecDot(offset, rear) < 0 || Math.hypot(...offset) >= clearance) &&
+    Math.hypot(...vecAdd(offset, vecScale(route, t))) < clearance
+  ) {
+    // Walk the shield perimeter instead of steering through the capital hull.
+    const radial = Math.hypot(...offset) > 1e-6 ? vecNormalize(offset) : forward;
+    const side =
+      Math.sign(radial[0] * rear[1] - radial[1] * rear[0]) || (ship.id < anchor.id ? -1 : 1);
+    const tangent: Vector2 = [-radial[1] * side, radial[0] * side];
+    return vecAdd(anchor.pos, vecAdd(vecScale(radial, clearance), vecScale(tangent, clearance)));
+  }
+  return vecAdd(anchor.pos, station);
 }
 
 export function escortVelocity(

@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { swarmFlakFear } from "../src/engine/fighterMissionSystem";
 import { capitalFinishPriority } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
-import { capitalIntent, tenderRescueTarget } from "../src/engine/flightControl";
+import {
+  capitalIntent,
+  rescueRouteRisk,
+  supportVelocity,
+  tenderRescueTarget,
+} from "../src/engine/flightControl";
+import { activeShieldRadius } from "../src/engine/shieldGeometry";
 import { findNavigationTarget, updateShipNavigation } from "../src/engine/shipNavigationSystem";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import type { HullClass } from "../src/types/combat";
@@ -29,13 +35,42 @@ describe("wave 9 tactical coordination", () => {
     expect(tenderRescueTarget(tender, [dread, nearer])).toBe(nearer);
   });
 
-  it("vetoes dense hostile capital corridors", () => {
+  it("rescues heavy capitals through dense crossfire while vetoing exposed light allies", () => {
     const tender = ship("tender", "t");
     const wounded = ship("dreadnought", "d", 1800);
     wounded.shieldCurrent = 0;
     const a = ship("battleship", "a", 900, 1);
     const b = ship("dreadnought", "b", 1000, 1);
-    expect(tenderRescueTarget(tender, [tender, wounded, a, b])).toBeUndefined();
+    const ships = [tender, wounded, a, b];
+    expect(rescueRouteRisk(tender, wounded, ships)).toBeGreaterThanOrEqual(1.5);
+    expect(tenderRescueTarget(tender, ships)).toBe(wounded);
+    const clearance = activeShieldRadius(wounded) + activeShieldRadius(tender) + 30;
+    tender.pos = [wounded.pos[0] + clearance, 0];
+    expect(supportVelocity(tender, ships)).toEqual([0, 0]);
+    const exposed = ship("missile_frigate", "f", 1800);
+    exposed.shieldCurrent = 0;
+    tender.pos = [0, 0];
+    expect(tenderRescueTarget(tender, [tender, exposed, a, b])).toBeUndefined();
+  });
+
+  it("routes a front-side tender around the capital instead of through its hull", () => {
+    const tender = ship("tender", "t", 300);
+    const wounded = ship("dreadnought", "d");
+    wounded.shieldCurrent = 0;
+    const enemy = ship("battleship", "e", 900, 1);
+    const ships = [tender, wounded, enemy];
+    expect(tenderRescueTarget(tender, ships)).toBe(wounded);
+    const velocity = supportVelocity(tender, ships);
+    expect(velocity[1]).not.toBe(0);
+    const closestTime = Math.max(
+      0,
+      -(tender.pos[0] * velocity[0]) / (velocity[0] ** 2 + velocity[1] ** 2),
+    );
+    const closestDistance = Math.hypot(
+      tender.pos[0] + velocity[0] * closestTime,
+      velocity[1] * closestTime,
+    );
+    expect(closestDistance).toBeGreaterThan(wounded.size + tender.size);
   });
 
   it("wounded capitals rendezvous with tenders beyond 800 units", () => {

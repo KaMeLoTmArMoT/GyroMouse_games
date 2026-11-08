@@ -323,7 +323,7 @@ export function TacticalCanvas({
           }
 
           const wings = sim.getFighterWingVisuals();
-          drawEchelonIndicators(ctx, wings, sim.ships);
+          drawEchelonIndicators(ctx, wings, sim.ships, verticalScale);
 
           effectsRef.current.render(ctx);
 
@@ -483,7 +483,7 @@ export function TacticalCanvas({
           });
           for (const item of depthItems) {
             if (item.kind === "obstacle") {
-              renderMapObstacles(ctx, [item.obstacle], viewport);
+              renderMapObstacles(ctx, [item.obstacle], viewport, (camera.pitchDeg * Math.PI) / 180);
               continue;
             }
             const ship = item.ship;
@@ -514,7 +514,7 @@ export function TacticalCanvas({
               (camera.pitchDeg * Math.PI) / 180,
             );
             if (ship.isAlive && Math.hypot(...ship.pos) > ARENA_RADIUS) {
-              drawRadiationWarning(ctx, ship, sim.timeElapsed);
+              drawRadiationWarning(ctx, ship, sim.timeElapsed, verticalScale);
             }
             ctx.restore();
           }
@@ -528,7 +528,7 @@ export function TacticalCanvas({
               if (!selectedShip.isDebris) {
                 renderHavenSlots(ctx, selectedShip, visibleShips, sim.shieldHaven, sim.timeElapsed);
               }
-              drawTacticalTrajectory(ctx, selectedShip, sim, wings);
+              drawTacticalTrajectory(ctx, selectedShip, sim, wings, verticalScale, camera.zoom);
             }
           }
 
@@ -846,6 +846,7 @@ function drawEchelonIndicators(
   ctx: CanvasRenderingContext2D,
   wings: FighterWingVisual[],
   ships: ShipState[],
+  verticalScale: number,
 ): void {
   for (const wing of wings) {
     const members = ships.filter(
@@ -873,6 +874,7 @@ function drawEchelonIndicators(
     ctx.stroke();
     ctx.restore();
     ctx.save();
+    counterPitch(ctx, x, y - 25, verticalScale);
     ctx.fillStyle = color;
     ctx.globalAlpha = 0.8;
     ctx.font = "10px monospace";
@@ -884,6 +886,17 @@ function drawEchelonIndicators(
     );
     ctx.restore();
   }
+}
+
+function counterPitch(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  verticalScale: number,
+): void {
+  ctx.translate(x, y);
+  ctx.scale(1, 1 / verticalScale);
+  ctx.translate(-x, -y);
 }
 
 function drawRadiationInterference(
@@ -1004,10 +1017,8 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number, pitchDeg:
   ctx.stroke();
   ctx.setLineDash([]);
 
-  const labelOpacity = Math.min(1, Math.max(0, (pitchDeg - 45) / 15));
-  if (labelOpacity > 0) {
+  {
     ctx.save();
-    ctx.globalAlpha *= labelOpacity;
     ctx.fillStyle = "rgba(103, 232, 249, 0.6)";
     ctx.font = "10px monospace";
     ctx.textAlign = "center";
@@ -1035,7 +1046,12 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number, pitchDeg:
   ctx.restore();
 }
 
-function drawRadiationWarning(ctx: CanvasRenderingContext2D, ship: ShipState, time: number): void {
+function drawRadiationWarning(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  time: number,
+  verticalScale: number,
+): void {
   const radius = Math.max(ship.size * 1.5, shieldEnvelopeRadius(ship)) + 7;
   const pulse = 0.4 + 0.2 * Math.sin(time * 4);
   ctx.save();
@@ -1048,6 +1064,7 @@ function drawRadiationWarning(ctx: CanvasRenderingContext2D, ship: ShipState, ti
   ctx.fillStyle = `rgba(250, 204, 21, ${pulse + 0.25})`;
   ctx.font = "10px monospace";
   ctx.textAlign = "center";
+  counterPitch(ctx, ship.pos[0], ship.pos[1] - radius - 5, verticalScale);
   ctx.fillText("☢ RAD", ship.pos[0], ship.pos[1] - radius - 5);
   ctx.restore();
 }
@@ -1057,12 +1074,15 @@ function drawTacticalTrajectory(
   ship: ShipState,
   sim: TacticalPresentationState,
   wings: FighterWingVisual[],
+  verticalScale: number,
+  zoom: number,
 ): void {
   if (ship.isDebris) {
     const label = "KINETIC DEBRIS • DRIFTING";
     const x = ship.pos[0];
     const y = ship.pos[1] + ship.size + 18;
     ctx.save();
+    counterPitch(ctx, x, y, verticalScale);
     ctx.font = "10px monospace";
     const width = ctx.measureText(label).width + 16;
     ctx.fillStyle = "rgba(10, 15, 26, 0.85)";
@@ -1161,6 +1181,7 @@ function drawTacticalTrajectory(
     ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
     ctx.font = "10px monospace";
     ctx.textAlign = "center";
+    counterPitch(ctx, tx, ty - br - 5, verticalScale);
     ctx.fillText(`LOCK: ${target.name} (${Math.round(dist)}u)`, tx, ty - br - 5);
     ctx.restore();
   }
@@ -1211,6 +1232,7 @@ function drawTacticalTrajectory(
     ctx.font = "9px monospace";
     ctx.textAlign = "left";
     ctx.fillStyle = primaryColor;
+    counterPitch(ctx, predX + 14, predY + 3, verticalScale);
     ctx.fillText(`+${horizon}s`, predX + 14, predY + 3);
     ctx.restore();
   }
@@ -1254,7 +1276,10 @@ function drawTacticalTrajectory(
   }
 
   // Render Intent Tag below ship
-  const pillY = ship.pos[1] + ship.size + 18;
+  // Keep the billboard below the counter-pitched health bars, including at low zoom.
+  const barsHeight = 3 * Math.max(2.5, 1.5 / zoom) + 2 * Math.max(1, 1 / zoom);
+  const pillY =
+    ship.pos[1] + Math.max(ship.size + 18, ship.size * 1.55 + 5 + (barsHeight + 8) / verticalScale);
   const pillX = ship.pos[0];
   const tier = sim.crewVeterancy?.[ship.team] ?? "pilot";
   const line1 = `SPD: ${Math.round(speed)} u/s • ${tier.toUpperCase()} • ${intent}`;
@@ -1313,6 +1338,7 @@ function drawTacticalTrajectory(
     wingLines.push("ECHELON PENDING");
 
   ctx.save();
+  counterPitch(ctx, pillX, pillY, verticalScale);
   ctx.font = "10px monospace";
   const w1 = ctx.measureText(line1).width;
   const w2 = line2 ? ctx.measureText(line2).width : 0;

@@ -7,18 +7,70 @@ export function renderMapObstacles(
   ctx: CanvasRenderingContext2D,
   obstacles: readonly MapObstacle[],
   viewport: Viewport,
-  _elevation = Math.PI / 2,
+  elevation = Math.PI / 2,
 ): void {
   for (const obstacle of obstacles) {
-    if (!discVisible(viewport, obstacle.pos, obstacle.radius + 3)) continue;
+    const depth =
+      obstacle.kind === "asteroid"
+        ? (obstacle.radius * 0.14 * Math.cos(elevation)) / Math.sin(elevation)
+        : 0;
+    if (!discVisible(viewport, obstacle.pos, obstacle.radius + depth + 3)) continue;
     ctx.save();
     ctx.translate(...obstacle.pos);
+    if (depth > 0.001) drawAsteroidRim(ctx, obstacle, depth);
     ctx.rotate(obstacle.rotation);
     if (!drawCachedObstacle(ctx, obstacle)) {
       drawObstacle(ctx, obstacle);
     }
     ctx.restore();
   }
+}
+
+function traceAsteroid(ctx: CanvasRenderingContext2D, obstacle: MapObstacle): void {
+  for (let i = 0; i < 13; i++) {
+    const [x, y] = asteroidPoint(obstacle, i);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function asteroidPoint(obstacle: MapObstacle, index: number): [number, number] {
+  const angle = (index * Math.PI * 2) / 13;
+  const edge = obstacle.radius * (0.84 + (0.16 * ((index * 7 + obstacle.id.length) % 5)) / 4);
+  return [Math.cos(angle) * edge, Math.sin(angle) * edge];
+}
+
+function drawAsteroidRim(
+  ctx: CanvasRenderingContext2D,
+  obstacle: MapObstacle,
+  depth: number,
+): void {
+  // Join the visible lower contour to its offset copy in one solid, unscaled path.
+  ctx.fillStyle = "#1b222b";
+  ctx.beginPath();
+  ctx.save();
+  ctx.translate(0, depth);
+  ctx.rotate(obstacle.rotation);
+  traceAsteroid(ctx, obstacle);
+  ctx.restore();
+  const cos = Math.cos(obstacle.rotation);
+  const sin = Math.sin(obstacle.rotation);
+  for (let i = 0; i < 13; i++) {
+    const [ax, ay] = asteroidPoint(obstacle, i);
+    const [bx, by] = asteroidPoint(obstacle, (i + 1) % 13);
+    const x1 = ax * cos - ay * sin;
+    const y1 = ax * sin + ay * cos;
+    const x2 = bx * cos - by * sin;
+    const y2 = bx * sin + by * cos;
+    if (x2 >= x1) continue;
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x1, y1 + depth);
+    ctx.lineTo(x2, y2 + depth);
+    ctx.closePath();
+  }
+  ctx.fill();
 }
 
 function drawCachedObstacle(ctx: CanvasRenderingContext2D, obstacle: MapObstacle): boolean {
@@ -63,15 +115,7 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obstacle: MapObstacle): voi
     gradient.addColorStop(0.45, "#343b42");
     gradient.addColorStop(1, "#161c25");
     ctx.beginPath();
-    for (let i = 0; i < 13; i++) {
-      const angle = (i * Math.PI * 2) / 13;
-      const edge = r * (0.84 + (0.16 * ((i * 7 + obstacle.id.length) % 5)) / 4);
-      const x = Math.cos(angle) * edge;
-      const y = Math.sin(angle) * edge;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
+    traceAsteroid(ctx, obstacle);
     ctx.fillStyle = gradient;
     ctx.fill();
     ctx.strokeStyle = "#87929a";

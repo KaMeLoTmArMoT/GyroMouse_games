@@ -338,7 +338,7 @@ export function renderShip(
 
     // Draw Turret Firing Cones
     for (const turret of ship.turrets) {
-      drawTurretArcCone(ctx, ship, turret, primaryColor);
+      drawTurretArcCone(ctx, ship, turret, primaryColor, elevation);
     }
   }
 
@@ -364,7 +364,7 @@ export function renderShip(
   }
 
   // 5. Compact Status HUD Bar
-  renderHealthHUD(ctx, ship);
+  renderHealthHUD(ctx, ship, elevation);
 
   ctx.restore();
 }
@@ -1683,6 +1683,7 @@ function drawTurretArcCone(
   ship: ShipState,
   turret: TurretMountState,
   _color: string,
+  elevation: number,
 ): void {
   const [tx, ty] = rotatePoint(turret.offset, ship.heading);
   const [minArc, maxArc] = turret.baseArc;
@@ -1736,19 +1737,27 @@ function drawTurretArcCone(
   ctx.font = "10px monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(`${range}u`, lx, ly);
+  ctx.translate(lx, ly);
+  ctx.scale(1, 1 / Math.sin(elevation));
+  ctx.fillText(`${range}u`, 0, 0);
 
   ctx.restore();
 }
 
-function renderHealthHUD(ctx: CanvasRenderingContext2D, ship: ShipState): void {
+function renderHealthHUD(ctx: CanvasRenderingContext2D, ship: ShipState, elevation: number): void {
   const barWidth = Math.max(ship.size * 1.8, 28);
-  const barHeight = 2.5;
+  const transform = ctx.getTransform();
+  const zoom = Math.hypot(transform.a, transform.b);
+  const barHeight = Math.max(2.5, 1.5 / zoom);
+  const gap = Math.max(1, 1 / zoom);
   const startX = -barWidth / 2;
-  const startY = ship.size * 1.55 + 5;
+  ctx.save();
+  ctx.translate(0, ship.size * 1.55 + 5);
+  ctx.scale(1, 1 / Math.sin(elevation));
+  const startY = 0;
 
   ctx.fillStyle = "rgba(15, 23, 42, 0.7)";
-  ctx.fillRect(startX, startY, barWidth, barHeight * 3 + 2);
+  ctx.fillRect(startX, startY, barWidth, barHeight * 3 + gap * 2);
 
   // 1. Shield Bar
   const shieldPct = Math.max(0, ship.shieldCurrent / ship.shieldMax);
@@ -1758,10 +1767,11 @@ function renderHealthHUD(ctx: CanvasRenderingContext2D, ship: ShipState): void {
   // 2. Armor Bar
   const armorPct = Math.max(0, ship.armorCurrent / ship.armorMax);
   ctx.fillStyle = "#f59e0b";
-  ctx.fillRect(startX, startY + barHeight + 1, barWidth * armorPct, barHeight);
+  ctx.fillRect(startX, startY + barHeight + gap, barWidth * armorPct, barHeight);
 
   // 3. Hull Bar
   const hullPct = Math.max(0, ship.hullCurrent / ship.hullMax);
   ctx.fillStyle = "#10b981";
-  ctx.fillRect(startX, startY + (barHeight + 1) * 2, barWidth * hullPct, barHeight);
+  ctx.fillRect(startX, startY + (barHeight + gap) * 2, barWidth * hullPct, barHeight);
+  ctx.restore();
 }

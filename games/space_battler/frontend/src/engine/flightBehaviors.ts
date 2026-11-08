@@ -19,6 +19,7 @@ import {
   capitalSeparationDistance,
   escortCapitalStandoff,
   isCapitalShip,
+  isHeavyCapitalShip,
   shieldEnvelopeRadius,
 } from "./shieldGeometry";
 import { sharesShieldHaven } from "./shieldHaven";
@@ -123,7 +124,13 @@ export function calculateSeparation(ship: ShipState, ships: ShipState[]): Vector
     const dvy = vy - peer.velocity[1];
     const closingBound = Math.abs(dvx) + Math.abs(dvy);
     const capitalClearance = capitalSeparationDistance(ship, peer);
-    const escortClearance = escortCapitalStandoff(ship, peer);
+    // Friendly tenders can approach a heavy capital's rear shield shadow without
+    // the escort buffer ejecting them; real shield/hull clearance still applies.
+    const tenderShadow =
+      ship.team === peer.team &&
+      ((hullClass === "tender" && isHeavyCapitalShip(peer)) ||
+        (peer.hullClass === "tender" && isHeavyCapitalShip(ship)));
+    const escortClearance = tenderShadow ? 0 : escortCapitalStandoff(ship, peer);
     const clearanceBound = Math.max(
       capitalClearance,
       escortClearance,
