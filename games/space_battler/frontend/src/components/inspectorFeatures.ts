@@ -1,10 +1,5 @@
 import { engineNozzles } from "../canvas/effects";
-import {
-  previewBridgeHeight,
-  previewDepthFactor,
-  previewTurretShelfHeight,
-} from "../canvas/previewDepth";
-import { previewTurretOffsets } from "../canvas/turretRenderer";
+import { previewDepthFactor } from "../canvas/previewDepth";
 import { rotatePoint } from "../engine/math2d";
 import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { ShipState, Vector2 } from "../types/combat";
@@ -45,7 +40,6 @@ export function inspectorFeatures(
   const turrets = ship.turrets.map((turret, index) => {
     const { weapon, baseArc } = turret;
     const arc = Math.min(360, (Math.abs(baseArc[1] - baseArc[0]) * 180) / Math.PI);
-    const { collar, cupola } = previewTurretOffsets(turret.baseRadius, depth);
     return feature(
       `turret-${index}`,
       weapon.name,
@@ -57,7 +51,7 @@ export function inspectorFeatures(
         `Firing arc: ${Math.round(arc)}°`,
       ],
       turret.offset,
-      previewTurretShelfHeight(ship, turret, depth) + collar + cupola,
+      turret.baseRadius * 0.35 * depth,
       turret.baseRadius * 1.3,
     );
   });
@@ -86,7 +80,7 @@ export function inspectorFeatures(
         `Doctrine: ${profile.desc}`,
       ],
       [-ship.size * 0.3, 0],
-      previewBridgeHeight(ship, depth),
+      ship.size * 0.12 * depth,
       ship.size * 0.12,
     ),
     ...nozzles,

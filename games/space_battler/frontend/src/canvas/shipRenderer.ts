@@ -11,15 +11,7 @@ import {
   isLightHull,
   traceLightHull,
 } from "./lightHullDepth";
-import {
-  drawPreviewArmoredDeck,
-  drawPreviewEmitter,
-  drawPreviewKeel,
-  drawPreviewSuperstructure,
-  drawPreviewTurretShelf,
-  previewDepthFactor,
-  previewTurretShelfHeight,
-} from "./previewDepth";
+import { drawPreviewKeel, drawPreviewSuperstructure, previewDepthFactor } from "./previewDepth";
 import { ShipSpriteCache } from "./shipSpriteCache";
 import { renderTurret } from "./turretRenderer";
 
@@ -228,52 +220,24 @@ export function renderShipPreview(
   if (isBlue) drawTerranHull(ctx, ship, "#38bdf8", "#0f172a", "#0284c7", time);
   else drawAlienHull(ctx, ship, "#f87171", "#450a0a", "#dc2626", time);
   drawHullArmor(ctx, ship);
-  drawPreviewArmoredDeck(ctx, ship, depth);
-  if (
-    ship.hullClass === "missile_frigate" ||
-    ship.hullClass === "carrier" ||
-    ship.hullClass === "dreadnought"
-  ) {
-    // Raised coaming frames the recessed launch or spinal channel without covering its deck.
-    const s = ship.size;
-    ctx.strokeStyle = isBlue ? "#87b8ca" : "#d9898d";
-    ctx.lineWidth = Math.max(0.5, s * 0.015);
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(-s * 0.45, side * s * 0.16);
-      ctx.lineTo(s * 0.45, side * s * 0.16);
-      ctx.lineTo(s * 0.53, side * s * 0.11);
-      ctx.stroke();
-    }
-  }
   ctx.restore();
   const sin = Math.sin(ship.heading);
   const cos = Math.cos(ship.heading);
-  const elements: { depth: number; turret: TurretMountState | null; emitter?: boolean }[] =
-    ship.turrets.map((turret) => ({
+  const elements: { depth: number; turret: TurretMountState | null }[] = ship.turrets.map(
+    (turret) => ({
       depth: turret.offset[0] * sin + turret.offset[1] * cos,
       turret,
-    }));
+    }),
+  );
   elements.push({ depth: -ship.size * 0.3 * sin, turret: null });
-  if (ship.hullClass === "tender")
-    elements.push({ depth: ship.size * 0.57 * sin, turret: null, emitter: true });
   elements.sort((a, b) => a.depth - b.depth);
   for (const element of elements) {
-    if (element.turret) {
-      const height = previewTurretShelfHeight(ship, element.turret, depth);
-      ctx.save();
-      ctx.rotate(ship.heading);
-      drawPreviewTurretShelf(ctx, ship, element.turret, height);
-      ctx.restore();
-      ctx.save();
-      ctx.translate(0, -height);
+    if (element.turret)
       renderTurret(ctx, ship, element.turret, isBlue ? "#38bdf8" : "#f87171", depth);
-      ctx.restore();
-    } else {
+    else {
       ctx.save();
       ctx.rotate(ship.heading);
-      if (element.emitter) drawPreviewEmitter(ctx, ship, depth);
-      else drawPreviewSuperstructure(ctx, ship, depth);
+      drawPreviewSuperstructure(ctx, ship, depth);
       ctx.restore();
     }
   }
