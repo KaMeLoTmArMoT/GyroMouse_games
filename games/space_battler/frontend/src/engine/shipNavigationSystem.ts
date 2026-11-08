@@ -199,8 +199,7 @@ function selectNavigationTarget(
 ): ShipState | null {
   const fighter = ship.hullClass === "strike_craft";
   const context = navigationContext(aliveShips);
-  const enemies =
-    context?.teamEnemies.get(ship.team) ?? aliveShips.filter((enemy) => enemy.team !== ship.team);
+  const enemies = context?.teamEnemies.get(ship.team) ?? aliveShips;
   // Only corvette pursuit needs allied defense anchors; other hulls only inspect enemies.
   const pursuitShips = ship.hullClass === "corvette" ? aliveShips : enemies;
   const combatCapital =
@@ -216,13 +215,28 @@ function selectNavigationTarget(
       mainGun = turret;
   }
   const rangeSquared = range * range;
+  let hasNonFighterEnemy = false;
+  if (!fighter && ship.hullClass !== "corvette") {
+    for (const enemy of enemies) {
+      if (
+        enemy.team !== ship.team &&
+        enemy.isAlive &&
+        !enemy.isDocked &&
+        !enemy.isDebris &&
+        enemy.hullClass !== "strike_craft"
+      ) {
+        hasNonFighterEnemy = true;
+        break;
+      }
+    }
+  }
   // Global preferences must be known before scoring; this metadata pass retains no candidates.
   let hasSafeTarget = false;
   let hasCapital = false;
   let hasCraft = false;
   let hasCloseCapitalThreat = false;
   for (const enemy of enemies) {
-    if (!navigationCandidate(ship, enemy, pursuitShips)) continue;
+    if (!navigationCandidate(ship, enemy, pursuitShips, hasNonFighterEnemy)) continue;
     const safe = !fighter || safeNavigationTarget(enemy, aliveShips, context);
     if (safe && !hasSafeTarget) {
       hasSafeTarget = true;
@@ -233,7 +247,9 @@ function selectNavigationTarget(
     if (hasSafeTarget && !safe) continue;
     hasCapital ||= isCapitalShip(enemy);
     hasCraft ||= enemy.hullClass === "strike_craft" || enemy.hullClass === "corvette";
-    hasCloseCapitalThreat ||= combatCapital && closeNavigationThreat(enemy, ship, rangeSquared);
+    hasCloseCapitalThreat ||=
+      combatCapital &&
+      closeNavigationThreat(enemy, rangeSquared, navigationDistanceSquared(ship, enemy));
   }
   const previousId = previousTargetId ?? ship.maneuverTargetId;
   const capitalPriority =
@@ -254,6 +270,8 @@ function selectNavigationTarget(
   const hunter = pack?.[0] ?? ship;
   const localEngagementRadius = Math.min(1000 * spatialScale, Math.max(600 * spatialScale, range));
   const packEngagementRadius = tacticalSupportRadius(hunter) * 1.5;
+  const localEngagementRadiusSquared = localEngagementRadius ** 2;
+  const packEngagementRadiusSquared = packEngagementRadius ** 2;
   let localBest: ShipState | null = null;
   let localRank = Infinity;
   let localDistanceSquared = Infinity;
@@ -269,7 +287,7 @@ function selectNavigationTarget(
       ? (aliveShips.find((s) => s.id === ship.flagshipId && s.isAlive) ?? ship)
       : ship;
   for (const enemy of enemies) {
-    if (!navigationCandidate(ship, enemy, pursuitShips)) continue;
+    if (!navigationCandidate(ship, enemy, pursuitShips, hasNonFighterEnemy)) continue;
     if (fighter && hasSafeTarget && !safeNavigationTarget(enemy, aliveShips, context)) continue;
     let assignments =
       context?.count(context.navigationAssignments, ship, enemy.id, ship.navigationTargetId) ?? 0;
@@ -289,14 +307,15 @@ function selectNavigationTarget(
     const density = coordinated ? tacticalDensity(enemy, aliveShips) : undefined;
     const defenders = density?.get(enemy.team) ?? 1;
     const isolated = coordinated && (context?.isolated.get(enemy) ?? defenders <= 2);
-    const local = navigationDistanceSquared(hunter, enemy) <= localEngagementRadius ** 2;
+    const hunterDistanceSquared = navigationDistanceSquared(hunter, enemy);
+    const local = hunterDistanceSquared <= localEngagementRadiusSquared;
     const forceWeight =
       coordinated && local ? clamp((density?.get(ship.team) ?? 0) / defenders - 1, -1, 1) * 1.5 : 0;
     const isolationWeight = isolated && local ? 3 : 0;
     if (pack) {
-      const distanceSquared = navigationDistanceSquared(hunter, enemy);
+      const distanceSquared = hunterDistanceSquared;
       if (
-        distanceSquared <= packEngagementRadius ** 2 &&
+        distanceSquared <= packEngagementRadiusSquared &&
         withinPursuitTheater(hunter, enemy, aliveShips)
       ) {
         let rank = Infinity;
@@ -323,9 +342,11 @@ function selectNavigationTarget(
     if (preferCapital && !isCapitalShip(enemy) && !(coordinated && isolated && local)) continue;
     if (preferCraft && enemy.hullClass !== "strike_craft" && enemy.hullClass !== "corvette")
       continue;
-    const distance = Math.sqrt(navigationDistanceSquared(anchor, enemy));
-    const weaponDistanceSquared = navigationDistanceSquared(ship, enemy);
+    const weaponDistanceSquared =
+      hunter === ship ? hunterDistanceSquared : navigationDistanceSquared(ship, enemy);
     const weaponDistance = Math.sqrt(weaponDistanceSquared);
+    const distance =
+      anchor === ship ? weaponDistance : Math.sqrt(navigationDistanceSquared(anchor, enemy));
     const beyondRange = Math.max(0, weaponDistance / range - 1.15);
     const distancePenalty = combatCapital
       ? beyondRange * 6 + (hasCloseCapitalThreat && beyondRange > 0 ? 8 : 0)
@@ -343,7 +364,7 @@ function selectNavigationTarget(
       // Saturated focus squads must not send a capital through the hostile front line.
       (finishPriority > 0
         ? 0
-        : hasCloseCapitalThreat && closeNavigationThreat(enemy, ship, rangeSquared)
+        : hasCloseCapitalThreat && closeNavigationThreat(enemy, rangeSquared, weaponDistanceSquared)
           ? Math.max(-2, focusPriority) + 2
           : focusPriority) +
       (enemy.id === previousId ? 0.45 : 0) -
@@ -391,22 +412,31 @@ function navigationDistanceSquared(a: ShipState, b: ShipState): number {
   return dx * dx + dy * dy;
 }
 
-function navigationCandidate(ship: ShipState, enemy: ShipState, ships: ShipState[]): boolean {
+function navigationCandidate(
+  ship: ShipState,
+  enemy: ShipState,
+  ships: ShipState[],
+  hasNonFighterEnemy: boolean,
+): boolean {
   return (
     enemy.isAlive &&
     !enemy.isDocked &&
     !enemy.isDebris &&
     enemy.team !== ship.team &&
-    withinPursuitTheater(ship, enemy, ships)
+    withinPursuitTheater(ship, enemy, ships, hasNonFighterEnemy)
   );
 }
 
-function closeNavigationThreat(enemy: ShipState, ship: ShipState, rangeSquared: number): boolean {
+function closeNavigationThreat(
+  enemy: ShipState,
+  rangeSquared: number,
+  distanceSquared: number,
+): boolean {
   return (
     (enemy.hullClass === "dreadnought" ||
       enemy.hullClass === "battleship" ||
       enemy.hullClass === "cruiser") &&
-    navigationDistanceSquared(ship, enemy) <= rangeSquared
+    distanceSquared <= rangeSquared
   );
 }
 

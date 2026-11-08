@@ -510,6 +510,7 @@ export function withinPursuitTheater(
   ship: ShipState,
   target: ShipState,
   ships: ShipState[],
+  hasNonFighterEnemy?: boolean,
 ): boolean {
   const light = target.hullClass === "strike_craft";
   if (!light) return true;
@@ -525,14 +526,16 @@ export function withinPursuitTheater(
   }
   if (ship.hullClass !== "corvette") {
     // Only an all-fighter enemy remnant warrants leaving the tactical battle area.
-    const otherHulls = ships.some(
-      (enemy) =>
-        enemy.isAlive &&
-        !enemy.isDocked &&
-        !enemy.isDebris &&
-        enemy.team !== ship.team &&
-        enemy.hullClass !== "strike_craft",
-    );
+    const otherHulls =
+      hasNonFighterEnemy ??
+      ships.some(
+        (enemy) =>
+          enemy.isAlive &&
+          !enemy.isDocked &&
+          !enemy.isDebris &&
+          enemy.team !== ship.team &&
+          enemy.hullClass !== "strike_craft",
+      );
     return !otherHulls || distanceSquared(ship, target) <= antiKitePursuitLimit(ship) ** 2;
   }
   const anchor = fleetDefenseAnchor(ship, ships);
@@ -635,7 +638,9 @@ function defensiveStandoff(
   finishingTarget?: ShipState,
 ): Vector2 {
   const damaged = damageStandoffWeight(ship) > 0;
-  let corrected = velocity;
+  let correctedX = velocity[0];
+  let correctedY = velocity[1];
+  let changed = false;
   for (const enemy of ships) {
     // Fighter runs already manage their own clearance; capitals must not chase their
     // rapidly changing bearings with full-speed defensive translation.
@@ -647,19 +652,35 @@ function defensiveStandoff(
       (!damaged && !isCapitalShip(enemy))
     )
       continue;
-    const distance = vecDistance(ship.pos, enemy.pos);
-    if (distance < 1e-6) continue;
-    const toward = vecScale(vecSub(enemy.pos, ship.pos), 1 / distance);
-    const closing = Math.max(0, vecDot(vecSub(ship.velocity, enemy.velocity), toward));
+    const dx = ship.pos[0] - enemy.pos[0];
+    const dy = ship.pos[1] - enemy.pos[1];
+    // Prediction uses actual momentum, not the progressively projected desired velocity.
+    const dvx = ship.velocity[0] - enemy.velocity[0];
+    const dvy = ship.velocity[1] - enemy.velocity[1];
     const longRange = ship.hullClass === "battleship" && enemy.hullClass === "dreadnought";
     const minimum = damaged || longRange ? radius : 500;
+    const relativeSpeedBound = Math.abs(dvx) + Math.abs(dvy);
+    const bound =
+      minimum + (relativeSpeedBound * relativeSpeedBound) / 220 + 0.5 * relativeSpeedBound + 1e-6;
+    const distanceSquared = dx * dx + dy * dy;
+    if (distanceSquared >= bound * bound) continue;
+    const distance = Math.sqrt(distanceSquared);
+    if (distance < 1e-6) continue;
+    const inverseDistance = 1 / distance;
+    const towardX = (enemy.pos[0] - ship.pos[0]) * inverseDistance;
+    const towardY = (enemy.pos[1] - ship.pos[1]) * inverseDistance;
+    const closing = Math.max(0, dvx * towardX + dvy * towardY);
     const predictedDistance = distance - closing * (closing / 220 + 0.5);
     if (predictedDistance >= minimum) continue;
     const retreat = clamp((minimum - predictedDistance) * 0.7, 0, ship.maxSpeed * 0.65);
-    const inward = vecDot(corrected, toward);
-    if (inward > -retreat) corrected = vecSub(corrected, vecScale(toward, inward + retreat));
+    const inward = correctedX * towardX + correctedY * towardY;
+    if (inward > -retreat) {
+      correctedX -= towardX * (inward + retreat);
+      correctedY -= towardY * (inward + retreat);
+      changed = true;
+    }
   }
-  return corrected;
+  return changed ? [correctedX, correctedY] : velocity;
 }
 
 export function spinalEscape(
@@ -677,18 +698,27 @@ function primaryGun(ship: ShipState, mount: "spinal" | "missile"): TurretMountSt
   );
 }
 
-function interceptBearing(ship: ShipState, target: ShipState, gun?: TurretMountState): number {
-  let aim = vecSub(target.pos, ship.pos);
+function interceptBearing(
+  ship: ShipState,
+  target: ShipState,
+  gun: TurretMountState | undefined,
+  dx: number,
+  dy: number,
+): number {
+  let aimX = dx;
+  let aimY = dy;
   if (gun) {
     const intercept = interceptTime(
       vecSub(target.pos, mountPosition(ship, gun)),
       target.velocity,
       gun.weapon.projectileSpeed,
     );
-    if (intercept !== null)
-      aim = vecSub(vecAdd(target.pos, vecScale(target.velocity, intercept)), ship.pos);
+    if (intercept !== null) {
+      aimX = target.pos[0] + target.velocity[0] * intercept - ship.pos[0];
+      aimY = target.pos[1] + target.velocity[1] * intercept - ship.pos[1];
+    }
   }
-  return Math.atan2(aim[1], aim[0]);
+  return Math.atan2(aimY, aimX);
 }
 
 function updateBroadsideManeuver(
@@ -697,14 +727,15 @@ function updateBroadsideManeuver(
   gun: TurretMountState | undefined,
   aimBearing: number,
   doctrine: CapitalFlightDoctrine,
+  dx: number,
+  dy: number,
+  distance: number,
 ): void {
   const returnTime =
     Math.abs(normalizeAngle(aimBearing - ship.heading)) / Math.max(ship.turnRate, 0.01);
-  const delta = vecSub(target.pos, ship.pos);
-  const distance = vecDistance(ship.pos, target.pos);
-  const relative = vecSub(target.velocity, ship.velocity);
-  const bearingRate =
-    Math.abs(delta[0] * relative[1] - delta[1] * relative[0]) / Math.max(1, distance * distance);
+  const relativeX = target.velocity[0] - ship.velocity[0];
+  const relativeY = target.velocity[1] - ship.velocity[1];
+  const bearingRate = Math.abs(dx * relativeY - dy * relativeX) / Math.max(1, distance * distance);
   const slot = Number(ship.id.split("_").at(-1)) || 0;
   const initialSide = ship.broadsideSide ?? (slot % 2 === 0 ? 1 : -1);
   // Import legacy capital state once, then expose reducer output to existing callers.
@@ -740,15 +771,15 @@ function standoffDistance(
   order: GroupOrder,
   doctrine: CapitalFlightDoctrine,
 ): number {
-  const offensiveMounts = ship.turrets.filter((t) => t.weapon.weaponType !== "point_defense");
-  const primaryRange =
-    gun?.weapon.range ??
-    (ship.hullClass === "carrier"
-      ? 1140
-      : Math.max(0, ...offensiveMounts.map((t) => t.weapon.range)));
-  const secondaryRange =
-    Math.max(0, ...offensiveMounts.filter((t) => t !== gun).map((t) => t.weapon.range)) ||
-    primaryRange;
+  let offensiveRange = 0;
+  let secondaryRange = 0;
+  for (const turret of ship.turrets) {
+    if (turret.weapon.weaponType === "point_defense") continue;
+    offensiveRange = Math.max(offensiveRange, turret.weapon.range);
+    if (turret !== gun) secondaryRange = Math.max(secondaryRange, turret.weapon.range);
+  }
+  const primaryRange = gun?.weapon.range ?? (ship.hullClass === "carrier" ? 1140 : offensiveRange);
+  secondaryRange ||= primaryRange;
   const nominal =
     order.stance === "max_range"
       ? Math.min(primaryRange * 0.85, 1500)
@@ -764,16 +795,17 @@ function standoffDistance(
   );
 }
 
-function fleetBearing(ship: ShipState, target: ShipState, ships: ShipState[]): number {
-  const enemies = ships.filter((peer) => peer.isAlive && peer.team !== ship.team);
-  const enemyCenter = enemies.length
-    ? vecScale(
-        enemies.reduce<Vector2>((sum, peer) => vecAdd(sum, peer.pos), [0, 0]),
-        1 / enemies.length,
-      )
-    : target.pos;
-  const delta = vecSub(enemyCenter, ship.pos);
-  return Math.atan2(delta[1], delta[0]);
+function fleetBearing(
+  ship: ShipState,
+  target: ShipState,
+  sumX: number,
+  sumY: number,
+  count: number,
+): number {
+  const inverseCount = count ? 1 / count : 0;
+  const centerX = count ? sumX * inverseCount : target.pos[0];
+  const centerY = count ? sumY * inverseCount : target.pos[1];
+  return Math.atan2(centerY - ship.pos[1], centerX - ship.pos[0]);
 }
 
 export function carrierStandoffVelocity(ship: ShipState, ships: ShipState[]): Vector2 {
@@ -831,28 +863,58 @@ export function capitalIntent(
   time = 0,
   projectiles: ProjectileState[] = [],
 ): FlightIntent {
-  if (!withinPursuitTheater(ship, target, ships)) {
+  const flight = SHIP_DOCTRINES[ship.hullClass].flight;
+  let hasHostileDreadnought = false;
+  let hasNonFighterEnemy = false;
+  let formationWeaveCount = 0;
+  let leader: ShipState | undefined;
+  let enemySumX = 0;
+  let enemySumY = 0;
+  let enemyCount = 0;
+  for (const peer of ships) {
+    if (!peer.isAlive) continue;
+    if (peer.team !== ship.team) {
+      // Bearing includes docked/debris enemies; pursuit's presence predicate does not.
+      enemySumX += peer.pos[0];
+      enemySumY += peer.pos[1];
+      enemyCount++;
+      hasHostileDreadnought ||= peer.hullClass === "dreadnought";
+      hasNonFighterEnemy ||= !peer.isDocked && !peer.isDebris && peer.hullClass !== "strike_craft";
+      continue;
+    }
+    if (
+      flight.kind === "skirmish" &&
+      peer.hullClass === ship.hullClass &&
+      (!leader || peer.id.localeCompare(leader.id) < 0)
+    )
+      leader = peer;
+    const peerDoctrine = SHIP_DOCTRINES[peer.hullClass].flight;
+    if (peer.id !== ship.id && peerDoctrine.kind === "capital" && peerDoctrine.formationWeave)
+      formationWeaveCount++;
+  }
+  if (!withinPursuitTheater(ship, target, ships, hasNonFighterEnemy)) {
     ship.navigationTargetId = undefined;
     ship.maneuverTargetId = undefined;
     const velocity = fleetReturnVelocity(ship, ships);
     return { heading: Math.atan2(velocity[1], velocity[0]), velocity, rangePhase: "engage" };
   }
+  const dx = target.pos[0] - ship.pos[0];
+  const dy = target.pos[1] - ship.pos[1];
   if (ship.hullClass === "carrier") {
-    const delta = vecSub(target.pos, ship.pos);
     return {
-      heading: Math.atan2(delta[1], delta[0]),
+      heading: Math.atan2(dy, dx),
       velocity: carrierStandoffVelocity(ship, ships),
       rangePhase: "engage",
     };
   }
-  const flight = SHIP_DOCTRINES[ship.hullClass].flight;
   // Non-capital callers historically used the cruiser movement envelope.
   const doctrine =
     flight.kind === "capital" || flight.kind === "skirmish"
       ? flight
       : (SHIP_DOCTRINES.cruiser.flight as CapitalFlightDoctrine);
   const gun = primaryGun(ship, doctrine.primaryMount);
-  const aimBearing = interceptBearing(ship, target, gun);
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const aimBearing = interceptBearing(ship, target, gun, dx, dy);
   if (closeToKillTarget(ship, target) && damageStandoffWeight(ship) === 0) {
     const clearance = ship.size + target.size + 120;
     const approach = StandoffApproachBlock(ship, target, clearance, 0, {
@@ -860,6 +922,9 @@ export function capitalIntent(
       standoffThreshold: clearance + 50,
       aimBearing,
       forwardSpeedRatio: 1,
+      dx,
+      dy,
+      distance,
     });
     let velocity = vecAdd(approach.velocity, calculateSeparation(ship, ships));
     const evasive = OrdnanceAvoidanceBlock(ship, projectiles, ships, time, "torpedo", velocity);
@@ -878,11 +943,6 @@ export function capitalIntent(
     const tubes = ship.turrets.filter((t) => t.weapon.weaponType === "missile");
     const salvo = salvoReload(tubes, ship.skirmishCycle?.lastSalvoShot);
     const slot = Number(ship.id.split("_").at(-1)) || 0;
-    const leader = ships
-      .filter(
-        (peer) => peer.isAlive && peer.team === ship.team && peer.hullClass === ship.hullClass,
-      )
-      .sort((a, b) => a.id.localeCompare(b.id))[0];
     const leaderSlot = leader ? Number(leader.id.split("_").at(-1)) || 0 : slot;
     const cooperativeSide = leaderSlot % 2 === 0 ? 1 : -1;
     const previousPhase = ship.skirmishCycle?.phase;
@@ -900,7 +960,7 @@ export function capitalIntent(
       previousPhase !== "breakoff" &&
       arenaAnticipation(vecDistance([0, 0], ship.pos)) > 0
     ) {
-      const bearing = Math.atan2(target.pos[1] - ship.pos[1], target.pos[0] - ship.pos[0]);
+      const bearing = Math.atan2(dy, dx);
       const side = ship.skirmishCycle.side;
       const radial = (angle: number) => vecDot(ship.pos, [Math.cos(angle), Math.sin(angle)]);
       if (
@@ -991,36 +1051,19 @@ export function capitalIntent(
       ),
     };
   }
-  updateBroadsideManeuver(ship, target, gun, aimBearing, doctrine);
+  updateBroadsideManeuver(ship, target, gun, aimBearing, doctrine, dx, dy, distance);
   const side = ship.broadsideCycle?.side ?? 1;
   const radius = Math.max(
     standoffDistance(ship, target, gun, order, doctrine),
-    ship.hullClass === "battleship" &&
-      ships.some(
-        (enemy) => enemy.isAlive && enemy.team !== ship.team && enemy.hullClass === "dreadnought",
-      )
-      ? (gun?.weapon.range ?? 0) * 0.85
-      : 0,
+    ship.hullClass === "battleship" && hasHostileDreadnought ? (gun?.weapon.range ?? 0) * 0.85 : 0,
   );
   const threshold = doctrine.standoffThreshold;
   const standoffThreshold =
     "distance" in threshold ? threshold.distance : radius + threshold.margin;
-  const rangePhase = classifyRange(vecDistance(ship.pos, target.pos), standoffThreshold);
+  const rangePhase = classifyRange(distance, standoffThreshold);
   const closing = rangePhase === "approach";
   const boundary = clamp((vecDistance([0, 0], ship.pos) - (ARENA_RADIUS - 200)) / 200, 0, 1);
-  const line =
-    doctrine.formationWeave &&
-    !closing &&
-    ships.some((peer) => {
-      const peerDoctrine = SHIP_DOCTRINES[peer.hullClass].flight;
-      return (
-        peer.isAlive &&
-        peer.team === ship.team &&
-        peer.id !== ship.id &&
-        peerDoctrine.kind === "capital" &&
-        peerDoctrine.formationWeave
-      );
-    });
+  const line = doctrine.formationWeave && !closing && formationWeaveCount > 0;
   const slot = Number(ship.id.split("_").at(-1)) || 0;
   const phase = time * 0.35 + slot * 2.1;
   const lateralBias = closing
@@ -1034,6 +1077,9 @@ export function capitalIntent(
     aimBearing,
     reverseScale: doctrine.boundaryRetreatDamping ? 1 - boundary : 1,
     radialBias: line ? ship.maxSpeed * 0.2 * Math.sin(phase) : 0,
+    dx,
+    dy,
+    distance,
   });
   const weaving =
     !approach.closing &&
@@ -1041,9 +1087,14 @@ export function capitalIntent(
   const intent = weaving
     ? BroadsideWeaveBlock(ship, target, doctrine.broadside.arcOffset, side, standoffThreshold, {
         bearing:
-          doctrine.broadside.bearing === "fleet" ? fleetBearing(ship, target, ships) : aimBearing,
+          doctrine.broadside.bearing === "fleet"
+            ? fleetBearing(ship, target, enemySumX, enemySumY, enemyCount)
+            : aimBearing,
         radialSpeed: approach.radialSpeed,
         lateralBias,
+        dx,
+        dy,
+        distance,
       })
     : approach;
   let velocity = vecAdd(intent.velocity, calculateSeparation(ship, ships));

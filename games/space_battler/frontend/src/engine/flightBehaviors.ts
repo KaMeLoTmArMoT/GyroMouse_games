@@ -149,9 +149,13 @@ function relativeVelocity(
   radial: number,
   lateral: number,
   direction?: Vector2,
+  dx = target.pos[0] - ship.pos[0],
+  dy = target.pos[1] - ship.pos[1],
+  distance = Math.sqrt(dx * dx + dy * dy),
 ): Vector2 {
-  const n = direction ?? vecNormalize(vecSub(target.pos, ship.pos));
-  return vecAdd(vecScale(n, radial), vecScale([-n[1], n[0]], lateral));
+  const nx = direction ? direction[0] : distance < 1e-6 ? 0 : dx / distance;
+  const ny = direction ? direction[1] : distance < 1e-6 ? 0 : dy / distance;
+  return [nx * radial + -ny * lateral, ny * radial + nx * lateral];
 }
 
 export function StandoffApproachBlock(
@@ -165,10 +169,14 @@ export function StandoffApproachBlock(
     reverseScale?: number;
     radialBias?: number;
     direction?: Vector2;
+    dx?: number;
+    dy?: number;
+    distance?: number;
   },
 ): FlightIntent & { closing: boolean; radialSpeed: number } {
-  const delta = vecSub(target.pos, ship.pos);
-  const distance = vecDistance(ship.pos, target.pos);
+  const dx = settings.dx ?? target.pos[0] - ship.pos[0];
+  const dy = settings.dy ?? target.pos[1] - ship.pos[1];
+  const distance = settings.distance ?? Math.sqrt(dx * dx + dy * dy);
   const error = distance - desiredDistance;
   let radial = clamp(
     settings.radialGain * Math.sign(error) * Math.max(0, Math.abs(error) - settings.deadband),
@@ -181,8 +189,17 @@ export function StandoffApproachBlock(
   const closing = rangePhase === "approach";
   return {
     rangePhase,
-    heading: normalizeAngle(closing ? Math.atan2(delta[1], delta[0]) : settings.aimBearing),
-    velocity: relativeVelocity(ship, target, radial, lateralBias, settings.direction),
+    heading: normalizeAngle(closing ? Math.atan2(dy, dx) : settings.aimBearing),
+    velocity: relativeVelocity(
+      ship,
+      target,
+      radial,
+      lateralBias,
+      settings.direction,
+      dx,
+      dy,
+      distance,
+    ),
     closing,
     radialSpeed: radial,
   };
@@ -194,14 +211,33 @@ export function BroadsideWeaveBlock(
   arcOffset: number,
   side: number,
   weavingDistance: number,
-  motion: { bearing: number; radialSpeed: number; lateralBias: number },
+  motion: {
+    bearing: number;
+    radialSpeed: number;
+    lateralBias: number;
+    dx?: number;
+    dy?: number;
+    distance?: number;
+  },
 ): FlightIntent {
-  const weaving = vecDistance(ship.pos, target.pos) <= weavingDistance;
+  const dx = motion.dx ?? target.pos[0] - ship.pos[0];
+  const dy = motion.dy ?? target.pos[1] - ship.pos[1];
+  const distance = motion.distance ?? Math.sqrt(dx * dx + dy * dy);
+  const weaving = distance <= weavingDistance;
   const lateral = (weaving ? ship.maxSpeed * 0.3 * side : 0) + motion.lateralBias;
   return {
-    rangePhase: classifyRange(vecDistance(ship.pos, target.pos), weavingDistance),
+    rangePhase: classifyRange(distance, weavingDistance),
     heading: normalizeAngle(motion.bearing - (weaving ? side * arcOffset : 0)),
-    velocity: relativeVelocity(ship, target, motion.radialSpeed, lateral),
+    velocity: relativeVelocity(
+      ship,
+      target,
+      motion.radialSpeed,
+      lateral,
+      undefined,
+      dx,
+      dy,
+      distance,
+    ),
   };
 }
 
