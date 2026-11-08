@@ -15,7 +15,8 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { SimulationPresenter } from "./canvas/simulationPresenter";
 import { TacticalCanvas } from "./canvas/TacticalCanvas";
 import { type CrewVeterancy, FleetBuilder } from "./components/FleetBuilder";
 import { PerformanceHud, PerformanceSamples } from "./components/PerformanceHud";
@@ -37,6 +38,7 @@ import { isCapitalShip } from "./engine/shieldGeometry";
 import { SHIELD_HAVEN_SLOTS } from "./engine/shieldHaven";
 import { HULL_PROFILES } from "./engine/shipProfiles";
 import { ClientCombatSimulation } from "./engine/simulation";
+import { SimulationWorkerClient } from "./engine/simulationWorkerClient";
 
 const SPEED_LEVELS = [0, 0.5, 1, 2, 5];
 
@@ -285,6 +287,35 @@ export default function App() {
   const [sim, setSim] = useState<ClientCombatSimulation>(() => {
     return assembleSimulation(blueSlots, redSlots);
   });
+  const [workerClient, setWorkerClient] = useState<SimulationWorkerClient>();
+  const workerPresenter = useRef<SimulationPresenter | null>(null);
+
+  useLayoutEffect(() => {
+    const client = new SimulationWorkerClient({
+      selectedMap: sim.selectedMap,
+      crewVeterancy: sim.crewVeterancy,
+      fleets: [],
+      ships: sim.ships,
+      orders: [...sim.orders.values()],
+    });
+    const presenter = new SimulationPresenter(sim, client);
+    workerPresenter.current = presenter;
+    setWorkerClient(client);
+    void client.ready.then(
+      () => {
+        if (workerPresenter.current !== presenter) return;
+        presenter.frame(performance.now(), 0, 0);
+        setTick((tick) => (tick + 1) % 10000);
+      },
+      (error: Error) => {
+        if (workerPresenter.current === presenter) console.error(error);
+      },
+    );
+    return () => {
+      workerPresenter.current = null;
+      void client.dispose();
+    };
+  }, [sim]);
   const [selectedShipId, setSelectedShipId] = useState<string | null>("blue_bb_0");
   const [selectedProjectileId, setSelectedProjectileId] = useState<string | null>(null);
 
@@ -420,8 +451,26 @@ export default function App() {
     setShowVictoryModal(true);
   };
 
-  const stepForward = () => {
-    sim.update(1 / 30, showPerformance ? performanceSamples.current.addStep : undefined);
+  const stepForward = async () => {
+    const presenter = workerPresenter.current;
+    if (workerClient && presenter?.client === workerClient) {
+      try {
+        await workerClient.ready;
+        await workerClient.step(2);
+        if (workerPresenter.current !== presenter) return;
+        presenter.frame(
+          performance.now(),
+          0,
+          0,
+          showPerformance ? performanceSamples.current : undefined,
+        );
+      } catch (error) {
+        if (workerPresenter.current === presenter) console.error(error);
+        return;
+      }
+    } else {
+      sim.update(1 / 30, showPerformance ? performanceSamples.current.addStep : undefined);
+    }
     setTick((tick) => (tick + 1) % 10000);
   };
 
@@ -460,10 +509,15 @@ export default function App() {
 
   const continueBattle = () => {
     if (!canContinueWithRemnants) return;
-    sim.continueBattleWithRemnants();
-    sim.observer = new FleetBreakdown(sim);
+    const next = new ClientCombatSimulation(sim.selectedMap);
+    next.crewVeterancy = { ...sim.crewVeterancy };
+    for (const ship of structuredClone(sim.ships)) next.addShip(ship);
+    for (const order of sim.orders.values()) next.setGroupOrder({ ...order });
+    next.continueBattleWithRemnants();
+    next.observer = new FleetBreakdown(next);
+    setSim(next);
     setIngressRevision((revision) => revision + 1);
-    setSelectedShipId(sim.ships[0]?.id ?? null);
+    setSelectedShipId(next.ships[0]?.id ?? null);
     setSelectedProjectileId(null);
     setShowVictoryModal(true);
     setSpeed(lastActiveSpeed > 0 ? lastActiveSpeed : 1);
@@ -676,6 +730,7 @@ export default function App() {
           <div className="flex-1 relative bg-black">
             <TacticalCanvas
               sim={sim}
+              workerClient={workerClient}
               speed={speed}
               ingressRevision={ingressRevision}
               performanceSamples={showPerformance ? performanceSamples.current : undefined}
@@ -1395,10 +1450,10 @@ export default function App() {
                           })()}
                         {selectedShip.hullClass === "carrier" &&
                           (() => {
-                            const fabrication = carrierFabricationProgress(
-                              selectedShip,
-                              sim.timeElapsed,
-                            );
+                            const fabrication =
+                              workerClient?.latestSnapshot?.presentation?.carrierFabrication[
+                                selectedShip.id
+                              ] ?? carrierFabricationProgress(selectedShip, sim.timeElapsed);
                             const craft = sim.ships.filter(
                               (ship) =>
                                 ship.isAlive &&

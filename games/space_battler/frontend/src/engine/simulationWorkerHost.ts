@@ -1,3 +1,4 @@
+import { FleetBreakdown } from "./fleetBreakdown";
 import { buildFleetFromSlots } from "./fleetBuilder";
 import { ClientCombatSimulation } from "./simulation";
 import { SimulationPresentationMetadataPacker } from "./simulationPresentationMetadata";
@@ -70,6 +71,8 @@ export class SimulationWorkerHost {
           ))
             sim.addShip(ship);
         }
+        for (const ship of message.config.ships ?? []) sim.addShip(structuredClone(ship));
+        sim.observer = new FleetBreakdown(sim);
         for (const order of message.config.orders ?? []) sim.setGroupOrder({ ...order });
         this.dirty = true;
         this.publish();
@@ -193,7 +196,7 @@ export class SimulationWorkerHost {
 
   private publish(): void {
     // Reliable events have independent ownership: snapshot starvation/coalescing
-    // cannot lose a whole-tick burst larger than the codec's 256-event ring.
+    // cannot lose a whole-tick burst larger than the codec's event ring.
     if (this.events.length > 0) {
       const events = this.events;
       this.events = [];

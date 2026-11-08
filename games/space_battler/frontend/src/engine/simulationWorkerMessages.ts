@@ -2,6 +2,7 @@ import type {
   CombatAudioEvent,
   EngagementStance,
   GroupOrder,
+  ShipState,
   TargetPriority,
   Vector2,
   WeaponType,
@@ -13,6 +14,7 @@ import type { SimulationPresentationMetadata } from "./simulationPresentationMet
 
 export interface SimulationWorkerConfig {
   selectedMap?: BattleMapId;
+  ships?: ShipState[];
   fleets: Array<{
     slots: FleetSlot[];
     team: number;

@@ -34,6 +34,7 @@ vi.mock("react", async (importOriginal) => ({
     return values[index];
   },
   useEffect: () => {},
+  useLayoutEffect: () => {},
 }));
 
 type ElementProps = Parameters<typeof FleetBuilder>[0] & {

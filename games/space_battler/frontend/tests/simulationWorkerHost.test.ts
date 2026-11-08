@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Worker as NodeWorker } from "node:worker_threads";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FleetBreakdown } from "../src/engine/fleetBreakdown";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import { SimulationWorkerClient } from "../src/engine/simulationWorkerClient";
@@ -15,10 +16,10 @@ import {
   HEADER_WORDS,
   MOUNT_BYTE_OFFSET,
   MOUNT_STRIDE,
-  packSimulationSnapshot,
-  prepareSimulationSnapshotBuffer,
   PROJECTILE_BYTE_OFFSET,
   PROJECTILE_STRIDE,
+  packSimulationSnapshot,
+  prepareSimulationSnapshotBuffer,
   SHIP_BYTE_OFFSET,
   SHIP_STRIDE,
   SIMULATION_SNAPSHOT_BYTE_LENGTH,
@@ -28,7 +29,9 @@ import {
 const config: SimulationWorkerConfig = {
   fleets: [0, 1].map((team) => ({
     slots: (["cruiser", "corvette", "missile_frigate"] as const).map((hullClass, index) => ({
-      id: `${team}_${index}`, hullClass, groupId: index + 1,
+      id: `${team}_${index}`,
+      hullClass,
+      groupId: index + 1,
     })),
     team,
     baseX: team === 0 ? -260 : 260,
@@ -47,7 +50,10 @@ class TransferWorker {
   snapshots = 0;
   readonly host: SimulationWorkerHost;
 
-  constructor(readonly url: URL, readonly options: WorkerOptions) {
+  constructor(
+    readonly url: URL,
+    readonly options: WorkerOptions,
+  ) {
     TransferWorker.instances.push(this);
     this.host = new SimulationWorkerHost((message, transfer = []) => {
       const cloned = structuredClone(message, { transfer });
@@ -56,14 +62,17 @@ class TransferWorker {
         if (message.buffer.byteLength === 0) this.detachedSnapshots++;
       }
       queueMicrotask(() => {
-        if (!this.terminated) this.onmessage?.({ data: cloned } as MessageEvent<SimulationWorkerResponse>);
+        if (!this.terminated)
+          this.onmessage?.({ data: cloned } as MessageEvent<SimulationWorkerResponse>);
       });
     });
   }
 
   postMessage(message: SimulationWorkerRequest, transfer: ArrayBuffer[] = []): void {
     const cloned = structuredClone(message, { transfer });
-    queueMicrotask(() => { if (!this.terminated) this.host.receive(cloned); });
+    queueMicrotask(() => {
+      if (!this.terminated) this.host.receive(cloned);
+    });
   }
 
   terminate(): void {
@@ -77,17 +86,28 @@ function baseline(): ClientCombatSimulation {
   for (const fleet of config.fleets)
     for (const ship of buildFleetFromSlots(fleet.slots, fleet.team, fleet.baseX, fleet.heading))
       sim.addShip(ship);
+  sim.observer = new FleetBreakdown(sim);
   return sim;
 }
 
 function combatHash(sim: ClientCombatSimulation): string {
   // Only pre-existing cosmetic log IDs use Math.random and need normalization.
-  return createHash("sha256").update(JSON.stringify({
-    ships: sim.ships, projectiles: sim.projectiles, beams: sim.activeBeams,
-    obstacles: sim.mapObstacles, stats: sim.stats, time: sim.timeElapsed,
-    winner: sim.winner, winnerDeclaredTime: sim.winnerDeclaredTime,
-    orders: [...sim.orders], log: sim.combatLog.map(({ id: _id, ...event }) => event),
-  })).digest("hex");
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        ships: sim.ships,
+        projectiles: sim.projectiles,
+        beams: sim.activeBeams,
+        obstacles: sim.mapObstacles,
+        stats: sim.stats,
+        time: sim.timeElapsed,
+        winner: sim.winner,
+        winnerDeclaredTime: sim.winnerDeclaredTime,
+        orders: [...sim.orders],
+        log: sim.combatLog.map(({ id: _id, ...event }) => event),
+      }),
+    )
+    .digest("hex");
 }
 
 function expectRenderParity(actual: ArrayBuffer, expected: ArrayBuffer): void {
@@ -104,7 +124,9 @@ function expectRenderParity(actual: ArrayBuffer, expected: ArrayBuffer): void {
     [PROJECTILE_BYTE_OFFSET, SnapshotHeader.projectileCount, PROJECTILE_STRIDE],
   ]) {
     const length = expectedViews.header[countWord] * stride * 4;
-    expect(new Uint8Array(actual, offset, length)).toEqual(new Uint8Array(expected, offset, length));
+    expect(new Uint8Array(actual, offset, length)).toEqual(
+      new Uint8Array(expected, offset, length),
+    );
   }
 }
 
@@ -119,22 +141,61 @@ afterEach(() => {
 });
 
 describe("simulation worker host and client", () => {
+  it("starts a fresh worker from redeployed survivors with damage and loadouts preserved", async () => {
+    vi.stubGlobal("Worker", TransferWorker);
+    const previous = baseline();
+    previous.ships[0].hullCurrent -= 50;
+    previous.ships[0].armorCurrent -= 20;
+    previous.ships[0].shieldCurrent = 0;
+    previous.ships[1].isAlive = false;
+    previous.timeElapsed = 300;
+    previous.winner = -1;
+    previous.continueBattleWithRemnants();
+    const expected = structuredClone(previous.ships);
+    const client = new SimulationWorkerClient({
+      fleets: [],
+      ships: previous.ships,
+      crewVeterancy: { 0: "ace", 1: "veteran" },
+    });
+    await client.ready;
+    const authoritative = TransferWorker.instances[0].host.simulation;
+    expect(authoritative?.ships).toEqual(expected);
+    expect(authoritative?.ships).not.toBe(previous.ships);
+    expect(authoritative?.ships[0].hullCurrent).toBe(previous.ships[0].hullMax - 50);
+    expect(authoritative?.ships[0].armorCurrent).toBe(previous.ships[0].armorMax - 20);
+    expect(authoritative?.ships[0].shieldCurrent).toBe(previous.ships[0].shieldMax);
+    expect(authoritative?.crewVeterancy).toEqual({ 0: "ace", 1: "veteran" });
+    expect(authoritative?.observer).toBeInstanceOf(FleetBreakdown);
+    expect(client.latestSnapshot?.presentation?.winner).toBeNull();
+    expect(client.latestSnapshot?.presentation?.combatLog).toEqual([]);
+    expect(client.latestSnapshot?.timeElapsed).toBe(0);
+    const stepped = client.step(2);
+    await vi.runAllTimersAsync();
+    expect(await stepped).toBe(2);
+    await client.dispose();
+  });
   it("runs the production worker entry on an OS thread with snapshot and event parity", async () => {
     vi.useRealTimers();
     class ThreadWorker {
       onmessage: ((event: MessageEvent<SimulationWorkerResponse>) => void) | null = null;
       onerror: ((event: { message: string }) => void) | null = null;
       onmessageerror: (() => void) | null = null;
-      readonly thread = new NodeWorker(new URL("./fixtures/simulationWorkerThread.mjs", import.meta.url));
+      readonly thread = new NodeWorker(
+        new URL("./fixtures/simulationWorkerThread.mjs", import.meta.url),
+      );
       constructor() {
-        this.thread.on("message", (data) => this.onmessage?.({ data } as MessageEvent<SimulationWorkerResponse>));
+        this.thread.on("message", (data) =>
+          this.onmessage?.({ data } as MessageEvent<SimulationWorkerResponse>),
+        );
         this.thread.on("error", (error) => this.onerror?.({ message: error.message }));
         this.thread.on("messageerror", () => this.onmessageerror?.());
       }
       postMessage(message: SimulationWorkerRequest, transfer: ArrayBuffer[]): void {
         this.thread.postMessage(message, transfer);
       }
-      terminate(): void { void this.thread.terminate(); }
+      terminate(): void {
+        void this.thread.terminate();
+      }
     }
     vi.stubGlobal("Worker", ThreadWorker);
     const remote = new SimulationWorkerClient(config);
@@ -174,7 +235,9 @@ describe("simulation worker host and client", () => {
     await client.command({ kind: "STANCE", groupId: 1, stance: "brawl" });
     await client.command({ kind: "TARGET_PRIORITY", groupId: 1, priority: "capitals" });
     expect(worker.host.simulation?.orders.get(1)).toEqual({
-      groupId: 1, stance: "brawl", priority: "capitals",
+      groupId: 1,
+      stance: "brawl",
+      priority: "capitals",
     });
     const oldBuffer = client.previousSnapshot?.views?.buffer;
     const stepped = client.step(4);
@@ -218,7 +281,9 @@ describe("simulation worker host and client", () => {
       expect(combatHash(authoritative)).toBe(combatHash(reference));
       const events = remote.drainEvents();
       expect(events).toEqual(local.drainEvents());
-      expect(events.some((event) => event.kind === "BEAM_FIRE" || event.kind === "PROJECTILE_FIRE")).toBe(true);
+      expect(
+        events.some((event) => event.kind === "BEAM_FIRE" || event.kind === "PROJECTILE_FIRE"),
+      ).toBe(true);
       const sequences = events.map((event) => event.sequence);
       expect(sequences).toEqual([...sequences].sort((a, b) => a - b));
       const buffer = remote.latestSnapshot?.views?.buffer;
@@ -228,8 +293,9 @@ describe("simulation worker host and client", () => {
       const expected = buffer.slice(0);
       packSimulationSnapshot(reference, expected);
       expect(new Uint8Array(buffer)).toEqual(new Uint8Array(expected));
-      expect(new Uint8Array(local.latestSnapshot?.views?.buffer ?? new ArrayBuffer(0)))
-        .toEqual(new Uint8Array(buffer));
+      expect(new Uint8Array(local.latestSnapshot?.views?.buffer ?? new ArrayBuffer(0))).toEqual(
+        new Uint8Array(buffer),
+      );
     }
     expect(reference.stats[0].damageDealt + reference.stats[1].damageDealt).toBeGreaterThan(0);
     await remote.dispose();
@@ -251,31 +317,49 @@ describe("simulation worker host and client", () => {
     await vi.runAllTimersAsync();
     expect(host.simulation?.timeElapsed).toBe(3 / 60);
     expect(responses.filter((message) => message.type === "SNAPSHOT")).toHaveLength(1);
-    const events = responses.flatMap((message) => message.type === "EVENTS" ? message.events : []);
+    const events = responses.flatMap((message) =>
+      message.type === "EVENTS" ? message.events : [],
+    );
     expect(events.filter((event) => event.kind === "SHIELD_HIT")).toHaveLength(300);
-    expect(events.find((event) => event.kind === "SHIELD_HIT" && event.pos[0] === 10)).toBeDefined();
+    expect(
+      events.find((event) => event.kind === "SHIELD_HIT" && event.pos[0] === 10),
+    ).toBeDefined();
     host.receive({ type: "RECYCLE", epoch: 8, buffer: initial.buffer });
     const snapshots = responses.filter((message) => message.type === "SNAPSHOT");
     expect(snapshots).toHaveLength(2);
-    expect(prepareSimulationSnapshotBuffer(snapshots[1].buffer).header[SnapshotHeader.tick]).toBe(3);
+    expect(prepareSimulationSnapshotBuffer(snapshots[1].buffer).header[SnapshotHeader.tick]).toBe(
+      3,
+    );
     host.receive({ type: "DISPOSE" });
     expect(responses.at(-1)).toEqual({ type: "DISPOSED" });
   });
 
   it("rejects invalid commands and stale epochs, and supports construction fallback", async () => {
-    vi.stubGlobal("Worker", class { constructor() { throw new Error("Unsupported worker"); } });
+    vi.stubGlobal(
+      "Worker",
+      class {
+        constructor() {
+          throw new Error("Unsupported worker");
+        }
+      },
+    );
     const client = new SimulationWorkerClient(config);
     await client.ready;
     expect(client.mode).toBe("synchronous");
     await expect(client.step(0)).rejects.toThrow("positive safe integer");
-    await expect(client.command({ kind: "TARGET_OVERRIDE", shipId: "0_0", targetId: "1_0" }))
-      .rejects.toThrow("not supported");
+    await expect(
+      client.command({ kind: "TARGET_OVERRIDE", shipId: "0_0", targetId: "1_0" }),
+    ).rejects.toThrow("not supported");
     expect(await client.step()).toBe(1);
     const responses: SimulationWorkerResponse[] = [];
     const host = new SimulationWorkerHost((message) => responses.push(message), true);
     host.receive({ type: "INIT", epoch: 4, config, buffers: [] });
     host.receive({ type: "STEP", epoch: 3, requestId: 9, ticks: 1 });
-    expect(responses.at(-1)).toMatchObject({ type: "ERROR", requestId: 9, message: "Stale simulation worker epoch" });
+    expect(responses.at(-1)).toMatchObject({
+      type: "ERROR",
+      requestId: 9,
+      message: "Stale simulation worker epoch",
+    });
     expect(host.simulation?.timeElapsed).toBe(0);
     host.dispose();
     await client.dispose();

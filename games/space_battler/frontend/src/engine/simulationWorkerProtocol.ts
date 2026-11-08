@@ -5,9 +5,9 @@ import type { SimulationPresentationMetadata } from "./simulationPresentationMet
 // Presentation-only, native-endian protocol for same-browser transfer. Never feed
 // Float32 render values back into the double-precision authoritative simulation.
 export const SIMULATION_SNAPSHOT_VERSION = 1;
-export const MAX_WORKER_SHIPS = 512;
-export const MAX_WORKER_PROJECTILES = 1024;
-export const MAX_WORKER_EVENTS = 256;
+export const MAX_WORKER_SHIPS = 2048;
+export const MAX_WORKER_PROJECTILES = 4096;
+export const MAX_WORKER_EVENTS = 1024;
 export const MAX_WORKER_MOUNTS = MAX_WORKER_SHIPS * 8;
 
 // Strides/field offsets are in 32-bit words. Float and integer views OVERLAP;

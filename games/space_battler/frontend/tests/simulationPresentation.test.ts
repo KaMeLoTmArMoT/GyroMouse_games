@@ -3,6 +3,8 @@ import { VisualEffectsManager } from "../src/canvas/effects";
 import { SimulationPresenter } from "../src/canvas/simulationPresenter";
 import { dispatchWorkerPresentationEvents } from "../src/canvas/workerPresentationEvents";
 import { PerformanceSamples } from "../src/components/PerformanceHud";
+import { carrierFabricationProgress } from "../src/engine/carrierHangar";
+import { FleetBreakdown } from "../src/engine/fleetBreakdown";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import { ClientCombatSimulation } from "../src/engine/simulation";
 import { SimulationPresentationMetadataPacker } from "../src/engine/simulationPresentationMetadata";
@@ -330,6 +332,24 @@ describe("dual-mode simulation presenter", () => {
     expect(sim.timeElapsed).toBe(1 / 60);
   });
 
+  it("reads fabrication from the direct simulation's current time", () => {
+    const sim = simulation();
+    const [carrier] = buildFleetFromSlots(
+      [{ id: "carrier", hullClass: "carrier", groupId: 1 }],
+      0,
+      -500,
+      0,
+    );
+    sim.addShip(carrier);
+    const presenter = new SimulationPresenter(sim);
+    presenter.frame(0, 1 / 60, 1);
+    sim.timeElapsed = 7;
+    expect(presenter.state.getCarrierFabrication(carrier)).toEqual(
+      carrierFabricationProgress(carrier, sim.timeElapsed),
+    );
+    expect(presenter.state.getCarrierFabrication(carrier).timerRemaining).toBeLessThan(20);
+  });
+
   it("uses a separate render model with the client's unavailable-worker fallback", async () => {
     vi.stubGlobal("Worker", undefined);
     const client = new SimulationWorkerClient(config);
@@ -340,8 +360,8 @@ describe("dual-mode simulation presenter", () => {
     const samples = new PerformanceSamples();
     presenter.frame(performance.now(), 1 / 60, 1, samples, dispatch);
     expect(client.mode).toBe("synchronous");
-    expect(sim.timeElapsed).toBe(0);
-    expect(presenter.state.ships).not.toBe(sim.ships);
+    expect(sim.timeElapsed).toBe(presenter.state.timeElapsed);
+    expect(presenter.state.ships).toBe(sim.ships);
     expect(presenter.state.ships[0]).not.toBe(
       client.shipDefinitions.get(presenter.state.ships[0].id),
     );
@@ -383,7 +403,7 @@ describe("dual-mode simulation presenter", () => {
     presenter.frame(latest.receivedAtMs + 1000 / 120, 0, 1, undefined, dispatch);
     expect(presenter.state.timeElapsed).toBeCloseTo(1 / 120);
     expect(presenter.state.ships[0]).toBe(ship);
-    expect(sim.timeElapsed).toBe(0);
+    expect(sim.timeElapsed).toBeCloseTo(1 / 120);
     expect(audio.playCombatEvent.mock.calls.filter(([cue]) => cue === "warp_ingress")).toHaveLength(
       1,
     );
@@ -440,6 +460,108 @@ describe("dual-mode simulation presenter", () => {
     presenter.frame(performance.now(), 0, 0);
     expect(presenter.state.ships).toHaveLength(2);
     expect(presenter.state.timeElapsed).toBe(5 / 60);
+    await client.dispose();
+  });
+
+  it("mirrors READY and manual two-tick snapshots onto the HUD while paused", async () => {
+    vi.stubGlobal("Worker", undefined);
+    const client = new SimulationWorkerClient(config);
+    await client.ready;
+    const sim = simulation();
+    const update = vi.spyOn(sim, "update");
+    const presenter = new SimulationPresenter(sim, client);
+    presenter.frame(0, 0, 0);
+    expect(sim.ships).toBe(presenter.state.ships);
+    expect(sim.timeElapsed).toBe(0);
+    const ship = sim.ships[0];
+    await client.step(2);
+    presenter.frame(performance.now(), 0, 0);
+    expect(sim.timeElapsed).toBe(2 / 60);
+    expect(sim.ships[0]).toBe(ship);
+    expect(sim.projectiles).toBe(presenter.state.projectiles);
+    expect(sim.activeBeams).toBe(presenter.state.activeBeams);
+    expect(update).not.toHaveBeenCalled();
+    await client.dispose();
+  });
+
+  it("mirrors authoritative summary, DPS, support and fabrication telemetry", async () => {
+    vi.stubGlobal("Worker", PresentationWorker);
+    const supportConfig: SimulationWorkerConfig = {
+      fleets: [
+        {
+          team: 0,
+          baseX: -500,
+          heading: 0,
+          slots: ["carrier", "tender", "cruiser"].map((hullClass, i) => ({
+            id: `support_${i}`,
+            hullClass: hullClass as "carrier" | "tender" | "cruiser",
+            groupId: 1,
+          })),
+        },
+        config.fleets[1],
+      ],
+    };
+    const client = new SimulationWorkerClient(supportConfig);
+    await client.ready;
+    const hostSim = PresentationWorker.instances[0].host.simulation;
+    if (!hostSim) throw new Error("Missing authoritative simulation");
+    const sim = simulation();
+    const presenter = new SimulationPresenter(sim, client);
+    const carrier = hostSim.ships.find((ship) => ship.hullClass === "carrier")!;
+    const tender = hostSim.ships.find((ship) => ship.hullClass === "tender")!;
+    const recipient = hostSim.ships.find(
+      (ship) => ship.hullClass === "cruiser" && ship.team === 0,
+    )!;
+    recipient.pos = [tender.pos[0] + 100, tender.pos[1]];
+    recipient.shieldCurrent = 0;
+    const stepped = client.step(2);
+    await stepped;
+    hostSim.timeElapsed = 7;
+    hostSim.winner = 0;
+    hostSim.winnerDeclaredTime = 6.5;
+    hostSim.stats[0].damageDealt = 123;
+    hostSim.stats[1].missilesIntercepted = 4;
+    hostSim.stats[0].recentDamageWindow = [{ time: 7, damage: 125 }];
+    hostSim.addCombatLog("Worker telemetry", 0);
+    const lease = { guestId: recipient.id, parentId: carrier.id, slotId: "port-mid" as const };
+    vi.spyOn(hostSim.shieldHaven, "getLease").mockImplementation((id) =>
+      id === recipient.id ? lease : null,
+    );
+    await client.command({ kind: "STANCE", groupId: 1, stance: "brawl" });
+    presenter.frame(performance.now(), 0, 0);
+    expect(sim.winner).toBe(0);
+    expect(sim.winnerDeclaredTime).toBe(6.5);
+    expect(sim.stats).toEqual(hostSim.stats);
+    expect(sim.stats).not.toBe(hostSim.stats);
+    expect(sim.combatLog).toEqual(hostSim.combatLog);
+    expect(sim.getRollingDPS(0)).toBe(50);
+    expect(sim.getRollingDPS(1)).toBe(hostSim.getRollingDPS(1));
+    expect(sim.harmonicShields.getTenderState(tender.id, sim.timeElapsed)).toEqual(
+      hostSim.harmonicShields.getTenderState(tender.id, hostSim.timeElapsed),
+    );
+    expect(sim.shieldHaven.getLease(recipient.id)).toEqual(lease);
+    expect(client.latestSnapshot?.presentation?.carrierFabrication[carrier.id]).toEqual(
+      carrierFabricationProgress(carrier, hostSim.timeElapsed),
+    );
+    const renderedCarrier = presenter.state.ships.find((ship) => ship.id === carrier.id);
+    if (!renderedCarrier) throw new Error("Missing rendered carrier");
+    expect(presenter.state.getCarrierFabrication(renderedCarrier)).toEqual(
+      client.latestSnapshot?.presentation?.carrierFabrication[carrier.id],
+    );
+    expect(presenter.state.getCarrierFabrication(renderedCarrier)).not.toEqual(
+      carrierFabricationProgress(renderedCarrier, presenter.state.timeElapsed),
+    );
+    expect(
+      client.latestSnapshot?.presentation?.carrierFabrication[carrier.id].timerRemaining,
+    ).toBeLessThan(20);
+    expect(sim.observer).toBeInstanceOf(FleetBreakdown);
+    for (const team of [0, 1, undefined]) {
+      expect((sim.observer as FleetBreakdown).format(team)).toBe(
+        (hostSim.observer as FleetBreakdown).format(team),
+      );
+    }
+    hostSim.stats[0].damageDealt = 999;
+    expect(sim.stats[0].damageDealt).toBe(123);
     await client.dispose();
   });
 

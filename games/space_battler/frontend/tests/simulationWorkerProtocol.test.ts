@@ -99,9 +99,11 @@ describe("transferable simulation snapshot protocol", () => {
   it("lays out aligned, contiguous overlapping views on a single backing buffer", () => {
     const buffer = createSimulationSnapshotBuffer();
     const views = prepareSimulationSnapshotBuffer(buffer);
-    expect(MAX_WORKER_SHIPS).toBe(512);
-    expect(MAX_WORKER_PROJECTILES).toBe(1024);
-    expect(MAX_WORKER_EVENTS).toBe(256);
+    expect(MAX_WORKER_SHIPS).toBe(2048);
+    expect(MAX_WORKER_PROJECTILES).toBe(4096);
+    expect(MAX_WORKER_MOUNTS).toBe(16384);
+    expect(MAX_WORKER_EVENTS).toBe(1024);
+    expect(SIMULATION_SNAPSHOT_BYTE_LENGTH).toBe(589888);
     expect(SHIP_BYTE_OFFSET).toBe(HEADER_WORDS * 4);
     expect(MOUNT_BYTE_OFFSET).toBe(SHIP_BYTE_OFFSET + MAX_WORKER_SHIPS * SHIP_STRIDE * 4);
     expect(PROJECTILE_BYTE_OFFSET).toBe(MOUNT_BYTE_OFFSET + MAX_WORKER_MOUNTS * MOUNT_STRIDE * 4);
@@ -499,7 +501,7 @@ describe("snapshot combat event ring", () => {
     expect(new Uint8Array(buffer)).toEqual(new Uint8Array(before));
     acknowledgeSimulationSnapshotEvents(buffer, 192);
     acknowledgeSimulationSnapshotEvents(buffer, 192); // Duplicate ack is harmless.
-    for (let i = 256; i < 448; i++)
+    for (let i = MAX_WORKER_EVENTS; i < MAX_WORKER_EVENTS + 192; i++)
       expect(appendSimulationSnapshotEvent(buffer, EventType.hit, i / 60, 0, 0, i, 0)).toBe(true);
     const state = new RenderInterpolationState();
     unpackSimulationSnapshot(buffer, state);
@@ -511,10 +513,12 @@ describe("snapshot combat event ring", () => {
       expect(views.eventsInt[index * EVENT_STRIDE + EventWord.sequence]).toBe(193 + i);
       expect(views.eventsFloat[index * EVENT_STRIDE + EventWord.posX]).toBe(192 + i);
     }
-    acknowledgeSimulationSnapshotEvents(buffer, 448);
+    acknowledgeSimulationSnapshotEvents(buffer, MAX_WORKER_EVENTS + 192);
     unpackSimulationSnapshot(buffer, state);
     expect(state.eventCount).toBe(0);
     appendSimulationSnapshotEvent(buffer, EventType.shieldImpact, 8, -1, 1, 0, 0);
-    expect(views.eventsInt[state.eventHead * EVENT_STRIDE + EventWord.sequence]).toBe(449);
+    expect(views.eventsInt[state.eventHead * EVENT_STRIDE + EventWord.sequence]).toBe(
+      MAX_WORKER_EVENTS + 193,
+    );
   });
 });

@@ -1,4 +1,6 @@
 import type { ProjectileState, ShipState } from "../types/combat";
+import { carrierFabricationProgress } from "./carrierHangar";
+import { FleetBreakdown } from "./fleetBreakdown";
 import type { ShieldHavenLease } from "./shieldHaven";
 import type { ClientCombatSimulation, FighterWingVisual } from "./simulation";
 
@@ -17,6 +19,17 @@ export interface SimulationPresentationMetadata {
   activeBeams: ClientCombatSimulation["activeBeams"];
   wings: FighterWingVisual[];
   leases: ShieldHavenLease[];
+  winner: number | null;
+  winnerDeclaredTime: number | null;
+  stats: ClientCombatSimulation["stats"];
+  combatLog: ClientCombatSimulation["combatLog"];
+  rollingDps: [number, number];
+  tenderStates: Record<
+    string,
+    ReturnType<ClientCombatSimulation["harmonicShields"]["getTenderState"]>
+  >;
+  carrierFabrication: Record<string, ReturnType<typeof carrierFabricationProgress>>;
+  fleetBreakdownText?: { team0: string; team1: string; full: string };
 }
 
 // Definitions/loadouts travel once per entity generation. Motion, health and
@@ -91,6 +104,29 @@ export class SimulationPresentationMetadataPacker {
       projectileState: sim.projectiles.map(({ targetId, hp, maxHp }) => ({ targetId, hp, maxHp })),
       activeBeams: structuredClone(sim.activeBeams),
       wings: sim.getFighterWingVisuals(),
+      winner: sim.winner,
+      winnerDeclaredTime: sim.winnerDeclaredTime,
+      stats: structuredClone(sim.stats),
+      combatLog: structuredClone(sim.combatLog),
+      rollingDps: [sim.getRollingDPS(0), sim.getRollingDPS(1)],
+      tenderStates: Object.fromEntries(
+        sim.ships
+          .filter((ship) => ship.hullClass === "tender" && !ship.isDebris)
+          .map((ship) => [ship.id, sim.harmonicShields.getTenderState(ship.id, sim.timeElapsed)]),
+      ),
+      carrierFabrication: Object.fromEntries(
+        sim.ships
+          .filter((ship) => ship.hullClass === "carrier" && !ship.isDebris)
+          .map((ship) => [ship.id, carrierFabricationProgress(ship, sim.timeElapsed)]),
+      ),
+      fleetBreakdownText:
+        sim.observer instanceof FleetBreakdown
+          ? {
+              team0: sim.observer.format(0),
+              team1: sim.observer.format(1),
+              full: sim.observer.format(),
+            }
+          : undefined,
       leases: sim.ships.flatMap((ship) => {
         const lease = sim.shieldHaven.getLease(ship.id);
         return lease ? [{ ...lease }] : [];

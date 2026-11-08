@@ -1,4 +1,6 @@
 import type { PerformanceSamples } from "../components/PerformanceHud";
+import { carrierFabricationProgress } from "../engine/carrierHangar";
+import { FleetBreakdown } from "../engine/fleetBreakdown";
 import type { ShieldHavenSystem } from "../engine/shieldHaven";
 import type { ClientCombatSimulation } from "../engine/simulation";
 import type { SimulationWorkerClient } from "../engine/simulationWorkerClient";
@@ -16,10 +18,14 @@ export type TacticalPresentationState = Pick<
   | "timeElapsed"
   | "crewVeterancy"
   | "getFighterWingVisuals"
-> & { shieldHaven: Pick<ShieldHavenSystem, "getLease"> };
+> & {
+  shieldHaven: Pick<ShieldHavenSystem, "getLease">;
+  getCarrierFabrication: (ship: ShipState) => ReturnType<typeof carrierFabricationProgress>;
+};
 
 /** A supplied simulation is authoritative only in direct mode. Worker mode
- * owns a separate render model; Float32 presentation values never feed it back.
+ * mirrors its render model onto the supplied simulation for existing HUD reads;
+ * Float32 presentation values never feed the worker's authoritative simulation.
  * The client is owned by the caller and survives canvas effect/selection changes.
  */
 export class SimulationPresenter {
@@ -47,13 +53,33 @@ export class SimulationPresenter {
           timeElapsed: 0,
           crewVeterancy: { ...simulation.crewVeterancy },
           getFighterWingVisuals: () => client.latestSnapshot?.presentation?.wings ?? [],
+          getCarrierFabrication: (ship) =>
+            client.latestSnapshot?.presentation?.carrierFabrication[ship.id] ??
+            carrierFabricationProgress(ship, this.state.timeElapsed),
           shieldHaven: {
             getLease: (id) =>
               client.latestSnapshot?.presentation?.leases.find((lease) => lease.guestId === id) ??
               null,
           },
         }
-      : simulation;
+      : Object.assign(simulation, {
+          getCarrierFabrication: (ship: ShipState) =>
+            carrierFabricationProgress(ship, simulation.timeElapsed),
+        });
+    if (client) {
+      simulation.getRollingDPS = (team) =>
+        client.latestSnapshot?.presentation?.rollingDps[team] ?? 0;
+      simulation.getFighterWingVisuals = this.state.getFighterWingVisuals;
+      simulation.harmonicShields.getTenderState = (id) =>
+        client.latestSnapshot?.presentation?.tenderStates[id] ?? null;
+      simulation.shieldHaven.getLease = this.state.shieldHaven.getLease;
+      const breakdown = new FleetBreakdown(simulation);
+      breakdown.format = (team) => {
+        const text = client.latestSnapshot?.presentation?.fleetBreakdownText;
+        return text ? (team === undefined ? text.full : team === 0 ? text.team0 : text.team1) : "";
+      };
+      simulation.observer = breakdown;
+    }
     // Handle startup failure even when the canvas mounts before READY.
     void client?.ready.catch((error: Error) => {
       this.error = error;
@@ -105,6 +131,10 @@ export class SimulationPresenter {
           ? client.previousSnapshot.timeElapsed +
             (latest.timeElapsed - client.previousSnapshot.timeElapsed) * alpha
           : latest.timeElapsed;
+      this.simulation.ships = this.state.ships;
+      this.simulation.projectiles = this.state.projectiles;
+      this.simulation.activeBeams = this.state.activeBeams;
+      this.simulation.timeElapsed = this.state.timeElapsed;
     }
     if (speed > 0 && dispatch) dispatch(client.drainEvents());
     for (const sample of client.drainTransportSamples())
@@ -156,6 +186,10 @@ export class SimulationPresenter {
     const aliveIds = new Set(metadata.projectileIds);
     for (const id of this.projectiles.keys()) if (!aliveIds.has(id)) this.projectiles.delete(id);
     this.state.activeBeams = metadata.activeBeams;
+    this.simulation.winner = metadata.winner;
+    this.simulation.winnerDeclaredTime = metadata.winnerDeclaredTime;
+    this.simulation.stats = structuredClone(metadata.stats);
+    this.simulation.combatLog = structuredClone(metadata.combatLog);
     this.appliedSnapshot = snapshot;
   }
 }

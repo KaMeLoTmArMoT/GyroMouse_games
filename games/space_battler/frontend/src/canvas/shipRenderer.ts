@@ -287,6 +287,7 @@ export function renderShip(
   selected = false,
   decals: Vector2[] = [],
   time = performance.now() / 1000,
+  elevation = Math.PI / 2,
 ): void {
   if (!ship.isAlive) return;
   if (ship.isDebris) {
@@ -343,50 +344,63 @@ export function renderShip(
     }
   }
 
-  // 2. Render Hull (rotated by ship heading)
-  ctx.save();
-  ctx.rotate(ship.heading);
-
-  drawEngineGlow(ctx, ship);
-  if (hasFighterHazard(ship)) drawCoolantTrail(ctx, ship, time);
-
-  if (drawCachedHull(ctx, ship)) {
-    if (ship.hullClass === "tender") drawTenderLight(ctx, ship, time);
-    if (ship.hullClass === "carrier") drawCarrierRecessLights(ctx, ship, time);
-  } else if (isBlue) {
-    if (isLightHull(ship))
-      drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
-    drawTerranHull(
-      ctx,
-      ship,
-      primaryColor,
-      hullDarkColor,
-      accentColor,
-      ship.hullClass === "tender" ? time : undefined,
-    );
-    drawHullArmor(ctx, ship);
+  // Tilted hulls use the inspector's camera-space depth and painter ordering.
+  if (elevation < (89.5 * Math.PI) / 180) {
+    renderShipPreview(ctx, ship, time, elevation);
+    ctx.save();
+    ctx.rotate(ship.heading);
+    if (hasFighterHazard(ship)) {
+      drawCoolantTrail(ctx, ship, time);
+      drawHazardBeacon(ctx, ship, time);
+    }
+    drawHullDamage(ctx, ship, decals);
+    ctx.restore();
   } else {
-    if (isLightHull(ship))
-      drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
-    drawAlienHull(
-      ctx,
-      ship,
-      primaryColor,
-      hullDarkColor,
-      accentColor,
-      ship.hullClass === "tender" ? time : undefined,
-    );
-    drawHullArmor(ctx, ship);
-  }
+    // 2. Render Hull (rotated by ship heading)
+    ctx.save();
+    ctx.rotate(ship.heading);
 
-  drawHullDamage(ctx, ship, decals);
-  if (hasFighterHazard(ship)) drawHazardBeacon(ctx, ship, time);
+    drawEngineGlow(ctx, ship);
+    if (hasFighterHazard(ship)) drawCoolantTrail(ctx, ship, time);
 
-  ctx.restore();
+    if (drawCachedHull(ctx, ship)) {
+      if (ship.hullClass === "tender") drawTenderLight(ctx, ship, time);
+      if (ship.hullClass === "carrier") drawCarrierRecessLights(ctx, ship, time);
+    } else if (isBlue) {
+      if (isLightHull(ship))
+        drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
+      drawTerranHull(
+        ctx,
+        ship,
+        primaryColor,
+        hullDarkColor,
+        accentColor,
+        ship.hullClass === "tender" ? time : undefined,
+      );
+      drawHullArmor(ctx, ship);
+    } else {
+      if (isLightHull(ship))
+        drawLightHullExtrusion(ctx, ship, rotatePoint([0, ship.size * 0.24], -ship.heading));
+      drawAlienHull(
+        ctx,
+        ship,
+        primaryColor,
+        hullDarkColor,
+        accentColor,
+        ship.hullClass === "tender" ? time : undefined,
+      );
+      drawHullArmor(ctx, ship);
+    }
 
-  // 3. Render Independent Turrets
-  for (const turret of ship.turrets) {
-    renderTurret(ctx, ship, turret, primaryColor);
+    drawHullDamage(ctx, ship, decals);
+    if (hasFighterHazard(ship)) drawHazardBeacon(ctx, ship, time);
+
+    ctx.restore();
+
+    // 3. Render Independent Turrets
+    for (const turret of ship.turrets) {
+      renderTurret(ctx, ship, turret, primaryColor);
+    }
   }
 
   // 4. Render the authoritative shield envelope, including capital haven umbrellas.

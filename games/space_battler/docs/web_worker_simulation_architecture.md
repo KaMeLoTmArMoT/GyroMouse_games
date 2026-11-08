@@ -1,8 +1,19 @@
-# Web Worker simulation architecture at 400 ships
+# Web Worker simulation architecture and scaling roadmap
 
-Wave 15B.10 / Sol. Investigation dated 2026-11-08, source revision `03cfcf9`
-(including engine optimizations through `f7c0f32`). This is an architectural
-proposal, with a current-engine headless experiment; no Worker is implemented.
+Updated 2026-11-08. Phases 1–3 have implemented protocol, host and presentation
+components: `simulationWorkerProtocol.ts`, `simulation.worker.ts`,
+`simulationWorkerHost.ts`, `simulationWorkerClient.ts`, `snapshotInterpolation.ts`,
+`simulationPresenter.ts` and `workerPresentationEvents.ts`. The host uses a
+three-buffer transferable pool and the presentation pipeline recycles buffers.
+The App now wires the Worker client into the tactical presentation; that parallel
+integration still requires its verification. Each buffer holds **2048 ships,
+4096 projectiles, 16384 mounts and 1024 events**. Capacity is a transport limit,
+not a combat balance setting.
+
+The sections below preserve the Wave 15B.10 investigation at revision `03cfcf9`
+(engine optimizations through `f7c0f32`). Its measurements, proposals and
+acceptance gates are historical/design context, not a claim that every proposed
+feature or browser-performance gate has been delivered.
 
 ## 1. Decision and feasibility
 
@@ -43,12 +54,12 @@ It accumulates time and calls private `tick(1 / 60)`, with up to 240 catch-up
 ticks per call while retaining the remaining accumulator. At 110 ms/tick, that
 upper bound permits roughly 26 seconds of uninterrupted work.
 
-`frontend/src/canvas/TacticalCanvas.tsx` currently calls `sim.update(dt * speed)`
-inside `requestAnimationFrame`, then updates effects and renders the same mutable
-objects. Its render delta is capped at 0.033 seconds; focus loss/hidden documents
-stop automatic advancement. `App.tsx` owns the simulation instance, polls React
-telemetry at 10 Hz, creates a `FleetBreakdown` observer, directly steps forward
-with `update(1 / 30)` (two fixed ticks), resets fleets and continues remnant rounds.
+The original synchronous path advanced `sim.update(dt * speed)` inside
+`requestAnimationFrame` and rendered the same mutable objects. The implemented
+presenter also accepts a Worker client, now wired by the App.
+Render delta is capped at 0.033 seconds and focus loss/hidden documents suspend
+advancement. The original App directly owned telemetry, stepping and battle reset;
+those ownership seams are addressed by the live wiring work.
 
 Moving just the method invocation is insufficient:
 
@@ -65,8 +76,8 @@ Moving just the method invocation is insufficient:
 
 Keep constructor, `addShip`, `setGroupOrder`, `update` and callbacks synchronous
 for existing engine tests and headless tools. Add a transport/controller around
-the engine, not asynchronous behavior to the engine API. Proposed files below
-are implementation seams, not files already present:
+the engine, not asynchronous behavior to the engine API. The following diagram
+illustrates the intended boundary; see the status above for implemented files:
 
 ```text
 App / input / menus                 Dedicated simulation Worker
@@ -526,7 +537,12 @@ need proof and parity tests. Distant navigation assignments/global scoring
 cannot be pruned simply because a target is outside a local grid cell.
 No promised speedup or combat retuning follows from this shortlist.
 
-## 8. Phased implementation roadmap and gates
+## 8. Historical phased implementation roadmap and gates
+
+Phases 1–3 components, App wiring and expanded capacities exist; browser acceptance
+and the concurrent integration's remaining verification are outstanding.
+The following original task lists and gates are retained as design and acceptance
+history, not as an assertion that all listed details have been implemented.
 
 ### Phase 0 — Record a reproducible baseline
 
@@ -638,7 +654,30 @@ Verification completed for this documentation-only investigation:
 
 No dev server/build or browser performance validation was performed.
 
-## 9. References
+## 9. Next-gen compute roadmap: 200v200 to 400v400
+
+Worker offload preserves UI responsiveness but does not by itself make a slow
+tick real-time. Profile and validate each change against the existing combat
+semantics, fixed timestep and calibrated parameters.
+
+1. **Always-on, every-tick hot loops (60 Hz):** isolate the
+   `collisionContactSolver` pair work (N × N) and `projectileEngine` sweep work
+   (P × N) in flat SoA TypedArrays and evaluate compiled WebAssembly SIMD kernels.
+   Preserve collision ordering, conservative bounds and numerical behavior.
+2. **Cadence-driven scans (every 6–8 ticks):** cache `NavigationContext`
+   neighbor lists and `fireControl` target-acquisition candidates across pilot
+   reaction windows (~120–180 ms), with invalidation for changes that cannot wait.
+3. **Situational worklists:** maintain `boundaryShips[]`, `activeMissiles[]`,
+   `activeWrecks[]` and `woundedHavenSeekers[]`; use O(1) active counts to skip
+   absent work while keeping membership and transitions authoritative.
+4. **Coarse multi-worker offload (future 600–800 ships):** evaluate a secondary
+   Worker for coarse, read-only batch AI/fire-control scoring matrices, rather
+   than per-feature micro-workers. Measure transfer and synchronization overhead.
+
+These are proposals, not measured speedups or a guarantee of real-time 400v400.
+WebGPU remains a longer-term feasibility question, including fallback costs.
+
+## 10. References
 
 - Local implementation: `frontend/src/engine/simulation.ts`,
   `navigationContext.ts`, `fireControl.ts`, `collisionContactSolver.ts`,

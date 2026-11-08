@@ -1,9 +1,8 @@
 // React 2.5D Tactical Canvas Component with click/hover ship selection, pan/zoom, and live range cones
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PerformanceSamples } from "../components/PerformanceHud";
 import { spaceAudio } from "../engine/audioEngine";
-import { carrierFabricationProgress } from "../engine/carrierHangar";
 import { ARENA_HARD_PULL_RADIUS, ARENA_RADIUS } from "../engine/flightControl";
 import { HARMONIC_RANGE } from "../engine/harmonicShieldSystem";
 import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
@@ -45,6 +44,31 @@ interface TacticalCanvasProps {
   performanceSamples?: PerformanceSamples;
 }
 
+type TacticalCamera = { x: number; y: number; zoom: number; pitchDeg: number };
+
+export function clampCameraPitch(deg: number): number {
+  return Math.max(25, Math.min(90, deg));
+}
+
+export function pitchVerticalScale(pitchDeg: number): number {
+  return Math.sin((clampCameraPitch(pitchDeg) * Math.PI) / 180);
+}
+
+/** Screen coordinates are canvas pixels; camera offsets are unprojected pixels. */
+export function screenToWorldPoint(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  camera: TacticalCamera,
+): [number, number] {
+  const verticalScale = pitchVerticalScale(camera.pitchDeg);
+  return [
+    (x - width / 2 - camera.x) / camera.zoom,
+    ((y - height / 2) / verticalScale - camera.y) / camera.zoom,
+  ];
+}
+
 export function TacticalCanvas({
   sim,
   workerClient,
@@ -62,9 +86,11 @@ export function TacticalCanvas({
   const presenter = useMemo(() => new SimulationPresenter(sim, workerClient), [sim, workerClient]);
   const presentation = presenter.state;
 
-  const cameraRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.85 });
-  const isDraggingRef = useRef(false);
+  const cameraRef = useRef<TacticalCamera>({ x: 0, y: 0, zoom: 0.85, pitchDeg: 90 });
+  const [pitchDeg, setPitchDeg] = useState(90);
+  const dragModeRef = useRef<"pan" | "tilt" | null>(null);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const hasDraggedRef = useRef(false);
   const followRef = useRef(false);
 
@@ -232,12 +258,11 @@ export function TacticalCanvas({
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
           // Camera Transformation
-          ctx.translate(
-            canvas.width / 2 + cameraRef.current.x,
-            canvas.height / 2 + cameraRef.current.y,
-          );
-          ctx.scale(cameraRef.current.zoom, cameraRef.current.zoom);
-          const viewport = worldViewport(canvas.width, canvas.height, cameraRef.current);
+          const camera = cameraRef.current;
+          const verticalScale = pitchVerticalScale(camera.pitchDeg);
+          ctx.translate(canvas.width / 2 + camera.x, canvas.height / 2 + camera.y * verticalScale);
+          ctx.scale(camera.zoom, camera.zoom * verticalScale);
+          const viewport = worldViewport(canvas.width, canvas.height / verticalScale, camera);
 
           drawTacticalGrid(ctx, now / 1000);
           renderMapObstacles(ctx, sim.mapObstacles, viewport);
@@ -411,7 +436,11 @@ export function TacticalCanvas({
           const ingressGates = new Map(
             effectsRef.current.warpGates.map((gate) => [gate.shipId, gate]),
           );
-          for (const ship of sim.ships) {
+          const shipsToRender =
+            camera.pitchDeg < 89.5
+              ? [...visibleShips].sort((a, b) => a.pos[1] - b.pos[1])
+              : visibleShips;
+          for (const ship of shipsToRender) {
             if (ship.isDocked) continue;
             if (
               ship.id !== selectedShipId &&
@@ -433,6 +462,7 @@ export function TacticalCanvas({
               ship.id === selectedShipId,
               effectsRef.current.impactDecals.get(ship),
               sim.timeElapsed,
+              (camera.pitchDeg * Math.PI) / 180,
             );
             if (ship.isAlive && Math.hypot(...ship.pos) > ARENA_RADIUS) {
               drawRadiationWarning(ctx, ship, sim.timeElapsed);
@@ -523,18 +553,15 @@ export function TacticalCanvas({
           }
           ctx.restore();
 
-          const camera = cameraRef.current;
-          drawRadiationInterference(
-            ctx,
-            {
-              minX: (-canvas.width / 2 - camera.x) / camera.zoom,
-              maxX: (canvas.width / 2 - camera.x) / camera.zoom,
-              minY: (-canvas.height / 2 - camera.y) / camera.zoom,
-              maxY: (canvas.height / 2 - camera.y) / camera.zoom,
-            },
-            camera.zoom,
-            now / 1000,
+          const [minX, minY] = screenToWorldPoint(0, 0, canvas.width, canvas.height, camera);
+          const [maxX, maxY] = screenToWorldPoint(
+            canvas.width,
+            canvas.height,
+            canvas.width,
+            canvas.height,
+            camera,
           );
+          drawRadiationInterference(ctx, { minX, maxX, minY, maxY }, camera.zoom, now / 1000);
           ctx.restore();
         }
       }
@@ -582,23 +609,37 @@ export function TacticalCanvas({
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0) {
-      isDraggingRef.current = true;
+    if (e.button === 0 || e.button === 1) {
+      if (e.button === 1) e.preventDefault();
+      dragModeRef.current = e.button === 1 || e.ctrlKey ? "tilt" : "pan";
       hasDraggedRef.current = false;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
+      dragOriginRef.current = { x: e.clientX, y: e.clientY };
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDraggingRef.current) {
+    if (dragModeRef.current) {
       const dx = e.clientX - dragStartRef.current.x;
       const dy = e.clientY - dragStartRef.current.y;
-      if (dx !== 0 || dy !== 0) followRef.current = false;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      if (
+        Math.hypot(e.clientX - dragOriginRef.current.x, e.clientY - dragOriginRef.current.y) > 3
+      ) {
         hasDraggedRef.current = true;
       }
-      cameraRef.current.x += dx;
-      cameraRef.current.y += dy;
+      const camera = cameraRef.current;
+      if (dragModeRef.current === "tilt") {
+        camera.pitchDeg = clampCameraPitch(camera.pitchDeg + dy * 0.35);
+        setPitchDeg(camera.pitchDeg);
+      } else {
+        if (dx !== 0 || dy !== 0) followRef.current = false;
+        const canvas = canvasRef.current;
+        const rect = canvas?.getBoundingClientRect();
+        camera.x += dx * (canvas && rect ? canvas.width / rect.width : 1);
+        camera.y +=
+          (dy * (canvas && rect ? canvas.height / rect.height : 1)) /
+          pitchVerticalScale(camera.pitchDeg);
+      }
       dragStartRef.current = { x: e.clientX, y: e.clientY };
     }
   };
@@ -610,10 +651,13 @@ export function TacticalCanvas({
       const clickY = ((e.clientY - rect.top) * canvasRef.current.height) / rect.height;
 
       // Convert Screen Coords -> World Coords
-      const worldX =
-        (clickX - canvasRef.current.width / 2 - cameraRef.current.x) / cameraRef.current.zoom;
-      const worldY =
-        (clickY - canvasRef.current.height / 2 - cameraRef.current.y) / cameraRef.current.zoom;
+      const [worldX, worldY] = screenToWorldPoint(
+        clickX,
+        clickY,
+        canvasRef.current.width,
+        canvasRef.current.height,
+        cameraRef.current,
+      );
 
       // Find nearest clicked ship
       let clickedShip: string | null = null;
@@ -642,22 +686,24 @@ export function TacticalCanvas({
     const camera = cameraRef.current;
     const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
     const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
+    const [worldX, worldY] = screenToWorldPoint(x, y, canvas.width, canvas.height, camera);
     return projectileAtPoint(
       presentation.projectiles,
-      (x - canvas.width / 2 - camera.x) / camera.zoom,
-      (y - canvas.height / 2 - camera.y) / camera.zoom,
+      worldX,
+      worldY,
       (camera.zoom * rect.width) / canvas.width,
-      (camera.zoom * rect.height) / canvas.height,
+      (camera.zoom * pitchVerticalScale(camera.pitchDeg) * rect.height) / canvas.height,
       shipClicked,
     );
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
-    if (!isDraggingRef.current) return;
-    isDraggingRef.current = false;
+    const mode = dragModeRef.current;
+    if (!mode) return;
+    dragModeRef.current = null;
 
     // Click selection (if not a pan drag)
-    if (!hasDraggedRef.current) {
+    if (mode === "pan" && !hasDraggedRef.current) {
       const clickedShip = shipAtPoint(e);
       const projectile = projectileAtMouse(e, Boolean(clickedShip));
       if (projectile) {
@@ -679,9 +725,14 @@ export function TacticalCanvas({
       followRef.current = true;
       onSelectShip?.(ship.id);
     } else if (!projectileAtMouse(e, false)) {
-      followRef.current = false;
-      cameraRef.current.x = 0;
-      cameraRef.current.y = 0;
+      if (cameraRef.current.pitchDeg < 90) {
+        cameraRef.current.pitchDeg = 90;
+        setPitchDeg(90);
+      } else {
+        followRef.current = false;
+        cameraRef.current.x = 0;
+        cameraRef.current.y = 0;
+      }
     }
   };
 
@@ -692,7 +743,9 @@ export function TacticalCanvas({
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       const x = ((e.clientX - rect.left) * canvas.width) / rect.width - canvas.width / 2;
-      const y = ((e.clientY - rect.top) * canvas.height) / rect.height - canvas.height / 2;
+      const y =
+        (((e.clientY - rect.top) * canvas.height) / rect.height - canvas.height / 2) /
+        pitchVerticalScale(cameraRef.current.pitchDeg);
       const camera = cameraRef.current;
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
       const zoom = Math.max(0.3, Math.min(2.5, camera.zoom * zoomFactor));
@@ -713,11 +766,23 @@ export function TacticalCanvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={() => {
-          isDraggingRef.current = false;
+          dragModeRef.current = null;
         }}
         onDoubleClick={handleDoubleClick}
         className="w-full h-full block"
       />
+      {pitchDeg < 89.5 && (
+        <button
+          type="button"
+          className="absolute bottom-3 left-3 rounded-full border border-cyan-700 bg-slate-950/90 px-3 py-1 text-xs text-cyan-200 cursor-pointer"
+          onClick={() => {
+            cameraRef.current.pitchDeg = 90;
+            setPitchDeg(90);
+          }}
+        >
+          2.5D Tilt: {Math.round(pitchDeg)}° · Reset (90°)
+        </button>
+      )}
     </div>
   );
 }
@@ -1151,7 +1216,7 @@ function drawTacticalTrajectory(
     ).length;
     const airborne = auxiliaries.filter((craft) => !craft.isDocked).length;
     wingLines.push(`HANGAR: ${repairing} in repair • ${ready} ready • ${airborne} airborne`);
-    const fabrication = carrierFabricationProgress(ship, sim.timeElapsed);
+    const fabrication = sim.getCarrierFabrication(ship);
     wingLines.push(
       fabrication.currentWings >= fabrication.maxWings
         ? "FAB: FULL"
