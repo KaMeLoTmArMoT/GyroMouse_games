@@ -1,6 +1,6 @@
 import type { ProjectileState, ShipState, Vector2, WeaponDefinition } from "../types/combat";
 import { circleContactFraction, type MapObstacle } from "./battleMaps";
-import { sweptHit } from "./fireControl";
+import { guidedObstacleAvoidanceAngle, sweptHit } from "./fireControl";
 import { clamp, normalizeAngle, vecAdd, vecDot, vecScale, vecSub } from "./math2d";
 import { activeShieldRadius } from "./shieldGeometry";
 import { isHeavyTorpedo, pointDefenseMode } from "./shipProfiles";
@@ -98,21 +98,34 @@ export class ProjectileEngine {
           }
           if (target) p.targetId = target.id;
         }
-        if (target) {
-          const toTarget = vecSub(target.pos, p.pos);
-          const distSq = toTarget[0] * toTarget[0] + toTarget[1] * toTarget[1];
-          if (distSq > 100) {
-            const curSpeed = Math.hypot(p.velocity[0], p.velocity[1]);
-            if (curSpeed > 1) {
-              const desiredAngle = Math.atan2(toTarget[1], toTarget[0]);
-              const angleDiff = normalizeAngle(desiredAngle - currentAngle);
-              if (!isHeavyTorpedo(p) || Math.abs(angleDiff) < Math.PI / 3) {
-                const maxTurn = (isHeavyTorpedo(p) ? 0.8 : 2.5) * step;
-                const turn = clamp(angleDiff, -maxTurn, maxTurn);
-                const newAngle = currentAngle + turn;
-                p.velocity = [Math.cos(newAngle) * curSpeed, Math.sin(newAngle) * curSpeed];
-              }
-            }
+        const curSpeed = Math.hypot(p.velocity[0], p.velocity[1]);
+        if (curSpeed > 1) {
+          const toTarget = target ? vecSub(target.pos, p.pos) : null;
+          const distance = toTarget ? Math.hypot(toTarget[0], toTarget[1]) : curSpeed * p.lifetime;
+          const desiredAngle =
+            toTarget && distance > 10 ? Math.atan2(toTarget[1], toTarget[0]) : currentAngle;
+          const heavy = isHeavyTorpedo(p);
+          const turnRate = heavy ? 0.8 : 2.5;
+          const avoidance = mapObstacles
+            ? guidedObstacleAvoidanceAngle(
+                p.pos,
+                currentAngle,
+                desiredAngle,
+                curSpeed / turnRate,
+                distance,
+                mapObstacles,
+              )
+            : null;
+          const angleDiff = normalizeAngle((avoidance ?? desiredAngle) - currentAngle);
+          // Obstacle escape is independent of the heavy torpedo's target seeker cone.
+          if (
+            avoidance !== null ||
+            (target && distance > 10 && (!heavy || Math.abs(angleDiff) < Math.PI / 3))
+          ) {
+            const maxTurn = turnRate * step;
+            const turn = clamp(angleDiff, -maxTurn, maxTurn);
+            const newAngle = currentAngle + turn;
+            p.velocity = [Math.cos(newAngle) * curSpeed, Math.sin(newAngle) * curSpeed];
           }
         }
       }

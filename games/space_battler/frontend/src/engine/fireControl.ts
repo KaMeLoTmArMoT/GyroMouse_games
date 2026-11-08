@@ -113,6 +113,66 @@ export function sweptHit(start: Vector2, end: Vector2, radius: number): number |
   return t >= 0 && t <= 1 ? t : null;
 }
 
+function obstacleTangentAngle(
+  pos: Vector2,
+  currentAngle: number,
+  obstacle: MapObstacle,
+  turnRadius: number,
+): number {
+  const dx = obstacle.pos[0] - pos[0];
+  const dy = obstacle.pos[1] - pos[1];
+  const bearing = Math.atan2(dy, dx);
+  // A turn-radius buffer gives bounded-rate guidance room to reach the tangent.
+  const offset = Math.asin(Math.min(1, (obstacle.radius + turnRadius) / Math.hypot(dx, dy)));
+  const left = normalizeAngle(bearing + offset);
+  const right = normalizeAngle(bearing - offset);
+  return Math.abs(normalizeAngle(left - currentAngle)) <=
+    Math.abs(normalizeAngle(right - currentAngle))
+    ? left
+    : right;
+}
+
+/** Local tangent guidance; only stationary solids participate in route avoidance. */
+export function guidedObstacleAvoidanceAngle(
+  pos: Vector2,
+  currentAngle: number,
+  desiredAngle: number,
+  turnRadius: number,
+  targetDistance: number,
+  obstacles: readonly MapObstacle[],
+): number | null {
+  let nearest = Infinity;
+  let heading: number | null = null;
+  for (const obstacle of obstacles) {
+    if (obstacle.orbitSpeed !== 0 || obstacle.velocity[0] !== 0 || obstacle.velocity[1] !== 0)
+      continue;
+    const dx = pos[0] - obstacle.pos[0];
+    const dy = pos[1] - obstacle.pos[1];
+    const distance = Math.hypot(dx, dy);
+    const surface = distance - obstacle.radius;
+    if (surface > 2 * turnRadius || surface >= targetDistance || surface >= nearest) continue;
+    const lookahead = Math.min(targetDistance, distance + turnRadius);
+    const threatened = (angle: number) => {
+      const vx = Math.cos(angle);
+      const vy = Math.sin(angle);
+      return (
+        dx * vx + dy * vy < 0 &&
+        circleContactFraction(
+          dx,
+          dy,
+          vx * lookahead,
+          vy * lookahead,
+          obstacle.radius + turnRadius,
+        ) <= 1
+      );
+    };
+    if (!threatened(desiredAngle) && !threatened(currentAngle)) continue;
+    nearest = surface;
+    heading = obstacleTangentAngle(pos, currentAngle, obstacle, turnRadius);
+  }
+  return heading;
+}
+
 export interface FireSolution {
   kind: "ship" | "missile";
   target: ShipState | ProjectileState;
@@ -291,6 +351,12 @@ export function acquireMountTarget(
   const [minArc, maxArc] = turret.baseArc;
   const wrapped = minArc > maxArc;
   const trackingSpeed = Math.max(0.01, turret.trackingSpeed);
+  const guided = weapon.weaponType === "missile";
+  const turnRadius = weapon.projectileSpeed / (projectileMaxHp(weapon) >= 120 ? 0.8 : 2.5);
+  const launchSpread =
+    guided && ship.hullClass === "missile_frigate"
+      ? (([5, -5, 30, -30][ship.turrets.indexOf(turret)] ?? 0) * Math.PI) / 180
+      : 0;
   turret.sideTargetId = undefined;
   const defense = pointDefenseMode(weapon);
   let defendedShips: ShipState[] | undefined;
@@ -346,17 +412,38 @@ export function acquireMountTarget(
   };
   const clearLineOfSight = (x: number, y: number) => {
     if (!mapObstacles) return true;
+    const distance = Math.hypot(x - muzzleX, y - muzzleY);
+    const launchAngle = Math.atan2(y - muzzleY, x - muzzleX) + launchSpread;
     for (const obstacle of mapObstacles) {
+      const staticGuided =
+        guided &&
+        obstacle.orbitSpeed === 0 &&
+        obstacle.velocity[0] === 0 &&
+        obstacle.velocity[1] === 0;
+      if (staticGuided && Math.hypot(x - obstacle.pos[0], y - obstacle.pos[1]) <= obstacle.radius)
+        return false;
       if (
         circleContactFraction(
           muzzleX - obstacle.pos[0],
           muzzleY - obstacle.pos[1],
-          x - muzzleX,
-          y - muzzleY,
+          staticGuided ? Math.cos(launchAngle) * distance : x - muzzleX,
+          staticGuided ? Math.sin(launchAngle) * distance : y - muzzleY,
           obstacle.radius,
         ) <= 1
-      )
-        return false;
+      ) {
+        if (
+          !staticGuided ||
+          Math.hypot(muzzleX - obstacle.pos[0], muzzleY - obstacle.pos[1]) <= obstacle.radius
+        )
+          return false;
+        const tangent = obstacleTangentAngle(muzzle, launchAngle, obstacle, turnRadius);
+        const side = normalizeAngle(tangent - launchAngle) >= 0 ? 1 : -1;
+        // The maximum-rate turn circle must not cross the solid before escaping.
+        const centerX = muzzleX - side * Math.sin(launchAngle) * turnRadius;
+        const centerY = muzzleY + side * Math.cos(launchAngle) * turnRadius;
+        const separation = Math.hypot(centerX - obstacle.pos[0], centerY - obstacle.pos[1]);
+        if (Math.abs(separation - turnRadius) <= obstacle.radius) return false;
+      }
     }
     return true;
   };
