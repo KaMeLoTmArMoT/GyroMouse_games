@@ -49,6 +49,7 @@ export function swarmFlakFear(ship: ShipState, corvette: ShipState, ships: ShipS
     return 1;
   let attackers = 0;
   const radius = flakThreatRadius(corvette);
+  const radiusSquared = radius * radius;
   for (const peer of ships) {
     if (
       !peer.isAlive ||
@@ -63,8 +64,7 @@ export function swarmFlakFear(ship: ShipState, corvette: ShipState, ships: ShipS
       continue;
     const dx = peer.pos[0] - corvette.pos[0];
     const dy = peer.pos[1] - corvette.pos[1];
-    if (peer.navigationTargetId === corvette.id || dx * dx + dy * dy <= radius * radius)
-      attackers++;
+    if (peer.navigationTargetId === corvette.id || dx * dx + dy * dy <= radiusSquared) attackers++;
   }
   return attackers >= 4 ? Math.max(0.2, (0.5 * 4) / attackers) : 1;
 }
@@ -349,10 +349,9 @@ export class FighterMissionSystem {
         }
       }
       // Keep later passes staggered even when independent echelons rejoin together.
-      const lastGroupLaunch = Math.max(
-        -Infinity,
-        ...groupWings.map((peer) => peer.lastLaunchAt ?? -Infinity),
-      );
+      let lastGroupLaunch = -Infinity;
+      for (const peer of groupWings)
+        lastGroupLaunch = Math.max(lastGroupLaunch, peer.lastLaunchAt ?? -Infinity);
       if (
         phase === "staging" &&
         healthy.length > 0 &&
@@ -425,25 +424,47 @@ export class FighterMissionSystem {
     const previous = this.steering.get(ship);
     if (previous && previous.tick === tick && previous.phase === phase) return previous;
     // Safe haven management retains shield health, distance, and occupancy scoring.
-    const friendlyAnchors = aliveShips.filter(
-      (s) => s.team === ship.team && s.isAlive && (isCapitalShip(s) || s.hullClass === "corvette"),
-    );
+    const navigation = navigationContext(aliveShips);
+    let safeHaven =
+      ship.safeHavenId !== undefined && ship.safeHavenId !== null
+        ? navigation
+          ? navigation.byId.get(ship.safeHavenId)
+          : aliveShips.find((anchor) => anchor.id === ship.safeHavenId)
+        : undefined;
+    if (
+      safeHaven &&
+      (safeHaven.team !== ship.team ||
+        !safeHaven.isAlive ||
+        (!isCapitalShip(safeHaven) && safeHaven.hullClass !== "corvette"))
+    )
+      safeHaven = undefined;
     const criticallyWounded = ship.hullCurrent < ship.hullMax * 0.3;
     if (
       criticallyWounded ||
       ship.safeHavenTimer === undefined ||
       ship.safeHavenTimer <= 0 ||
-      !friendlyAnchors.some((a) => a.id === ship.safeHavenId)
+      !safeHaven
     ) {
+      const friendlyAnchors: ShipState[] = [];
+      const safeHavenOccupancy = new Map<string, number>();
+      for (const peer of aliveShips) {
+        if (peer.team !== ship.team || !peer.isAlive) continue;
+        if (isCapitalShip(peer) || peer.hullClass === "corvette") friendlyAnchors.push(peer);
+        if (peer.safeHavenId !== undefined && peer.safeHavenId !== null)
+          safeHavenOccupancy.set(
+            peer.safeHavenId,
+            (safeHavenOccupancy.get(peer.safeHavenId) ?? 0) + 1,
+          );
+      }
       if (friendlyAnchors.length > 0) {
         let bestAnchor = friendlyAnchors[0];
         let bestScore = -Infinity;
         for (const anchor of friendlyAnchors) {
-          const occupancy = aliveShips.filter(
-            (s) => s.team === ship.team && s.isAlive && s.safeHavenId === anchor.id,
-          ).length;
+          const occupancy = safeHavenOccupancy.get(anchor.id) ?? 0;
           const shieldRatio = anchor.shieldMax > 0 ? anchor.shieldCurrent / anchor.shieldMax : 0;
-          const distToAnchor = vecDistance(ship.pos, anchor.pos);
+          const dx = ship.pos[0] - anchor.pos[0];
+          const dy = ship.pos[1] - anchor.pos[1];
+          const distToAnchor = Math.sqrt(dx * dx + dy * dy);
           const score = criticallyWounded
             ? -distToAnchor
             : shieldRatio * 80 - distToAnchor * 0.15 - occupancy * 50;
@@ -454,15 +475,16 @@ export class FighterMissionSystem {
         }
         ship.safeHavenId = bestAnchor.id;
         ship.safeHavenTimer = 2.0;
+        safeHaven = bestAnchor;
       } else {
         ship.safeHavenId = null;
         ship.safeHavenTimer = 1.0;
+        safeHaven = undefined;
       }
     } else {
       ship.safeHavenTimer =
         (ship.safeHavenTimer ?? 0) - (previous ? timeElapsed - previous.evaluatedAt : dt);
     }
-    const safeHaven = friendlyAnchors.find((a) => a.id === ship.safeHavenId) ?? null;
     const isDamaged = this.needsCover(ship);
     const targetDistance = vecDistance(ship.pos, target.pos);
     const liningUp =

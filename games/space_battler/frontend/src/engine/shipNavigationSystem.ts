@@ -28,7 +28,6 @@ import {
   normalizeAngle,
   vecAdd,
   vecDistance,
-  vecDot,
   vecNormalize,
   vecScale,
   vecSub,
@@ -51,16 +50,24 @@ export const FLAK_DENIAL_RADIUS = CORVETTE_FLAK_THREAT_RADIUS - HULL_PROFILES.co
 export const FLAK_THREAT_RANGE = CORVETTE_FLAK_THREAT_RADIUS;
 
 export function hostileFlakThreats(ship: ShipState, ships: ShipState[]): ShipState[] {
-  return ships.filter(
-    (enemy) =>
-      enemy.isAlive &&
-      !enemy.isDocked &&
-      !enemy.isDebris &&
-      enemy.team !== ship.team &&
-      enemy.hullClass === "corvette" &&
-      flakThreatRadius(enemy) > 0 &&
-      vecDistance(ship.pos, enemy.pos) <= flakThreatRadius(enemy),
-  );
+  const threats: ShipState[] = [];
+  const enemies = navigationContext(ships)?.teamEnemies.get(ship.team) ?? ships;
+  for (const enemy of enemies) {
+    if (
+      enemy.hullClass !== "corvette" ||
+      !enemy.isAlive ||
+      enemy.isDocked ||
+      enemy.isDebris ||
+      enemy.team === ship.team
+    )
+      continue;
+    const radius = flakThreatRadius(enemy);
+    if (radius <= 0) continue;
+    const dx = enemy.pos[0] - ship.pos[0];
+    const dy = enemy.pos[1] - ship.pos[1];
+    if (dx * dx + dy * dy <= radius * radius) threats.push(enemy);
+  }
+  return threats;
 }
 
 const fighterDecisions = new WeakMap<
@@ -94,17 +101,21 @@ export function fighterTacticalTick(
     fighterDecisions.set(ship, state);
   }
   if (time + 1e-9 >= state.nextAt) {
-    const combat =
-      ship.fighterPhase === "attack" ||
-      ship.fighterPhase === "intercept" ||
-      ships.some(
-        (enemy) =>
-          enemy.isAlive &&
-          !enemy.isDocked &&
-          !enemy.isDebris &&
-          enemy.team !== ship.team &&
-          vecDistance(ship.pos, enemy.pos) <= FLAK_THREAT_RANGE,
-      );
+    let combat = ship.fighterPhase === "attack" || ship.fighterPhase === "intercept";
+    if (!combat) {
+      const enemies = navigationContext(ships)?.teamEnemies.get(ship.team) ?? ships;
+      const thresholdSq = FLAK_THREAT_RANGE * FLAK_THREAT_RANGE;
+      for (const enemy of enemies) {
+        if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team)
+          continue;
+        const dx = enemy.pos[0] - ship.pos[0];
+        const dy = enemy.pos[1] - ship.pos[1];
+        if (dx * dx + dy * dy <= thresholdSq) {
+          combat = true;
+          break;
+        }
+      }
+    }
     const period = crewDecisionPeriod(tier, combat);
     let seed = 2166136261;
     for (const char of ship.id) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
@@ -552,25 +563,31 @@ export function updateShipNavigation(
     rangePhase = intent.rangePhase;
     evadingOrdnance = intent.evadingOrdnance ?? false;
     // Translational escape must not be clipped by the focused target's bow-ingress envelope.
-    maintainingStandoff =
-      ship.hullClass === "carrier" ||
-      aliveShips.some((enemy) => {
+    maintainingStandoff = ship.hullClass === "carrier";
+    if (!maintainingStandoff) {
+      let shipMaxRange09 = -Infinity;
+      for (const turret of ship.turrets)
+        shipMaxRange09 = Math.max(shipMaxRange09, turret.weapon.range * 0.9);
+      const damaged = ship.shieldCurrent <= 0 || ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4;
+      const enemies = navigationContext(aliveShips)?.teamEnemies.get(ship.team) ?? aliveShips;
+      for (const enemy of enemies) {
         if (!enemy.isAlive || enemy.team === ship.team || enemy.hullClass === "strike_craft")
-          return false;
-        const damaged =
-          ship.shieldCurrent <= 0 || ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4;
+          continue;
+        if (!damaged && !isCapitalShip(enemy)) continue;
         const longRange = ship.hullClass === "battleship" && enemy.hullClass === "dreadnought";
         const standoff = 500 * shieldClearanceScale(ship, enemy);
-        const distance =
-          damaged || longRange
-            ? Math.max(standoff, ...ship.turrets.map((turret) => turret.weapon.range * 0.9))
-            : standoff;
-        return (
-          (damaged || isCapitalShip(enemy)) &&
-          vecDistance(ship.pos, enemy.pos) < distance &&
-          vecDot(intent.velocity, vecSub(enemy.pos, ship.pos)) < 0
-        );
-      });
+        const distance = damaged || longRange ? Math.max(standoff, shipMaxRange09) : standoff;
+        const dx = enemy.pos[0] - ship.pos[0];
+        const dy = enemy.pos[1] - ship.pos[1];
+        if (
+          dx * dx + dy * dy < distance * distance &&
+          intent.velocity[0] * dx + intent.velocity[1] * dy < 0
+        ) {
+          maintainingStandoff = true;
+          break;
+        }
+      }
+    }
   } else if (
     brokePursuit ||
     aliveShips.some(
@@ -604,26 +621,41 @@ export function updateShipNavigation(
         continue;
       const risk = rescueRouteRisk(ship, peer, aliveShips);
       if (risk >= 1.5) continue;
-      const score = 1 / (1 + vecDistance(ship.pos, peer.pos) / (HARMONIC_RANGE * 2.4)) - risk;
+      const dx = ship.pos[0] - peer.pos[0];
+      const dy = ship.pos[1] - peer.pos[1];
+      const score = 1 / (1 + Math.sqrt(dx * dx + dy * dy) / (HARMONIC_RANGE * 2.4)) - risk;
       if (score > bestScore || (score === bestScore && tender && peer.id < tender.id)) {
         tender = peer;
         bestScore = score;
       }
     }
     if (tender) {
-      const distance = vecDistance(ship.pos, tender.pos);
-      const toward = vecNormalize(vecSub(tender.pos, ship.pos));
-      const rendezvous = vecAdd(
-        tender.velocity,
-        vecScale(toward, clamp((distance - HARMONIC_RANGE * 0.8) * 0.6, 0, ship.maxSpeed * 0.6)),
+      const dx = tender.pos[0] - ship.pos[0];
+      const dy = tender.pos[1] - ship.pos[1];
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const towardX = distance < 1e-6 ? 0 : dx / distance;
+      const towardY = distance < 1e-6 ? 0 : dy / distance;
+      const rendezvousSpeed = clamp(
+        (distance - HARMONIC_RANGE * 0.8) * 0.6,
+        0,
+        ship.maxSpeed * 0.6,
       );
+      const rendezvousX = tender.velocity[0] + towardX * rendezvousSpeed;
+      const rendezvousY = tender.velocity[1] + towardY * rendezvousSpeed;
+      const velocity = thrusterVelocity ?? ship.velocity;
       thrusterVelocity = limitVelocity(
-        vecAdd(vecScale(thrusterVelocity ?? ship.velocity, 0.3), vecScale(rendezvous, 0.7)),
+        [velocity[0] * 0.3 + rendezvousX * 0.7, velocity[1] * 0.3 + rendezvousY * 0.7],
         ship.maxSpeed,
       );
       // Do not let a breakoff thrust carry the wounded hull out of beam range.
-      const outward = vecDot(vecSub(thrusterVelocity, tender.velocity), toward);
-      if (outward < 0) thrusterVelocity = vecSub(thrusterVelocity, vecScale(toward, outward));
+      const outward =
+        (thrusterVelocity[0] - tender.velocity[0]) * towardX +
+        (thrusterVelocity[1] - tender.velocity[1]) * towardY;
+      if (outward < 0)
+        thrusterVelocity = [
+          thrusterVelocity[0] - towardX * outward,
+          thrusterVelocity[1] - towardY * outward,
+        ];
       targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
       rangePhase = undefined;
     }
@@ -706,17 +738,20 @@ export function updateShipNavigation(
     ship.turnRate * thrustMultiplier * dt,
   );
   ship.heading = normalizeAngle(ship.heading + turnStep);
-  const forwardVector: Vector2 = [Math.cos(ship.heading), Math.sin(ship.heading)];
-  const rightVector: Vector2 = [-Math.sin(ship.heading), Math.cos(ship.heading)];
-  const currentForwardSpeed = vecDot(ship.velocity, forwardVector);
-  const currentLateralSpeed = vecDot(ship.velocity, rightVector);
-  if (thrusterVelocity) desiredSpeed = vecDot(thrusterVelocity, forwardVector);
+  const forwardX = Math.cos(ship.heading);
+  const forwardY = Math.sin(ship.heading);
+  const rightX = -forwardY;
+  const rightY = forwardX;
+  const currentForwardSpeed = ship.velocity[0] * forwardX + ship.velocity[1] * forwardY;
+  const currentLateralSpeed = ship.velocity[0] * rightX + ship.velocity[1] * rightY;
+  if (thrusterVelocity)
+    desiredSpeed = thrusterVelocity[0] * forwardX + thrusterVelocity[1] * forwardY;
   desiredSpeed = Math.max(desiredSpeed, -ship.maxSpeed * 0.35);
   const lateralDamping = ship.hullClass === "strike_craft" ? 2.5 : 5.0;
   const newLateralSpeed = thrusterVelocity
     ? currentLateralSpeed +
       clamp(
-        vecDot(thrusterVelocity, rightVector) - currentLateralSpeed,
+        thrusterVelocity[0] * rightX + thrusterVelocity[1] * rightY - currentLateralSpeed,
         -110 * thrustMultiplier * dt,
         110 * thrustMultiplier * dt,
       )
@@ -725,24 +760,30 @@ export function updateShipNavigation(
   const speedError = desiredSpeed - currentForwardSpeed;
   const forwardStep = clamp(speedError, -forwardAccel * dt, forwardAccel * dt);
   const newForwardSpeed = currentForwardSpeed + forwardStep;
-  const newVelocity = vecAdd(
-    vecScale(forwardVector, newForwardSpeed),
-    vecScale(rightVector, newLateralSpeed),
-  );
-  let controlledVelocity = newVelocity;
+  let controlledX = forwardX * newForwardSpeed + rightX * newLateralSpeed;
+  let controlledY = forwardY * newForwardSpeed + rightY * newLateralSpeed;
   // Wings can cross another capital's shield while intercepting or rejoining.
   // Preserve tangential flight, but bound closing speed by the remaining clearance.
   if (ship.hullClass === "strike_craft") {
     for (const capital of aliveShips) {
       if (!capital.isAlive || !isCapitalShip(capital)) continue;
-      const distance = vecDistance(ship.pos, capital.pos);
+      const dx = capital.pos[0] - ship.pos[0];
+      const dy = capital.pos[1] - ship.pos[1];
+      const distance = Math.sqrt(dx * dx + dy * dy);
       if (distance < 1e-6) continue;
       const clearance = shieldEnvelopeRadius(capital) + shieldEnvelopeRadius(ship) + ship.size * 3;
-      const toward = vecScale(vecSub(capital.pos, ship.pos), 1 / distance);
-      const closing = vecDot(vecSub(controlledVelocity, capital.velocity), toward);
+      const inverseDistance = 1 / distance;
+      const towardX = dx * inverseDistance;
+      const towardY = dy * inverseDistance;
+      const closing =
+        (controlledX - capital.velocity[0]) * towardX +
+        (controlledY - capital.velocity[1]) * towardY;
       const safeClosing = Math.max(0, (distance - clearance) / 0.5);
-      if (closing > safeClosing)
-        controlledVelocity = vecSub(controlledVelocity, vecScale(toward, closing - safeClosing));
+      if (closing > safeClosing) {
+        const excessClosing = closing - safeClosing;
+        controlledX = controlledX - towardX * excessClosing;
+        controlledY = controlledY - towardY * excessClosing;
+      }
     }
   }
   if (
@@ -754,14 +795,24 @@ export function updateShipNavigation(
     !returningToArena
   ) {
     const flight = SHIP_DOCTRINES[ship.hullClass].flight;
-    if (flight.kind === "capital" || flight.kind === "skirmish")
-      controlledVelocity = clampLateralVelocity(
+    if (flight.kind === "capital" || flight.kind === "skirmish") {
+      const controlledVelocity = clampLateralVelocity(
         ship,
-        controlledVelocity,
+        [controlledX, controlledY],
         flight.lateralSpeedRatio,
         rangePhase,
       );
+      controlledX = controlledVelocity[0];
+      controlledY = controlledVelocity[1];
+    }
   }
-  ship.velocity = limitVelocity(controlledVelocity, ship.maxSpeed * thrustMultiplier);
-  ship.pos = vecAdd(ship.pos, vecScale(ship.velocity, dt));
+  const speed = Math.sqrt(controlledX * controlledX + controlledY * controlledY);
+  const maxSpeed = ship.maxSpeed * thrustMultiplier;
+  if (speed > maxSpeed) {
+    const scale = maxSpeed / speed;
+    controlledX = controlledX * scale;
+    controlledY = controlledY * scale;
+  }
+  ship.velocity = [controlledX, controlledY];
+  ship.pos = [ship.pos[0] + ship.velocity[0] * dt, ship.pos[1] + ship.velocity[1] * dt];
 }
