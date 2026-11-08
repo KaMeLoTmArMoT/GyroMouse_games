@@ -1,4 +1,6 @@
 import type { ShipState, Vector2 } from "../types/combat";
+import type { MapObstacle } from "./battleMaps";
+import { mapObstacleAvoidanceVelocity } from "./flightBehaviors";
 import {
   clamp,
   normalizeAngle,
@@ -342,7 +344,12 @@ export class ShieldHavenSystem {
   }
 
   /** Owns guest flight while reserved, attached, or traversing the release corridor. */
-  moveGuest(guest: ShipState, ships: readonly ShipState[], dt: number): boolean {
+  moveGuest(
+    guest: ShipState,
+    ships: readonly ShipState[],
+    dt: number,
+    mapObstacles?: readonly MapObstacle[],
+  ): boolean {
     const lease = this.getLease(guest.id);
     const parent = ships.find((ship) => ship.id === guest.havenParentId);
     const slotId = lease?.slotId ?? (guest.havenSlotId as ShieldHavenSlotId | null);
@@ -389,6 +396,11 @@ export class ShieldHavenSystem {
           Math.min(guest.maxSpeed, Math.sqrt(2 * havenAcceleration(guest) * distance) * 0.75),
         ),
       );
+    }
+    const obstacleVelocity = mapObstacleAvoidanceVelocity(guest, desired, mapObstacles);
+    if (obstacleVelocity !== desired) {
+      desired = obstacleVelocity;
+      targetHeading = Math.atan2(desired[1], desired[0]);
     }
     guest.heading = normalizeAngle(
       guest.heading +

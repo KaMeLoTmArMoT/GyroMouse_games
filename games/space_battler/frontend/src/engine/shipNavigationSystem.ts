@@ -4,7 +4,11 @@ import { type CrewVeterancy, crewDecisionPeriod } from "./crewVeterancy";
 import type { FighterMissionSystem } from "./fighterMissionSystem";
 import { friendlyShieldRecoveryDirection } from "./fighterRecovery";
 import { capitalFinishPriority, damagedTargetPriority, squadFocusPriority } from "./fireControl";
-import { clampLateralVelocity, emergencySkirmishBreakout } from "./flightBehaviors";
+import {
+  clampLateralVelocity,
+  emergencySkirmishBreakout,
+  mapObstacleAvoidanceVelocity,
+} from "./flightBehaviors";
 import {
   ARENA_RADIUS,
   arenaVelocity,
@@ -12,8 +16,10 @@ import {
   corvetteWolfpack,
   debrisAvoidanceVelocity,
   escortVelocity,
+  fleetDefenseAnchor,
   fleetReturnVelocity,
   limitVelocity,
+  orbitVelocity,
   rescueRouteRisk,
   separation,
   spinalEscape,
@@ -494,7 +500,7 @@ export function updateShipNavigation(
     ship.maneuverTargetId = undefined;
     ship.dogfightTargetId = undefined;
   }
-  if (context.shieldHaven.moveGuest(ship, aliveShips, dt)) return;
+  if (context.shieldHaven.moveGuest(ship, aliveShips, dt, context.mapObstacles)) return;
   let targetHeading = ship.heading;
   let desiredSpeed = 0;
   let thrusterVelocity: Vector2 | null = null;
@@ -516,7 +522,24 @@ export function updateShipNavigation(
     );
     targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
   } else if (ship.hullClass === "corvette") {
-    const orbit = escortVelocity(ship, target, aliveShips);
+    let orbit = escortVelocity(ship, target, aliveShips);
+    if (!target && !fleetDefenseAnchor(ship, aliveShips)) {
+      // Without a capital to defend, advance the screen instead of waiting at spawn.
+      // This is a movement waypoint, not a pursuit lock outside the local combat theater.
+      let screenTarget: ShipState | undefined;
+      let closestDistance = Infinity;
+      const enemies = navigationContext(aliveShips)?.teamEnemies.get(ship.team) ?? aliveShips;
+      for (const enemy of enemies) {
+        if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team)
+          continue;
+        const distance = navigationDistanceSquared(ship, enemy);
+        if (distance < closestDistance) {
+          screenTarget = enemy;
+          closestDistance = distance;
+        }
+      }
+      if (screenTarget) orbit = orbitVelocity(ship, screenTarget);
+    }
     const avoid = vecAdd(
       separation(ship, aliveShips),
       spinalEscape(ship, aliveShips, context.projectiles, context.timeElapsed),
@@ -712,10 +735,9 @@ export function updateShipNavigation(
       intendedVelocity[0],
       intendedVelocity[1],
       ship.hullClass === "strike_craft" && ship.fighterPhase === "attack" ? target : null,
-      context.mapObstacles,
     );
   }
-  const avoidingObstacle = Math.abs(obstacleDecision.correction) > 1e-6;
+  let avoidingObstacle = Math.abs(obstacleDecision.correction) > 1e-6;
   if (avoidingObstacle) {
     const course =
       Math.atan2(intendedVelocity[1], intendedVelocity[0]) + obstacleDecision.correction;
@@ -730,6 +752,13 @@ export function updateShipNavigation(
   if (avoidingDebris) {
     thrusterVelocity = debrisVelocity;
     targetHeading = Math.atan2(debrisVelocity[1], debrisVelocity[0]);
+  }
+  // Map solids take priority over repair rendezvous, cached ship avoidance and debris steering.
+  const mapVelocity = mapObstacleAvoidanceVelocity(ship, debrisVelocity, context.mapObstacles);
+  if (mapVelocity !== debrisVelocity) {
+    avoidingObstacle = true;
+    thrusterVelocity = mapVelocity;
+    targetHeading = Math.atan2(mapVelocity[1], mapVelocity[0]);
   }
   const angleDiff = normalizeAngle(targetHeading - ship.heading);
   const turnStep = clamp(

@@ -444,6 +444,7 @@ export class ClientCombatSimulation {
           aliveShips,
           this.projectiles,
           missileLocks,
+          this.mapObstacles,
         );
         turret.currentTargetId = solution?.target.id ?? null;
         turret.currentTargetKind = solution?.kind;

@@ -5,6 +5,7 @@ import type {
   Vector2,
   WeaponDefinition,
 } from "../types/combat";
+import { circleContactFraction, type MapObstacle } from "./battleMaps";
 import { clamp, normalizeAngle, rotatePoint, vecAdd, vecDot, vecSub } from "./math2d";
 import { navigationContext } from "./navigationContext";
 import {
@@ -278,6 +279,7 @@ export function acquireMountTarget(
   ships: ShipState[],
   projectiles: ProjectileState[],
   missileLocks: MissileLock[] = [],
+  mapObstacles?: readonly MapObstacle[],
 ): FireSolution | null {
   const muzzle = mountPosition(ship, turret);
   const muzzleX = muzzle[0];
@@ -342,6 +344,22 @@ export function acquireMountTarget(
       ? bearing >= minArc || bearing <= maxArc
       : bearing >= minArc && bearing <= maxArc;
   };
+  const clearLineOfSight = (x: number, y: number) => {
+    if (!mapObstacles) return true;
+    for (const obstacle of mapObstacles) {
+      if (
+        circleContactFraction(
+          muzzleX - obstacle.pos[0],
+          muzzleY - obstacle.pos[1],
+          x - muzzleX,
+          y - muzzleY,
+          obstacle.radius,
+        ) <= 1
+      )
+        return false;
+    }
+    return true;
+  };
   const evaluate = (
     target: ShipState | ProjectileState,
     kind: "ship" | "missile",
@@ -349,6 +367,7 @@ export function acquireMountTarget(
     priority = 0,
   ) => {
     // Callers have already checked range and the current-position arc before scoring.
+    if (!clearLineOfSight(target.pos[0], target.pos[1])) return;
     const dx = target.pos[0] - muzzleX;
     const dy = target.pos[1] - muzzleY;
     const distance = Math.sqrt(dx * dx + dy * dy);
@@ -366,6 +385,7 @@ export function acquireMountTarget(
       aimX += target.velocity[0] * t;
       aimY += target.velocity[1] * t;
       if (!inArc(aimX, aimY)) return;
+      if (!clearLineOfSight(aimX, aimY)) return;
     }
     const local = normalizeAngle(Math.atan2(aimY - muzzleY, aimX - muzzleX) - ship.heading);
     const error = local - turret.currentLocalAngle;

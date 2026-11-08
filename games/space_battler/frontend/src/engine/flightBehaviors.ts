@@ -1,4 +1,5 @@
 import type { ProjectileState, ShipState, TurretMountState, Vector2 } from "../types/combat";
+import type { MapObstacle } from "./battleMaps";
 import { fullCircle, mountPosition } from "./fireControl";
 import { classifyRange, type RangePhase } from "./flightCycles";
 import {
@@ -12,6 +13,7 @@ import {
   vecSub,
 } from "./math2d";
 import { navigationContext } from "./navigationContext";
+import { obstacleCourseCorrection } from "./obstacleNavigation";
 import {
   activeShieldRadius,
   capitalSeparationDistance,
@@ -32,6 +34,29 @@ export interface FlightIntent {
 export function limitVelocity(velocity: Vector2, max: number): Vector2 {
   const speed = vecDistance([0, 0], velocity);
   return speed > max ? vecScale(velocity, max / speed) : velocity;
+}
+
+const NO_SHIP_OBSTACLES: ShipState[] = [];
+
+/** Apply solid-map tangents after retreat attraction and other steering blends. */
+export function mapObstacleAvoidanceVelocity(
+  ship: ShipState,
+  velocity: Vector2,
+  obstacles?: readonly MapObstacle[],
+): Vector2 {
+  if (!obstacles?.length) return velocity;
+  const correction = obstacleCourseCorrection(
+    ship,
+    NO_SHIP_OBSTACLES,
+    velocity[0],
+    velocity[1],
+    null,
+    obstacles,
+  );
+  if (Math.abs(correction) <= 1e-6) return velocity;
+  const course = Math.atan2(velocity[1], velocity[0]) + correction;
+  const speed = Math.hypot(velocity[0], velocity[1]);
+  return [Math.cos(course) * speed, Math.sin(course) * speed];
 }
 
 // Use the final heading after turning; approach drift is also bounded by forward speed.
