@@ -269,16 +269,46 @@ const missileContexts = new WeakMap<ShipState[], MissileContext>();
 
 interface MissileContext {
   projectiles: ProjectileState[];
+  stablePayloads: boolean;
   missilesByTarget: Map<string, ProjectileState[]>;
+  incomingPayloadByTarget: Map<string, MissilePayload>;
+  reservations: WeakMap<MissileLock[], { count: number; byTarget: Map<string, MissilePayload> }>;
   enemyMissilesByTeam: Map<number, ProjectileState[]>;
+}
+
+interface MissilePayload {
+  light: number;
+  heavy: number;
+  damage: number;
+  insuranceDamage: number;
+}
+
+function addMissilePayload(
+  ledger: Map<string, MissilePayload>,
+  targetId: string,
+  damage: number,
+  heavy: boolean,
+): void {
+  let payload = ledger.get(targetId);
+  if (!payload) {
+    payload = { light: 0, heavy: 0, damage: 0, insuranceDamage: 0 };
+    ledger.set(targetId, payload);
+  }
+  if (heavy) payload.heavy++;
+  else payload.light++;
+  payload.damage += damage;
+  payload.insuranceDamage = Math.max(payload.insuranceDamage, damage);
 }
 
 function indexMissiles(
   ships: ShipState[],
   projectiles: ProjectileState[],
   defendingTeam?: number,
+  stablePayloads = false,
 ): MissileContext {
   const missilesByTarget = new Map<string, ProjectileState[]>();
+  const incomingPayloadByTarget = new Map<string, MissilePayload>();
+  const targetTeams = new Map(ships.map((ship) => [ship.id, ship.team]));
   const enemyMissilesByTeam = new Map<number, ProjectileState[]>();
   if (defendingTeam !== undefined) enemyMissilesByTeam.set(defendingTeam, []);
   for (const ship of ships)
@@ -289,17 +319,32 @@ function indexMissiles(
       const incoming = missilesByTarget.get(missile.targetId);
       if (incoming) incoming.push(missile);
       else missilesByTarget.set(missile.targetId, [missile]);
+      if (missile.ownerTeam !== targetTeams.get(missile.targetId))
+        addMissilePayload(
+          incomingPayloadByTarget,
+          missile.targetId,
+          missile.damage,
+          isHeavyTorpedo(missile),
+        );
     }
     for (const [team, enemies] of enemyMissilesByTeam)
       if (team !== missile.ownerTeam) enemies.push(missile);
   }
-  return { projectiles, missilesByTarget, enemyMissilesByTeam };
+  return {
+    projectiles,
+    stablePayloads,
+    missilesByTarget,
+    incomingPayloadByTarget,
+    reservations: new WeakMap(),
+    enemyMissilesByTeam,
+  };
 }
 
 export function prepareFireControlContext(
   ships: ShipState[],
   projectiles?: ProjectileState[],
   cache = true,
+  stablePayloads = false,
 ): Map<ShipState, ShipState[]> {
   const teams = new Map<number, ShipState[]>();
   const byId = new Map(ships.map((ship) => [ship.id, ship]));
@@ -326,7 +371,8 @@ export function prepareFireControlContext(
   }
   if (cache) {
     defendedContexts.set(ships, defended);
-    if (projectiles) missileContexts.set(ships, indexMissiles(ships, projectiles));
+    if (projectiles)
+      missileContexts.set(ships, indexMissiles(ships, projectiles, undefined, stablePayloads));
     else missileContexts.delete(ships);
   }
   return defended;
@@ -519,13 +565,29 @@ export function acquireMountTarget(
     }
   };
 
-  // Preserve projectile order within each target's payloads without rescanning
-  // every projectile for every enemy considered by a missile mount.
+  // Snapshot live payloads once; append firing reservations in mount order.
   let missileIndex = missileContexts.get(ships);
   if (missileIndex?.projectiles !== projectiles) missileIndex = undefined;
   const indexedMissiles = () => (missileIndex ??= indexMissiles(ships, projectiles, ship.team));
-  const missilesByTarget =
-    weapon.weaponType === "missile" ? indexedMissiles().missilesByTarget : undefined;
+  let reservedPayloadByTarget: Map<string, MissilePayload> | undefined;
+  if (guided) {
+    const index = indexedMissiles();
+    let reservations = index.reservations.get(missileLocks);
+    if (!reservations) {
+      reservations = { count: 0, byTarget: new Map() };
+      index.reservations.set(missileLocks, reservations);
+    }
+    while (reservations.count < missileLocks.length) {
+      const lock = missileLocks[reservations.count++];
+      addMissilePayload(
+        reservations.byTarget,
+        lock.targetId,
+        lock.weapon.damage,
+        projectileMaxHp(lock.weapon) >= 120,
+      );
+    }
+    reservedPayloadByTarget = reservations.byTarget;
+  }
 
   const enemies =
     navigationContext(ships)?.teamEnemies.get(ship.team) ??
@@ -535,26 +597,31 @@ export function acquireMountTarget(
     if (!inRange(enemy)) continue;
     if (!inArc(enemy.pos[0], enemy.pos[1])) continue;
     if (weapon.weaponType === "missile") {
-      let incoming = 0;
-      let inFlightDamage = 0;
-      let insuranceDamage = 0;
-      const incomingMissiles = missilesByTarget?.get(enemy.id);
-      if (incomingMissiles) {
-        for (const missile of incomingMissiles) {
-          if (missile.hp > 0 && missile.lifetime > 0 && missile.ownerTeam !== enemy.team) {
-            incoming += missileWeight(enemy, isHeavyTorpedo(missile));
-            inFlightDamage += missile.damage;
-            insuranceDamage = Math.max(insuranceDamage, missile.damage);
-          }
-        }
+      const index = indexedMissiles();
+      // Standalone callers may mutate payloads between scans. Simulation opts into
+      // stable totals only while simultaneous launch decisions precede all impacts.
+      if (!index.stablePayloads) {
+        index.incomingPayloadByTarget.delete(enemy.id);
+        for (const missile of index.missilesByTarget.get(enemy.id) ?? [])
+          if (missile.hp > 0 && missile.lifetime > 0 && missile.ownerTeam !== enemy.team)
+            addMissilePayload(
+              index.incomingPayloadByTarget,
+              enemy.id,
+              missile.damage,
+              isHeavyTorpedo(missile),
+            );
       }
-      for (const lock of missileLocks) {
-        if (lock.targetId === enemy.id) {
-          incoming += missileWeight(enemy, projectileMaxHp(lock.weapon) >= 120);
-          inFlightDamage += lock.weapon.damage;
-          insuranceDamage = Math.max(insuranceDamage, lock.weapon.damage);
-        }
-      }
+      const payload = index.incomingPayloadByTarget.get(enemy.id);
+      const reserved = reservedPayloadByTarget?.get(enemy.id);
+      const incoming =
+        (payload?.light ?? 0) +
+        (reserved?.light ?? 0) +
+        ((payload?.heavy ?? 0) + (reserved?.heavy ?? 0)) * missileWeight(enemy, true);
+      const inFlightDamage = (payload?.damage ?? 0) + (reserved?.damage ?? 0);
+      const insuranceDamage = Math.max(
+        payload?.insuranceDamage ?? 0,
+        reserved?.insuranceDamage ?? 0,
+      );
       // Remove one committed payload from the estimate: exactly one insurance shot
       // may follow the lethal allocation, including reservations at this firing instant.
       const effectiveHealth = enemy.hullCurrent + enemy.armorCurrent + enemy.shieldCurrent;

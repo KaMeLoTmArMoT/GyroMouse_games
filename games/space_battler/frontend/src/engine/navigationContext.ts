@@ -65,6 +65,8 @@ export class NavigationContext {
   readonly teamEnemyCapitals = new Map<number, ShipState[]>();
   readonly hulls = new Map<ShipState["hullClass"], ShipState[]>();
   readonly anchors = new Map<ShipState, ShipState | undefined>();
+  readonly anchorsByTeam = new Map<number, ShipState[]>();
+  readonly havenOccupancyByTeam = new Map<number, Map<string, number>>();
   readonly safe = new Map<ShipState, boolean>();
   readonly isolated = new Map<ShipState, boolean>();
   readonly localDensity = new Map<ShipState, Map<number, number>>();
@@ -72,14 +74,31 @@ export class NavigationContext {
   readonly capitalAssignments = new Map<number, Map<string, number>>();
   readonly navigationAssignments: AssignmentCounts = new Map();
   readonly dogfightAssignments: AssignmentCounts = new Map();
-  readonly activeWrecks: ShipState[] = [];
+  readonly activeWrecks: ShipState[];
 
-  constructor(ships: ShipState[], cache = new NavigationNeighborhoodCache()) {
+  constructor(
+    ships: ShipState[],
+    cache = new NavigationNeighborhoodCache(),
+    activeWrecks?: ShipState[],
+  ) {
+    this.activeWrecks = activeWrecks ?? [];
     const activeShips: ShipState[] = [];
     for (const ship of ships) {
       this.byId.set(ship.id, ship);
       if (!ship.isAlive) continue;
-      if (ship.isDebris) this.activeWrecks.push(ship);
+      if (ship.isDebris && !activeWrecks) this.activeWrecks.push(ship);
+      if (!ship.isDebris) {
+        if (isCapitalShip(ship) || ship.hullClass === "corvette") {
+          const anchors = this.anchorsByTeam.get(ship.team) ?? [];
+          anchors.push(ship);
+          this.anchorsByTeam.set(ship.team, anchors);
+        }
+        if (ship.safeHavenId !== undefined && ship.safeHavenId !== null) {
+          const occupancy = this.havenOccupancyByTeam.get(ship.team) ?? new Map<string, number>();
+          occupancy.set(ship.safeHavenId, (occupancy.get(ship.safeHavenId) ?? 0) + 1);
+          this.havenOccupancyByTeam.set(ship.team, occupancy);
+        }
+      }
       this.adjust(this.dogfightAssignments, ship, ship.dogfightTargetId, 1);
       if (ship.isDocked || ship.isDebris) continue;
       activeShips.push(ship);
@@ -166,6 +185,16 @@ export class NavigationContext {
         });
       }
     }
+  }
+
+  setSafeHaven(ship: ShipState, targetId: string | null): void {
+    if (ship.safeHavenId === targetId) return;
+    const occupancy = this.havenOccupancyByTeam.get(ship.team) ?? new Map<string, number>();
+    if (ship.safeHavenId !== undefined && ship.safeHavenId !== null)
+      occupancy.set(ship.safeHavenId, (occupancy.get(ship.safeHavenId) ?? 0) - 1);
+    if (targetId !== null) occupancy.set(targetId, (occupancy.get(targetId) ?? 0) + 1);
+    this.havenOccupancyByTeam.set(ship.team, occupancy);
+    ship.safeHavenId = targetId;
   }
 
   adjust(
@@ -270,9 +299,12 @@ function countTacticalDensity(ship: ShipState, ships: ShipState[]): Map<number, 
 export function prepareNavigationContext(
   ships: ShipState[],
   cache = new NavigationNeighborhoodCache(),
+  activeWrecks?: ShipState[],
+  sourceShips?: ShipState[],
 ): NavigationContext {
-  const context = new NavigationContext(ships, cache);
+  const context = new NavigationContext(ships, cache, activeWrecks);
   contexts.set(ships, context);
+  if (sourceShips) contexts.set(sourceShips, context);
   return context;
 }
 

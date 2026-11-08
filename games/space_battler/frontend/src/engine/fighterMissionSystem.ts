@@ -297,11 +297,9 @@ export class FighterMissionSystem {
         wing.assembledAt = undefined;
         wing.engagementStarted = undefined;
         if (!target) continue;
-        const anchor = aliveShips.find(
-          (ship) =>
-            ship.team === wing.team &&
-            (ship.hullClass === "battleship" || ship.hullClass === "cruiser"),
-        );
+        const anchor = navigation.anchorsByTeam
+          .get(wing.team)
+          ?.find((ship) => ship.hullClass === "battleship" || ship.hullClass === "cruiser");
         const approach = vecSub(target.pos, anchor?.pos ?? leader.pos);
         // Freeze each corridor's bearing for the pass, even while individual craft jink.
         wing.heading = fighterIngressHeading(Math.atan2(approach[1], approach[0]), wing.index);
@@ -424,12 +422,10 @@ export class FighterMissionSystem {
     const previous = this.steering.get(ship);
     if (previous && previous.tick === tick && previous.phase === phase) return previous;
     // Safe haven management retains shield health, distance, and occupancy scoring.
-    const navigation = navigationContext(aliveShips);
+    const navigation = navigationContext(aliveShips) ?? prepareNavigationContext(aliveShips);
     let safeHaven =
       ship.safeHavenId !== undefined && ship.safeHavenId !== null
-        ? navigation
-          ? navigation.byId.get(ship.safeHavenId)
-          : aliveShips.find((anchor) => anchor.id === ship.safeHavenId)
+        ? navigation.byId.get(ship.safeHavenId)
         : undefined;
     if (
       safeHaven &&
@@ -445,22 +441,13 @@ export class FighterMissionSystem {
       ship.safeHavenTimer <= 0 ||
       !safeHaven
     ) {
-      const friendlyAnchors: ShipState[] = [];
-      const safeHavenOccupancy = new Map<string, number>();
-      for (const peer of aliveShips) {
-        if (peer.team !== ship.team || !peer.isAlive) continue;
-        if (isCapitalShip(peer) || peer.hullClass === "corvette") friendlyAnchors.push(peer);
-        if (peer.safeHavenId !== undefined && peer.safeHavenId !== null)
-          safeHavenOccupancy.set(
-            peer.safeHavenId,
-            (safeHavenOccupancy.get(peer.safeHavenId) ?? 0) + 1,
-          );
-      }
+      const friendlyAnchors = navigation.anchorsByTeam.get(ship.team) ?? [];
+      const safeHavenOccupancy = navigation.havenOccupancyByTeam.get(ship.team);
       if (friendlyAnchors.length > 0) {
         let bestAnchor = friendlyAnchors[0];
         let bestScore = -Infinity;
         for (const anchor of friendlyAnchors) {
-          const occupancy = safeHavenOccupancy.get(anchor.id) ?? 0;
+          const occupancy = safeHavenOccupancy?.get(anchor.id) ?? 0;
           const shieldRatio = anchor.shieldMax > 0 ? anchor.shieldCurrent / anchor.shieldMax : 0;
           const dx = ship.pos[0] - anchor.pos[0];
           const dy = ship.pos[1] - anchor.pos[1];
@@ -473,11 +460,11 @@ export class FighterMissionSystem {
             bestAnchor = anchor;
           }
         }
-        ship.safeHavenId = bestAnchor.id;
+        navigation.setSafeHaven(ship, bestAnchor.id);
         ship.safeHavenTimer = 2.0;
         safeHaven = bestAnchor;
       } else {
-        ship.safeHavenId = null;
+        navigation.setSafeHaven(ship, null);
         ship.safeHavenTimer = 1.0;
         safeHaven = undefined;
       }

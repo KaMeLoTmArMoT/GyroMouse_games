@@ -339,6 +339,7 @@ export class ClientCombatSimulation {
       wreck.pos = vecAdd(wreck.pos, vecScale(wreck.velocity, dt));
       wreck.heading = normalizeAngle(wreck.heading + (wreck.angularVelocity ?? 0) * dt);
     }
+    const activeWrecks = wrecks.filter((ship) => ship.isAlive);
     // Observe broken shields before this step's regeneration can obscure the entry trigger.
     const externalShips = combatShips.filter((ship) => !ship.isDocked && !ship.carrierRecovering);
     this.shieldHaven.update(externalShips, this.timeElapsed);
@@ -366,7 +367,12 @@ export class ClientCombatSimulation {
       ...aliveShips.map((ship) => [ship.id, [...ship.pos] as Vector2] as const),
     ]);
     this.ensureFighterWings(aliveShips);
-    const navigation = prepareNavigationContext(aliveShips, this.neighborhoodCache);
+    const navigation = prepareNavigationContext(
+      aliveShips,
+      this.neighborhoodCache,
+      activeWrecks,
+      this.ships,
+    );
     this.fighterMissions.updateWings(aliveShips);
     const navigationTargets = new Map<string, ShipState | null>();
     const movements = new Map<
@@ -411,7 +417,7 @@ export class ClientCombatSimulation {
     for (const ship of aliveShips) Object.assign(ship, movements.get(ship.id));
     this.shieldHaven.refreshAmplification(combatShips);
     const repulsorSteps = new Map<string, number>();
-    const collisionShips = [...aliveShips, ...wrecks.filter((ship) => ship.isAlive)];
+    const collisionShips = [...aliveShips, ...activeWrecks];
     this.resolveShipCollisions(collisionShips, dt, false, repulsorSteps);
     this.contactSolver.resolveCruiserClearance(aliveShips);
     this.shieldHaven.attachGuests(aliveShips, dt);
@@ -426,7 +432,7 @@ export class ClientCombatSimulation {
     this.shieldHaven.refreshAmplification(combatShips);
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
-    prepareFireControlContext(aliveShips, this.projectiles);
+    prepareFireControlContext(aliveShips, this.projectiles, true, true);
     const missileLocks: Array<{ targetId: string; weapon: TurretMountState["weapon"] }> = [];
     for (const ship of aliveShips) {
       if (!ship.isAlive) continue;
