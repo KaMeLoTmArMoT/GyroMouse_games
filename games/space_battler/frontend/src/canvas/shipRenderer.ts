@@ -3,6 +3,7 @@
 import { rotatePoint } from "../engine/math2d";
 import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
+import { traceHeavyHull } from "./capitalHullDepth";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
 import { drawHullArmor } from "./hullArmor";
 import {
@@ -11,7 +12,14 @@ import {
   isLightHull,
   traceLightHull,
 } from "./lightHullDepth";
-import { drawPreviewKeel, drawPreviewSuperstructure, previewDepthFactor } from "./previewDepth";
+import {
+  drawPreviewKeel,
+  drawPreviewSuperstructure,
+  drawPreviewTerrace,
+  previewBridge,
+  previewDepthFactor,
+  previewTerraceHeight,
+} from "./previewDepth";
 import { ShipSpriteCache } from "./shipSpriteCache";
 import { renderTurret } from "./turretRenderer";
 
@@ -225,16 +233,29 @@ export function renderShipPreview(
   const cos = Math.cos(ship.heading);
   const elements: { depth: number; turret: TurretMountState | null }[] = ship.turrets.map(
     (turret) => ({
-      depth: turret.offset[0] * sin + turret.offset[1] * cos,
+      depth:
+        (turret.offset[0] * sin + turret.offset[1] * cos) * Math.sin(elevation) -
+        (previewTerraceHeight(ship, turret) + turret.baseRadius * 0.35) * Math.cos(elevation),
       turret,
     }),
   );
-  elements.push({ depth: -ship.size * 0.3 * sin, turret: null });
+  const bridge = previewBridge(ship);
+  elements.push({
+    depth: bridge.x * sin * Math.sin(elevation) - bridge.height * Math.cos(elevation),
+    turret: null,
+  });
   elements.sort((a, b) => a.depth - b.depth);
   for (const element of elements) {
-    if (element.turret)
+    if (element.turret) {
+      ctx.save();
+      ctx.rotate(ship.heading);
+      drawPreviewTerrace(ctx, ship, element.turret, depth);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(0, -previewTerraceHeight(ship, element.turret) * depth);
       renderTurret(ctx, ship, element.turret, isBlue ? "#38bdf8" : "#f87171", depth);
-    else {
+      ctx.restore();
+    } else {
       ctx.save();
       ctx.rotate(ship.heading);
       drawPreviewSuperstructure(ctx, ship, depth);
@@ -572,28 +593,7 @@ export function renderCarrierHull(
   const s = ship.size;
   const alien = ship.team !== 0;
   ctx.save();
-  ctx.beginPath();
-  if (alien) {
-    ctx.moveTo(s * 1.25, 0);
-    ctx.bezierCurveTo(s * 0.9, -s * 0.18, s * 0.45, -s * 0.7, -s * 0.2, -s * 0.67);
-    ctx.bezierCurveTo(-s * 0.65, -s * 0.7, -s * 1.18, -s * 0.57, -s * 1.08, -s * 0.35);
-    ctx.bezierCurveTo(-s * 0.78, -s * 0.18, -s * 0.78, s * 0.18, -s * 1.08, s * 0.35);
-    ctx.bezierCurveTo(-s * 1.18, s * 0.57, -s * 0.65, s * 0.7, -s * 0.2, s * 0.67);
-    ctx.bezierCurveTo(s * 0.45, s * 0.7, s * 0.9, s * 0.18, s * 1.25, 0);
-  } else {
-    ctx.moveTo(s * 1.25, 0);
-    ctx.lineTo(s * 0.75, -s * 0.35);
-    ctx.lineTo(s * 0.35, -s * 0.42);
-    ctx.lineTo(s * 0.12, -s * 0.68);
-    ctx.lineTo(-s * 0.82, -s * 0.68);
-    ctx.lineTo(-s * 1.08, -s * 0.48);
-    ctx.lineTo(-s * 1.08, s * 0.48);
-    ctx.lineTo(-s * 0.82, s * 0.68);
-    ctx.lineTo(s * 0.12, s * 0.68);
-    ctx.lineTo(s * 0.35, s * 0.42);
-    ctx.lineTo(s * 0.75, s * 0.35);
-  }
-  ctx.closePath();
+  traceHeavyHull(ctx, ship);
   const armor = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.7);
   armor.addColorStop(0, secondaryColor);
   armor.addColorStop(0.4, alien ? "#71313d" : "#24435b");
@@ -643,6 +643,14 @@ export function renderCarrierHull(
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+  // Recessed landing strip and recovery beacons inside the armored hangar rim.
+  ctx.fillStyle = alien ? "#32121b" : "#0b2636";
+  ctx.fillRect(-s * 0.48, -s * 0.095, s * 0.78, s * 0.19);
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = alien ? "#fb923c" : "#7dd3fc";
+    for (const x of [-0.42, -0.25, -0.08, 0.09, 0.26])
+      ctx.fillRect(s * x, side * s * 0.12 - s * 0.012, s * 0.045, s * 0.024);
+  }
   ctx.strokeStyle = "rgba(125, 211, 252, 0.8)";
   ctx.lineWidth = s * 0.012;
   for (const side of [-1, 1]) {
@@ -867,30 +875,12 @@ function drawTerranHull(
 
     case "cruiser":
       // Terran Cruiser: heavy armored prow, long spinal trench, flanking engine pods
-      ctx.moveTo(s * 1.22, 0);
-      ctx.lineTo(s * 0.6, -s * 0.38);
-      ctx.lineTo(s * 0.2, -s * 0.38);
-      ctx.lineTo(-s * 0.65, -s * 0.5);
-      ctx.lineTo(-s * 1.1, -s * 0.28);
-      ctx.lineTo(-s * 1.1, s * 0.28);
-      ctx.lineTo(-s * 0.65, s * 0.5);
-      ctx.lineTo(s * 0.2, s * 0.38);
-      ctx.lineTo(s * 0.6, s * 0.38);
-      ctx.closePath();
+      traceHeavyHull(ctx, ship);
       break;
 
     default:
       // Terran Battleship: massive segmented dreadnought with conning tower bridge and prow hangar
-      ctx.moveTo(s * 1.28, 0);
-      ctx.lineTo(s * 0.8, -s * 0.38);
-      ctx.lineTo(s * 0.25, -s * 0.58);
-      ctx.lineTo(-s * 0.85, -s * 0.62);
-      ctx.lineTo(-s * 1.2, -s * 0.35);
-      ctx.lineTo(-s * 1.2, s * 0.35);
-      ctx.lineTo(-s * 0.85, s * 0.62);
-      ctx.lineTo(s * 0.25, s * 0.58);
-      ctx.lineTo(s * 0.8, s * 0.38);
-      ctx.closePath();
+      traceHeavyHull(ctx, ship);
       break;
   }
 
@@ -954,7 +944,6 @@ function drawAlienHull(
   }
   // Lateral coordinates calibrated against Terran filled areas by backend/tests/test_hull_geometry.py.
   // Endpoints and Bezier controls remain inside the 1.40x shield envelope.
-  const s = ship.size;
 
   ctx.fillStyle = hullDarkColor;
   ctx.strokeStyle = primaryColor;
@@ -969,22 +958,12 @@ function drawAlienHull(
 
     case "cruiser":
       // Alien Warship: serpentine curved war-hull with biomorphic mandible prow
-      ctx.moveTo(s * 1.22, -s * 0.2411);
-      ctx.lineTo(s * 0.9, 0);
-      ctx.lineTo(s * 1.22, s * 0.2411);
-      ctx.quadraticCurveTo(s * 0.35, s * 0.5479, -s * 0.85, s * 0.3945);
-      ctx.quadraticCurveTo(-s * 1.1, 0, -s * 0.85, -s * 0.3945);
-      ctx.quadraticCurveTo(s * 0.35, -s * 0.5479, s * 1.22, -s * 0.2411);
-      ctx.closePath();
+      traceHeavyHull(ctx, ship);
       break;
 
     default:
       // Alien Dreadnought: massive curved crescent basestar with central energy eye
-      ctx.moveTo(s * 1.28, 0);
-      ctx.quadraticCurveTo(s * 0.5, -s * 0.892, -s * 1.15, -s * 0.6559);
-      ctx.quadraticCurveTo(-s * 0.4, 0, -s * 1.15, s * 0.6559);
-      ctx.quadraticCurveTo(s * 0.5, s * 0.892, s * 1.28, 0);
-      ctx.closePath();
+      traceHeavyHull(ctx, ship);
       break;
   }
 
@@ -1031,32 +1010,8 @@ function drawNewHull(
   const plate = alien ? "#7f1d1d" : "#334155";
 
   ctx.beginPath();
-  if (dread && alien) {
-    ctx.moveTo(s * 1.25, 0);
-    ctx.quadraticCurveTo(s * 0.85, -s * 0.42, s * 0.25, -s * 0.46);
-    ctx.lineTo(0, -s * 0.68);
-    ctx.lineTo(-s * 0.52, -s * 0.64);
-    ctx.quadraticCurveTo(-s * 0.9, -s * 0.55, -s * 1.12, -s * 0.42);
-    ctx.lineTo(-s * 1.12, s * 0.42);
-    ctx.quadraticCurveTo(-s * 0.9, s * 0.55, -s * 0.52, s * 0.64);
-    ctx.lineTo(0, s * 0.68);
-    ctx.lineTo(s * 0.25, s * 0.46);
-    ctx.quadraticCurveTo(s * 0.85, s * 0.42, s * 1.25, 0);
-  } else if (dread) {
-    ctx.moveTo(s * 1.25, 0);
-    ctx.lineTo(s * 0.85, -s * 0.4);
-    ctx.lineTo(s * 0.3, -s * 0.48);
-    ctx.lineTo(s * 0.14, -s * 0.67);
-    ctx.lineTo(-s * 0.58, -s * 0.67);
-    ctx.lineTo(-s * 0.78, -s * 0.52);
-    ctx.lineTo(-s * 1.12, -s * 0.42);
-    ctx.lineTo(-s * 1.12, s * 0.42);
-    ctx.lineTo(-s * 0.78, s * 0.52);
-    ctx.lineTo(-s * 0.58, s * 0.67);
-    ctx.lineTo(s * 0.14, s * 0.67);
-    ctx.lineTo(s * 0.3, s * 0.48);
-    ctx.lineTo(s * 0.85, s * 0.4);
-  } else {
+  if (dread) traceHeavyHull(ctx, ship);
+  else {
     traceLightHull(ctx, ship);
   }
   ctx.closePath();
@@ -1092,6 +1047,30 @@ function drawNewHull(
   }
   ctx.globalAlpha = 1;
   if (dread) {
+    // The recessed spinal rail is protected by sloped forward sponsons.
+    ctx.fillStyle = dark;
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.max(0.7, s * 0.018);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.18, -s * 0.09);
+    ctx.lineTo(s * 0.72, -s * 0.09);
+    ctx.lineTo(s * 1.05, 0);
+    ctx.lineTo(s * 0.72, s * 0.09);
+    ctx.lineTo(-s * 0.18, s * 0.09);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = plate;
+      ctx.beginPath();
+      ctx.moveTo(s * 0.08, side * s * 0.14);
+      ctx.lineTo(s * 0.7, side * s * 0.13);
+      ctx.lineTo(s * 0.86, side * s * 0.25);
+      ctx.lineTo(s * 0.2, side * s * 0.31);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
     // Reinforced barbettes use the actual bow, broadside and aft mount positions.
     for (const turret of ship.turrets) {
       const [x, y] = turret.offset;

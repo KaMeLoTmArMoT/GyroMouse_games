@@ -1,5 +1,11 @@
 import { engineNozzles } from "../canvas/effects";
-import { isPreviewLightHull, previewDepthFactor, sternEdge } from "../canvas/previewDepth";
+import {
+  previewBridge,
+  previewDepthFactor,
+  previewKeelHeight,
+  previewTerraceHeight,
+  sternEdge,
+} from "../canvas/previewDepth";
 import { rotatePoint } from "../engine/math2d";
 import { HULL_PROFILES } from "../engine/shipProfiles";
 import type { ShipState, Vector2 } from "../types/combat";
@@ -51,12 +57,12 @@ export function inspectorFeatures(
         `Firing arc: ${Math.round(arc)}°`,
       ],
       turret.offset,
-      turret.baseRadius * 0.35 * depth,
+      (previewTerraceHeight(ship, turret) + turret.baseRadius * 0.35) * depth,
       turret.baseRadius * 1.3,
     );
   });
   const nozzles = engineNozzles(ship).map(([x, y], index) => {
-    const aftPort = isPreviewLightHull(ship) && Math.sin(yaw) < -0.01;
+    const aftPort = Math.sin(yaw) < -0.01;
     const keelFraction = 0.6;
     const keelScale = 1.03 - (keelFraction - 1 / 3) * 0.285;
     return feature(
@@ -69,10 +75,11 @@ export function inspectorFeatures(
       aftPort
         ? [sternEdge(ship, y) * ship.size * keelScale, y * ship.size * keelScale]
         : [x * ship.size, y * ship.size],
-      aftPort ? -ship.size * 0.24 * keelFraction * depth : 0,
+      aftPort ? -previewKeelHeight(ship) * keelFraction * depth : 0,
       ship.size * 0.08,
     );
   });
+  const bridge = previewBridge(ship);
   return [
     ...turrets,
     feature(
@@ -84,8 +91,8 @@ export function inspectorFeatures(
         `Turn rate: ${profile.turnRateDisplay}`,
         `Doctrine: ${profile.desc}`,
       ],
-      [-ship.size * 0.3, 0],
-      ship.size * 0.12 * depth,
+      [bridge.x, 0],
+      bridge.height * depth,
       ship.size * 0.12,
     ),
     ...nozzles,

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { traceHeavyHull } from "../src/canvas/capitalHullDepth";
 import { engineNozzles } from "../src/canvas/effects";
 import * as previewDepth from "../src/canvas/previewDepth";
 import { previewDepthFactor } from "../src/canvas/previewDepth";
@@ -211,7 +212,15 @@ describe("cached battlefield hulls", () => {
 
   it("aligns inspector targets with the restored turret and bridge heights", () => {
     for (const team of [0, 1] as const) {
-      for (const hullClass of ["corvette", "missile_frigate", "tender", "battleship"] as const) {
+      for (const hullClass of [
+        "corvette",
+        "missile_frigate",
+        "tender",
+        "cruiser",
+        "battleship",
+        "dreadnought",
+        "carrier",
+      ] as const) {
         const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
         for (const heading of [0, Math.PI / 4, -Math.PI / 2]) {
           for (const elevation of [Math.PI / 36, Math.PI / 6, (85 * Math.PI) / 180]) {
@@ -223,16 +232,19 @@ describe("cached battlefield hulls", () => {
               expect(features[index].x).toBeCloseTo(360 + x * scale);
               expect(features[index].y).toBeCloseTo(
                 240 +
-                  (y * Math.sin(elevation) - turret.baseRadius * 0.35 * Math.cos(elevation)) *
+                  (y * Math.sin(elevation) -
+                    (previewDepth.previewTerraceHeight(ship, turret) + turret.baseRadius * 0.35) *
+                      Math.cos(elevation)) *
                     scale,
               );
             }
             const bridge = features.find((feature) => feature.id === "bridge");
             if (!bridge) throw new Error("Bridge target missing");
-            const [x, y] = rotatePoint([-ship.size * 0.3, 0], heading);
+            const bridgeGeometry = previewDepth.previewBridge(ship);
+            const [x, y] = rotatePoint([bridgeGeometry.x, 0], heading);
             expect(bridge.x).toBeCloseTo(360 + x * scale);
             expect(bridge.y).toBeCloseTo(
-              240 + (y * Math.sin(elevation) - ship.size * 0.12 * Math.cos(elevation)) * scale,
+              240 + (y * Math.sin(elevation) - bridgeGeometry.height * Math.cos(elevation)) * scale,
             );
           }
         }
@@ -256,16 +268,28 @@ describe("cached battlefield hulls", () => {
       order.push(String(ship.turrets.indexOf(turret)));
     });
     for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-      ship.heading = heading;
-      order.length = 0;
-      renderShipPreview(context().ctx, ship);
-      const expected = ship.turrets.map((turret, index) => ({
-        name: String(index),
-        depth: turret.offset[0] * Math.sin(heading) + turret.offset[1] * Math.cos(heading),
-      }));
-      expected.push({ name: "bridge", depth: -ship.size * 0.3 * Math.sin(heading) });
-      expected.sort((a, b) => a.depth - b.depth);
-      expect(order).toEqual(expected.map((element) => element.name));
+      for (const elevation of [Math.PI / 36, Math.PI / 6, Math.PI / 2]) {
+        ship.heading = heading;
+        order.length = 0;
+        renderShipPreview(context().ctx, ship, 0, elevation);
+        const expected = ship.turrets.map((turret, index) => ({
+          name: String(index),
+          depth:
+            (turret.offset[0] * Math.sin(heading) + turret.offset[1] * Math.cos(heading)) *
+              Math.sin(elevation) -
+            (previewDepth.previewTerraceHeight(ship, turret) + turret.baseRadius * 0.35) *
+              Math.cos(elevation),
+        }));
+        const bridge = previewDepth.previewBridge(ship);
+        expected.push({
+          name: "bridge",
+          depth:
+            bridge.x * Math.sin(heading) * Math.sin(elevation) -
+            bridge.height * Math.cos(elevation),
+        });
+        expected.sort((a, b) => a.depth - b.depth);
+        expect(order).toEqual(expected.map((element) => element.name));
+      }
     }
   });
 
@@ -306,9 +330,37 @@ describe("cached battlefield hulls", () => {
     }
   });
 
+  it("sweeps each heavy deck outline through a deeper shaded chine", () => {
+    for (const team of [0, 1] as const) {
+      for (const hullClass of ["cruiser", "battleship", "dreadnought", "carrier"] as const) {
+        const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
+        const outline = context();
+        traceHeavyHull(outline.ctx, ship);
+        const keel = context();
+        previewDepth.drawPreviewKeel(keel.ctx, ship, 1);
+        expect(previewDepth.previewKeelHeight(ship)).toBeCloseTo(ship.size * 0.32);
+        expect(keel.calls.get("createLinearGradient")).toHaveBeenCalledTimes(25);
+        for (const method of ["moveTo", "lineTo", "quadraticCurveTo", "bezierCurveTo"]) {
+          const deckCalls = outline.calls.get(method)?.mock.calls ?? [];
+          const keelCalls = keel.calls.get(method)?.mock.calls ?? [];
+          expect(keelCalls.slice(0, deckCalls.length)).toEqual(deckCalls);
+        }
+      }
+    }
+  });
+
   it("aligns aft thruster targets with the recessed stern ports", () => {
     for (const team of [0, 1] as const) {
-      for (const hullClass of ["strike_craft", "corvette", "missile_frigate", "tender"] as const) {
+      for (const hullClass of [
+        "strike_craft",
+        "corvette",
+        "missile_frigate",
+        "tender",
+        "cruiser",
+        "battleship",
+        "dreadnought",
+        "carrier",
+      ] as const) {
         const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
         const yaw = -Math.PI / 2;
         const elevation = Math.PI / 6;
@@ -325,7 +377,8 @@ describe("cached battlefield hulls", () => {
         expect(engine?.x).toBeCloseTo(360 + x * scale);
         expect(engine?.y).toBeCloseTo(
           240 +
-            (projectedY * Math.sin(elevation) + ship.size * 0.24 * 0.6 * Math.cos(elevation)) *
+            (projectedY * Math.sin(elevation) +
+              previewDepth.previewKeelHeight(ship) * 0.6 * Math.cos(elevation)) *
               scale,
         );
       }
