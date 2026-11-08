@@ -3,7 +3,9 @@ import * as previewDepth from "../src/canvas/previewDepth";
 import { previewDepthFactor } from "../src/canvas/previewDepth";
 import { renderShip, renderShipPreview } from "../src/canvas/shipRenderer";
 import * as turretRenderer from "../src/canvas/turretRenderer";
+import { inspectorFeatures } from "../src/components/inspectorFeatures";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
+import { rotatePoint } from "../src/engine/math2d";
 import type { ShipState } from "../src/types/combat";
 
 function context() {
@@ -174,10 +176,107 @@ describe("cached battlefield hulls", () => {
             ).toBe(true);
             expect(
               (x * Math.sin(heading) + y * Math.cos(heading)) * Math.sin(elevation),
-            ).toBeCloseTo(ship.size * 0.24 * Math.cos(elevation));
+            ).toBeCloseTo(
+              ship.size * 0.24 * Math.min(Math.cos(elevation), 2 * Math.sin(elevation)),
+            );
           }
         }
       }
+    }
+  });
+
+  it("keeps turret extrusion finite and low-profile at shallow elevations", () => {
+    expect(previewDepthFactor(0)).toBe(2);
+    expect(previewDepthFactor(Math.PI / 36)).toBe(2);
+    expect(previewDepthFactor(Math.PI / 6)).toBeCloseTo(Math.sqrt(3));
+    expect(previewDepthFactor(Math.PI / 2)).toBeCloseTo(0);
+    const [ship] = buildFleetFromSlots(
+      [{ id: "profile", hullClass: "battleship", groupId: 1 }],
+      0,
+      0,
+      0,
+    );
+    ship.heading = 0.6;
+    const turret = ship.turrets[0];
+    turret.currentLocalAngle = -0.3;
+    for (const r of [2.2, 8, 16]) {
+      turret.baseRadius = r;
+      for (const depth of [0, 1, 2, 100]) {
+        const { collar, cupola } = turretRenderer.previewTurretOffsets(r, depth);
+        expect(collar + cupola).toBeLessThanOrEqual(Math.min(r * 0.4, 3.5));
+        const { ctx, calls } = context();
+        turretRenderer.renderTurret(ctx, ship, turret, "#38bdf8", depth);
+        expect(calls.get("translate")).toHaveBeenCalledWith(0, -collar);
+        const [x, y] = rotatePoint([0, -cupola], -(ship.heading + turret.currentLocalAngle));
+        expect(calls.get("translate")).toHaveBeenCalledWith(x, y);
+      }
+    }
+  });
+
+  it("supports raised midship batteries and aligns their inspector targets", () => {
+    for (const team of [0, 1] as const) {
+      for (const hullClass of ["cruiser", "battleship", "dreadnought"] as const) {
+        const [ship] = buildFleetFromSlots([{ id: hullClass, hullClass, groupId: 1 }], team, 0, 0);
+        const elevation = Math.PI / 6;
+        const depth = previewDepthFactor(elevation);
+        const heading = Math.PI / 4;
+        ship.heading = heading;
+        const midship = ship.turrets.find((turret) => Math.abs(turret.offset[0]) < ship.size * 0.3);
+        const forward = ship.turrets.find((turret) => turret.offset[0] >= ship.size * 0.3);
+        if (!midship || !forward) throw new Error("Expected midship and forward mounts");
+        const shelf = previewDepth.previewTurretShelfHeight(ship, midship, depth);
+        expect(shelf).toBeCloseTo(ship.size * 0.06 * depth);
+        expect(previewDepth.previewTurretShelfHeight(ship, forward, depth)).toBe(0);
+        const { ctx, calls } = context();
+        previewDepth.drawPreviewTurretShelf(ctx, ship, midship, shelf);
+        const [ux, uy] = rotatePoint([0, -shelf], -heading);
+        expect(calls.get("translate")).toHaveBeenCalledWith(ux, uy);
+        const target = inspectorFeatures(ship, heading, elevation, 1)[
+          ship.turrets.indexOf(midship)
+        ];
+        const [, y] = rotatePoint(midship.offset, heading);
+        const { collar, cupola } = turretRenderer.previewTurretOffsets(midship.baseRadius, depth);
+        expect(target.y).toBeCloseTo(
+          240 + (y - shelf - collar - cupola) * (160 / ship.size) * Math.sin(elevation),
+        );
+      }
+    }
+  });
+
+  it("draws each raised shelf before its turret and translates the turret onto it", () => {
+    const [ship] = buildFleetFromSlots(
+      [{ id: "shelves", hullClass: "battleship", groupId: 1 }],
+      0,
+      0,
+      0,
+    );
+    const shelves = vi.spyOn(previewDepth, "drawPreviewTurretShelf");
+    const turrets = vi.spyOn(turretRenderer, "renderTurret");
+    const { ctx, calls } = context();
+    renderShipPreview(ctx, ship, 0, Math.PI / 6);
+    expect(shelves).toHaveBeenCalledTimes(ship.turrets.length);
+    for (const turret of ship.turrets) {
+      const shelfIndex = shelves.mock.calls.findIndex((call) => call[2] === turret);
+      const turretIndex = turrets.mock.calls.findIndex((call) => call[2] === turret);
+      const height = previewDepth.previewTurretShelfHeight(ship, turret, Math.sqrt(3));
+      expect(shelfIndex).toBeGreaterThanOrEqual(0);
+      expect(turretIndex).toBeGreaterThanOrEqual(0);
+      expect(shelves.mock.calls[shelfIndex][3]).toBeCloseTo(height);
+      expect(shelves.mock.invocationCallOrder[shelfIndex]).toBeLessThan(
+        turrets.mock.invocationCallOrder[turretIndex],
+      );
+      const translations = calls.get("translate");
+      expect(
+        translations?.mock.calls.some(
+          ([x, y], i) =>
+            x === 0 &&
+            Math.abs(y + height) < 1e-10 &&
+            translations.mock.invocationCallOrder[i] >
+              shelves.mock.invocationCallOrder[shelfIndex] &&
+            translations.mock.invocationCallOrder[i] <
+              turrets.mock.invocationCallOrder[turretIndex],
+        ),
+      ).toBe(true);
     }
   });
 

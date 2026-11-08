@@ -5,6 +5,14 @@ import { isLightHull } from "./lightHullDepth";
 const lightTurretSprites = new Map<string, OffscreenCanvas>();
 const barbetteSprites = new Map<string, OffscreenCanvas>();
 
+export function previewTurretOffsets(r: number, depth: number): { collar: number; cupola: number } {
+  const effectiveDepth = Math.max(0, Math.min(depth, 1.8));
+  const maxVerticalOffset = Math.min(r * 0.4, 3.5);
+  const collar = Math.min(r * 0.15 * effectiveDepth, maxVerticalOffset * 0.375);
+  const cupola = Math.min(r * 0.25 * effectiveDepth, maxVerticalOffset - collar);
+  return { collar, cupola };
+}
+
 function drawBarbette(
   ctx: CanvasRenderingContext2D,
   ship: ShipState,
@@ -98,7 +106,7 @@ export function renderTurret(
   ctx.save();
   ctx.translate(x, y);
   if (previewDepth !== undefined) {
-    const collarHeight = r * 0.35 * previewDepth;
+    const { collar: collarHeight } = previewTurretOffsets(r, previewDepth);
     drawBarbette(ctx, ship, r, collarHeight);
     ctx.translate(0, -collarHeight);
   } else if (lightShip) {
@@ -173,7 +181,8 @@ function drawVolumetricTurret(
 ): void {
   const r = turret.baseRadius;
   const length = turret.barrelLength;
-  const [ux, uy] = rotatePoint([0, -r * 0.85 * depth], -(ship.heading + turret.currentLocalAngle));
+  const { cupola } = previewTurretOffsets(r, depth);
+  const [ux, uy] = rotatePoint([0, -cupola], -(ship.heading + turret.currentLocalAngle));
   const missile = turret.weapon.weaponType === "missile";
   const round = turret.weapon.weaponType === "beam_laser" || turret.weapon.weaponType === "plasma";
   const housing = () => {
@@ -242,7 +251,15 @@ function drawVolumetricTurret(
     ctx.strokeStyle = ship.team === 0 ? "#b4d9e7" : "#ffc1c4";
     ctx.lineWidth = Math.max(0.3, r * 0.1);
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 0.16, Math.max(r * 0.08, r * 0.16 * depth), 0, 0, Math.PI * 2);
+    ctx.ellipse(
+      0,
+      0,
+      r * 0.16,
+      Math.max(r * 0.08, r * 0.16 * Math.min(depth, 1.8)),
+      0,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     ctx.stroke();
     ctx.restore();
