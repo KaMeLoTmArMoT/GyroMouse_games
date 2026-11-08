@@ -11,8 +11,11 @@ import {
 import { havenHullClearance, sharesShieldHaven } from "./shieldHaven";
 import { HULL_PROFILES } from "./shipProfiles";
 import type { ClientCombatSimulation } from "./simulation";
+import { WasmHotLoops } from "./wasmHotLoops";
 
 const MAX_REPULSOR_STEP = 4;
+// Two soft-displacement budgets plus rounding slack; this only widens candidate discovery.
+const COLLISION_SCAN_MARGIN = 2 * MAX_REPULSOR_STEP + 1e-6;
 
 function shipMass(hull: ShipState["hullClass"]): number {
   switch (hull) {
@@ -45,6 +48,7 @@ export function wreckImpactDamage(wreck: ShipState, relativeSpeed: number): numb
 }
 
 export class CollisionContactSolver {
+  private readonly hotLoops = new WasmHotLoops();
   private contacts = new Set<number>();
   private readonly contactIds = new WeakMap<ShipState, number>();
   private nextContactId = 0;
@@ -85,9 +89,49 @@ export class CollisionContactSolver {
     const envelopes = aliveShips.map(
       (ship) => Math.max(isCapitalShip(ship) ? 210 : 0, ship.size, shieldEnvelopeRadius(ship)) + 25,
     );
+    const hotLoops = this.hotLoops;
+    hotLoops.ensureCapacity(aliveShips.length);
+    const positions = hotLoops.collisionShips;
+    const tethers = hotLoops.tetherFlags;
+    for (let i = 0; i < aliveShips.length; i++) {
+      positions[i * 3] = aliveShips[i].pos[0];
+      positions[i * 3 + 1] = aliveShips[i].pos[1];
+      positions[i * 3 + 2] = envelopes[i];
+      tethers[i] = Number(aliveShips[i].havenState === "tethered");
+    }
     const { observer, shieldHaven } = this.context;
     for (let i = 0; i < aliveShips.length; i++) {
-      for (let j = i + 1; j < aliveShips.length; j++) {
+      // Scan live rows, not a stale whole-pass snapshot. Each ship's total soft
+      // displacement is <= 4; hull corrections and lease changes refresh the suffix.
+      let pairCount = hotLoops.collectCollisionPairsWasm(
+        aliveShips.length,
+        tetheredPass,
+        COLLISION_SCAN_MARGIN,
+        i,
+        i + 1,
+      );
+      let cursor = 0;
+      let nextColumn = i + 1;
+      let refresh = false;
+      while (true) {
+        if (refresh) {
+          // Damage can release guests other than the two ships in this pair.
+          for (let k = 0; k < aliveShips.length; k++)
+            tethers[k] = Number(aliveShips[k].havenState === "tethered");
+          pairCount = hotLoops.collectCollisionPairsWasm(
+            aliveShips.length,
+            tetheredPass,
+            COLLISION_SCAN_MARGIN,
+            i,
+            i + 1,
+            nextColumn,
+          );
+          cursor = 0;
+          refresh = false;
+        }
+        if (cursor >= pairCount) break;
+        const j = hotLoops.collisionPairs[cursor++ * 2 + 1];
+        nextColumn = j + 1;
         const a = aliveShips[i];
         const b = aliveShips[j];
         if (!a.isAlive || !b.isAlive) continue;
@@ -163,6 +207,11 @@ export class CollisionContactSolver {
         }
         // Immediate hull exclusion; soft pressure shares one per-ship budget each tick.
         const hullCorrection = Math.max(0, hullClearance - d);
+        refresh =
+          hullCorrection > 0 ||
+          nested ||
+          debrisContact ||
+          (d <= minBubbleDist && a.team !== b.team);
         const softCorrection = Math.min(
           Math.max(0, repulsorZone - d - hullCorrection),
           pushRatioA > 0
@@ -177,6 +226,10 @@ export class CollisionContactSolver {
         const correction = hullCorrection + softCorrection;
         a.pos = vecAdd(a.pos, vecScale(normal, correction * pushRatioA));
         b.pos = vecSub(b.pos, vecScale(normal, correction * pushRatioB));
+        positions[i * 3] = a.pos[0];
+        positions[i * 3 + 1] = a.pos[1];
+        positions[j * 3] = b.pos[0];
+        positions[j * 3 + 1] = b.pos[1];
         if (debrisContact || d > minBubbleDist || a.team === b.team) continue;
         const beforeA = observer ? [a.shieldCurrent, a.armorCurrent, a.hullCurrent] : null;
         const beforeB = observer ? [b.shieldCurrent, b.armorCurrent, b.hullCurrent] : null;

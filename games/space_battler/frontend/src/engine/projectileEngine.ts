@@ -1,9 +1,10 @@
 import type { ProjectileState, ShipState, Vector2, WeaponDefinition } from "../types/combat";
 import { circleContactFraction, type MapObstacle } from "./battleMaps";
 import { sweptHit } from "./fireControl";
-import { clamp, normalizeAngle, vecAdd, vecDistance, vecDot, vecScale, vecSub } from "./math2d";
+import { clamp, normalizeAngle, vecAdd, vecDot, vecScale, vecSub } from "./math2d";
 import { activeShieldRadius } from "./shieldGeometry";
 import { isHeavyTorpedo, pointDefenseMode } from "./shipProfiles";
+import { WasmHotLoops } from "./wasmHotLoops";
 
 export type FlakBurstCallback = (pos: Vector2, radius: number, ownerTeam: number) => void;
 
@@ -32,11 +33,9 @@ interface ProjectileContext {
 export class ProjectileEngine {
   projectiles: ProjectileState[] = [];
   private readonly context: ProjectileContext;
-  private readonly sweepShips: ShipState[] = [];
-  // Source-ordered old X/Y and full-tick displacement X/Y, reused between phases.
-  private shipSweeps = new Float64Array(0);
-  private readonly relativeStart: Vector2 = [0, 0];
-  private readonly relativeEnd: Vector2 = [0, 0];
+  private readonly hotLoops = new WasmHotLoops();
+  private readonly activeMissiles: ProjectileState[] = [];
+  private readonly shipIndices = new Map<string, number>();
 
   constructor(context: ProjectileContext) {
     this.context = context;
@@ -49,24 +48,30 @@ export class ProjectileEngine {
     mapObstacles?: readonly MapObstacle[],
   ): void {
     const shipCount = aliveShips.length;
-    if (this.shipSweeps.length < shipCount * 4)
-      this.shipSweeps = new Float64Array(Math.max(shipCount * 4, this.shipSweeps.length * 2));
-    const shipSweeps = this.shipSweeps;
-    const sweepShips = this.sweepShips;
+    const hotLoops = this.hotLoops;
+    hotLoops.ensureCapacity(shipCount);
+    const shipSweeps = hotLoops.shipSweeps;
     const shipById = new Map<string, ShipState>();
-    sweepShips.length = shipCount;
+    const shipIndices = this.shipIndices;
+    shipIndices.clear();
     for (let i = 0; i < shipCount; i++) {
       const ship = aliveShips[i];
       shipById.set(ship.id, ship);
+      shipIndices.set(ship.id, i);
       const old = previousPositions.get(ship.id) ?? ship.pos;
-      const offset = i * 4;
-      sweepShips[i] = ship;
+      const offset = i * 5;
       shipSweeps[offset] = old[0];
       shipSweeps[offset + 1] = old[1];
       shipSweeps[offset + 2] = ship.pos[0] - old[0];
       shipSweeps[offset + 3] = ship.pos[1] - old[1];
+      hotLoops.shipFlags[i * 2] = ship.team;
+      hotLoops.updateShip(i, activeShieldRadius(ship), ship.isAlive);
     }
     const active: ProjectileState[] = [];
+    const activeMissiles = this.activeMissiles;
+    activeMissiles.length = 0;
+    for (const p of this.projectiles)
+      if (p.weaponType === "missile" && p.hp > 0 && p.lifetime > 0) activeMissiles.push(p);
     const starts = new Map(this.projectiles.map((p) => [p.id, p.pos]));
     for (const p of this.projectiles) {
       if (p.hp <= 0 || p.lifetime <= 0) continue;
@@ -116,55 +121,24 @@ export class ProjectileEngine {
       const end = vecAdd(start, vecScale(p.velocity, step));
       const flak = p.weapon.flak;
       const fraction = step / dt;
-      let first = Infinity;
-      let victim: ShipState | null = null;
-      let victimDistance = Infinity;
+      const victimIndex = hotLoops.findProjectileShipHitWasm(
+        shipCount,
+        start[0],
+        start[1],
+        end[0],
+        end[1],
+        fraction,
+        flak?.triggerRadius ?? 0,
+        p.ownerTeam,
+        shipIndices.get(p.targetId ?? "") ?? -1,
+      );
+      let first = hotLoops.first;
+      let victim: ShipState | null = victimIndex === -1 ? null : aliveShips[victimIndex];
       let intercepted: ProjectileState | null = null;
       let blocked = false;
-      // Rails share the first-hit sweep; they do not pierce subsequent targets.
-      for (let i = 0; i < shipCount; i++) {
-        const ship = sweepShips[i];
-        if (!ship.isAlive || ship.team === p.ownerTeam) continue;
-        const offset = i * 4;
-        const r0x = start[0] - shipSweeps[offset];
-        const r0y = start[1] - shipSweeps[offset + 1];
-        const r1x = end[0] - (shipSweeps[offset] + shipSweeps[offset + 2] * fraction);
-        const r1y = end[1] - (shipSweeps[offset + 1] + shipSweeps[offset + 3] * fraction);
-        // Damage from earlier projectiles can change the shield envelope in this phase.
-        const radius = activeShieldRadius(ship) + (flak?.triggerRadius ?? 0);
-        if (
-          (r0x > radius && r1x > radius) ||
-          (r0x < -radius && r1x < -radius) ||
-          (r0y > radius && r1y > radius) ||
-          (r0y < -radius && r1y < -radius)
-        )
-          continue;
-        this.relativeStart[0] = r0x;
-        this.relativeStart[1] = r0y;
-        this.relativeEnd[0] = r1x;
-        this.relativeEnd[1] = r1y;
-        const t = sweptHit(this.relativeStart, this.relativeEnd, radius);
-        if (t !== null) {
-          const distToShip = Math.sqrt(r0x * r0x + r0y * r0y);
-          const isBetter =
-            t < first ||
-            (t === first &&
-              (ship.id === p.targetId || (victim !== null && distToShip < victimDistance)));
-          if (isBetter) {
-            first = t;
-            victim = ship;
-            victimDistance = distToShip;
-          }
-        }
-      }
       if (flak || pointDefenseMode(p.weapon) === "rotary") {
-        for (const missile of this.projectiles) {
-          if (
-            missile.weaponType !== "missile" ||
-            missile.ownerTeam === p.ownerTeam ||
-            missile.hp <= 0 ||
-            missile.lifetime <= 0
-          )
+        for (const missile of activeMissiles) {
+          if (missile.ownerTeam === p.ownerTeam || missile.hp <= 0 || missile.lifetime <= 0)
             continue;
           const old = starts.get(missile.id) ?? missile.pos;
           const finish = vecAdd(old, vecScale(missile.velocity, Math.min(step, missile.lifetime)));
@@ -202,21 +176,12 @@ export class ProjectileEngine {
         p.lifetime = 0;
       } else if (flak && (Number.isFinite(first) || p.lifetime <= 1e-9)) {
         const elapsed = step * Math.min(first, 1);
-        const positions = new Map<string, Vector2>();
-        for (const ship of aliveShips) {
-          const old = previousPositions.get(ship.id) ?? ship.pos;
-          positions.set(ship.id, vecAdd(old, vecScale(vecSub(ship.pos, old), elapsed / dt)));
-        }
-        for (const missile of this.projectiles)
-          positions.set(
-            missile.id,
-            vecAdd(starts.get(missile.id) ?? missile.pos, vecScale(missile.velocity, elapsed)),
-          );
-        this.detonateFlak(p, aliveShips, positions);
+        this.detonateFlak(p, aliveShips, activeMissiles, shipSweeps, starts, elapsed, dt);
       } else if (intercepted) {
         this.damageProjectile(intercepted, 15, p.ownerTeam, "rotary PD");
         p.hp = 0;
       } else if (victim) {
+        const parentId = victim.havenParentId;
         this.context.applyShipDamage(
           victim,
           p.damage,
@@ -226,6 +191,7 @@ export class ProjectileEngine {
           p.ownerMountId,
           p.pos,
         );
+        this.refreshDamagedShip(victimIndex, aliveShips, parentId);
         p.hp = 0;
       } else if (p.lifetime > 1e-9) {
         active.push(p);
@@ -234,17 +200,49 @@ export class ProjectileEngine {
     this.projectiles = active.filter((p) => p.hp > 0);
   }
 
+  private refreshDamagedShip(
+    index: number,
+    ships: ShipState[],
+    parentId: string | null | undefined,
+  ): void {
+    const ship = ships[index];
+    if (!ship.isAlive) {
+      // Destruction refreshes tender amplification, potentially changing other envelopes.
+      for (let i = 0; i < ships.length; i++)
+        this.hotLoops.updateShip(i, activeShieldRadius(ships[i]), ships[i].isAlive);
+      return;
+    }
+    this.hotLoops.updateShip(index, activeShieldRadius(ship), ship.isAlive);
+    // Haven protection can absorb damage on the parent instead of the struck guest.
+    const parentIndex = parentId ? this.shipIndices.get(parentId) : undefined;
+    if (parentIndex !== undefined) {
+      const parent = ships[parentIndex];
+      this.hotLoops.updateShip(parentIndex, activeShieldRadius(parent), parent.isAlive);
+    }
+  }
+
   private detonateFlak(
     flak: ProjectileState,
     aliveShips: ShipState[],
-    positions: Map<string, Vector2>,
+    activeMissiles: ProjectileState[],
+    shipSweeps: Float64Array,
+    starts: ReadonlyMap<string, Vector2>,
+    elapsed: number,
+    dt: number,
   ): void {
     const profile = flak.weapon.flak;
     if (!profile) return;
-    for (const ship of aliveShips) {
+    const ratio = elapsed / dt;
+    for (let i = 0; i < aliveShips.length; i++) {
+      const ship = aliveShips[i];
       if (!ship.isAlive || ship.team === flak.ownerTeam) continue;
-      const dist = vecDistance(flak.pos, positions.get(ship.id) ?? ship.pos);
+      const offset = i * 5;
+      const dx = flak.pos[0] - (shipSweeps[offset] + shipSweeps[offset + 2] * ratio);
+      const dy = flak.pos[1] - (shipSweeps[offset + 1] + shipSweeps[offset + 3] * ratio);
       const shield = activeShieldRadius(ship);
+      const bound = Math.max(shield, ship.size) + profile.blastRadius;
+      if (dx > bound || dx < -bound || dy > bound || dy < -bound) continue;
+      const dist = Math.sqrt(dx * dx + dy * dy);
       const surface = dist >= shield ? dist - shield : Math.max(0, dist - ship.size);
       const falloff = clamp(
         (profile.blastRadius - surface) / (profile.blastRadius - profile.triggerRadius),
@@ -256,6 +254,7 @@ export class ProjectileEngine {
         ship.hullClass === "strike_craft"
           ? { ...flak.weapon, shieldMultiplier: 1, armorMultiplier: 1, hullMultiplier: 1 }
           : flak.weapon;
+      const parentId = ship.havenParentId;
       this.context.applyShipDamage(
         ship,
         flak.damage * falloff,
@@ -265,17 +264,17 @@ export class ProjectileEngine {
         flak.ownerMountId,
         flak.pos,
       );
+      this.refreshDamagedShip(i, aliveShips, parentId);
     }
 
-    for (const other of this.projectiles) {
-      if (
-        other.weaponType !== "missile" ||
-        other.ownerTeam === flak.ownerTeam ||
-        other.hp <= 0 ||
-        other.lifetime <= 0
-      )
-        continue;
-      if (vecDistance(flak.pos, positions.get(other.id) ?? other.pos) <= profile.blastRadius) {
+    for (const other of activeMissiles) {
+      if (other.ownerTeam === flak.ownerTeam || other.hp <= 0 || other.lifetime <= 0) continue;
+      const old = starts.get(other.id) ?? other.pos;
+      const dx = flak.pos[0] - (old[0] + other.velocity[0] * elapsed);
+      const dy = flak.pos[1] - (old[1] + other.velocity[1] * elapsed);
+      const radius = profile.blastRadius;
+      if (dx > radius || dx < -radius || dy > radius || dy < -radius) continue;
+      if (Math.sqrt(dx * dx + dy * dy) <= radius) {
         if (!isHeavyTorpedo(other)) {
           // Light missiles retain their stable dispersion cap; armored torpedoes take every hit.
           let dispersion = 2166136261;
