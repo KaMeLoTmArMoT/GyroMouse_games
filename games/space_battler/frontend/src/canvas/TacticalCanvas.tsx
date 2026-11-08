@@ -303,7 +303,7 @@ export function TacticalCanvas({
           const viewport = worldViewport(canvas.width, canvas.height / verticalScale, camera);
 
           drawTacticalGrid(ctx, sim.timeElapsed, camera.pitchDeg);
-          renderMapObstacles(ctx, sim.mapObstacles, viewport);
+          renderMapObstacles(ctx, sim.mapObstacles, viewport, (camera.pitchDeg * Math.PI) / 180);
 
           const selectedTender = sim.ships.find(
             (ship) =>
@@ -482,7 +482,11 @@ export function TacticalCanvas({
             if (ship.isDocked) continue;
             if (
               ship.id !== selectedShipId &&
-              !discVisible(viewport, ship.pos, Math.max(ship.size * 2, shieldEnvelopeRadius(ship)))
+              !discVisible(
+                viewport,
+                ship.pos,
+                Math.max(ship.size * 2, shieldEnvelopeRadius(ship) / verticalScale),
+              )
             )
               continue;
             const gate = ingressGates.get(ship.id);
@@ -972,16 +976,17 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number, pitchDeg:
   ctx.arc(0, 0, radius, 0, Math.PI * 2);
   ctx.stroke();
   if (tilt > 0.01) {
-    // A faint raised rear arc and uprights give the shield a volume, while the
-    // original ground-plane boundary remains in its authoritative position.
+    // Fade the raised rear arc into space rather than closing it with cage uprights.
     const height = (Math.min(radius * 0.08, 180) * tilt) / verticalScale;
-    ctx.strokeStyle = `rgba(103, 232, 249, ${0.12 * tilt})`;
+    const arcFade = ctx.createLinearGradient(-radius, 0, radius, 0);
+    arcFade.addColorStop(0, "rgba(103, 232, 249, 0)");
+    arcFade.addColorStop(0.25, `rgba(103, 232, 249, ${0.06 * tilt})`);
+    arcFade.addColorStop(0.75, `rgba(103, 232, 249, ${0.06 * tilt})`);
+    arcFade.addColorStop(1, "rgba(103, 232, 249, 0)");
+    ctx.strokeStyle = arcFade;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(-radius, 0);
-    ctx.lineTo(-radius, -height);
     ctx.ellipse(0, -height, radius, radius, 0, Math.PI, Math.PI * 2);
-    ctx.lineTo(radius, 0);
     ctx.stroke();
   }
   ctx.strokeStyle = "rgba(251, 191, 36, 0.2)";
@@ -992,27 +997,33 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number, pitchDeg:
   ctx.stroke();
   ctx.setLineDash([]);
 
-  ctx.fillStyle = "rgba(103, 232, 249, 0.6)";
-  ctx.font = "10px monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const shieldLabel = "CONTAINMENT SHIELD BOUNDARY • 100% ATTENUATION";
-  const label = (text: string, y: number) => {
+  const labelOpacity = Math.min(1, Math.max(0, (pitchDeg - 45) / 15));
+  if (labelOpacity > 0) {
     ctx.save();
-    ctx.translate(0, y);
-    ctx.scale(1, 1 / verticalScale);
-    ctx.fillText(text, 0, 0);
+    ctx.globalAlpha *= labelOpacity;
+    ctx.fillStyle = "rgba(103, 232, 249, 0.6)";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const shieldLabel = "CONTAINMENT SHIELD BOUNDARY • 100% ATTENUATION";
+    const label = (text: string, y: number) => {
+      ctx.save();
+      ctx.translate(0, y);
+      ctx.scale(1, 1 / verticalScale);
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    };
+    label(shieldLabel, -radius + 18 / verticalScale);
+    label(shieldLabel, radius - 18 / verticalScale);
+    ctx.fillStyle = "rgba(251, 191, 36, 0.55)";
+    const bufferLabel = "IONIZING BUFFER ZONE • PARTIAL DAMPENING";
+    const bufferCenter = (radius + ARENA_HARD_PULL_RADIUS) / 2;
+    label(bufferLabel, -bufferCenter);
+    label(bufferLabel, bufferCenter);
+    label("☢ DEEP COSMIC RADIATION HAZARD", -ARENA_HARD_PULL_RADIUS - 20 / verticalScale);
+    label("☢ DEEP COSMIC RADIATION HAZARD", ARENA_HARD_PULL_RADIUS + 20 / verticalScale);
     ctx.restore();
-  };
-  label(shieldLabel, -radius + 18 / verticalScale);
-  label(shieldLabel, radius - 18 / verticalScale);
-  ctx.fillStyle = "rgba(251, 191, 36, 0.55)";
-  const bufferLabel = "IONIZING BUFFER ZONE • PARTIAL DAMPENING";
-  const bufferCenter = (radius + ARENA_HARD_PULL_RADIUS) / 2;
-  label(bufferLabel, -bufferCenter);
-  label(bufferLabel, bufferCenter);
-  label("☢ DEEP COSMIC RADIATION HAZARD", -ARENA_HARD_PULL_RADIUS - 20 / verticalScale);
-  label("☢ DEEP COSMIC RADIATION HAZARD", ARENA_HARD_PULL_RADIUS + 20 / verticalScale);
+  }
 
   ctx.restore();
 }

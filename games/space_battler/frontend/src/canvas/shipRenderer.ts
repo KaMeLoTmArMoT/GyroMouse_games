@@ -5,6 +5,7 @@ import { shieldEnvelopeRadius } from "../engine/shieldGeometry";
 import type { ShipState, TurretMountState, Vector2 } from "../types/combat";
 import { traceHeavyHull } from "./capitalHullDepth";
 import { damageState, engineNozzles, engineSpeed, hasFighterHazard } from "./effects";
+import { shieldGlowSprite } from "./glowSprites";
 import { drawHullArmor } from "./hullArmor";
 import {
   drawLightHullExtrusion,
@@ -426,22 +427,67 @@ export function renderShip(
 
   // 4. Render the authoritative shield envelope, including capital haven umbrellas.
   if (ship.shieldCurrent > 0) {
-    const shieldRatio = ship.shieldCurrent / ship.shieldMax;
-    const shieldBubbleRadius = shieldEnvelopeRadius(ship);
-
-    ctx.strokeStyle = `rgba(56, 189, 248, ${0.18 + shieldRatio * 0.42})`;
-    ctx.lineWidth = 2.0;
-    ctx.beginPath();
-    ctx.arc(0, 0, shieldBubbleRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = `rgba(56, 189, 248, ${0.03 + shieldRatio * 0.05})`;
-    ctx.fill();
+    drawShieldDome(ctx, shieldEnvelopeRadius(ship), ship.shieldCurrent / ship.shieldMax, elevation);
   }
 
   // 5. Compact Status HUD Bar
   renderHealthHUD(ctx, ship);
 
+  ctx.restore();
+}
+
+function drawShieldDome(
+  ctx: CanvasRenderingContext2D,
+  radius: number,
+  strength: number,
+  elevation: number,
+): void {
+  const verticalScale = Math.sin(elevation);
+  const top = radius / verticalScale;
+  const centerY = (radius - top) / 2;
+  const halfHeight = (radius + top) / 2;
+  const curve = 0.55228475;
+
+  ctx.save();
+  // The upper hemisphere reaches above the ground-plane circle; its lower rim
+  // stays on that circle so shield impacts still meet the envelope.
+  ctx.beginPath();
+  ctx.moveTo(-radius, 0);
+  ctx.bezierCurveTo(-radius, -top * curve, -radius * curve, -top, 0, -top);
+  ctx.bezierCurveTo(radius * curve, -top, radius, -top * curve, radius, 0);
+  ctx.bezierCurveTo(radius, radius * curve, radius * curve, radius, 0, radius);
+  ctx.bezierCurveTo(-radius * curve, radius, -radius, radius * curve, -radius, 0);
+  ctx.closePath();
+
+  ctx.save();
+  ctx.clip();
+  ctx.translate(0, centerY);
+  ctx.scale(1, halfHeight / radius);
+  const sprite = shieldGlowSprite(strength);
+  if (sprite) {
+    ctx.drawImage(sprite, -radius, -radius, radius * 2, radius * 2);
+  } else {
+    const glow = ctx.createRadialGradient(0, -radius * 0.12, 0, 0, 0, radius);
+    glow.addColorStop(0, `rgba(125, 211, 252, ${0.025 + strength * 0.025})`);
+    glow.addColorStop(0.68, `rgba(56, 189, 248, ${0.025 + strength * 0.035})`);
+    glow.addColorStop(0.93, `rgba(103, 232, 249, ${0.09 + strength * 0.11})`);
+    glow.addColorStop(1, `rgba(186, 245, 255, ${0.15 + strength * 0.2})`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = `rgba(125, 211, 252, ${0.14 + strength * 0.3})`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  if (verticalScale < 0.999) {
+    ctx.strokeStyle = `rgba(103, 232, 249, ${(0.08 + strength * 0.1) * Math.cos(elevation)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
