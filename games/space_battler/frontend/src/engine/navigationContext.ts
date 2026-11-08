@@ -1,4 +1,5 @@
 import type { ShipState } from "../types/combat";
+import { SeparationSpatialGrid } from "./separationSpatialGrid";
 import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { flakThreatRadius, HULL_PROFILES } from "./shipProfiles";
 
@@ -19,6 +20,7 @@ interface CachedNeighborhood {
 
 /** Battle-local cadence and exact membership invalidation, including same-count replacements. */
 export class NavigationNeighborhoodCache {
+  readonly separationGrid = new SeparationSpatialGrid();
   readonly neighborhoods = new WeakMap<ShipState, CachedNeighborhood>();
   tick = 0;
   fleetSignature = 0;
@@ -75,12 +77,15 @@ export class NavigationContext {
   readonly navigationAssignments: AssignmentCounts = new Map();
   readonly dogfightAssignments: AssignmentCounts = new Map();
   readonly activeWrecks: ShipState[];
+  readonly separationGrid: SeparationSpatialGrid;
 
   constructor(
     ships: ShipState[],
     cache = new NavigationNeighborhoodCache(),
     activeWrecks?: ShipState[],
   ) {
+    this.separationGrid = cache.separationGrid;
+    this.separationGrid.rebuild(ships);
     this.activeWrecks = activeWrecks ?? [];
     const activeShips: ShipState[] = [];
     for (const ship of ships) {

@@ -105,7 +105,15 @@ export function calculateSeparation(ship: ShipState, ships: ShipState[]): Vector
   const hasHeavyPeer =
     capital &&
     ships.some((peer) => peer.isAlive && peer.id !== ship.id && peer.hullClass !== "strike_craft");
-  for (const peer of ships) {
+  const preparedGrid = navigationContext(ships)?.separationGrid;
+  const grid = preparedGrid?.ships === ships ? preparedGrid : undefined;
+  grid?.query(ship);
+  for (
+    let index = grid ? grid.nextIndex(0) : 0;
+    index < ships.length;
+    index = grid ? grid.nextIndex(index + 1) : index + 1
+  ) {
+    const peer = ships[index];
     if (!peer.isAlive || peer.id === ship.id) continue;
     if (hasHeavyPeer && peer.hullClass === "strike_craft") continue;
     const weight = capital && hullClass !== "cruiser" && peer.hullClass === "corvette" ? 0.05 : 1;
