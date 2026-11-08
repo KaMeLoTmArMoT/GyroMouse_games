@@ -508,7 +508,7 @@ export function FleetBuilder(props: FleetBuilderProps) {
   );
 }
 
-function FleetBuilderPanel({
+export function FleetBuilderPanel({
   blueSlots,
   redSlots,
   onUpdateBlueSlots,
@@ -1163,13 +1163,39 @@ function FleetBuilderPanel({
             <div className="overflow-y-auto border-t border-zinc-800 pt-3 space-y-3">
               {(() => {
                 const slot = selectedCarrier;
+                const copiedSlots = slots.map((entry) =>
+                  entry.hullClass === "carrier"
+                    ? { ...entry, wingSize: slot.wingSize ?? 0, escortCount: slot.escortCount ?? 0 }
+                    : entry,
+                );
+                const copyCost = copiedSlots.reduce(
+                  (total, entry) => total + fleetSlotCost(entry),
+                  0,
+                );
                 return (
                   <div
                     key={slot.id}
                     className="rounded-lg border border-zinc-700 bg-zinc-950 p-3 space-y-2 text-xs"
                   >
-                    <div className="font-semibold text-zinc-200">
-                      Carrier · Group {slot.groupId} · {fleetSlotCost(slot)} CR
+                    <div className="flex items-center justify-between gap-2 font-semibold text-zinc-200">
+                      <span>
+                        Carrier · Group {slot.groupId} · {fleetSlotCost(slot)} CR
+                      </span>
+                      {carriers.length > 1 && (
+                        <button
+                          type="button"
+                          disabled={copyCost > budgetLimit}
+                          title={
+                            copyCost > budgetLimit
+                              ? `Copying exceeds budget (${copyCost} / ${budgetLimit} CR)`
+                              : "Copy wing and escorts to all carriers"
+                          }
+                          onClick={() => onUpdateSlots(copiedSlots)}
+                          className="rounded border border-cyan-800 px-2 py-1 text-cyan-300 hover:bg-cyan-950 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          Copy to All
+                        </button>
+                      )}
                     </div>
                     {carriers.length > 1 && (
                       <label className="block text-zinc-400">

@@ -107,6 +107,12 @@ export function renderTurret(
   }
   ctx.rotate(ship.heading + turret.currentLocalAngle);
 
+  if (previewDepth !== undefined) {
+    drawVolumetricTurret(ctx, ship, turret, primaryColor, previewDepth);
+    ctx.restore();
+    return;
+  }
+
   if (lightShip && typeof OffscreenCanvas !== "undefined") {
     const transform = ctx.getTransform();
     const scale = Math.max(
@@ -156,6 +162,91 @@ export function renderTurret(
 
   drawTurretBody(ctx, ship, turret, primaryColor);
   ctx.restore();
+}
+
+function drawVolumetricTurret(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  turret: TurretMountState,
+  primaryColor: string,
+  depth: number,
+): void {
+  const r = turret.baseRadius;
+  const length = turret.barrelLength;
+  const [ux, uy] = rotatePoint([0, -r * 0.85 * depth], -(ship.heading + turret.currentLocalAngle));
+  const missile = turret.weapon.weaponType === "missile";
+  const round = turret.weapon.weaponType === "beam_laser" || turret.weapon.weaponType === "plasma";
+  const housing = () => {
+    ctx.beginPath();
+    if (round) {
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+    } else {
+      const front = missile ? length : r * 1.1;
+      ctx.moveTo(-r, -r * 0.6);
+      ctx.lineTo(-r * 0.65, -r);
+      ctx.lineTo(missile ? length * 0.75 : r * 0.7, -r);
+      ctx.lineTo(front, -r * 0.55);
+      ctx.lineTo(front, r * 0.55);
+      ctx.lineTo(missile ? length * 0.75 : r * 0.7, r);
+      ctx.lineTo(-r * 0.65, r);
+      ctx.lineTo(-r, r * 0.6);
+      ctx.closePath();
+    }
+  };
+  // Successive profiles form vertical walls in world space, independent of turret bearing.
+  for (let i = 0; i <= 10; i++) {
+    ctx.save();
+    ctx.translate((ux * i) / 10, (uy * i) / 10);
+    ctx.fillStyle =
+      i === 10
+        ? ship.team === 0
+          ? "#7595a7"
+          : "#b66b75"
+        : ship.team === 0
+          ? "#243e50"
+          : "#57212b";
+    housing();
+    ctx.fill();
+    if (i === 10) {
+      ctx.strokeStyle = ship.team === 0 ? "#b4d9e7" : "#ffc1c4";
+      ctx.lineWidth = Math.max(0.4, r * 0.12);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  if (!missile) {
+    const barrels =
+      turret.weapon.weaponType === "point_defense" || turret.weapon.weaponType === "railgun"
+        ? [-0.35, 0.35]
+        : [0];
+    for (const side of barrels) {
+      ctx.strokeStyle = ship.team === 0 ? "#172c3c" : "#40121c";
+      ctx.lineWidth = Math.max(1, r * 0.35);
+      ctx.beginPath();
+      ctx.moveTo(r * 0.5 + ux * 0.35, side * r + uy * 0.35);
+      ctx.lineTo(length + ux * 0.35, side * r + uy * 0.35);
+      ctx.stroke();
+    }
+  }
+  ctx.translate(ux, uy);
+  drawTurretBody(ctx, ship, turret, primaryColor);
+  const dual =
+    turret.weapon.weaponType === "point_defense" ||
+    turret.weapon.weaponType === "railgun" ||
+    (missile && r > 3.8);
+  for (const side of dual ? [-0.35, 0.35] : [0]) {
+    ctx.save();
+    ctx.translate(length, side * r);
+    ctx.rotate(-(ship.heading + turret.currentLocalAngle));
+    ctx.fillStyle = ship.team === 0 ? "#020617" : "#260606";
+    ctx.strokeStyle = ship.team === 0 ? "#b4d9e7" : "#ffc1c4";
+    ctx.lineWidth = Math.max(0.3, r * 0.1);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.16, Math.max(r * 0.08, r * 0.16 * depth), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function drawTurretBody(

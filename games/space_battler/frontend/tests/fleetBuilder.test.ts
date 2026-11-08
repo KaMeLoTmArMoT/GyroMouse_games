@@ -5,6 +5,7 @@ import {
   calculateMaxAffordable,
   clampTargetCount,
   FleetBuilder,
+  FleetBuilderPanel,
   RosterCountInput,
   ShipSilhouette,
   updateSlotsForStackCount,
@@ -112,6 +113,70 @@ describe("fleet spawn formations", () => {
 });
 
 describe("FleetBuilder presentation", () => {
+  it("copies carrier loadouts only when the whole roster fits the budget", () => {
+    const blueSlots: FleetSlot[] = [
+      { id: "a", hullClass: "carrier", groupId: 1, wingSize: 16, escortCount: 2 },
+      { id: "b", hullClass: "carrier", groupId: 2 },
+      { id: "c", hullClass: "corvette", groupId: 1 },
+    ];
+    const update = vi.fn();
+    const render = (budgetLimit: number) => {
+      hooks.value = "";
+      hooks.refs = [];
+      hooks.refIndex = 0;
+      return FleetBuilderPanel({
+        blueSlots,
+        redSlots: [],
+        onUpdateBlueSlots: update,
+        onUpdateRedSlots: vi.fn(),
+        crewVeterancy: { blue: "pilot", red: "pilot" },
+        onUpdateCrewVeterancy: vi.fn(),
+        budgetLimit,
+        enemyPresetId: "custom",
+        onSelectEnemyPreset: vi.fn(),
+        selectedMap: "empty_void",
+        onSelectMap: vi.fn(),
+        onStartBattle: vi.fn(),
+        team: "blue",
+        activeTeam: "blue",
+        setActiveTeam: vi.fn(),
+      });
+    };
+    const findCopy = (
+      node: React.ReactNode,
+    ):
+      | React.ReactElement<{
+          children?: React.ReactNode;
+          disabled?: boolean;
+          title?: string;
+          onClick?: () => void;
+        }>
+      | undefined => {
+      if (Array.isArray(node)) return node.map(findCopy).find(Boolean);
+      if (
+        !React.isValidElement<{
+          children?: React.ReactNode;
+          disabled?: boolean;
+          title?: string;
+          onClick?: () => void;
+        }>(node)
+      )
+        return undefined;
+      if (node.type === "button" && node.props.children === "Copy to All") return node;
+      return findCopy(node.props.children);
+    };
+    const copy = findCopy(render(20000));
+    expect(copy?.props.disabled).toBe(false);
+    copy?.props.onClick?.();
+    expect(update).toHaveBeenCalledWith([
+      blueSlots[0],
+      { ...blueSlots[1], wingSize: 16, escortCount: 2 },
+      blueSlots[2],
+    ]);
+    const blocked = findCopy(render(9000));
+    expect(blocked?.props.disabled).toBe(true);
+    expect(blocked?.props.title).toContain("exceeds budget");
+  });
   it("orders the catalog, groups weapons, and offers independent selectors and carrier controls", () => {
     hooks.value = "";
     hooks.refs = [];

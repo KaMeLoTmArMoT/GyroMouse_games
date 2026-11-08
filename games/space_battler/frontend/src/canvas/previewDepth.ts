@@ -11,18 +11,104 @@ export function previewDepthFactor(elevation: number): number {
 function traceCapitalKeel(ctx: CanvasRenderingContext2D, ship: ShipState): void {
   const s = ship.size;
   ctx.beginPath();
-  ctx.moveTo(s * 1.05, 0);
-  if (ship.team !== 0) {
-    ctx.quadraticCurveTo(s * 0.25, -s * 0.5, -s * 0.8, -s * 0.36);
-    ctx.quadraticCurveTo(-s * 0.65, 0, -s * 0.8, s * 0.36);
-    ctx.quadraticCurveTo(s * 0.25, s * 0.5, s * 1.05, 0);
+  if (ship.team !== 0 && ship.hullClass === "cruiser") {
+    ctx.moveTo(s * 1.22, -s * 0.2411);
+    ctx.lineTo(s * 0.9, 0);
+    ctx.lineTo(s * 1.22, s * 0.2411);
+    ctx.quadraticCurveTo(s * 0.35, s * 0.5479, -s * 0.85, s * 0.3945);
+    ctx.quadraticCurveTo(-s * 1.1, 0, -s * 0.85, -s * 0.3945);
+    ctx.quadraticCurveTo(s * 0.35, -s * 0.5479, s * 1.22, -s * 0.2411);
+  } else if (ship.team !== 0 && ship.hullClass === "battleship") {
+    ctx.moveTo(s * 1.28, 0);
+    ctx.quadraticCurveTo(s * 0.5, -s * 0.892, -s * 1.15, -s * 0.6559);
+    ctx.quadraticCurveTo(-s * 0.4, 0, -s * 1.15, s * 0.6559);
+    ctx.quadraticCurveTo(s * 0.5, s * 0.892, s * 1.28, 0);
+  } else if (ship.team !== 0 && ship.hullClass === "dreadnought") {
+    ctx.moveTo(s * 1.25, 0);
+    ctx.quadraticCurveTo(s * 0.85, -s * 0.42, s * 0.25, -s * 0.46);
+    ctx.lineTo(0, -s * 0.68);
+    ctx.lineTo(-s * 0.52, -s * 0.64);
+    ctx.quadraticCurveTo(-s * 0.9, -s * 0.55, -s * 1.12, -s * 0.42);
+    ctx.lineTo(-s * 1.12, s * 0.42);
+    ctx.quadraticCurveTo(-s * 0.9, s * 0.55, -s * 0.52, s * 0.64);
+    ctx.lineTo(0, s * 0.68);
+    ctx.lineTo(s * 0.25, s * 0.46);
+    ctx.quadraticCurveTo(s * 0.85, s * 0.42, s * 1.25, 0);
+  } else if (ship.team !== 0 && (ship.hullClass === "carrier" || ship.hullClass === "tender")) {
+    const carrier = ship.hullClass === "carrier";
+    ctx.moveTo(s * (carrier ? 1.25 : 0.92), 0);
+    ctx.bezierCurveTo(
+      s * 0.9,
+      -s * 0.18,
+      s * 0.45,
+      -s * (carrier ? 0.7 : 0.68),
+      -s * (carrier ? 0.2 : 0.58),
+      -s * (carrier ? 0.67 : 0.52),
+    );
+    ctx.bezierCurveTo(-s * 1.18, -s * 0.57, -s * 0.78, -s * 0.18, -s * (carrier ? 0.78 : 0.8), 0);
+    ctx.bezierCurveTo(
+      -s * 0.78,
+      s * 0.18,
+      -s * 1.18,
+      s * 0.57,
+      -s * (carrier ? 0.2 : 0.58),
+      s * (carrier ? 0.67 : 0.52),
+    );
+    ctx.bezierCurveTo(
+      s * 0.45,
+      s * (carrier ? 0.7 : 0.68),
+      s * 0.9,
+      s * 0.18,
+      s * (carrier ? 1.25 : 0.92),
+      0,
+    );
   } else {
-    ctx.lineTo(s * 0.42, -s * 0.32);
-    ctx.lineTo(-s * 0.75, -s * 0.4);
-    ctx.lineTo(-s * 0.95, -s * 0.25);
-    ctx.lineTo(-s * 0.95, s * 0.25);
-    ctx.lineTo(-s * 0.75, s * 0.4);
-    ctx.lineTo(s * 0.42, s * 0.32);
+    const outlines: Record<string, number[][]> = {
+      cruiser: [
+        [1.22, 0],
+        [0.6, -0.38],
+        [0.2, -0.38],
+        [-0.65, -0.5],
+        [-1.1, -0.28],
+      ],
+      battleship: [
+        [1.28, 0],
+        [0.8, -0.38],
+        [0.25, -0.58],
+        [-0.85, -0.62],
+        [-1.2, -0.35],
+      ],
+      dreadnought: [
+        [1.25, 0],
+        [0.85, -0.4],
+        [0.3, -0.48],
+        [0.14, -0.67],
+        [-0.58, -0.67],
+        [-0.78, -0.52],
+        [-1.12, -0.42],
+      ],
+      carrier: [
+        [1.25, 0],
+        [0.75, -0.35],
+        [0.35, -0.42],
+        [0.12, -0.68],
+        [-0.82, -0.68],
+        [-1.08, -0.48],
+      ],
+      tender: [
+        [1.04, 0],
+        [0.58, -0.4],
+        [0.25, -0.5],
+        [0.08, -0.82],
+        [-0.55, -0.82],
+        [-0.66, -0.48],
+        [-0.82, -0.34],
+      ],
+    };
+    const outline = outlines[ship.hullClass] ?? outlines.cruiser;
+    ctx.moveTo(s * outline[0][0], 0);
+    for (const [x, y] of outline.slice(1)) ctx.lineTo(s * x, s * y);
+    for (const [x, y] of outline.slice(1).reverse()) ctx.lineTo(s * x, -s * y);
   }
   ctx.closePath();
 }
@@ -93,6 +179,7 @@ export function drawPreviewSuperstructure(
   const s = ship.size;
   const alien = ship.team !== 0;
   const [ux, uy] = rotatePoint([0, -s * 0.12 * depth], -ship.heading);
+  const capital = !isLightHull(ship);
   const roof = () => {
     ctx.beginPath();
     ctx.moveTo(-s * 0.12, 0);
@@ -104,6 +191,26 @@ export function drawPreviewSuperstructure(
     ctx.closePath();
   };
   ctx.save();
+  if (capital) {
+    // A broad lower terrace supports the narrower bridge tower.
+    for (let i = 0; i <= 8; i++) {
+      ctx.save();
+      ctx.translate((ux * i) / 16, (uy * i) / 16);
+      ctx.fillStyle = i === 8 ? (alien ? "#793544" : "#385b6d") : alien ? "#3c121c" : "#142c3a";
+      ctx.beginPath();
+      ctx.ellipse(
+        -s * 0.3,
+        0,
+        s * (ship.hullClass === "carrier" ? 0.32 : 0.28),
+        s * (ship.hullClass === "tender" ? 0.23 : 0.18),
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      ctx.restore();
+    }
+  }
   for (let i = 0; i <= 12; i++) {
     ctx.save();
     ctx.translate((ux * i) / 12, (uy * i) / 12);
@@ -126,4 +233,23 @@ export function drawPreviewSuperstructure(
     ctx.restore();
   }
   ctx.restore();
+}
+
+export function drawPreviewEmitter(
+  ctx: CanvasRenderingContext2D,
+  ship: ShipState,
+  depth: number,
+): void {
+  const s = ship.size;
+  const alien = ship.team !== 0;
+  const [ex, ey] = rotatePoint([0, -s * 0.1 * depth], -ship.heading);
+  for (let i = 0; i <= 8; i++) {
+    ctx.save();
+    ctx.translate((ex * i) / 8, (ey * i) / 8);
+    ctx.fillStyle = i === 8 ? (alien ? "#fb7185" : "#67e8f9") : alien ? "#732b3d" : "#20556a";
+    ctx.beginPath();
+    ctx.ellipse(s * 0.57, 0, s * 0.1, s * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 }
