@@ -46,6 +46,7 @@ interface TacticalCanvasProps {
 }
 
 type TacticalCamera = { x: number; y: number; zoom: number; pitchDeg: number };
+const RENDER_INTERVAL_MS = 1000 / 60;
 
 export function clampCameraPitch(deg: number): number {
   return Math.max(25, Math.min(90, deg));
@@ -176,6 +177,7 @@ export function TacticalCanvas({
 
     let animId: number;
     let lastTime: number | null = null;
+    let nextRenderTime: number | null = null;
     let focused = document.hasFocus();
     const handleBlur = () => {
       focused = false;
@@ -184,10 +186,12 @@ export function TacticalCanvas({
     const handleFocus = () => {
       focused = true;
       lastTime = null;
+      nextRenderTime = null;
       performanceSamples?.resetSimulationClock();
     };
     const handleVisibilityChange = () => {
       lastTime = null;
+      nextRenderTime = null;
       performanceSamples?.resetSimulationClock();
       if (document.hidden) presenter.frame(performance.now(), 0, 0);
     };
@@ -196,6 +200,16 @@ export function TacticalCanvas({
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const renderLoop = (now: number) => {
+      // Keep the target cadence across refresh intervals (e.g. 144 Hz) without
+      // accumulating drift; sample real elapsed time only when drawing.
+      if (nextRenderTime !== null && now + 0.2 < nextRenderTime) {
+        animId = requestAnimationFrame(renderLoop);
+        return;
+      }
+      nextRenderTime =
+        nextRenderTime === null || now - nextRenderTime >= RENDER_INTERVAL_MS
+          ? now + RENDER_INTERVAL_MS
+          : nextRenderTime + RENDER_INTERVAL_MS;
       const renderStart = performance.now();
       const rawDt = lastTime === null ? 0 : (now - lastTime) / 1000;
       lastTime = now;
