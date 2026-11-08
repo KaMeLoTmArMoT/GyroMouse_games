@@ -6,12 +6,63 @@ export { CORVETTE_FLAK_THREAT_RADIUS } from "./shipProfiles";
 
 const contexts = new WeakMap<ShipState[], NavigationContext>();
 
+interface CachedNeighborhood {
+  tick: number;
+  posX: number;
+  posY: number;
+  fleetSignature: number;
+  anchor: ShipState | undefined;
+  safe: boolean;
+  density: Map<number, number>;
+  isolated: boolean;
+}
+
+/** Battle-local cadence and exact membership invalidation, including same-count replacements. */
+export class NavigationNeighborhoodCache {
+  readonly neighborhoods = new WeakMap<ShipState, CachedNeighborhood>();
+  tick = 0;
+  fleetSignature = 0;
+  private members: Array<{
+    ship: ShipState;
+    team: number;
+    hullClass: ShipState["hullClass"];
+    flagshipId: ShipState["flagshipId"];
+    havenRadiusMultiplier: ShipState["havenRadiusMultiplier"];
+  }> = [];
+
+  advance(ships: ShipState[]): void {
+    this.tick++;
+    const unchanged =
+      ships.length === this.members.length &&
+      ships.every((ship, index) => {
+        const previous = this.members[index];
+        return (
+          previous.ship === ship &&
+          previous.team === ship.team &&
+          previous.hullClass === ship.hullClass &&
+          previous.flagshipId === ship.flagshipId &&
+          previous.havenRadiusMultiplier === ship.havenRadiusMultiplier
+        );
+      });
+    if (unchanged) return;
+    this.fleetSignature++;
+    this.members = ships.map((ship) => ({
+      ship,
+      team: ship.team,
+      hullClass: ship.hullClass,
+      flagshipId: ship.flagshipId,
+      havenRadiusMultiplier: ship.havenRadiusMultiplier,
+    }));
+  }
+}
+
 type AssignmentCounts = Map<number, Map<number, Map<string, number>>>;
 
 export class NavigationContext {
   readonly byId = new Map<string, ShipState>();
   readonly teams = new Map<number, ShipState[]>();
   readonly teamEnemies = new Map<number, ShipState[]>();
+  readonly teamEnemyCapitals = new Map<number, ShipState[]>();
   readonly hulls = new Map<ShipState["hullClass"], ShipState[]>();
   readonly anchors = new Map<ShipState, ShipState | undefined>();
   readonly safe = new Map<ShipState, boolean>();
@@ -21,12 +72,14 @@ export class NavigationContext {
   readonly capitalAssignments = new Map<number, Map<string, number>>();
   readonly navigationAssignments: AssignmentCounts = new Map();
   readonly dogfightAssignments: AssignmentCounts = new Map();
+  readonly activeWrecks: ShipState[] = [];
 
-  constructor(ships: ShipState[]) {
+  constructor(ships: ShipState[], cache = new NavigationNeighborhoodCache()) {
     const activeShips: ShipState[] = [];
     for (const ship of ships) {
       this.byId.set(ship.id, ship);
       if (!ship.isAlive) continue;
+      if (ship.isDebris) this.activeWrecks.push(ship);
       this.adjust(this.dogfightAssignments, ship, ship.dogfightTargetId, 1);
       if (ship.isDocked || ship.isDebris) continue;
       activeShips.push(ship);
@@ -38,17 +91,42 @@ export class NavigationContext {
       this.hulls.set(ship.hullClass, hull);
       this.adjust(this.navigationAssignments, ship, ship.navigationTargetId, 1);
     }
+    cache.advance(activeShips);
+    const shipOrder = new Map(activeShips.map((ship, index) => [ship, index]));
     // Preserve source order for scoring ties, including enemies from multiple teams.
     // Eligibility remains live: a hull can dock or die after this context is prepared.
-    for (const team of this.teams.keys())
+    for (const team of this.teams.keys()) {
       this.teamEnemies.set(
         team,
         ships.filter((ship) => ship.team !== team),
       );
+      this.teamEnemyCapitals.set(
+        team,
+        activeShips.filter((ship) => ship.team !== team && isCapitalShip(ship)),
+      );
+    }
     for (const team of this.teams.values()) {
       const capitals = team.filter(isCapitalShip);
+      const capitalSet = new Set(capitals);
       const flak = team.filter((ship) => ship.hullClass === "corvette");
       for (const ship of team) {
+        const cached = cache.neighborhoods.get(ship);
+        const dx = ship.pos[0] - (cached?.posX ?? 0);
+        const dy = ship.pos[1] - (cached?.posY ?? 0);
+        if (
+          cached &&
+          cached.fleetSignature === cache.fleetSignature &&
+          (!cached.anchor || capitalSet.has(cached.anchor)) &&
+          cache.tick - cached.tick < 6 &&
+          (shipOrder.get(ship) ?? 0) % 6 !== cache.tick % 6 &&
+          dx * dx + dy * dy <= 324
+        ) {
+          this.anchors.set(ship, cached.anchor);
+          this.safe.set(ship, cached.safe);
+          this.localDensity.set(ship, cached.density);
+          this.isolated.set(ship, cached.isolated);
+          continue;
+        }
         let anchor: ShipState | undefined;
         let bestDistance = Infinity;
         for (const capital of capitals) {
@@ -76,6 +154,16 @@ export class NavigationContext {
         const density = countTacticalDensity(ship, activeShips);
         this.localDensity.set(ship, density);
         this.isolated.set(ship, (density.get(ship.team) ?? 0) <= 2);
+        cache.neighborhoods.set(ship, {
+          tick: cache.tick,
+          posX: ship.pos[0],
+          posY: ship.pos[1],
+          fleetSignature: cache.fleetSignature,
+          anchor,
+          safe: threats < 2,
+          density,
+          isolated: (density.get(ship.team) ?? 0) <= 2,
+        });
       }
     }
   }
@@ -178,8 +266,12 @@ function countTacticalDensity(ship: ShipState, ships: ShipState[]): Map<number, 
   return density;
 }
 
-export function prepareNavigationContext(ships: ShipState[]): NavigationContext {
-  const context = new NavigationContext(ships);
+/** Supply the battle's cache for cadence reuse; standalone snapshots remain fresh. */
+export function prepareNavigationContext(
+  ships: ShipState[],
+  cache = new NavigationNeighborhoodCache(),
+): NavigationContext {
+  const context = new NavigationContext(ships, cache);
   contexts.set(ships, context);
   return context;
 }

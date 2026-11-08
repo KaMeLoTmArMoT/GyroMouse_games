@@ -58,7 +58,10 @@ export function debrisAvoidanceVelocity(
   ships: ShipState[],
 ): Vector2 {
   const horizon = 2.5;
-  const wrecks = ships.filter((peer) => peer.isAlive && peer.isDebris);
+  const activeWrecks = navigationContext(ships)?.activeWrecks;
+  if (activeWrecks?.length === 0) return desired;
+  const wrecks = (activeWrecks ?? ships).filter((peer) => peer.isAlive && peer.isDebris);
+  if (wrecks.length === 0) return desired;
   const heavy = ["cruiser", "battleship", "carrier", "dreadnought"].includes(ship.hullClass);
   const groups: ShipState[][] = [];
   const pending = new Set(wrecks);
@@ -205,7 +208,7 @@ export function orbitVelocity(ship: ShipState, target: ShipState, radius = 300):
 export function tenderRescueTarget(ship: ShipState, ships: ShipState[]): ShipState | undefined {
   let best: ShipState | undefined;
   let bestScore = -Infinity;
-  for (const peer of ships) {
+  for (const peer of navigationContext(ships)?.teams.get(ship.team) ?? ships) {
     if (
       !peer.isAlive ||
       peer.isDocked ||
@@ -254,7 +257,7 @@ export function rescueRouteRisk(ship: ShipState, target: ShipState, ships: ShipS
   const dy = target.pos[1] - ship.pos[1];
   const lengthSquared = dx * dx + dy * dy;
   let risk = 0;
-  for (const enemy of ships) {
+  for (const enemy of navigationContext(ships)?.teamEnemyCapitals.get(ship.team) ?? ships) {
     if (
       !enemy.isAlive ||
       enemy.isDocked ||
@@ -291,7 +294,8 @@ export function supportVelocity(
 ): Vector2 {
   const doctrine = SHIP_DOCTRINES[ship.hullClass].flight;
   if (doctrine.kind !== "support") return [0, 0];
-  const allies = ships.filter(
+  const context = navigationContext(ships);
+  const allies = (context?.teams.get(ship.team) ?? ships).filter(
     (peer) =>
       peer.isAlive &&
       !peer.isDocked &&
@@ -309,7 +313,7 @@ export function supportVelocity(
         vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) ||
         a.id.localeCompare(b.id),
     )[0];
-  const enemies = ships
+  const enemies = (context?.teamEnemies.get(ship.team) ?? ships)
     .filter((peer) => peer.isAlive && peer.team !== ship.team)
     .sort(
       (a, b) =>

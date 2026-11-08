@@ -53,9 +53,11 @@ export class ProjectileEngine {
       this.shipSweeps = new Float64Array(Math.max(shipCount * 4, this.shipSweeps.length * 2));
     const shipSweeps = this.shipSweeps;
     const sweepShips = this.sweepShips;
+    const shipById = new Map<string, ShipState>();
     sweepShips.length = shipCount;
     for (let i = 0; i < shipCount; i++) {
       const ship = aliveShips[i];
+      shipById.set(ship.id, ship);
       const old = previousPositions.get(ship.id) ?? ship.pos;
       const offset = i * 4;
       sweepShips[i] = ship;
@@ -73,9 +75,9 @@ export class ProjectileEngine {
       // Lost locks acquire the closest hostile within a forward 60-degree seeker arc.
       if (p.weaponType === "missile" && p.targetId) {
         const currentAngle = Math.atan2(p.velocity[1], p.velocity[0]);
-        let target = aliveShips.find(
-          (s) => s.id === p.targetId && s.isAlive && !s.isDebris && s.team !== p.ownerTeam,
-        );
+        let target = shipById.get(p.targetId);
+        if (target && (!target.isAlive || target.isDebris || target.team === p.ownerTeam))
+          target = undefined;
         if (!target) {
           let closest = Infinity;
           for (const candidate of aliveShips) {

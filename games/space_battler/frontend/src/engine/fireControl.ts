@@ -204,9 +204,40 @@ function missileWeight(target: ShipState, heavy: boolean): number {
 }
 
 const defendedContexts = new WeakMap<ShipState[], Map<ShipState, ShipState[]>>();
+const missileContexts = new WeakMap<ShipState[], MissileContext>();
+
+interface MissileContext {
+  projectiles: ProjectileState[];
+  missilesByTarget: Map<string, ProjectileState[]>;
+  enemyMissilesByTeam: Map<number, ProjectileState[]>;
+}
+
+function indexMissiles(
+  ships: ShipState[],
+  projectiles: ProjectileState[],
+  defendingTeam?: number,
+): MissileContext {
+  const missilesByTarget = new Map<string, ProjectileState[]>();
+  const enemyMissilesByTeam = new Map<number, ProjectileState[]>();
+  if (defendingTeam !== undefined) enemyMissilesByTeam.set(defendingTeam, []);
+  for (const ship of ships)
+    if (!enemyMissilesByTeam.has(ship.team)) enemyMissilesByTeam.set(ship.team, []);
+  for (const missile of projectiles) {
+    if (missile.weaponType !== "missile" || !(missile.hp > 0) || !(missile.lifetime > 0)) continue;
+    if (missile.targetId !== null) {
+      const incoming = missilesByTarget.get(missile.targetId);
+      if (incoming) incoming.push(missile);
+      else missilesByTarget.set(missile.targetId, [missile]);
+    }
+    for (const [team, enemies] of enemyMissilesByTeam)
+      if (team !== missile.ownerTeam) enemies.push(missile);
+  }
+  return { projectiles, missilesByTarget, enemyMissilesByTeam };
+}
 
 export function prepareFireControlContext(
   ships: ShipState[],
+  projectiles?: ProjectileState[],
   cache = true,
 ): Map<ShipState, ShipState[]> {
   const teams = new Map<number, ShipState[]>();
@@ -232,7 +263,11 @@ export function prepareFireControlContext(
       peers.push(flagship);
     defended.set(ship, peers);
   }
-  if (cache) defendedContexts.set(ships, defended);
+  if (cache) {
+    defendedContexts.set(ships, defended);
+    if (projectiles) missileContexts.set(ships, indexMissiles(ships, projectiles));
+    else missileContexts.delete(ships);
+  }
   return defended;
 }
 
@@ -258,9 +293,9 @@ export function acquireMountTarget(
   const defense = pointDefenseMode(weapon);
   let defendedShips: ShipState[] | undefined;
   const defendedFleet = () =>
-    (defendedShips ??= (defendedContexts.get(ships) ?? prepareFireControlContext(ships, false)).get(
-      ship,
-    ) ?? [ship]);
+    (defendedShips ??= (
+      defendedContexts.get(ships) ?? prepareFireControlContext(ships, undefined, false)
+    ).get(ship) ?? [ship]);
   let bestTarget: ShipState | ProjectileState | undefined;
   let bestKind: FireSolution["kind"] = "ship";
   let bestAimX = 0;
@@ -379,21 +414,11 @@ export function acquireMountTarget(
 
   // Preserve projectile order within each target's payloads without rescanning
   // every projectile for every enemy considered by a missile mount.
-  const missilesByTarget = new Map<string, ProjectileState[]>();
-  if (weapon.weaponType === "missile") {
-    for (const missile of projectiles) {
-      if (
-        missile.weaponType !== "missile" ||
-        !(missile.hp > 0) ||
-        !(missile.lifetime > 0) ||
-        missile.targetId === null
-      )
-        continue;
-      const incoming = missilesByTarget.get(missile.targetId);
-      if (incoming) incoming.push(missile);
-      else missilesByTarget.set(missile.targetId, [missile]);
-    }
-  }
+  let missileIndex = missileContexts.get(ships);
+  if (missileIndex?.projectiles !== projectiles) missileIndex = undefined;
+  const indexedMissiles = () => (missileIndex ??= indexMissiles(ships, projectiles, ship.team));
+  const missilesByTarget =
+    weapon.weaponType === "missile" ? indexedMissiles().missilesByTarget : undefined;
 
   const enemies =
     navigationContext(ships)?.teamEnemies.get(ship.team) ??
@@ -406,10 +431,10 @@ export function acquireMountTarget(
       let incoming = 0;
       let inFlightDamage = 0;
       let insuranceDamage = 0;
-      const incomingMissiles = missilesByTarget.get(enemy.id);
+      const incomingMissiles = missilesByTarget?.get(enemy.id);
       if (incomingMissiles) {
         for (const missile of incomingMissiles) {
-          if (missile.ownerTeam !== enemy.team) {
+          if (missile.hp > 0 && missile.lifetime > 0 && missile.ownerTeam !== enemy.team) {
             incoming += missileWeight(enemy, isHeavyTorpedo(missile));
             inFlightDamage += missile.damage;
             insuranceDamage = Math.max(insuranceDamage, missile.damage);
@@ -477,7 +502,7 @@ export function acquireMountTarget(
   const defensiveBeam =
     ship.hullClass === "battleship" && weapon.weaponType === "beam_laser" && !hasShip;
   if (weapon.weaponType === "point_defense" || defensiveBeam) {
-    for (const missile of projectiles) {
+    for (const missile of indexedMissiles().enemyMissilesByTeam.get(ship.team) ?? []) {
       if (
         missile.ownerTeam === ship.team ||
         missile.weaponType !== "missile" ||

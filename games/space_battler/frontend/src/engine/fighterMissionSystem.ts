@@ -217,7 +217,7 @@ export class FighterMissionSystem {
   }
 
   updateWings(aliveShips: ShipState[]): void {
-    const navigation = prepareNavigationContext(aliveShips);
+    const navigation = navigationContext(aliveShips) ?? prepareNavigationContext(aliveShips);
     const wingMembers = new Map<string, ShipState[]>();
     const wingsByGroup = new Map<string, FighterWing[]>();
     const memberWings = new Map<string, string>();

@@ -11,7 +11,7 @@ import type {
   Vector2,
   WeaponType,
 } from "../types/combat";
-import { applyArenaRadiation, radiationIntensity } from "./arenaBoundary";
+import { ARENA_RADIUS, applyArenaRadiation } from "./arenaBoundary";
 import {
   type BattleMapId,
   createMapObstacles,
@@ -34,7 +34,7 @@ import { acquireMountTarget, prepareFireControlContext } from "./fireControl";
 import { redeployFleetRemnants } from "./fleetBuilder";
 import { HarmonicShieldSystem } from "./harmonicShieldSystem";
 import { normalizeAngle, vecAdd, vecScale } from "./math2d";
-import { navigationContext, prepareNavigationContext } from "./navigationContext";
+import { NavigationNeighborhoodCache, prepareNavigationContext } from "./navigationContext";
 import { type FlakBurstCallback, ProjectileEngine } from "./projectileEngine";
 import { isCapitalShip } from "./shieldGeometry";
 import { ShieldHavenSystem } from "./shieldHaven";
@@ -72,6 +72,7 @@ export class ClientCombatSimulation {
   timeElapsed = 0;
   private accumulator = 0;
   private previousPositions = new Map<string, Vector2>();
+  private neighborhoodCache = new NavigationNeighborhoodCache();
   private readonly fighterMissions = new FighterMissionSystem(this, (ship) =>
     this.emitAudioEvent("fighter_egress", ship.pos, ship.team, ship.id),
   );
@@ -283,6 +284,7 @@ export class ClientCombatSimulation {
     this.fighterMissions.clear();
     this.contactSolver.clear();
     this.previousPositions.clear();
+    this.neighborhoodCache = new NavigationNeighborhoodCache();
     this.accumulator = 0;
     this.timeElapsed = 0;
     this.mapObstacles = createMapObstacles(this.selectedMap);
@@ -347,7 +349,10 @@ export class ClientCombatSimulation {
           turret.cooldownTimer = Math.max(0, turret.cooldownTimer - dt);
       if (ship.shieldDelayTimer > 0) {
         ship.shieldDelayTimer = Math.max(0, ship.shieldDelayTimer - dt);
-      } else if (ship.shieldCurrent < ship.shieldMax && radiationIntensity(ship.pos) === 0) {
+      } else if (
+        ship.shieldCurrent < ship.shieldMax &&
+        ship.pos[0] * ship.pos[0] + ship.pos[1] * ship.pos[1] <= ARENA_RADIUS * ARENA_RADIUS
+      ) {
         const before = this.observer ? ship.shieldCurrent : 0;
         ship.shieldCurrent = Math.min(ship.shieldMax, ship.shieldCurrent + ship.shieldRegen * dt);
         this.observer?.onShieldRegen(ship, ship.shieldCurrent - before);
@@ -361,6 +366,7 @@ export class ClientCombatSimulation {
       ...aliveShips.map((ship) => [ship.id, [...ship.pos] as Vector2] as const),
     ]);
     this.ensureFighterWings(aliveShips);
+    const navigation = prepareNavigationContext(aliveShips, this.neighborhoodCache);
     this.fighterMissions.updateWings(aliveShips);
     const navigationTargets = new Map<string, ShipState | null>();
     const movements = new Map<
@@ -370,7 +376,6 @@ export class ClientCombatSimulation {
     // Allocate small focus squads in stable order, independent of the render/storage order.
     const previousTargets = new Map(aliveShips.map((ship) => [ship.id, ship.navigationTargetId]));
     for (const ship of aliveShips) ship.navigationTargetId = undefined;
-    const navigation = navigationContext(aliveShips) ?? prepareNavigationContext(aliveShips);
     navigation.navigationAssignments.clear();
     navigation.capitalAssignments.clear();
     for (const ship of [...aliveShips].sort((a, b) => a.id.localeCompare(b.id))) {
@@ -421,7 +426,7 @@ export class ClientCombatSimulation {
     this.shieldHaven.refreshAmplification(combatShips);
     // All mounts decide at one common firing instant, before simultaneous shots resolve.
     const shots: Array<() => void> = [];
-    prepareFireControlContext(aliveShips);
+    prepareFireControlContext(aliveShips, this.projectiles);
     const missileLocks: Array<{ targetId: string; weapon: TurretMountState["weapon"] }> = [];
     for (const ship of aliveShips) {
       if (!ship.isAlive) continue;
@@ -472,8 +477,12 @@ export class ClientCombatSimulation {
       this.onBeamFire,
       (recipient, amount) => this.observer?.onShieldRegen(recipient, amount),
     );
-    for (const ship of aliveShips) {
-      if (!ship.isAlive || radiationIntensity(ship.pos) === 0) continue;
+    const boundaryShips = aliveShips.filter(
+      (ship) =>
+        ship.isAlive &&
+        ship.pos[0] * ship.pos[0] + ship.pos[1] * ship.pos[1] > ARENA_RADIUS * ARENA_RADIUS,
+    );
+    for (const ship of boundaryShips) {
       const before = this.observer
         ? [ship.shieldCurrent, ship.armorCurrent, ship.hullCurrent]
         : null;

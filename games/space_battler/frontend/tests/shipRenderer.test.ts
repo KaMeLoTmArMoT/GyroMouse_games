@@ -486,8 +486,8 @@ describe("cached battlefield hulls", () => {
       const lightIndex = moves.mock.calls.findIndex(
         ([x, y]) => x === -ship.size * 0.8 && y === ship.size * 0.31,
       );
-      const turretIndex = translations.mock.calls.findIndex(
-        ([x, y]) => ship.turrets.some((turret) => x === turret.offset[0] && y === turret.offset[1]),
+      const turretIndex = translations.mock.calls.findIndex(([x, y]) =>
+        ship.turrets.some((turret) => x === turret.offset[0] && y === turret.offset[1]),
       );
       expect(lightIndex).toBeGreaterThanOrEqual(0);
       expect(turretIndex).toBeGreaterThanOrEqual(0);
