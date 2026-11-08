@@ -10,6 +10,8 @@ export class PerformanceSamples {
   renderFrames: number[] = [];
   snapshotLatencies: number[] = [];
   graphFrames: number[] = [];
+  realTimeFactor: number | null = null;
+  private rtfStart: { wallMs: number; simTime: number } | null = null;
   private graphElapsed = 0;
 
   addFrame = (duration: number) => {
@@ -41,6 +43,24 @@ export class PerformanceSamples {
     if (this.workerSteps.length > HISTORY_SIZE) this.workerSteps.shift();
     if (this.snapshotLatencies.length > HISTORY_SIZE) this.snapshotLatencies.shift();
   };
+
+  resetSimulationClock = () => {
+    this.rtfStart = null;
+    this.realTimeFactor = null;
+  };
+
+  addSimulationTime = (wallMs: number, simTime: number) => {
+    if (!this.rtfStart || simTime < this.rtfStart.simTime || wallMs < this.rtfStart.wallMs) {
+      this.rtfStart = { wallMs, simTime };
+      this.realTimeFactor = null;
+      return;
+    }
+    const wallDelta = wallMs - this.rtfStart.wallMs;
+    if (wallDelta >= 500) {
+      this.realTimeFactor = ((simTime - this.rtfStart.simTime) * 1000) / wallDelta;
+      this.rtfStart = { wallMs, simTime };
+    }
+  };
 }
 
 function lowFps(sortedSlowestFirst: number[], fraction: number): string {
@@ -52,7 +72,7 @@ function lowFps(sortedSlowestFirst: number[], fraction: number): string {
   return (1000 / (slowest.reduce((sum, frame) => sum + frame, 0) / slowest.length)).toFixed(1);
 }
 
-export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
+export function PerformanceHud({ samples, speed }: { samples: PerformanceSamples; speed: number }) {
   const graphRef = useRef<HTMLCanvasElement>(null);
   const [snapshot, setSnapshot] = useState({
     frames: [] as number[],
@@ -61,6 +81,7 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
     workerStep: null as number | null,
     renderFrame: null as number | null,
     snapshotLatency: null as number | null,
+    realTimeFactor: null as number | null,
   });
 
   useEffect(() => {
@@ -72,6 +93,7 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
         workerStep: samples.workerSteps.at(-1) ?? null,
         renderFrame: samples.renderFrames.at(-1) ?? null,
         snapshotLatency: samples.snapshotLatencies.at(-1) ?? null,
+        realTimeFactor: samples.realTimeFactor,
       });
     update();
     const interval = window.setInterval(update, 250);
@@ -106,6 +128,13 @@ export function PerformanceHud({ samples }: { samples: PerformanceSamples }) {
     <div className="absolute top-4 left-4 z-10 pointer-events-none w-64 rounded-lg border border-zinc-700/80 bg-zinc-950/85 p-3 font-mono tabular-nums text-[11px] text-zinc-400 shadow-lg backdrop-blur-sm">
       <div className="mb-2 font-semibold uppercase tracking-wider text-cyan-400">Performance</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+        <span className="col-span-2" title="Simulated time / wall time, followed by selected speed">
+          RTF{" "}
+          <span className="text-zinc-100">
+            {snapshot.realTimeFactor === null ? "—" : `${snapshot.realTimeFactor.toFixed(1)}x`} /{" "}
+            {speed.toFixed(1)}x
+          </span>
+        </span>
         <span className="whitespace-nowrap">
           FPS <span className="text-zinc-100">{frame ? (1000 / frame).toFixed(1) : "—"}</span>
         </span>

@@ -111,6 +111,25 @@ export class SimulationWorkerHost {
             }
           } else this.schedule();
           break;
+        case "CANCEL_STEPS":
+          if (this.timer !== null) clearTimeout(this.timer);
+          this.timer = null;
+          for (const step of this.steps) {
+            this.send({
+              type: "ACK",
+              epoch: this.epoch,
+              requestId: step.requestId,
+              tick: this.tick,
+            });
+          }
+          this.steps = [];
+          this.send({
+            type: "ACK",
+            epoch: this.epoch,
+            requestId: message.requestId,
+            tick: this.tick,
+          });
+          break;
       }
     } catch (error) {
       this.send({

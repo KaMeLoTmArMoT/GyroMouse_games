@@ -33,6 +33,9 @@ export class SimulationPresenter {
   error: Error | null = null;
   private accumulator = 0;
   private inFlight = false;
+  private lastSpeed = 0;
+  private blendedSnapshot: RenderInterpolationState | null = null;
+  private blendAlpha = 0;
   private appliedSnapshot: RenderInterpolationState | null = null;
   private ships = new Map<string, ShipState>();
   private definitions = new Map<string, ShipState>();
@@ -98,6 +101,15 @@ export class SimulationPresenter {
       if (speed > 0) this.simulation.update(dt * speed, samples?.addStep);
       return;
     }
+    if (speed !== this.lastSpeed) {
+      this.accumulator = 0;
+      if (this.lastSpeed > 0 && this.inFlight && client.status === "ready") {
+        void client.cancelSteps().catch((error: Error) => {
+          if (client.status === "ready") this.error = error;
+        });
+      }
+      this.lastSpeed = speed;
+    }
     if (client.status === "ready" && speed > 0 && !this.error) {
       this.accumulator += dt * speed;
       const ticks = Math.min(240, Math.floor((this.accumulator + 1e-9) * 60));
@@ -118,7 +130,15 @@ export class SimulationPresenter {
     const latest = client.latestSnapshot;
     if (latest?.presentation && latest.views) {
       if (latest !== this.appliedSnapshot) this.applyMetadata(latest);
-      const alpha = snapshotBlendAlpha(client.previousSnapshot, latest, nowMs, speed);
+      if (latest !== this.blendedSnapshot) {
+        this.blendedSnapshot = latest;
+        this.blendAlpha = 0;
+      }
+      const alpha = Math.max(
+        this.blendAlpha,
+        snapshotBlendAlpha(client.previousSnapshot, latest, nowMs, speed),
+      );
+      this.blendAlpha = alpha;
       interpolateSimulationSnapshot(
         client.previousSnapshot,
         latest,

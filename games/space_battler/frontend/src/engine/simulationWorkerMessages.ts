@@ -35,6 +35,7 @@ export type SimulationWorkerCommand =
 export type SimulationWorkerRequest =
   | { type: "INIT"; epoch: number; config: SimulationWorkerConfig; buffers: ArrayBuffer[] }
   | { type: "STEP"; epoch: number; requestId: number; ticks: number }
+  | { type: "CANCEL_STEPS"; epoch: number; requestId: number }
   | { type: "COMMAND"; epoch: number; requestId: number; command: SimulationWorkerCommand }
   | { type: "RECYCLE"; epoch: number; buffer: ArrayBuffer }
   | { type: "DISPOSE" };

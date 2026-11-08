@@ -320,6 +320,102 @@ describe("worker presentation event dispatch", () => {
 });
 
 describe("dual-mode simulation presenter", () => {
+  it.each([0, 0.5, 1, 2, 5])("advances the worker at %sx over wall time", async (speed) => {
+    vi.stubGlobal("Worker", undefined);
+    const client = new SimulationWorkerClient(config);
+    await client.ready;
+    const presenter = new SimulationPresenter(simulation(), client);
+    for (let i = 0; i < 20; i++) {
+      presenter.frame((i + 1) * 50, 1 / 20, speed);
+      await Promise.resolve();
+    }
+    expect(client.latestSnapshot?.timeElapsed).toBeCloseTo(speed, 5);
+    await client.dispose();
+  });
+
+  it("cancels queued playback on pause and allows manual stepping before resuming", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("Worker", PresentationWorker);
+    const client = new SimulationWorkerClient(config);
+    await client.ready;
+    const presenter = new SimulationPresenter(simulation(), client);
+    const host = PresentationWorker.instances[0].host;
+    presenter.frame(0, 1, 2);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(host.simulation?.timeElapsed).toBeGreaterThan(0);
+    presenter.frame(5, 0, 0);
+    await vi.runAllTimersAsync();
+    const pausedTime = host.simulation?.timeElapsed ?? 0;
+    expect(pausedTime).toBeLessThan(2);
+    presenter.frame(100, 1, 0);
+    const pausedPosition = [...presenter.state.ships[0].pos];
+    const presentedTime = presenter.state.timeElapsed;
+    await vi.runAllTimersAsync();
+    expect(host.simulation?.timeElapsed).toBe(pausedTime);
+    presenter.frame(150, 1, 0);
+    expect(presenter.state.timeElapsed).toBe(presentedTime);
+    expect(presenter.state.ships[0].pos).toEqual(pausedPosition);
+    const stepped = client.step(2);
+    await vi.runAllTimersAsync();
+    await stepped;
+    presenter.frame(200, 0, 0);
+    expect(presenter.state.timeElapsed).toBeCloseTo(pausedTime + 2 / 60);
+    presenter.frame(300, 1 / 60, 1);
+    await vi.runAllTimersAsync();
+    expect(host.simulation?.timeElapsed).toBeCloseTo(pausedTime + 3 / 60);
+    await client.dispose();
+  });
+
+  it("discards a fast playback backlog when switching to a slower speed", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("Worker", PresentationWorker);
+    const client = new SimulationWorkerClient(config);
+    await client.ready;
+    const presenter = new SimulationPresenter(simulation(), client);
+    const host = PresentationWorker.instances[0].host;
+    presenter.frame(0, 1, 2);
+    await vi.advanceTimersByTimeAsync(5);
+    presenter.frame(5, 0, 0.5);
+    await vi.runAllTimersAsync();
+    const changedTime = host.simulation?.timeElapsed ?? 0;
+    expect(changedTime).toBeLessThan(2);
+    presenter.frame(1005, 1, 0.5);
+    await vi.runAllTimersAsync();
+    expect(host.simulation?.timeElapsed).toBeCloseTo(changedTime + 0.5);
+    await client.dispose();
+  });
+
+  it("does not move a snapshot backwards when playback speed is reduced", async () => {
+    vi.stubGlobal("Worker", undefined);
+    const client = new SimulationWorkerClient(config);
+    await client.ready;
+    await client.step(1);
+    const presenter = new SimulationPresenter(simulation(), client);
+    const received = client.latestSnapshot?.receivedAtMs ?? 0;
+    presenter.frame(received + 5, 0, 2);
+    const presentedTime = presenter.state.timeElapsed;
+    presenter.frame(received + 6, 0, 0.5);
+    expect(presenter.state.timeElapsed).toBe(presentedTime);
+    await client.dispose();
+  });
+
+  it("measures achieved simulation time against wall time and resets on a new battle", () => {
+    const samples = new PerformanceSamples();
+    samples.addSimulationTime(0, 0);
+    samples.addSimulationTime(500, 0.6);
+    expect(samples.realTimeFactor).toBeCloseTo(1.2);
+    samples.addSimulationTime(1000, 0.6);
+    expect(samples.realTimeFactor).toBe(0);
+    samples.addSimulationTime(1500, 1.6);
+    expect(samples.realTimeFactor).toBeCloseTo(2);
+    samples.addSimulationTime(1600, 0);
+    expect(samples.realTimeFactor).toBeNull();
+    samples.addSimulationTime(2100, 0.25);
+    expect(samples.realTimeFactor).toBeCloseTo(0.5);
+    samples.resetSimulationClock();
+    expect(samples.realTimeFactor).toBeNull();
+  });
+
   it("keeps direct simulation updates and timing in synchronous mode", () => {
     const sim = simulation();
     const presenter = new SimulationPresenter(sim);

@@ -85,6 +85,10 @@ export class SimulationWorkerClient {
     return this.request((requestId) => ({ type: "STEP", epoch: this.epoch, requestId, ticks }));
   }
 
+  cancelSteps(): Promise<number> {
+    return this.request((requestId) => ({ type: "CANCEL_STEPS", epoch: this.epoch, requestId }));
+  }
+
   command(command: SimulationWorkerCommand): Promise<number> {
     return this.request((requestId) => ({
       type: "COMMAND",

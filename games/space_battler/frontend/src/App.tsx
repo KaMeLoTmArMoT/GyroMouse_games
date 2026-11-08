@@ -131,6 +131,10 @@ export default function App() {
   const [, setTick] = useState<number>(0);
 
   useEffect(() => {
+    if (speed > 0) setLastActiveSpeed(speed);
+  }, [speed]);
+
+  useEffect(() => {
     const unlockAudio = () => spaceAudio.unlock();
     document.addEventListener("pointerdown", unlockAudio);
     document.addEventListener("keydown", unlockAudio);
@@ -731,6 +735,7 @@ export default function App() {
             <TacticalCanvas
               sim={sim}
               workerClient={workerClient}
+              workerPresenter={workerPresenter.current ?? undefined}
               speed={speed}
               ingressRevision={ingressRevision}
               performanceSamples={showPerformance ? performanceSamples.current : undefined}
@@ -747,7 +752,9 @@ export default function App() {
                 if (id) setSidebarTab("vessel");
               }}
             />
-            {showPerformance && <PerformanceHud samples={performanceSamples.current} />}
+            {showPerformance && (
+              <PerformanceHud samples={performanceSamples.current} speed={speed} />
+            )}
 
             {/* Victory / Defeat Modal Overlay */}
             {sim.winner !== null && showVictoryModal && (

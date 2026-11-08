@@ -35,6 +35,7 @@ interface TacticalCanvasProps {
   // setup; rendering, hit-testing and effects use an independent presentation.
   // Route tactical commands through client.command and dispose on battle reset.
   workerClient?: SimulationWorkerClient;
+  workerPresenter?: SimulationPresenter;
   speed: number;
   ingressRevision: number;
   selectedShipId?: string | null;
@@ -72,6 +73,7 @@ export function screenToWorldPoint(
 export function TacticalCanvas({
   sim,
   workerClient,
+  workerPresenter,
   speed,
   ingressRevision,
   selectedShipId,
@@ -83,8 +85,17 @@ export function TacticalCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const effectsRef = useRef<VisualEffectsManager>(new VisualEffectsManager());
   const pendingIngressRef = useRef(false);
-  const presenter = useMemo(() => new SimulationPresenter(sim, workerClient), [sim, workerClient]);
+  const presenter = useMemo(
+    () => workerPresenter ?? new SimulationPresenter(sim, workerClient),
+    [sim, workerClient, workerPresenter],
+  );
   const presentation = presenter.state;
+
+  useEffect(() => {
+    performanceSamples?.resetSimulationClock();
+  }, [performanceSamples]);
+
+  useEffect(() => () => presenter.frame(performance.now(), 0, 0), [presenter]);
 
   const cameraRef = useRef<TacticalCamera>({ x: 0, y: 0, zoom: 0.85, pitchDeg: 90 });
   const [pitchDeg, setPitchDeg] = useState(90);
@@ -168,13 +179,17 @@ export function TacticalCanvas({
     let focused = document.hasFocus();
     const handleBlur = () => {
       focused = false;
+      presenter.frame(performance.now(), 0, 0);
     };
     const handleFocus = () => {
       focused = true;
       lastTime = performance.now();
+      performanceSamples?.resetSimulationClock();
     };
     const handleVisibilityChange = () => {
       lastTime = performance.now();
+      performanceSamples?.resetSimulationClock();
+      if (document.hidden) presenter.frame(lastTime, 0, 0);
     };
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", handleFocus);
@@ -190,9 +205,10 @@ export function TacticalCanvas({
       }
 
       const previousProjectiles = presenter.state.projectiles.slice();
+      const previousTime = presenter.state.timeElapsed;
       const activeSpeed = focused && !document.hidden ? speed : 0;
       if (workerClient) {
-        presenter.frame(now, dt, activeSpeed, performanceSamples, (events) =>
+        presenter.frame(now, Math.max(0, rawDt), activeSpeed, performanceSamples, (events) =>
           dispatchWorkerPresentationEvents(
             events,
             (id) => presenter.shipById(id),
@@ -231,11 +247,19 @@ export function TacticalCanvas({
             followRef.current = false;
           }
         }
-        if (!workerClient) presenter.frame(now, dt, speed, performanceSamples);
-        effectsRef.current.update(dt * speed, sim.ships, sim.projectiles);
+        if (!workerClient) presenter.frame(now, Math.max(0, rawDt), speed, performanceSamples);
+        const simulationDelta = Math.max(0, sim.timeElapsed - previousTime);
+        effectsRef.current.update(simulationDelta, sim.ships, sim.projectiles);
         effectsRef.current.captureExpiredProjectiles(previousProjectiles, sim.projectiles);
-        effectsRef.current.updateWarpGates(Math.min(dt, 0.05));
+        effectsRef.current.updateWarpGates(simulationDelta);
         effectsRef.current.syncBeams(sim.activeBeams);
+      }
+
+      const measuredTime = workerClient
+        ? workerClient.latestSnapshot?.timeElapsed
+        : sim.timeElapsed;
+      if (measuredTime !== undefined && focused && !document.hidden) {
+        performanceSamples?.addSimulationTime(now, measuredTime);
       }
 
       const targetShip =
@@ -264,7 +288,7 @@ export function TacticalCanvas({
           ctx.scale(camera.zoom, camera.zoom * verticalScale);
           const viewport = worldViewport(canvas.width, canvas.height / verticalScale, camera);
 
-          drawTacticalGrid(ctx, now / 1000);
+          drawTacticalGrid(ctx, sim.timeElapsed);
           renderMapObstacles(ctx, sim.mapObstacles, viewport);
 
           const selectedTender = sim.ships.find(
@@ -561,7 +585,7 @@ export function TacticalCanvas({
             canvas.height,
             camera,
           );
-          drawRadiationInterference(ctx, { minX, maxX, minY, maxY }, camera.zoom, now / 1000);
+          drawRadiationInterference(ctx, { minX, maxX, minY, maxY }, camera.zoom, sim.timeElapsed);
           ctx.restore();
         }
       }
