@@ -16,6 +16,11 @@ Do not run `npm run build` or `npm run dev` if i don't ask for it.
 STRICTLY FORBIDDEN: NEVER add mouse movement/cursor tilt controls (e.g. `mouseEnabled`, `pointermove` for game steering) to games unless explicitly requested. Controls must remain strictly keyboard-driven (WASD / Arrow keys / Space).
 STRICTLY FORBIDDEN: NEVER modify, rescale, or rebalance core combat/simulation hyperparameters (weapon damage, fire rates, cooldowns, ship speeds, turn rates, hull/armor/shield values, ship/shield sizes, `ARENA_RADIUS`, or simulation timestep) without explicit prior discussion, thorough analytical justification, and user approval. Calibrated balance values are sacred; solve fleet placement, positioning, and navigation challenges via geometry, inward compaction, and algorithmic optimizations, NEVER by casually tweaking hyperparameter constants.
 
+### Space Battler engine scale and determinism
+- STRICTLY FORBIDDEN: add nested O(N) full-population scans in 60 Hz update loops, such as scanning `aliveShips` for every ship or weapon mount.
+- REQUIRE: share phase-local blackboards such as `NavigationContext`, team worklists, or reusable spatial grids such as `separationSpatialGrid` for repeated queries. Keep indexes current when phase state changes and use conservative spatial bounds.
+- REQUIRE: preserve existing deterministic tie-breaking and floating-point accumulation order. Use the appropriate stable ID rule (for example `ship.id < peer.id`) for ties and ascending source indices for order-sensitive reductions; verify equivalent combat state.
+
 ## Testing & Validation
 No test runner configured — validate changes manually via `npm run dev` and visual check in browser.
 

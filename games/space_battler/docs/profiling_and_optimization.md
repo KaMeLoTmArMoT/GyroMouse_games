@@ -75,29 +75,22 @@ recent frame intervals and 160 fixed simulation-step durations.
 
 ## Architecture optimizations
 
-- `NavigationContext` pre-indexes ship data in O(N) for reuse during navigation.
+- `NavigationContext` pre-indexes ship data, team anchors and haven occupancy for reuse during navigation; wing centroids are shared per wing update.
+- Fire control maintains an incoming missile payload ledger, and ordnance avoidance prunes candidates before expensive geometry.
+- `separationSpatialGrid` rebuilds reusable typed-array cells per movement snapshot and visits conservative candidates in ascending source-index order.
 - Candidate scoring avoids per-candidate allocations in navigation hot paths.
 - AI decision cadences are staggered to distribute expensive decisions over ticks.
 - `ShipSpriteCache` caches hulls offscreen instead of redrawing static geometry.
 - Viewport culling skips offscreen entities and effects during canvas rendering.
 
-## Spatial Acceleration Architecture: Spatial Grid vs. Scalar AABB vs. TypedArray Pools
+## Engine scale and determinism requirements
 
-During performance audits across 100v100 (200 ships) and 170v170 (340 ships) fleet scales, multiple spatial acceleration architectures were evaluated:
+- **STRICTLY FORBIDDEN:** nested O(N) full-population scans in 60 Hz update loops, for example scanning `aliveShips` separately for every ship or mount. Scalar AABB rejection alone does not remove the quadratic traversal.
+- **REQUIRE:** reuse phase-local blackboards (`NavigationContext`), team worklists, or reusable spatial grids (`separationSpatialGrid`) for repeated queries. Update shared counts when assignments change, and rebuild or invalidate indexes at the correct phase boundary.
+- **REQUIRE:** preserve the existing deterministic tie rule (for example `ship.id < peer.id` where applicable) and floating-point accumulation order. The separation grid emits ascending original indices, preserving full-scan order; a different cell traversal order alone is not equivalent.
+- Spatial broadphases must conservatively include eligible peers, including clearance and velocity-dependent braking margins. Reusable typed arrays avoid the per-tick allocation churn of naive dynamic buckets; large query radii can still reduce their benefit. Keep scalar AABB rejection for narrow-phase pruning and benchmark actual workloads.
+- Compare final combat-state hashes and run behavior tests when changing indexing or iteration. Benchmark multiple archetypes; validate browser RTF separately because headless update timings exclude rendering and scheduling.
 
-### 1. Rejection of Dynamic Spatial Grid in V8 / JavaScript
-A naive dynamic 2D spatial grid (bucketing entities into spatial cells every simulation tick) was formally evaluated and rejected for the following technical reasons:
-- **GC Allocation Churn:** In JavaScript/V8, rebuilding or clearing cell lists every 60Hz tick for 340+ vessels and 300+ projectiles generates continuous heap allocations (`new Array()`, `Array.push`, or linked list nodes). This triggers recurring minor GC scavenging pauses that directly harm frame pacing and cause frame stutters.
-- **Inflated Query Radius for High-Velocity Craft:** Light strike craft move up to $280\,\text{u/s}$ and weapon ranges span from $300\,\text{u}$ to $1200\,\text{u}$. With boundary sweeps and projectile relative displacement, the required bounding query cells expand dramatically, causing spatial cell lookups to visit nearly all inhabited buckets anyway, negating the theoretical $O(1)$ cell benefit while introducing spatial hashing overhead.
+## Multi-archetype benchmark
 
-### 2. The Winning Strategy: Zero-Allocation Scalar AABB Pruning
-Instead of dynamic bucket indexing, all high-frequency simulation systems (`projectileEngine`, `fireControl`, `flightBehaviors`, `shipNavigationSystem`) rely on **Zero-Allocation Scalar AABB Early Rejection**:
-- **Pre-cached scalar phase buffers:** Ship coordinates, speeds, radiuses, and displacement vectors are hoisted once per epoch into primitive variables (`dx, dy, r0x, r1x, bound`).
-- **In-place coordinate bounding:** Candidate pairs are rejected along primary axes ($|dx| > R \lor |dy| > R$) with zero allocations, zero array creation, and zero vector operations. Over $90\%$ of projectile-ship and ship-ship interaction pairs are rejected before reaching quadratic math or trigonometry.
-- **Strict preservation of deterministic traversal order:** Bypassing spatial hashing ensures candidate evaluation order, tie-breaking, and floating-point accumulation orders remain 100% bit-identical.
-
-### 3. Investigation of TypedArray / ArrayBuffer Pooling
-For massive fleet scale (200v200 = 400 ships and beyond):
-- Reusable pre-allocated flat memory structures (`Float64Array`, `Int32Array`) provide zero-allocation scratch buffers for spatial sorting, broadphase sorting (Sweep & Prune on X-axis), and contiguous velocity integration.
-- Flat contiguous arrays also serve as the serialization-free foundation for Web Worker simulation offloading via `SharedArrayBuffer` or transferable `ArrayBuffer` structured snapshots.
-
+Run `npx tsx bench/archetypes.ts --output bench/archetypes.results.json` from the frontend. The [report](../frontend/bench/archetypes_report.md) records the stock-timestep swarm, capital and missile workloads, publication proxy, runtime controls, and measured before/after results. The benchmark checks hash equality across its three passes; this does not substitute for testing other scenarios or browser behavior.

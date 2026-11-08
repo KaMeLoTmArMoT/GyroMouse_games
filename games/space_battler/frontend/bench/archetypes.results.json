@@ -34,264 +34,260 @@
       },
       "baseline": {
         "simulation": {
-          "meanMs": 61.09509125000007,
-          "p50Ms": 59.33419999999933,
-          "p95Ms": 74.5003999999999,
-          "maxMs": 80.9349000000002,
-          "rtf": 0.2727987850687865
+          "meanMs": 70.23898124999985,
+          "p50Ms": 70.52560000000085,
+          "p95Ms": 82.36670000000049,
+          "maxMs": 87.69729999999981,
+          "rtf": 0.2372851423819121
         },
         "worker": {
           "binaryPack": {
-            "meanMs": 0.1769712499999855,
-            "p50Ms": 0.1576999999997497,
-            "p95Ms": 0.301499999999578,
-            "maxMs": 0.7255999999997584,
-            "rtf": 94.17725572186461
+            "meanMs": 0.23772000000013804,
+            "p50Ms": 0.22850000000107684,
+            "p95Ms": 0.3232000000007247,
+            "maxMs": 0.7346999999999753,
+            "rtf": 70.11049413872198
           },
           "presentationPack": {
-            "meanMs": 2.3681512499999484,
-            "p50Ms": 2.2156000000004497,
-            "p95Ms": 3.0189000000000306,
-            "maxMs": 3.8968999999997322,
-            "rtf": 7.037838764169742
+            "meanMs": 2.8148150000000554,
+            "p50Ms": 2.7609000000002197,
+            "p95Ms": 3.6424999999999272,
+            "maxMs": 4.02809999999954,
+            "rtf": 5.921052242035921
           },
           "sidecarCloneProxy": {
-            "meanMs": 1.4038025000000403,
-            "p50Ms": 1.29529999999977,
-            "p95Ms": 1.9897000000000844,
-            "maxMs": 2.085399999999936,
-            "rtf": 11.872515305155954
+            "meanMs": 1.7066437499999438,
+            "p50Ms": 1.68789999999899,
+            "p95Ms": 2.313000000000102,
+            "maxMs": 2.578700000000026,
+            "rtf": 9.765756131979634
           },
           "combined": {
-            "meanMs": 65.04401625000004,
-            "p50Ms": 63.082800000000134,
-            "p95Ms": 79.1842999999999,
-            "maxMs": 84.63290000000143,
-            "rtf": 0.2562367397887528
+            "meanMs": 74.99816,
+            "p50Ms": 75.6901999999991,
+            "p95Ms": 87.22460000000046,
+            "maxMs": 92.19919999999911,
+            "rtf": 0.22222767420782946
           },
           "bufferBytes": 589888
         },
         "nativeSampling": {
-          "samples": 3437,
+          "samples": 3965,
           "topSelf": [
             {
               "function": "updateCycle",
               "file": "fighterMissionSystem.ts",
-              "percent": 7.9720686645330225
+              "percent": 8.877679697351828
             },
             {
               "function": "tick",
               "file": "simulation.ts",
-              "percent": 5.149839976723887
+              "percent": 6.027742749054225
+            },
+            {
+              "function": "set TextDecoder",
+              "file": "",
+              "percent": 4.388398486759143
             },
             {
               "function": "__name",
               "file": "shieldGeometry.ts",
-              "percent": 4.276985743380855
+              "percent": 4.237074401008827
+            },
+            {
+              "function": "updateShipNavigation",
+              "file": "shipNavigationSystem.ts",
+              "percent": 3.5561160151324085
             },
             {
               "function": "updateCycle",
               "file": "fighterMissionSystem.ts",
-              "percent": 3.5496072155949956
-            },
-            {
-              "function": "set TextDecoder",
-              "file": "",
-              "percent": 3.3168460867035203
+              "percent": 3.051702395964691
             },
             {
               "function": "acquireMountTarget",
               "file": "fireControl.ts",
-              "percent": 2.705848123363398
-            },
-            {
-              "function": "updateShipNavigation",
-              "file": "shipNavigationSystem.ts",
-              "percent": 2.5894675589176606
+              "percent": 2.900378310214376
             },
             {
               "function": "updateWings",
               "file": "fighterMissionSystem.ts",
-              "percent": 2.1821355833575793
+              "percent": 2.7238335435056746
             },
             {
               "function": "structuredClone",
               "file": "js_transferable",
-              "percent": 2.153040442246145
-            },
-            {
-              "function": "vecLengthSq",
-              "file": "math2d.ts",
-              "percent": 2.094850160023276
-            },
-            {
-              "function": "calculateSeparation",
-              "file": "flightBehaviors.ts",
-              "percent": 1.9493744544661042
+              "percent": 2.0933165195460277
             },
             {
               "function": "NavigationContext",
               "file": "navigationContext.ts",
-              "percent": 1.8911841722432354
+              "percent": 2.068095838587642
             },
             {
-              "function": "",
-              "file": "simulationPresentationMetadata.ts",
-              "percent": 1.8329938900203666
-            },
-            {
-              "function": "__name",
-              "file": "shieldGeometry.ts",
-              "percent": 1.6875181844631946
-            },
-            {
-              "function": "countTacticalDensity",
-              "file": "navigationContext.ts",
-              "percent": 1.6584230433517602
-            },
-            {
-              "function": "moveGuest",
-              "file": "shieldHaven.ts",
-              "percent": 1.6584230433517602
-            },
-            {
-              "function": "set TextDecoder",
-              "file": "",
-              "percent": 1.6002327611288916
-            },
-            {
-              "function": "updateFighterCycle",
-              "file": "simulation.ts",
-              "percent": 1.4256619144602851
-            },
-            {
-              "function": "debrisAvoidanceVelocity",
-              "file": "flightControl.ts",
-              "percent": 1.3965667733488507
-            },
-            {
-              "function": "structuredClone",
-              "file": "js_transferable",
-              "percent": 1.3674716322374163
-            },
-            {
-              "function": "updateShipNavigation",
-              "file": "shipNavigationSystem.ts",
-              "percent": 1.280186208903113
-            },
-            {
-              "function": "dogfightTarget",
-              "file": "flightControl.ts",
-              "percent": 1.2219959266802445
+              "function": "vecLengthSq",
+              "file": "math2d.ts",
+              "percent": 2.042875157629256
             },
             {
               "function": "calculateSeparation",
               "file": "flightBehaviors.ts",
-              "percent": 1.0765202211230724
+              "percent": 2.01765447667087
             },
             {
               "function": "selectNavigationTarget",
               "file": "shipNavigationSystem.ts",
-              "percent": 1.0765202211230724
+              "percent": 1.9672131147540983
             },
             {
               "function": "",
-              "file": "fighterMissionSystem.ts",
-              "percent": 1.047425080011638
+              "file": "simulationPresentationMetadata.ts",
+              "percent": 1.9419924337957124
+            },
+            {
+              "function": "set TextDecoder",
+              "file": "",
+              "percent": 1.664564943253468
+            },
+            {
+              "function": "updateFighterCycle",
+              "file": "simulation.ts",
+              "percent": 1.664564943253468
+            },
+            {
+              "function": "moveGuest",
+              "file": "shieldHaven.ts",
+              "percent": 1.614123581336696
+            },
+            {
+              "function": "__name",
+              "file": "shieldGeometry.ts",
+              "percent": 1.3871374527112232
+            },
+            {
+              "function": "countTacticalDensity",
+              "file": "navigationContext.ts",
+              "percent": 1.3619167717528373
+            },
+            {
+              "function": "structuredClone",
+              "file": "js_transferable",
+              "percent": 1.3366960907944514
+            },
+            {
+              "function": "updateShipNavigation",
+              "file": "shipNavigationSystem.ts",
+              "percent": 1.235813366960908
+            },
+            {
+              "function": "findNavigationTarget",
+              "file": "shipNavigationSystem.ts",
+              "percent": 1.1601513240857504
+            },
+            {
+              "function": "(garbage collector)",
+              "file": "",
+              "percent": 1.1349306431273645
+            },
+            {
+              "function": "dogfightTarget",
+              "file": "flightControl.ts",
+              "percent": 1.1097099621689785
+            },
+            {
+              "function": "calculateSeparation",
+              "file": "flightBehaviors.ts",
+              "percent": 1.0592686002522067
             }
           ],
           "subsystemInclusive": [
             {
               "name": "simulation.update",
-              "percent": 93.04626127436718
+              "percent": 92.66078184110971
             },
             {
               "name": "shipNavigationSystem.updateShipNavigation",
-              "percent": 55.97905149839977
+              "percent": 53.54350567465322
             },
             {
               "name": "fighterMissionSystem.updateCycle",
-              "percent": 39.04567937154495
+              "percent": 37.780580075662044
             },
             {
               "name": "flightBehaviors.calculateSeparation",
-              "percent": 18.679080593540878
+              "percent": 20.453972257250946
             },
             {
               "name": "fighterMissionSystem.updateWings",
-              "percent": 8.728542333430317
+              "percent": 9.079445145018916
             },
             {
               "name": "shipNavigationSystem.findNavigationTarget",
-              "percent": 7.273785277858598
+              "percent": 8.07061790668348
             },
             {
               "name": "fireControl.acquireMountTarget",
-              "percent": 5.266220541169624
-            },
-            {
-              "name": "flightControl.fighterDispersal",
-              "percent": 3.636892638929299
+              "percent": 5.422446406052964
             },
             {
               "name": "flightControl.dogfightTarget",
-              "percent": 3.1422752400349143
+              "percent": 3.480453972257251
             },
             {
               "name": "collisionContactSolver.resolveShipCollisions",
-              "percent": 2.1821355833575793
+              "percent": 2.1185372005044134
             },
             {
               "name": "navigationContext.prepareNavigationContext",
-              "percent": 1.716613325574629
+              "percent": 1.639344262295082
             },
             {
               "name": "shieldHaven.update",
-              "percent": 1.251091067791679
+              "percent": 1.3114754098360655
             },
             {
               "name": "flightBehaviors.OrdnanceAvoidanceBlock",
-              "percent": 0.9892347977887693
+              "percent": 1.185372005044136
             },
             {
               "name": "projectileEngine.updateProjectiles",
-              "percent": 0.6982833866744254
+              "percent": 0.7818411097099621
             },
             {
               "name": "shipWeaponSystem.updateTurretAim",
-              "percent": 0.4073319755600815
+              "percent": 0.32786885245901637
             },
             {
               "name": "flightControl.escortVelocity",
-              "percent": 0.32004655222577827
-            },
-            {
-              "name": "wasmHotLoops.collectCollisionPairsWasm",
-              "percent": 0.17457084666860634
+              "percent": 0.32786885245901637
             },
             {
               "name": "wasmHotLoops.findProjectileShipHitWasm",
-              "percent": 0.14547570555717196
+              "percent": 0.17654476670870115
+            },
+            {
+              "name": "wasmHotLoops.collectCollisionPairsWasm",
+              "percent": 0.15132408575031525
             },
             {
               "name": "fireControl.prepareFireControlContext",
-              "percent": 0.05819028222286878
+              "percent": 0.07566204287515763
             },
             {
-              "name": "shipWeaponSystem.fireWeapon",
-              "percent": 0.05819028222286878
+              "name": "harmonicShieldSystem.update",
+              "percent": 0.07566204287515763
             },
             {
-              "name": "shipWeaponSystem.applyDamage",
-              "percent": 0.02909514111143439
-            },
-            {
-              "name": "projectileEngine.detonateFlak",
-              "percent": 0.02909514111143439
+              "name": "arenaBoundary.arenaVelocity",
+              "percent": 0.025220680958385876
             },
             {
               "name": "fighterMissionSystem.ensureWings",
-              "percent": 0.02909514111143439
+              "percent": 0.025220680958385876
+            },
+            {
+              "name": "shipWeaponSystem.applyDamage",
+              "percent": 0.025220680958385876
             }
           ]
         },
@@ -303,560 +299,560 @@
         "trace": [
           {
             "tick": 61,
-            "ms": 63.768599999999424,
+            "ms": 65.52610000000004,
             "alive": 436,
             "projectiles": 177,
             "missiles": 0
           },
           {
             "tick": 62,
-            "ms": 67.14140000000043,
+            "ms": 64.59500000000025,
             "alive": 433,
             "projectiles": 174,
             "missiles": 0
           },
           {
             "tick": 63,
-            "ms": 69.02260000000024,
+            "ms": 68.01180000000022,
             "alive": 431,
             "projectiles": 171,
             "missiles": 0
           },
           {
             "tick": 64,
-            "ms": 74.5003999999999,
+            "ms": 65.0657999999994,
             "alive": 430,
             "projectiles": 168,
             "missiles": 0
           },
           {
             "tick": 65,
-            "ms": 68.88250000000062,
+            "ms": 66.21860000000015,
             "alive": 428,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 66,
-            "ms": 66.95169999999962,
+            "ms": 63.778699999999844,
             "alive": 425,
             "projectiles": 165,
             "missiles": 0
           },
           {
             "tick": 67,
-            "ms": 63.83150000000023,
+            "ms": 65.64350000000013,
             "alive": 424,
             "projectiles": 164,
             "missiles": 0
           },
           {
             "tick": 68,
-            "ms": 72.22879999999986,
+            "ms": 60.693099999999504,
             "alive": 423,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 69,
-            "ms": 76.6841000000004,
+            "ms": 72.97580000000016,
             "alive": 422,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 70,
-            "ms": 80.9349000000002,
+            "ms": 72.45809999999983,
             "alive": 420,
             "projectiles": 164,
             "missiles": 0
           },
           {
             "tick": 71,
-            "ms": 77.08380000000034,
+            "ms": 62.905399999999645,
             "alive": 418,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 72,
-            "ms": 62.02649999999994,
+            "ms": 59.585399999999936,
             "alive": 418,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 73,
-            "ms": 52.750600000000304,
+            "ms": 52.41809999999987,
             "alive": 418,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 74,
-            "ms": 57.35019999999986,
+            "ms": 58.70510000000013,
             "alive": 418,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 75,
-            "ms": 62.274500000000444,
+            "ms": 65.29029999999966,
             "alive": 417,
             "projectiles": 156,
             "missiles": 0
           },
           {
             "tick": 76,
-            "ms": 67.98950000000059,
+            "ms": 64.08079999999973,
             "alive": 417,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 77,
-            "ms": 56.84930000000077,
+            "ms": 58.49290000000019,
             "alive": 417,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 78,
-            "ms": 57.66579999999976,
+            "ms": 56.67569999999978,
             "alive": 415,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 79,
-            "ms": 61.074000000000524,
+            "ms": 86.38599999999951,
             "alive": 414,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 80,
-            "ms": 67.64379999999983,
+            "ms": 79.35910000000058,
             "alive": 412,
             "projectiles": 156,
             "missiles": 0
           },
           {
             "tick": 81,
-            "ms": 76.06630000000041,
+            "ms": 83.30370000000039,
             "alive": 412,
             "projectiles": 156,
             "missiles": 0
           },
           {
             "tick": 82,
-            "ms": 55.4413999999997,
+            "ms": 77.53579999999965,
             "alive": 412,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 83,
-            "ms": 50.28179999999975,
+            "ms": 68.1877000000004,
             "alive": 410,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 84,
-            "ms": 68.63180000000011,
+            "ms": 76.86719999999968,
             "alive": 410,
             "projectiles": 161,
             "missiles": 0
           },
           {
             "tick": 85,
-            "ms": 65.78679999999986,
+            "ms": 72.14570000000003,
             "alive": 408,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 86,
-            "ms": 59.26689999999962,
+            "ms": 73.08680000000004,
             "alive": 407,
             "projectiles": 159,
             "missiles": 0
           },
           {
             "tick": 87,
-            "ms": 57.52689999999984,
+            "ms": 70.52560000000085,
             "alive": 404,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 88,
-            "ms": 51.03570000000036,
+            "ms": 73.04370000000017,
             "alive": 404,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 89,
-            "ms": 55.28719999999976,
+            "ms": 69.03780000000006,
             "alive": 403,
             "projectiles": 159,
             "missiles": 0
           },
           {
             "tick": 90,
-            "ms": 58.347099999999955,
+            "ms": 70.04340000000047,
             "alive": 402,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 91,
-            "ms": 57.350000000000364,
+            "ms": 73.6845000000003,
             "alive": 402,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 92,
-            "ms": 59.83719999999994,
+            "ms": 65.08489999999983,
             "alive": 401,
             "projectiles": 147,
             "missiles": 0
           },
           {
             "tick": 93,
-            "ms": 60.20100000000002,
+            "ms": 72.88669999999911,
             "alive": 401,
             "projectiles": 148,
             "missiles": 0
           },
           {
             "tick": 94,
-            "ms": 58.294299999999566,
+            "ms": 72.32789999999932,
             "alive": 401,
             "projectiles": 154,
             "missiles": 0
           },
           {
             "tick": 95,
-            "ms": 59.80109999999968,
+            "ms": 65.71289999999954,
             "alive": 400,
             "projectiles": 153,
             "missiles": 0
           },
           {
             "tick": 96,
-            "ms": 59.60189999999966,
+            "ms": 78.46419999999944,
             "alive": 399,
             "projectiles": 155,
             "missiles": 0
           },
           {
             "tick": 97,
-            "ms": 55.229699999999866,
+            "ms": 68.01080000000002,
             "alive": 399,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 98,
-            "ms": 56.633200000000215,
+            "ms": 66.59189999999944,
             "alive": 398,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 99,
-            "ms": 61.427999999999884,
+            "ms": 75.03430000000026,
             "alive": 398,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 100,
-            "ms": 57.77689999999984,
+            "ms": 74.53849999999966,
             "alive": 397,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 101,
-            "ms": 58.07920000000013,
+            "ms": 73.98369999999977,
             "alive": 395,
             "projectiles": 161,
             "missiles": 0
           },
           {
             "tick": 102,
-            "ms": 61.4385999999995,
+            "ms": 77.83330000000024,
             "alive": 395,
             "projectiles": 161,
             "missiles": 0
           },
           {
             "tick": 103,
-            "ms": 64.20299999999952,
+            "ms": 79.52820000000065,
             "alive": 394,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 104,
-            "ms": 69.89960000000065,
+            "ms": 82.36670000000049,
             "alive": 393,
             "projectiles": 161,
             "missiles": 0
           },
           {
             "tick": 105,
-            "ms": 65.75370000000112,
+            "ms": 73.24519999999939,
             "alive": 393,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 106,
-            "ms": 56.75640000000021,
+            "ms": 65.88110000000052,
             "alive": 393,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 107,
-            "ms": 52.659999999999854,
+            "ms": 66.08899999999994,
             "alive": 393,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 108,
-            "ms": 56.22830000000067,
+            "ms": 69.69470000000001,
             "alive": 392,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 109,
-            "ms": 65.0576000000001,
+            "ms": 82.15239999999903,
             "alive": 392,
             "projectiles": 170,
             "missiles": 0
           },
           {
             "tick": 110,
-            "ms": 59.57790000000023,
+            "ms": 77.64170000000013,
             "alive": 391,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 111,
-            "ms": 65.89949999999953,
+            "ms": 85.14300000000003,
             "alive": 391,
             "projectiles": 168,
             "missiles": 0
           },
           {
             "tick": 112,
-            "ms": 57.277500000000146,
+            "ms": 72.92330000000038,
             "alive": 389,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 113,
-            "ms": 61.24439999999959,
+            "ms": 79.85909999999967,
             "alive": 389,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 114,
-            "ms": 59.13620000000083,
+            "ms": 78.65949999999975,
             "alive": 389,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 115,
-            "ms": 56.65140000000065,
+            "ms": 73.54650000000038,
             "alive": 389,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 116,
-            "ms": 58.074100000001636,
+            "ms": 75.30949999999939,
             "alive": 388,
             "projectiles": 171,
             "missiles": 0
           },
           {
             "tick": 117,
-            "ms": 64.23339999999916,
+            "ms": 75.17400000000089,
             "alive": 388,
             "projectiles": 174,
             "missiles": 0
           },
           {
             "tick": 118,
-            "ms": 64.6911,
+            "ms": 73.20529999999962,
             "alive": 388,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 119,
-            "ms": 60.75929999999971,
+            "ms": 69.78340000000026,
             "alive": 388,
             "projectiles": 165,
             "missiles": 0
           },
           {
             "tick": 120,
-            "ms": 62.104699999999866,
+            "ms": 73.45139999999992,
             "alive": 387,
             "projectiles": 163,
             "missiles": 0
           },
           {
             "tick": 121,
-            "ms": 57.60370000000148,
+            "ms": 76.26119999999901,
             "alive": 385,
             "projectiles": 159,
             "missiles": 0
           },
           {
             "tick": 122,
-            "ms": 55.765699999999924,
+            "ms": 76.22999999999956,
             "alive": 384,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 123,
-            "ms": 71.48660000000018,
+            "ms": 87.69729999999981,
             "alive": 384,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 124,
-            "ms": 70.1283999999996,
+            "ms": 82.1223000000009,
             "alive": 384,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 125,
-            "ms": 61.34870000000046,
+            "ms": 68.72329999999965,
             "alive": 383,
             "projectiles": 165,
             "missiles": 0
           },
           {
             "tick": 126,
-            "ms": 56.87510000000111,
+            "ms": 81.29980000000069,
             "alive": 383,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 127,
-            "ms": 68.64589999999953,
+            "ms": 80.79780000000028,
             "alive": 383,
             "projectiles": 168,
             "missiles": 0
           },
           {
             "tick": 128,
-            "ms": 53.38090000000011,
+            "ms": 71.3135999999995,
             "alive": 382,
             "projectiles": 170,
             "missiles": 0
           },
           {
             "tick": 129,
-            "ms": 57.79060000000027,
+            "ms": 77.66829999999936,
             "alive": 382,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 130,
-            "ms": 55.96109999999862,
+            "ms": 61.80240000000049,
             "alive": 381,
             "projectiles": 163,
             "missiles": 0
           },
           {
             "tick": 131,
-            "ms": 56.219600000000355,
+            "ms": 60.217899999999645,
             "alive": 379,
             "projectiles": 163,
             "missiles": 0
           },
           {
             "tick": 132,
-            "ms": 53.702800000000934,
+            "ms": 59.96309999999903,
             "alive": 379,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 133,
-            "ms": 53.03330000000096,
+            "ms": 55.79919999999947,
             "alive": 378,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 134,
-            "ms": 55.99909999999909,
+            "ms": 62.18799999999828,
             "alive": 376,
             "projectiles": 154,
             "missiles": 0
           },
           {
             "tick": 135,
-            "ms": 58.29809999999998,
+            "ms": 62.47869999999966,
             "alive": 376,
             "projectiles": 156,
             "missiles": 0
           },
           {
             "tick": 136,
-            "ms": 51.44909999999982,
+            "ms": 63.15469999999914,
             "alive": 376,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 137,
-            "ms": 50.312700000000405,
+            "ms": 55.25119999999879,
             "alive": 374,
             "projectiles": 152,
             "missiles": 0
           },
           {
             "tick": 138,
-            "ms": 55.87779999999839,
+            "ms": 57.47849999999926,
             "alive": 373,
             "projectiles": 152,
             "missiles": 0
           },
           {
             "tick": 139,
-            "ms": 59.33419999999933,
+            "ms": 60.535399999998845,
             "alive": 373,
             "projectiles": 149,
             "missiles": 0
           },
           {
             "tick": 140,
-            "ms": 54.1882999999998,
+            "ms": 57.68549999999959,
             "alive": 372,
             "projectiles": 148,
             "missiles": 0
@@ -866,21 +862,21 @@
       },
       "transpilationControl": {
         "simulation": {
-          "meanMs": 48.98560374999995,
-          "p50Ms": 45.48710000000028,
-          "p95Ms": 71.21659999999974,
-          "maxMs": 78.15140000000247,
-          "rtf": 0.34023601611048193
+          "meanMs": 45.72069999999999,
+          "p50Ms": 42.231400000000576,
+          "p95Ms": 65.32860000000073,
+          "maxMs": 69.71379999999772,
+          "rtf": 0.36453218491113815
         },
         "stateHash": "0b8cea8b8ecf79dfcfe90afc1084da605e11c1228a4ef371b820df3f722bb771"
       },
       "profile": {
         "simulation": {
-          "meanMs": 51.10674499999982,
-          "p50Ms": 48.064800000000105,
-          "p95Ms": 67.57300000000032,
-          "maxMs": 72.48040000000037,
-          "rtf": 0.3261148145252985
+          "meanMs": 40.53462624999988,
+          "p50Ms": 39.847600000000966,
+          "p95Ms": 48.00799999999799,
+          "maxMs": 57.01759999999922,
+          "rtf": 0.4111710951489707
         },
         "stateHash": "0b8cea8b8ecf79dfcfe90afc1084da605e11c1228a4ef371b820df3f722bb771",
         "initialEnvelopeOverlaps": 18,
@@ -890,560 +886,560 @@
         "trace": [
           {
             "tick": 61,
-            "ms": 61.719199999999546,
+            "ms": 41.170099999999366,
             "alive": 436,
             "projectiles": 177,
             "missiles": 0
           },
           {
             "tick": 62,
-            "ms": 53.25249999999869,
+            "ms": 40.62720000000263,
             "alive": 433,
             "projectiles": 174,
             "missiles": 0
           },
           {
             "tick": 63,
-            "ms": 58.21650000000227,
+            "ms": 47.18919999999707,
             "alive": 431,
             "projectiles": 171,
             "missiles": 0
           },
           {
             "tick": 64,
-            "ms": 60.54819999999745,
+            "ms": 48.00799999999799,
             "alive": 430,
             "projectiles": 168,
             "missiles": 0
           },
           {
             "tick": 65,
-            "ms": 64.93960000000152,
+            "ms": 47.3781999999992,
             "alive": 428,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 66,
-            "ms": 63.28139999999985,
+            "ms": 48.57430000000022,
             "alive": 425,
             "projectiles": 165,
             "missiles": 0
           },
           {
             "tick": 67,
-            "ms": 56.210399999999936,
+            "ms": 42.29000000000087,
             "alive": 424,
             "projectiles": 164,
             "missiles": 0
           },
           {
             "tick": 68,
-            "ms": 59.673900000001595,
+            "ms": 43.449899999999616,
             "alive": 423,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 69,
-            "ms": 64.66489999999976,
+            "ms": 47.42380000000048,
             "alive": 422,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 70,
-            "ms": 67.57300000000032,
+            "ms": 47.110100000001694,
             "alive": 420,
             "projectiles": 164,
             "missiles": 0
           },
           {
             "tick": 71,
-            "ms": 67.39140000000043,
+            "ms": 47.04109999999855,
             "alive": 418,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 72,
-            "ms": 59.90260000000126,
+            "ms": 41.66070000000036,
             "alive": 418,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 73,
-            "ms": 43.285799999997835,
+            "ms": 33.707900000001246,
             "alive": 418,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 74,
-            "ms": 45.229599999998754,
+            "ms": 36.58929999999964,
             "alive": 418,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 75,
-            "ms": 54.701099999998405,
+            "ms": 41.85529999999926,
             "alive": 417,
             "projectiles": 156,
             "missiles": 0
           },
           {
             "tick": 76,
-            "ms": 56.322000000000116,
+            "ms": 41.58299999999872,
             "alive": 417,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 77,
-            "ms": 45.656699999999546,
+            "ms": 38.775699999998324,
             "alive": 417,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 78,
-            "ms": 44.30130000000281,
+            "ms": 38.084499999997206,
             "alive": 415,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 79,
-            "ms": 53.39050000000134,
+            "ms": 56.40009999999893,
             "alive": 414,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 80,
-            "ms": 69.19120000000112,
+            "ms": 57.01759999999922,
             "alive": 412,
             "projectiles": 156,
             "missiles": 0
           },
           {
             "tick": 81,
-            "ms": 72.48040000000037,
+            "ms": 46.45089999999982,
             "alive": 412,
             "projectiles": 156,
             "missiles": 0
           },
           {
             "tick": 82,
-            "ms": 45.576600000000326,
+            "ms": 38.321499999998196,
             "alive": 412,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 83,
-            "ms": 39.60619999999835,
+            "ms": 34.03429999999935,
             "alive": 410,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 84,
-            "ms": 50.406699999999546,
+            "ms": 42.20190000000002,
             "alive": 410,
             "projectiles": 161,
             "missiles": 0
           },
           {
             "tick": 85,
-            "ms": 41.6394999999975,
+            "ms": 35.52799999999843,
             "alive": 408,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 86,
-            "ms": 46.50119999999879,
+            "ms": 40.225500000000466,
             "alive": 407,
             "projectiles": 159,
             "missiles": 0
           },
           {
             "tick": 87,
-            "ms": 45.77639999999883,
+            "ms": 39.10870000000068,
             "alive": 404,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 88,
-            "ms": 43.11699999999837,
+            "ms": 37.14649999999892,
             "alive": 404,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 89,
-            "ms": 43.771600000000035,
+            "ms": 37.64389999999912,
             "alive": 403,
             "projectiles": 159,
             "missiles": 0
           },
           {
             "tick": 90,
-            "ms": 48.62420000000202,
+            "ms": 41.49300000000221,
             "alive": 402,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 91,
-            "ms": 50.94970000000103,
+            "ms": 40.087100000000646,
             "alive": 402,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 92,
-            "ms": 47.63060000000041,
+            "ms": 38.584600000001956,
             "alive": 401,
             "projectiles": 147,
             "missiles": 0
           },
           {
             "tick": 93,
-            "ms": 54.398300000000745,
+            "ms": 41.397399999998015,
             "alive": 401,
             "projectiles": 148,
             "missiles": 0
           },
           {
             "tick": 94,
-            "ms": 57.64150000000154,
+            "ms": 38.94000000000233,
             "alive": 401,
             "projectiles": 154,
             "missiles": 0
           },
           {
             "tick": 95,
-            "ms": 42.31030000000101,
+            "ms": 36.84449999999924,
             "alive": 400,
             "projectiles": 153,
             "missiles": 0
           },
           {
             "tick": 96,
-            "ms": 46.76540000000023,
+            "ms": 40.46570000000065,
             "alive": 399,
             "projectiles": 155,
             "missiles": 0
           },
           {
             "tick": 97,
-            "ms": 43.74150000000009,
+            "ms": 38.25500000000102,
             "alive": 399,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 98,
-            "ms": 43.54119999999966,
+            "ms": 35.00249999999869,
             "alive": 398,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 99,
-            "ms": 47.79409999999916,
+            "ms": 39.847600000000966,
             "alive": 398,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 100,
-            "ms": 43.67410000000018,
+            "ms": 36.46700000000055,
             "alive": 397,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 101,
-            "ms": 46.11869999999908,
+            "ms": 39.51610000000073,
             "alive": 395,
             "projectiles": 161,
             "missiles": 0
           },
           {
             "tick": 102,
-            "ms": 46.19159999999829,
+            "ms": 40.500199999998586,
             "alive": 395,
             "projectiles": 161,
             "missiles": 0
           },
           {
             "tick": 103,
-            "ms": 50.04149999999936,
+            "ms": 39.578199999999924,
             "alive": 394,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 104,
-            "ms": 59.859999999996944,
+            "ms": 44.20210000000225,
             "alive": 393,
             "projectiles": 161,
             "missiles": 0
           },
           {
             "tick": 105,
-            "ms": 70.23619999999937,
+            "ms": 41.025699999998324,
             "alive": 393,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 106,
-            "ms": 42.568299999999,
+            "ms": 35.818499999997584,
             "alive": 393,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 107,
-            "ms": 41.78719999999885,
+            "ms": 34.719099999998434,
             "alive": 393,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 108,
-            "ms": 41.84730000000127,
+            "ms": 35.79279999999926,
             "alive": 392,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 109,
-            "ms": 51.53979999999865,
+            "ms": 43.049300000002404,
             "alive": 392,
             "projectiles": 170,
             "missiles": 0
           },
           {
             "tick": 110,
-            "ms": 48.482499999998254,
+            "ms": 38.03160000000207,
             "alive": 391,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 111,
-            "ms": 53.51220000000103,
+            "ms": 43.39289999999892,
             "alive": 391,
             "projectiles": 168,
             "missiles": 0
           },
           {
             "tick": 112,
-            "ms": 43.60610000000088,
+            "ms": 36.65320000000065,
             "alive": 389,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 113,
-            "ms": 57.419200000000274,
+            "ms": 38.77600000000166,
             "alive": 389,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 114,
-            "ms": 46.8582000000024,
+            "ms": 38.58209999999963,
             "alive": 389,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 115,
-            "ms": 45.96819999999934,
+            "ms": 37.488100000002305,
             "alive": 389,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 116,
-            "ms": 45.51729999999952,
+            "ms": 36.46359999999913,
             "alive": 388,
             "projectiles": 171,
             "missiles": 0
           },
           {
             "tick": 117,
-            "ms": 48.15360000000146,
+            "ms": 39.25040000000081,
             "alive": 388,
             "projectiles": 174,
             "missiles": 0
           },
           {
             "tick": 118,
-            "ms": 45.66240000000107,
+            "ms": 36.683099999998376,
             "alive": 388,
             "projectiles": 169,
             "missiles": 0
           },
           {
             "tick": 119,
-            "ms": 45.026600000001054,
+            "ms": 35.846700000001874,
             "alive": 388,
             "projectiles": 165,
             "missiles": 0
           },
           {
             "tick": 120,
-            "ms": 47.24829999999929,
+            "ms": 38.42069999999876,
             "alive": 387,
             "projectiles": 163,
             "missiles": 0
           },
           {
             "tick": 121,
-            "ms": 48.34009999999762,
+            "ms": 40.35219999999754,
             "alive": 385,
             "projectiles": 159,
             "missiles": 0
           },
           {
             "tick": 122,
-            "ms": 47.72940000000017,
+            "ms": 39.57430000000022,
             "alive": 384,
             "projectiles": 158,
             "missiles": 0
           },
           {
             "tick": 123,
-            "ms": 61.549199999997654,
+            "ms": 52.02520000000004,
             "alive": 384,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 124,
-            "ms": 67.65819999999803,
+            "ms": 40.6163000000015,
             "alive": 384,
             "projectiles": 166,
             "missiles": 0
           },
           {
             "tick": 125,
-            "ms": 45.415899999999965,
+            "ms": 37.36269999999786,
             "alive": 383,
             "projectiles": 165,
             "missiles": 0
           },
           {
             "tick": 126,
-            "ms": 47.78020000000106,
+            "ms": 40.92410000000018,
             "alive": 383,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 127,
-            "ms": 66.42250000000058,
+            "ms": 39.47370000000228,
             "alive": 383,
             "projectiles": 168,
             "missiles": 0
           },
           {
             "tick": 128,
-            "ms": 45.87209999999686,
+            "ms": 38.02499999999782,
             "alive": 382,
             "projectiles": 170,
             "missiles": 0
           },
           {
             "tick": 129,
-            "ms": 48.43180000000211,
+            "ms": 40.68729999999778,
             "alive": 382,
             "projectiles": 167,
             "missiles": 0
           },
           {
             "tick": 130,
-            "ms": 46.71450000000186,
+            "ms": 44.09900000000198,
             "alive": 381,
             "projectiles": 163,
             "missiles": 0
           },
           {
             "tick": 131,
-            "ms": 48.934799999999086,
+            "ms": 40.01039999999921,
             "alive": 379,
             "projectiles": 163,
             "missiles": 0
           },
           {
             "tick": 132,
-            "ms": 46.058499999999185,
+            "ms": 38.58270000000266,
             "alive": 379,
             "projectiles": 162,
             "missiles": 0
           },
           {
             "tick": 133,
-            "ms": 42.9445999999989,
+            "ms": 35.065300000002026,
             "alive": 378,
             "projectiles": 160,
             "missiles": 0
           },
           {
             "tick": 134,
-            "ms": 48.49879999999757,
+            "ms": 40.431700000001,
             "alive": 376,
             "projectiles": 154,
             "missiles": 0
           },
           {
             "tick": 135,
-            "ms": 49.78139999999985,
+            "ms": 42.05779999999868,
             "alive": 376,
             "projectiles": 156,
             "missiles": 0
           },
           {
             "tick": 136,
-            "ms": 48.064800000000105,
+            "ms": 42.48729999999705,
             "alive": 376,
             "projectiles": 157,
             "missiles": 0
           },
           {
             "tick": 137,
-            "ms": 54.34100000000035,
+            "ms": 34.65869999999995,
             "alive": 374,
             "projectiles": 152,
             "missiles": 0
           },
           {
             "tick": 138,
-            "ms": 47.367200000000594,
+            "ms": 40.07459999999992,
             "alive": 373,
             "projectiles": 152,
             "missiles": 0
           },
           {
             "tick": 139,
-            "ms": 50.77919999999722,
+            "ms": 40.79699999999866,
             "alive": 373,
             "projectiles": 149,
             "missiles": 0
           },
           {
             "tick": 140,
-            "ms": 42.811900000000605,
+            "ms": 37.692800000000716,
             "alive": 372,
             "projectiles": 148,
             "missiles": 0
@@ -1453,158 +1449,152 @@
           {
             "name": "fighterMissionSystem.updateCycle",
             "callsPerTick": 382.65,
-            "inclusiveMsPerTick": 19.620982499998764,
-            "selfMsPerTick": 12.82937125000044
+            "inclusiveMsPerTick": 14.910935000002064,
+            "selfMsPerTick": 11.38291375000099
           },
           {
             "name": "shipNavigationSystem.updateShipNavigation",
             "callsPerTick": 399.65,
-            "inclusiveMsPerTick": 29.411742500000493,
-            "selfMsPerTick": 8.592728750004971
+            "inclusiveMsPerTick": 21.487888749995953,
+            "selfMsPerTick": 5.501842499988788
           },
           {
             "name": "shipNavigationSystem.findNavigationTarget",
             "callsPerTick": 411.0125,
-            "inclusiveMsPerTick": 5.333333750002384,
-            "selfMsPerTick": 5.333333750002384
-          },
-          {
-            "name": "fireControl.acquireMountTarget",
-            "callsPerTick": 416.65,
-            "inclusiveMsPerTick": 3.649616250003646,
-            "selfMsPerTick": 3.649616250003646
-          },
-          {
-            "name": "navigationContext.prepareNavigationContext",
-            "callsPerTick": 1,
-            "inclusiveMsPerTick": 3.628449999999975,
-            "selfMsPerTick": 3.628449999999975
+            "inclusiveMsPerTick": 4.724397500008763,
+            "selfMsPerTick": 4.724397500008763
           },
           {
             "name": "flightBehaviors.calculateSeparation",
             "callsPerTick": 89.525,
-            "inclusiveMsPerTick": 3.4913787499996487,
-            "selfMsPerTick": 3.4913787499996487
+            "inclusiveMsPerTick": 3.307457500001283,
+            "selfMsPerTick": 3.307457500001283
           },
           {
-            "name": "flightControl.fighterDispersal",
-            "callsPerTick": 72.525,
-            "inclusiveMsPerTick": 3.0387687499994174,
-            "selfMsPerTick": 3.0387687499994174
+            "name": "fireControl.acquireMountTarget",
+            "callsPerTick": 416.65,
+            "inclusiveMsPerTick": 3.2488249999979417,
+            "selfMsPerTick": 3.2488249999979417
+          },
+          {
+            "name": "navigationContext.prepareNavigationContext",
+            "callsPerTick": 1,
+            "inclusiveMsPerTick": 3.226172499999893,
+            "selfMsPerTick": 3.226172499999893
           },
           {
             "name": "flightControl.dogfightTarget",
             "callsPerTick": 58.3875,
-            "inclusiveMsPerTick": 2.826336249998576,
-            "selfMsPerTick": 2.826336249998576
+            "inclusiveMsPerTick": 2.405522500001234,
+            "selfMsPerTick": 2.405522500001234
           },
           {
             "name": "fighterMissionSystem.updateWings",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 5.876356249999935,
-            "selfMsPerTick": 2.3566275000019687
+            "inclusiveMsPerTick": 5.104318749999948,
+            "selfMsPerTick": 2.092116249998662
           },
           {
             "name": "simulation.update",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 51.10446374999956,
-            "selfMsPerTick": 1.3003649999940534
+            "inclusiveMsPerTick": 40.53274874999988,
+            "selfMsPerTick": 1.1165062499961096
           },
           {
             "name": "flightBehaviors.OrdnanceAvoidanceBlock",
             "callsPerTick": 89.525,
-            "inclusiveMsPerTick": 1.0878737499996531,
-            "selfMsPerTick": 1.0878737499996531
+            "inclusiveMsPerTick": 0.9803775000004407,
+            "selfMsPerTick": 0.9803775000004407
           },
           {
             "name": "collisionContactSolver.resolveShipCollisions",
             "callsPerTick": 2,
-            "inclusiveMsPerTick": 0.9919912500001373,
-            "selfMsPerTick": 0.7933150000031219
+            "inclusiveMsPerTick": 0.8405225000001793,
+            "selfMsPerTick": 0.6659975000039594
           },
           {
             "name": "shieldHaven.update",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.7699262499998895,
-            "selfMsPerTick": 0.7699262499998895
+            "inclusiveMsPerTick": 0.6477125000000342,
+            "selfMsPerTick": 0.6477125000000342
           },
           {
             "name": "flightControl.escortVelocity",
             "callsPerTick": 17,
-            "inclusiveMsPerTick": 0.3325424999987717,
-            "selfMsPerTick": 0.3325424999987717
+            "inclusiveMsPerTick": 0.28255250000052,
+            "selfMsPerTick": 0.28255250000052
           },
           {
             "name": "projectileEngine.updateProjectiles",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.43631875000005493,
-            "selfMsPerTick": 0.24961624999809828
+            "inclusiveMsPerTick": 0.389253749999898,
+            "selfMsPerTick": 0.23269500000214977
           },
           {
             "name": "shipWeaponSystem.updateTurretAim",
             "callsPerTick": 416.65,
-            "inclusiveMsPerTick": 0.2314849999989292,
-            "selfMsPerTick": 0.2314849999989292
+            "inclusiveMsPerTick": 0.19925250000046618,
+            "selfMsPerTick": 0.19925250000046618
           },
           {
             "name": "wasmHotLoops.collectCollisionPairsWasm",
             "callsPerTick": 799.3,
-            "inclusiveMsPerTick": 0.19867624999701547,
-            "selfMsPerTick": 0.19867624999701547
+            "inclusiveMsPerTick": 0.1745249999962198,
+            "selfMsPerTick": 0.1745249999962198
           },
           {
             "name": "wasmHotLoops.findProjectileShipHitWasm",
             "callsPerTick": 164.8375,
-            "inclusiveMsPerTick": 0.14416250000208491,
-            "selfMsPerTick": 0.14416250000208491
+            "inclusiveMsPerTick": 0.12073124999792526,
+            "selfMsPerTick": 0.12073124999792526
           },
           {
             "name": "fireControl.prepareFireControlContext",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.06814249999956701,
-            "selfMsPerTick": 0.06814249999956701
+            "inclusiveMsPerTick": 0.068492500000184,
+            "selfMsPerTick": 0.068492500000184
           },
           {
             "name": "arenaBoundary.arenaVelocity",
             "callsPerTick": 399.65,
-            "inclusiveMsPerTick": 0.039078749997588605,
-            "selfMsPerTick": 0.039078749997588605
-          },
-          {
-            "name": "fighterMissionSystem.ensureWings",
-            "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.0375324999998611,
-            "selfMsPerTick": 0.0375324999998611
+            "inclusiveMsPerTick": 0.032745000003933454,
+            "selfMsPerTick": 0.032745000003933454
           },
           {
             "name": "harmonicShieldSystem.update",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.036647499999799035,
-            "selfMsPerTick": 0.036647499999799035
+            "inclusiveMsPerTick": 0.031880000000046496,
+            "selfMsPerTick": 0.031880000000046496
+          },
+          {
+            "name": "fighterMissionSystem.ensureWings",
+            "callsPerTick": 1,
+            "inclusiveMsPerTick": 0.031231250000155343,
+            "selfMsPerTick": 0.031231250000155343
           },
           {
             "name": "shipWeaponSystem.applyDamage",
             "callsPerTick": 2.8125,
-            "inclusiveMsPerTick": 0.029541249999965657,
-            "selfMsPerTick": 0.029541249999965657
+            "inclusiveMsPerTick": 0.02516500000015185,
+            "selfMsPerTick": 0.02516500000015185
           },
           {
             "name": "shipWeaponSystem.fireWeapon",
             "callsPerTick": 2.4875,
-            "inclusiveMsPerTick": 0.017296250000163126,
-            "selfMsPerTick": 0.017296250000163126
+            "inclusiveMsPerTick": 0.015163750000237997,
+            "selfMsPerTick": 0.015163750000237997
           },
           {
             "name": "projectileEngine.detonateFlak",
             "callsPerTick": 0.575,
-            "inclusiveMsPerTick": 0.015177500000072541,
-            "selfMsPerTick": 0.012998749999906068
+            "inclusiveMsPerTick": 0.01251999999981308,
+            "selfMsPerTick": 0.010662499999671126
           },
           {
             "name": "collisionContactSolver.resolveCruiserClearance",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.00865250000006199,
-            "selfMsPerTick": 0.00865250000006199
+            "inclusiveMsPerTick": 0.0078112500001225275,
+            "selfMsPerTick": 0.0078112500001225275
           }
         ]
       },
@@ -1640,248 +1630,252 @@
       },
       "baseline": {
         "simulation": {
-          "meanMs": 35.270872499999996,
-          "p50Ms": 35.322000000000116,
-          "p95Ms": 38.63880000000063,
-          "maxMs": 44.740499999999884,
-          "rtf": 0.4725334386515862
+          "meanMs": 23.119460000000164,
+          "p50Ms": 23.078699999998207,
+          "p95Ms": 24.61250000000291,
+          "maxMs": 28.249299999999494,
+          "rtf": 0.7208934234046361
         },
         "worker": {
           "binaryPack": {
-            "meanMs": 0.07609749999996893,
-            "p50Ms": 0.06940000000031432,
-            "p95Ms": 0.11750000000029104,
-            "maxMs": 0.2941999999966356,
-            "rtf": 219.01726951179046
+            "meanMs": 0.07348249999972722,
+            "p50Ms": 0.06730000000243308,
+            "p95Ms": 0.10350000000107684,
+            "maxMs": 0.1879000000008091,
+            "rtf": 226.8113723230502
           },
           "presentationPack": {
-            "meanMs": 1.1365650000001097,
-            "p50Ms": 1.0480999999999767,
-            "p95Ms": 1.531699999999546,
-            "maxMs": 1.7079000000012456,
-            "rtf": 14.664068193781313
+            "meanMs": 1.137652499999922,
+            "p50Ms": 1.1145999999971536,
+            "p95Ms": 1.3637000000016997,
+            "maxMs": 1.7151000000012573,
+            "rtf": 14.65005057930063
           },
           "sidecarCloneProxy": {
-            "meanMs": 1.014984999999888,
-            "p50Ms": 0.9684999999990396,
-            "p95Ms": 1.4059000000015658,
-            "maxMs": 1.622799999997369,
-            "rtf": 16.420603916972674
+            "meanMs": 1.023371250000173,
+            "p50Ms": 1.0138000000006286,
+            "p95Ms": 1.223999999998341,
+            "maxMs": 1.3077999999986787,
+            "rtf": 16.286041518817193
           },
           "combined": {
-            "meanMs": 37.498519999999964,
-            "p50Ms": 37.47530000000188,
-            "p95Ms": 40.63790000000154,
-            "maxMs": 47.06670000000304,
-            "rtf": 0.44446198587748753
+            "meanMs": 25.353966249999985,
+            "p50Ms": 25.248499999997875,
+            "p95Ms": 26.776499999999942,
+            "maxMs": 30.80609999999797,
+            "rtf": 0.657359345765741
           },
           "bufferBytes": 589888
         },
         "nativeSampling": {
-          "samples": 1961,
+          "samples": 1326,
           "topSelf": [
-            {
-              "function": "set dirname",
-              "file": "",
-              "percent": 7.700152983171851
-            },
-            {
-              "function": "__name",
-              "file": "shieldGeometry.ts",
-              "percent": 7.292197858235594
-            },
-            {
-              "function": "__name",
-              "file": "shieldGeometry.ts",
-              "percent": 6.3742988271290155
-            },
-            {
-              "function": "set dirname",
-              "file": "",
-              "percent": 6.22131565527792
-            },
             {
               "function": "selectNavigationTarget",
               "file": "shipNavigationSystem.ts",
-              "percent": 5.099439061703213
+              "percent": 7.541478129713424
             },
             {
               "function": "tick",
               "file": "simulation.ts",
-              "percent": 4.283528811830698
-            },
-            {
-              "function": "capitalIntent",
-              "file": "flightControl.ts",
-              "percent": 4.028556858745538
-            },
-            {
-              "function": "__name",
-              "file": "shipNavigationSystem.ts",
-              "percent": 3.4166241713411525
+              "percent": 6.259426847662142
             },
             {
               "function": "acquireMountTarget",
               "file": "fireControl.ts",
-              "percent": 3.212646608873024
+              "percent": 5.203619909502263
             },
             {
-              "function": "calculateSeparation",
-              "file": "flightBehaviors.ts",
-              "percent": 3.11065782763896
-            },
-            {
-              "function": "capitalIntent",
-              "file": "flightControl.ts",
-              "percent": 3.0086690464048953
-            },
-            {
-              "function": "calculateSeparation",
-              "file": "flightBehaviors.ts",
-              "percent": 2.6007139214686386
+              "function": "set filename",
+              "file": "",
+              "percent": 4.524886877828054
             },
             {
               "function": "structuredClone",
               "file": "js_transferable",
-              "percent": 2.3457419683834777
+              "percent": 4.223227752639517
             },
             {
               "function": "__name",
               "file": "shipNavigationSystem.ts",
-              "percent": 2.2437531871494136
+              "percent": 3.770739064856712
+            },
+            {
+              "function": "__name",
+              "file": "shipNavigationSystem.ts",
+              "percent": 3.092006033182504
             },
             {
               "function": "findNavigationTarget",
               "file": "shipNavigationSystem.ts",
-              "percent": 2.0907700152983173
+              "percent": 3.0165912518853695
             },
             {
-              "function": "set dirname",
+              "function": "set filename",
               "file": "",
-              "percent": 2.0907700152983173
-            },
-            {
-              "function": "set dirname",
-              "file": "",
-              "percent": 2.039775624681285
-            },
-            {
-              "function": "updateShipNavigation",
-              "file": "shipNavigationSystem.ts",
-              "percent": 1.6828148903620601
-            },
-            {
-              "function": "pack",
-              "file": "simulationPresentationMetadata.ts",
-              "percent": 1.6828148903620601
+              "percent": 2.865761689291101
             },
             {
               "function": "__name",
               "file": "fireControl.ts",
-              "percent": 1.4278429372768995
-            },
-            {
-              "function": "set dirname",
-              "file": "",
-              "percent": 1.4278429372768995
-            },
-            {
-              "function": "",
-              "file": "simulationPresentationMetadata.ts",
-              "percent": 1.3258541560428352
+              "percent": 2.7903469079939667
             },
             {
               "function": "updateShipNavigation",
               "file": "shipNavigationSystem.ts",
-              "percent": 1.3258541560428352
+              "percent": 2.6395173453996983
             },
             {
-              "function": "navigationCandidate",
+              "function": "set filename",
+              "file": "",
+              "percent": 2.48868778280543
+            },
+            {
+              "function": "damagedTargetPriority",
+              "file": "fireControl.ts",
+              "percent": 2.3378582202111615
+            },
+            {
+              "function": "pack",
+              "file": "simulationPresentationMetadata.ts",
+              "percent": 2.262443438914027
+            },
+            {
+              "function": "updateShipNavigation",
               "file": "shipNavigationSystem.ts",
-              "percent": 1.2238653748087711
+              "percent": 2.0361990950226243
             },
             {
-              "function": "resolveShipCollisions",
-              "file": "collisionContactSolver.ts",
-              "percent": 0.8669046404895462
+              "function": "capitalIntent",
+              "file": "flightControl.ts",
+              "percent": 1.885369532428356
+            },
+            {
+              "function": "set filename",
+              "file": "",
+              "percent": 1.8099547511312217
+            },
+            {
+              "function": "__name",
+              "file": "shieldGeometry.ts",
+              "percent": 1.583710407239819
+            },
+            {
+              "function": "calculateSeparation",
+              "file": "flightBehaviors.ts",
+              "percent": 1.5082956259426847
+            },
+            {
+              "function": "set filename",
+              "file": "",
+              "percent": 1.3574660633484164
+            },
+            {
+              "function": "(garbage collector)",
+              "file": "",
+              "percent": 1.3574660633484164
+            },
+            {
+              "function": "__name",
+              "file": "shieldGeometry.ts",
+              "percent": 1.2820512820512822
+            },
+            {
+              "function": "",
+              "file": "simulationPresentationMetadata.ts",
+              "percent": 1.1312217194570136
+            },
+            {
+              "function": "capitalIntent",
+              "file": "flightControl.ts",
+              "percent": 1.1312217194570136
+            },
+            {
+              "function": "defensiveStandoff",
+              "file": "flightControl.ts",
+              "percent": 1.0558069381598794
             }
           ],
           "subsystemInclusive": [
             {
               "name": "simulation.update",
-              "percent": 92.96277409484956
+              "percent": 89.51734539969834
             },
             {
               "name": "shipNavigationSystem.updateShipNavigation",
-              "percent": 62.41713411524732
+              "percent": 44.64555052790347
             },
             {
               "name": "flightControl.capitalIntent",
-              "percent": 42.937276899541054
-            },
-            {
-              "name": "flightBehaviors.calculateSeparation",
-              "percent": 34.31922488526262
+              "percent": 16.817496229260936
             },
             {
               "name": "shipNavigationSystem.findNavigationTarget",
-              "percent": 10.04589495155533
+              "percent": 14.856711915535445
             },
             {
               "name": "fireControl.acquireMountTarget",
-              "percent": 6.884242733299337
+              "percent": 12.066365007541478
+            },
+            {
+              "name": "flightBehaviors.calculateSeparation",
+              "percent": 10.633484162895927
             },
             {
               "name": "arenaBoundary.arenaVelocity",
-              "percent": 3.977562468128506
+              "percent": 6.5610859728506785
             },
             {
               "name": "collisionContactSolver.resolveShipCollisions",
-              "percent": 3.620601733809281
+              "percent": 5.429864253393665
             },
             {
               "name": "arenaBoundary.returnRouteCost",
-              "percent": 2.39673635900051
+              "percent": 4.524886877828054
             },
             {
               "name": "shipWeaponSystem.updateTurretAim",
-              "percent": 1.7848036715961244
-            },
-            {
-              "name": "fireControl.prepareFireControlContext",
-              "percent": 0.6629270780214176
+              "percent": 1.6591251885369533
             },
             {
               "name": "navigationContext.prepareNavigationContext",
-              "percent": 0.5099439061703213
+              "percent": 0.7541478129713424
+            },
+            {
+              "name": "fireControl.prepareFireControlContext",
+              "percent": 0.6033182503770739
             },
             {
               "name": "shieldHaven.update",
-              "percent": 0.4589495155532891
-            },
-            {
-              "name": "beamLaserSystem.prepareBeam",
-              "percent": 0.10198878123406425
-            },
-            {
-              "name": "wasmHotLoops.collectCollisionPairsWasm",
-              "percent": 0.10198878123406425
-            },
-            {
-              "name": "fighterMissionSystem.updateWings",
-              "percent": 0.05099439061703213
-            },
-            {
-              "name": "beamLaserSystem.updateBeam",
-              "percent": 0.05099439061703213
-            },
-            {
-              "name": "wasmHotLoops.findProjectileShipHitWasm",
-              "percent": 0.05099439061703213
+              "percent": 0.30165912518853694
             },
             {
               "name": "projectileEngine.updateProjectiles",
-              "percent": 0.05099439061703213
+              "percent": 0.30165912518853694
+            },
+            {
+              "name": "fighterMissionSystem.updateWings",
+              "percent": 0.15082956259426847
+            },
+            {
+              "name": "beamLaserSystem.updateBeam",
+              "percent": 0.07541478129713423
+            },
+            {
+              "name": "shipWeaponSystem.fireWeapon",
+              "percent": 0.07541478129713423
+            },
+            {
+              "name": "wasmHotLoops.findProjectileShipHitWasm",
+              "percent": 0.07541478129713423
+            },
+            {
+              "name": "wasmHotLoops.collectCollisionPairsWasm",
+              "percent": 0.07541478129713423
+            },
+            {
+              "name": "beamLaserSystem.prepareBeam",
+              "percent": 0.07541478129713423
             }
           ]
         },
@@ -1893,560 +1887,560 @@
         "trace": [
           {
             "tick": 61,
-            "ms": 35.46450000000186,
+            "ms": 22.092599999999948,
             "alive": 200,
             "projectiles": 72,
             "missiles": 0
           },
           {
             "tick": 62,
-            "ms": 34.811799999999494,
+            "ms": 22.187400000002526,
             "alive": 200,
             "projectiles": 67,
             "missiles": 0
           },
           {
             "tick": 63,
-            "ms": 35.82170000000042,
+            "ms": 22.920700000002398,
             "alive": 200,
             "projectiles": 67,
             "missiles": 0
           },
           {
             "tick": 64,
-            "ms": 37.64999999999782,
+            "ms": 23.48729999999705,
             "alive": 200,
             "projectiles": 66,
             "missiles": 0
           },
           {
             "tick": 65,
-            "ms": 36.57690000000002,
+            "ms": 23.206099999999424,
             "alive": 200,
             "projectiles": 66,
             "missiles": 0
           },
           {
             "tick": 66,
-            "ms": 39.41269999999713,
+            "ms": 22.495699999999488,
             "alive": 200,
             "projectiles": 65,
             "missiles": 0
           },
           {
             "tick": 67,
-            "ms": 42.399600000000646,
+            "ms": 23.25040000000081,
             "alive": 200,
             "projectiles": 62,
             "missiles": 0
           },
           {
             "tick": 68,
-            "ms": 33.036800000001676,
+            "ms": 23.26380000000063,
             "alive": 200,
             "projectiles": 56,
             "missiles": 0
           },
           {
             "tick": 69,
-            "ms": 33.6900999999998,
+            "ms": 22.936000000001513,
             "alive": 200,
             "projectiles": 48,
             "missiles": 0
           },
           {
             "tick": 70,
-            "ms": 34.18660000000091,
+            "ms": 22.772400000001653,
             "alive": 200,
             "projectiles": 48,
             "missiles": 0
           },
           {
             "tick": 71,
-            "ms": 34.9236000000019,
+            "ms": 21.68539999999848,
             "alive": 200,
             "projectiles": 48,
             "missiles": 0
           },
           {
             "tick": 72,
-            "ms": 35.931000000000495,
+            "ms": 23.930399999997462,
             "alive": 200,
             "projectiles": 45,
             "missiles": 0
           },
           {
             "tick": 73,
-            "ms": 36.080400000002555,
+            "ms": 21.165600000000268,
             "alive": 200,
             "projectiles": 43,
             "missiles": 0
           },
           {
             "tick": 74,
-            "ms": 33.46639999999752,
+            "ms": 21.433100000002014,
             "alive": 200,
             "projectiles": 44,
             "missiles": 0
           },
           {
             "tick": 75,
-            "ms": 32.29809999999998,
+            "ms": 23.44839999999749,
             "alive": 200,
             "projectiles": 45,
             "missiles": 0
           },
           {
             "tick": 76,
-            "ms": 33.65879999999743,
+            "ms": 21.46020000000135,
             "alive": 200,
             "projectiles": 43,
             "missiles": 0
           },
           {
             "tick": 77,
-            "ms": 33.33429999999862,
+            "ms": 21.488099999998667,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 78,
-            "ms": 44.740499999999884,
+            "ms": 22.276199999996606,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 79,
-            "ms": 33.38429999999789,
+            "ms": 22.525699999998324,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 80,
-            "ms": 33.54650000000038,
+            "ms": 22.365300000001298,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 81,
-            "ms": 33.72049999999945,
+            "ms": 20.817800000000716,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 82,
-            "ms": 33.342499999998836,
+            "ms": 23.53320000000167,
             "alive": 200,
             "projectiles": 41,
             "missiles": 0
           },
           {
             "tick": 83,
-            "ms": 33.38220000000001,
+            "ms": 23.553200000002107,
             "alive": 200,
             "projectiles": 39,
             "missiles": 0
           },
           {
             "tick": 84,
-            "ms": 34.23410000000149,
+            "ms": 24.6804000000011,
             "alive": 200,
             "projectiles": 39,
             "missiles": 0
           },
           {
             "tick": 85,
-            "ms": 34.10180000000037,
+            "ms": 23.426899999998568,
             "alive": 200,
             "projectiles": 39,
             "missiles": 0
           },
           {
             "tick": 86,
-            "ms": 33.11650000000009,
+            "ms": 22.661299999999756,
             "alive": 200,
             "projectiles": 38,
             "missiles": 0
           },
           {
             "tick": 87,
-            "ms": 32.75640000000203,
+            "ms": 22.36569999999847,
             "alive": 200,
             "projectiles": 38,
             "missiles": 0
           },
           {
             "tick": 88,
-            "ms": 34.20300000000134,
+            "ms": 23.622999999999593,
             "alive": 200,
             "projectiles": 36,
             "missiles": 0
           },
           {
             "tick": 89,
-            "ms": 34.40620000000126,
+            "ms": 23.868500000000495,
             "alive": 200,
             "projectiles": 35,
             "missiles": 0
           },
           {
             "tick": 90,
-            "ms": 36.26339999999982,
+            "ms": 24.825600000000122,
             "alive": 200,
             "projectiles": 36,
             "missiles": 0
           },
           {
             "tick": 91,
-            "ms": 33.84259999999995,
+            "ms": 23.078699999998207,
             "alive": 200,
             "projectiles": 36,
             "missiles": 0
           },
           {
             "tick": 92,
-            "ms": 35.805599999999686,
+            "ms": 23.053399999997055,
             "alive": 200,
             "projectiles": 34,
             "missiles": 0
           },
           {
             "tick": 93,
-            "ms": 34.129299999996874,
+            "ms": 22.53780000000188,
             "alive": 200,
             "projectiles": 32,
             "missiles": 0
           },
           {
             "tick": 94,
-            "ms": 34.425200000001496,
+            "ms": 22.88890000000174,
             "alive": 200,
             "projectiles": 32,
             "missiles": 0
           },
           {
             "tick": 95,
-            "ms": 33.40429999999833,
+            "ms": 22.015300000002753,
             "alive": 200,
             "projectiles": 31,
             "missiles": 0
           },
           {
             "tick": 96,
-            "ms": 35.24850000000151,
+            "ms": 22.891199999998207,
             "alive": 200,
             "projectiles": 29,
             "missiles": 0
           },
           {
             "tick": 97,
-            "ms": 40.92380000000048,
+            "ms": 21.625200000002224,
             "alive": 200,
             "projectiles": 28,
             "missiles": 0
           },
           {
             "tick": 98,
-            "ms": 32.8791999999994,
+            "ms": 23.940099999999802,
             "alive": 200,
             "projectiles": 28,
             "missiles": 0
           },
           {
             "tick": 99,
-            "ms": 35.322000000000116,
+            "ms": 23.376499999998487,
             "alive": 200,
             "projectiles": 28,
             "missiles": 0
           },
           {
             "tick": 100,
-            "ms": 33.44539999999688,
+            "ms": 21.54239999999845,
             "alive": 200,
             "projectiles": 29,
             "missiles": 0
           },
           {
             "tick": 101,
-            "ms": 33.67689999999857,
+            "ms": 23.360599999999977,
             "alive": 200,
             "projectiles": 29,
             "missiles": 0
           },
           {
             "tick": 102,
-            "ms": 33.827399999998306,
+            "ms": 24.61250000000291,
             "alive": 200,
             "projectiles": 27,
             "missiles": 0
           },
           {
             "tick": 103,
-            "ms": 33.45639999999912,
+            "ms": 22.644599999999627,
             "alive": 200,
             "projectiles": 26,
             "missiles": 0
           },
           {
             "tick": 104,
-            "ms": 33.36119999999937,
+            "ms": 22.791699999997945,
             "alive": 200,
             "projectiles": 25,
             "missiles": 0
           },
           {
             "tick": 105,
-            "ms": 35.45679999999993,
+            "ms": 22.062700000002224,
             "alive": 200,
             "projectiles": 24,
             "missiles": 0
           },
           {
             "tick": 106,
-            "ms": 36.233399999997346,
+            "ms": 23.657499999997526,
             "alive": 200,
             "projectiles": 24,
             "missiles": 0
           },
           {
             "tick": 107,
-            "ms": 35.4162000000033,
+            "ms": 23.00500000000102,
             "alive": 200,
             "projectiles": 24,
             "missiles": 0
           },
           {
             "tick": 108,
-            "ms": 35.749299999999494,
+            "ms": 22.55069999999978,
             "alive": 200,
             "projectiles": 24,
             "missiles": 0
           },
           {
             "tick": 109,
-            "ms": 36.47110000000248,
+            "ms": 24.511600000001636,
             "alive": 200,
             "projectiles": 23,
             "missiles": 0
           },
           {
             "tick": 110,
-            "ms": 35.674699999999575,
+            "ms": 22.350399999999354,
             "alive": 200,
             "projectiles": 23,
             "missiles": 0
           },
           {
             "tick": 111,
-            "ms": 35.45820000000094,
+            "ms": 23.238000000001193,
             "alive": 200,
             "projectiles": 22,
             "missiles": 0
           },
           {
             "tick": 112,
-            "ms": 36.6775000000016,
+            "ms": 22.199000000000524,
             "alive": 200,
             "projectiles": 22,
             "missiles": 0
           },
           {
             "tick": 113,
-            "ms": 35.66740000000209,
+            "ms": 23.823899999999412,
             "alive": 200,
             "projectiles": 22,
             "missiles": 0
           },
           {
             "tick": 114,
-            "ms": 35.66219999999885,
+            "ms": 23.796700000002602,
             "alive": 200,
             "projectiles": 22,
             "missiles": 0
           },
           {
             "tick": 115,
-            "ms": 36.302199999998265,
+            "ms": 23.45850000000064,
             "alive": 200,
             "projectiles": 21,
             "missiles": 0
           },
           {
             "tick": 116,
-            "ms": 36.07180000000153,
+            "ms": 24.254400000001624,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 117,
-            "ms": 36.176799999997456,
+            "ms": 22.332500000000437,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 118,
-            "ms": 35.57430000000022,
+            "ms": 24.08599999999933,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 119,
-            "ms": 36.087900000002264,
+            "ms": 28.249299999999494,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 120,
-            "ms": 33.94580000000133,
+            "ms": 24.8663000000015,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 121,
-            "ms": 36.10959999999977,
+            "ms": 22.107399999997142,
             "alive": 200,
             "projectiles": 18,
             "missiles": 0
           },
           {
             "tick": 122,
-            "ms": 37.319900000002235,
+            "ms": 23.51810000000114,
             "alive": 200,
             "projectiles": 19,
             "missiles": 0
           },
           {
             "tick": 123,
-            "ms": 35.90970000000016,
+            "ms": 23.204900000000634,
             "alive": 200,
             "projectiles": 18,
             "missiles": 0
           },
           {
             "tick": 124,
-            "ms": 34.74749999999767,
+            "ms": 22.625200000002224,
             "alive": 200,
             "projectiles": 17,
             "missiles": 0
           },
           {
             "tick": 125,
-            "ms": 34.56840000000011,
+            "ms": 23.293000000001484,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 126,
-            "ms": 35.04290000000037,
+            "ms": 23.5070999999989,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 127,
-            "ms": 35.366000000001804,
+            "ms": 23.448199999998906,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 128,
-            "ms": 35.32470000000103,
+            "ms": 23.03620000000228,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 129,
-            "ms": 38.63880000000063,
+            "ms": 23.823300000000017,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 130,
-            "ms": 33.617599999997765,
+            "ms": 22.940200000000914,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 131,
-            "ms": 36.446100000001024,
+            "ms": 24.28359999999884,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 132,
-            "ms": 34.43289999999979,
+            "ms": 23.356500000001688,
             "alive": 200,
             "projectiles": 13,
             "missiles": 0
           },
           {
             "tick": 133,
-            "ms": 35.97450000000026,
+            "ms": 24.097900000000664,
             "alive": 200,
             "projectiles": 12,
             "missiles": 0
           },
           {
             "tick": 134,
-            "ms": 35.57430000000022,
+            "ms": 23.04330000000118,
             "alive": 200,
             "projectiles": 12,
             "missiles": 0
           },
           {
             "tick": 135,
-            "ms": 34.24759999999878,
+            "ms": 24.31239999999889,
             "alive": 200,
             "projectiles": 12,
             "missiles": 0
           },
           {
             "tick": 136,
-            "ms": 35.36650000000009,
+            "ms": 22.737300000000687,
             "alive": 200,
             "projectiles": 12,
             "missiles": 0
           },
           {
             "tick": 137,
-            "ms": 35.74070000000211,
+            "ms": 23.165499999999156,
             "alive": 200,
             "projectiles": 13,
             "missiles": 0
           },
           {
             "tick": 138,
-            "ms": 35.44499999999971,
+            "ms": 24.015299999999115,
             "alive": 200,
             "projectiles": 11,
             "missiles": 0
           },
           {
             "tick": 139,
-            "ms": 35.234300000000076,
+            "ms": 22.72530000000188,
             "alive": 200,
             "projectiles": 10,
             "missiles": 0
           },
           {
             "tick": 140,
-            "ms": 36.24819999999818,
+            "ms": 23.768299999999726,
             "alive": 200,
             "projectiles": 9,
             "missiles": 0
@@ -2456,21 +2450,21 @@
       },
       "transpilationControl": {
         "simulation": {
-          "meanMs": 16.93794124999986,
-          "p50Ms": 16.35020000000077,
-          "p95Ms": 22.968400000005204,
-          "maxMs": 27.72070000000531,
-          "rtf": 0.9839842056759293
+          "meanMs": 12.116473750000068,
+          "p50Ms": 12.016299999999319,
+          "p95Ms": 12.916700000001583,
+          "maxMs": 13.544200000000274,
+          "rtf": 1.3755377191871996
         },
         "stateHash": "599143aeda742e7696a2eb9b5762010f45e5f233b05b02383b7f390a811a2572"
       },
       "profile": {
         "simulation": {
-          "meanMs": 17.468364999999814,
-          "p50Ms": 16.931799999998475,
-          "p95Ms": 20.76890000000276,
-          "maxMs": 28.651899999997113,
-          "rtf": 0.9541057028901586
+          "meanMs": 12.614623749999827,
+          "p50Ms": 12.477999999999156,
+          "p95Ms": 13.229199999997945,
+          "maxMs": 14.123999999999796,
+          "rtf": 1.3212178973365651
         },
         "stateHash": "599143aeda742e7696a2eb9b5762010f45e5f233b05b02383b7f390a811a2572",
         "initialEnvelopeOverlaps": 406,
@@ -2480,560 +2474,560 @@
         "trace": [
           {
             "tick": 61,
-            "ms": 16.47490000000107,
+            "ms": 12.176800000001094,
             "alive": 200,
             "projectiles": 72,
             "missiles": 0
           },
           {
             "tick": 62,
-            "ms": 17.07890000000043,
+            "ms": 12.419999999998254,
             "alive": 200,
             "projectiles": 67,
             "missiles": 0
           },
           {
             "tick": 63,
-            "ms": 16.044300000001385,
+            "ms": 13.288700000000972,
             "alive": 200,
             "projectiles": 67,
             "missiles": 0
           },
           {
             "tick": 64,
-            "ms": 17.953699999998207,
+            "ms": 12.869699999999284,
             "alive": 200,
             "projectiles": 66,
             "missiles": 0
           },
           {
             "tick": 65,
-            "ms": 16.72210000000632,
+            "ms": 12.243700000002718,
             "alive": 200,
             "projectiles": 66,
             "missiles": 0
           },
           {
             "tick": 66,
-            "ms": 15.499299999995856,
+            "ms": 12.31789999999819,
             "alive": 200,
             "projectiles": 65,
             "missiles": 0
           },
           {
             "tick": 67,
-            "ms": 15.409800000001269,
+            "ms": 13.048699999999371,
             "alive": 200,
             "projectiles": 62,
             "missiles": 0
           },
           {
             "tick": 68,
-            "ms": 15.662499999998545,
+            "ms": 12.304199999998673,
             "alive": 200,
             "projectiles": 56,
             "missiles": 0
           },
           {
             "tick": 69,
-            "ms": 16.598000000005413,
+            "ms": 14.123999999999796,
             "alive": 200,
             "projectiles": 48,
             "missiles": 0
           },
           {
             "tick": 70,
-            "ms": 17.17450000000099,
+            "ms": 12.828600000000733,
             "alive": 200,
             "projectiles": 48,
             "missiles": 0
           },
           {
             "tick": 71,
-            "ms": 16.931799999998475,
+            "ms": 13.329200000000128,
             "alive": 200,
             "projectiles": 48,
             "missiles": 0
           },
           {
             "tick": 72,
-            "ms": 16.80739999999787,
+            "ms": 12.464899999999034,
             "alive": 200,
             "projectiles": 45,
             "missiles": 0
           },
           {
             "tick": 73,
-            "ms": 17.75,
+            "ms": 12.419600000001083,
             "alive": 200,
             "projectiles": 43,
             "missiles": 0
           },
           {
             "tick": 74,
-            "ms": 26.610599999999977,
+            "ms": 12.412199999998847,
             "alive": 200,
             "projectiles": 44,
             "missiles": 0
           },
           {
             "tick": 75,
-            "ms": 15.46140000000014,
+            "ms": 12.964700000000448,
             "alive": 200,
             "projectiles": 45,
             "missiles": 0
           },
           {
             "tick": 76,
-            "ms": 28.651899999997113,
+            "ms": 12.042499999999563,
             "alive": 200,
             "projectiles": 43,
             "missiles": 0
           },
           {
             "tick": 77,
-            "ms": 22.578700000005483,
+            "ms": 12.235099999998056,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 78,
-            "ms": 15.677199999998265,
+            "ms": 13.843199999999342,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 79,
-            "ms": 15.447000000000116,
+            "ms": 12.974500000000262,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 80,
-            "ms": 16.546500000004016,
+            "ms": 12.256299999997282,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 81,
-            "ms": 15.213999999999942,
+            "ms": 12.406300000002375,
             "alive": 200,
             "projectiles": 42,
             "missiles": 0
           },
           {
             "tick": 82,
-            "ms": 20.76890000000276,
+            "ms": 12.962999999999738,
             "alive": 200,
             "projectiles": 41,
             "missiles": 0
           },
           {
             "tick": 83,
-            "ms": 19.05840000000171,
+            "ms": 12.555200000002515,
             "alive": 200,
             "projectiles": 39,
             "missiles": 0
           },
           {
             "tick": 84,
-            "ms": 17.07850000000326,
+            "ms": 13.229199999997945,
             "alive": 200,
             "projectiles": 39,
             "missiles": 0
           },
           {
             "tick": 85,
-            "ms": 17.527000000001863,
+            "ms": 12.715299999999843,
             "alive": 200,
             "projectiles": 39,
             "missiles": 0
           },
           {
             "tick": 86,
-            "ms": 15.67109999999957,
+            "ms": 13.104200000001583,
             "alive": 200,
             "projectiles": 38,
             "missiles": 0
           },
           {
             "tick": 87,
-            "ms": 16.864100000006147,
+            "ms": 12.393199999998615,
             "alive": 200,
             "projectiles": 38,
             "missiles": 0
           },
           {
             "tick": 88,
-            "ms": 15.564199999993434,
+            "ms": 12.847900000000664,
             "alive": 200,
             "projectiles": 36,
             "missiles": 0
           },
           {
             "tick": 89,
-            "ms": 15.366600000001199,
+            "ms": 12.347999999998137,
             "alive": 200,
             "projectiles": 35,
             "missiles": 0
           },
           {
             "tick": 90,
-            "ms": 15.759200000000419,
+            "ms": 12.462200000001758,
             "alive": 200,
             "projectiles": 36,
             "missiles": 0
           },
           {
             "tick": 91,
-            "ms": 15.92500000000291,
+            "ms": 12.241399999998976,
             "alive": 200,
             "projectiles": 36,
             "missiles": 0
           },
           {
             "tick": 92,
-            "ms": 16.768300000003364,
+            "ms": 12.873500000001513,
             "alive": 200,
             "projectiles": 34,
             "missiles": 0
           },
           {
             "tick": 93,
-            "ms": 18.009100000002945,
+            "ms": 12.194299999999203,
             "alive": 200,
             "projectiles": 32,
             "missiles": 0
           },
           {
             "tick": 94,
-            "ms": 17.16820000000007,
+            "ms": 12.435300000001007,
             "alive": 200,
             "projectiles": 32,
             "missiles": 0
           },
           {
             "tick": 95,
-            "ms": 19.94409999999334,
+            "ms": 12.292100000002392,
             "alive": 200,
             "projectiles": 31,
             "missiles": 0
           },
           {
             "tick": 96,
-            "ms": 23.396999999997206,
+            "ms": 13.001900000002934,
             "alive": 200,
             "projectiles": 29,
             "missiles": 0
           },
           {
             "tick": 97,
-            "ms": 16.597099999999045,
+            "ms": 12.822899999999208,
             "alive": 200,
             "projectiles": 28,
             "missiles": 0
           },
           {
             "tick": 98,
-            "ms": 18.036099999997532,
+            "ms": 12.309900000000198,
             "alive": 200,
             "projectiles": 28,
             "missiles": 0
           },
           {
             "tick": 99,
-            "ms": 16.673299999994924,
+            "ms": 12.477999999999156,
             "alive": 200,
             "projectiles": 28,
             "missiles": 0
           },
           {
             "tick": 100,
-            "ms": 16.580300000001444,
+            "ms": 13.006399999998393,
             "alive": 200,
             "projectiles": 29,
             "missiles": 0
           },
           {
             "tick": 101,
-            "ms": 16.219499999999243,
+            "ms": 12.268699999996898,
             "alive": 200,
             "projectiles": 29,
             "missiles": 0
           },
           {
             "tick": 102,
-            "ms": 17.397200000006706,
+            "ms": 12.458699999999226,
             "alive": 200,
             "projectiles": 27,
             "missiles": 0
           },
           {
             "tick": 103,
-            "ms": 15.951600000000326,
+            "ms": 12.277999999998428,
             "alive": 200,
             "projectiles": 26,
             "missiles": 0
           },
           {
             "tick": 104,
-            "ms": 17.24670000000333,
+            "ms": 12.938900000001013,
             "alive": 200,
             "projectiles": 25,
             "missiles": 0
           },
           {
             "tick": 105,
-            "ms": 16.534299999999348,
+            "ms": 12.090499999998428,
             "alive": 200,
             "projectiles": 24,
             "missiles": 0
           },
           {
             "tick": 106,
-            "ms": 17.553099999997357,
+            "ms": 12.263599999998405,
             "alive": 200,
             "projectiles": 24,
             "missiles": 0
           },
           {
             "tick": 107,
-            "ms": 16.49380000000383,
+            "ms": 12.383600000001024,
             "alive": 200,
             "projectiles": 24,
             "missiles": 0
           },
           {
             "tick": 108,
-            "ms": 16.87380000000121,
+            "ms": 12.790899999999965,
             "alive": 200,
             "projectiles": 24,
             "missiles": 0
           },
           {
             "tick": 109,
-            "ms": 18.70889999999781,
+            "ms": 12.329799999999523,
             "alive": 200,
             "projectiles": 23,
             "missiles": 0
           },
           {
             "tick": 110,
-            "ms": 17.276400000002468,
+            "ms": 12.424699999999575,
             "alive": 200,
             "projectiles": 23,
             "missiles": 0
           },
           {
             "tick": 111,
-            "ms": 16.506099999998696,
+            "ms": 12.612900000000081,
             "alive": 200,
             "projectiles": 22,
             "missiles": 0
           },
           {
             "tick": 112,
-            "ms": 16.7841999999946,
+            "ms": 13.216200000002573,
             "alive": 200,
             "projectiles": 22,
             "missiles": 0
           },
           {
             "tick": 113,
-            "ms": 19.341300000000047,
+            "ms": 12.333299999998417,
             "alive": 200,
             "projectiles": 22,
             "missiles": 0
           },
           {
             "tick": 114,
-            "ms": 17.315999999998894,
+            "ms": 12.478199999997742,
             "alive": 200,
             "projectiles": 22,
             "missiles": 0
           },
           {
             "tick": 115,
-            "ms": 17.368600000001607,
+            "ms": 12.359499999998661,
             "alive": 200,
             "projectiles": 21,
             "missiles": 0
           },
           {
             "tick": 116,
-            "ms": 18.97849999999744,
+            "ms": 13.190699999999197,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 117,
-            "ms": 16.82839999999851,
+            "ms": 12.33599999999933,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 118,
-            "ms": 17.32079999999405,
+            "ms": 12.259200000000419,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 119,
-            "ms": 17.377599999999802,
+            "ms": 12.341099999997823,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 120,
-            "ms": 17.945200000001932,
+            "ms": 12.491500000000087,
             "alive": 200,
             "projectiles": 20,
             "missiles": 0
           },
           {
             "tick": 121,
-            "ms": 17.35109999999986,
+            "ms": 12.991399999998976,
             "alive": 200,
             "projectiles": 18,
             "missiles": 0
           },
           {
             "tick": 122,
-            "ms": 17.335199999994074,
+            "ms": 12.532900000001973,
             "alive": 200,
             "projectiles": 19,
             "missiles": 0
           },
           {
             "tick": 123,
-            "ms": 17.299699999995937,
+            "ms": 12.275900000000547,
             "alive": 200,
             "projectiles": 18,
             "missiles": 0
           },
           {
             "tick": 124,
-            "ms": 16.631000000001222,
+            "ms": 12.456600000001345,
             "alive": 200,
             "projectiles": 17,
             "missiles": 0
           },
           {
             "tick": 125,
-            "ms": 17.89020000000164,
+            "ms": 12.756299999997282,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 126,
-            "ms": 17.265400000003865,
+            "ms": 12.267800000001444,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 127,
-            "ms": 18.018399999993562,
+            "ms": 12.355499999997846,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 128,
-            "ms": 17.2016999999978,
+            "ms": 12.348699999998644,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 129,
-            "ms": 16.906499999997322,
+            "ms": 13.042300000000978,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 130,
-            "ms": 18.765599999998813,
+            "ms": 12.490300000001298,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 131,
-            "ms": 16.93019999999524,
+            "ms": 12.416399999998248,
             "alive": 200,
             "projectiles": 15,
             "missiles": 0
           },
           {
             "tick": 132,
-            "ms": 16.86710000000312,
+            "ms": 12.573899999999412,
             "alive": 200,
             "projectiles": 13,
             "missiles": 0
           },
           {
             "tick": 133,
-            "ms": 16.919099999999162,
+            "ms": 13.15060000000085,
             "alive": 200,
             "projectiles": 12,
             "missiles": 0
           },
           {
             "tick": 134,
-            "ms": 16.699899999999616,
+            "ms": 12.534199999998236,
             "alive": 200,
             "projectiles": 12,
             "missiles": 0
           },
           {
             "tick": 135,
-            "ms": 17.861599999996542,
+            "ms": 12.534299999999348,
             "alive": 200,
             "projectiles": 12,
             "missiles": 0
           },
           {
             "tick": 136,
-            "ms": 17.471199999999953,
+            "ms": 12.533899999998539,
             "alive": 200,
             "projectiles": 12,
             "missiles": 0
           },
           {
             "tick": 137,
-            "ms": 16.28179999999702,
+            "ms": 13.186000000001513,
             "alive": 200,
             "projectiles": 13,
             "missiles": 0
           },
           {
             "tick": 138,
-            "ms": 16.560199999999895,
+            "ms": 12.566200000001118,
             "alive": 200,
             "projectiles": 11,
             "missiles": 0
           },
           {
             "tick": 139,
-            "ms": 17.81999999999971,
+            "ms": 12.560900000000402,
             "alive": 200,
             "projectiles": 10,
             "missiles": 0
           },
           {
             "tick": 140,
-            "ms": 18.320299999999406,
+            "ms": 12.50510000000213,
             "alive": 200,
             "projectiles": 9,
             "missiles": 0
@@ -3043,152 +3037,152 @@
           {
             "name": "shipNavigationSystem.findNavigationTarget",
             "callsPerTick": 200,
-            "inclusiveMsPerTick": 3.8189287500057616,
-            "selfMsPerTick": 3.8189287500057616
-          },
-          {
-            "name": "flightBehaviors.calculateSeparation",
-            "callsPerTick": 200,
-            "inclusiveMsPerTick": 3.41288874999982,
-            "selfMsPerTick": 3.41288874999982
+            "inclusiveMsPerTick": 3.374280000001818,
+            "selfMsPerTick": 3.374280000001818
           },
           {
             "name": "fireControl.acquireMountTarget",
             "callsPerTick": 682.1125,
-            "inclusiveMsPerTick": 2.3966949999972713,
-            "selfMsPerTick": 2.3966949999972713
+            "inclusiveMsPerTick": 2.059276249992081,
+            "selfMsPerTick": 2.059276249992081
           },
           {
             "name": "shipNavigationSystem.updateShipNavigation",
             "callsPerTick": 200,
-            "inclusiveMsPerTick": 8.362768750001942,
-            "selfMsPerTick": 2.226602499995079
+            "inclusiveMsPerTick": 4.591574999998466,
+            "selfMsPerTick": 1.5644012499982183
           },
           {
             "name": "flightControl.capitalIntent",
             "callsPerTick": 200,
-            "inclusiveMsPerTick": 4.613246250006705,
-            "selfMsPerTick": 1.1751087500018003
+            "inclusiveMsPerTick": 1.707546249998859,
+            "selfMsPerTick": 1.0265200000011645
           },
           {
             "name": "arenaBoundary.returnRouteCost",
             "callsPerTick": 208.8625,
-            "inclusiveMsPerTick": 0.9926375000047301,
-            "selfMsPerTick": 0.9926375000047301
+            "inclusiveMsPerTick": 0.865428749999046,
+            "selfMsPerTick": 0.865428749999046
           },
           {
             "name": "collisionContactSolver.resolveShipCollisions",
             "callsPerTick": 2,
-            "inclusiveMsPerTick": 0.8613487500000702,
-            "selfMsPerTick": 0.7815250000032392
+            "inclusiveMsPerTick": 0.7588749999997617,
+            "selfMsPerTick": 0.6874612500021613
+          },
+          {
+            "name": "flightBehaviors.calculateSeparation",
+            "callsPerTick": 200,
+            "inclusiveMsPerTick": 0.6608262500004003,
+            "selfMsPerTick": 0.6608262500004003
           },
           {
             "name": "simulation.update",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 17.46641125000042,
-            "selfMsPerTick": 0.6681699999917328
+            "inclusiveMsPerTick": 12.613271250000206,
+            "selfMsPerTick": 0.5668450000150187
           },
           {
             "name": "arenaBoundary.arenaVelocity",
             "callsPerTick": 200,
-            "inclusiveMsPerTick": 1.5229200000001584,
-            "selfMsPerTick": 0.5302824999954282
-          },
-          {
-            "name": "shipWeaponSystem.updateTurretAim",
-            "callsPerTick": 699.8625,
-            "inclusiveMsPerTick": 0.41952500000134024,
-            "selfMsPerTick": 0.41952500000134024
+            "inclusiveMsPerTick": 1.3196275000013884,
+            "selfMsPerTick": 0.45419875000234244
           },
           {
             "name": "navigationContext.prepareNavigationContext",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.39680874999967275,
-            "selfMsPerTick": 0.39680874999967275
+            "inclusiveMsPerTick": 0.4034299999999348,
+            "selfMsPerTick": 0.4034299999999348
+          },
+          {
+            "name": "shipWeaponSystem.updateTurretAim",
+            "callsPerTick": 699.8625,
+            "inclusiveMsPerTick": 0.3471962499922938,
+            "selfMsPerTick": 0.3471962499922938
           },
           {
             "name": "fireControl.prepareFireControlContext",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.28936250000006114,
-            "selfMsPerTick": 0.28936250000006114
+            "inclusiveMsPerTick": 0.2903174999998555,
+            "selfMsPerTick": 0.2903174999998555
           },
           {
             "name": "shieldHaven.update",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.10810624999976426,
-            "selfMsPerTick": 0.10810624999976426
+            "inclusiveMsPerTick": 0.09416999999998552,
+            "selfMsPerTick": 0.09416999999998552
           },
           {
             "name": "wasmHotLoops.collectCollisionPairsWasm",
             "callsPerTick": 445.9875,
-            "inclusiveMsPerTick": 0.07982374999683088,
-            "selfMsPerTick": 0.07982374999683088
+            "inclusiveMsPerTick": 0.07141374999760046,
+            "selfMsPerTick": 0.07141374999760046
           },
           {
             "name": "projectileEngine.updateProjectiles",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.08147125000004962,
-            "selfMsPerTick": 0.06331375000318076
+            "inclusiveMsPerTick": 0.06915874999990593,
+            "selfMsPerTick": 0.054356250000955696
           },
           {
             "name": "flightBehaviors.OrdnanceAvoidanceBlock",
             "callsPerTick": 200,
-            "inclusiveMsPerTick": 0.02524875000508473,
-            "selfMsPerTick": 0.02524875000508473
-          },
-          {
-            "name": "harmonicShieldSystem.update",
-            "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.016657500000292202,
-            "selfMsPerTick": 0.016657500000292202
+            "inclusiveMsPerTick": 0.02019999999729407,
+            "selfMsPerTick": 0.02019999999729407
           },
           {
             "name": "wasmHotLoops.findProjectileShipHitWasm",
             "callsPerTick": 32.0375,
-            "inclusiveMsPerTick": 0.016298749996803964,
-            "selfMsPerTick": 0.016298749996803964
+            "inclusiveMsPerTick": 0.013387499999089414,
+            "selfMsPerTick": 0.013387499999089414
+          },
+          {
+            "name": "harmonicShieldSystem.update",
+            "callsPerTick": 1,
+            "inclusiveMsPerTick": 0.013347500000054423,
+            "selfMsPerTick": 0.013347500000054423
           },
           {
             "name": "beamLaserSystem.prepareBeam",
             "callsPerTick": 17.8875,
-            "inclusiveMsPerTick": 0.023935000001438313,
-            "selfMsPerTick": 0.014540000001943554
-          },
-          {
-            "name": "beamLaserSystem.updateBeam",
-            "callsPerTick": 17.75,
-            "inclusiveMsPerTick": 0.015362500002083834,
-            "selfMsPerTick": 0.0094262500014338
-          },
-          {
-            "name": "shipWeaponSystem.applyDamage",
-            "callsPerTick": 4.0125,
-            "inclusiveMsPerTick": 0.007795000000714936,
-            "selfMsPerTick": 0.007795000000714936
+            "inclusiveMsPerTick": 0.019873749999896974,
+            "selfMsPerTick": 0.011968750000733053
           },
           {
             "name": "fighterMissionSystem.updateWings",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.00567374999909589,
-            "selfMsPerTick": 0.00567374999909589
+            "inclusiveMsPerTick": 0.011722500000041691,
+            "selfMsPerTick": 0.011722500000041691
+          },
+          {
+            "name": "beamLaserSystem.updateBeam",
+            "callsPerTick": 17.75,
+            "inclusiveMsPerTick": 0.012067500000193831,
+            "selfMsPerTick": 0.007313750000002983
+          },
+          {
+            "name": "shipWeaponSystem.applyDamage",
+            "callsPerTick": 4.0125,
+            "inclusiveMsPerTick": 0.006168750000051659,
+            "selfMsPerTick": 0.006168750000051659
           },
           {
             "name": "collisionContactSolver.resolveCruiserClearance",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.004846249999627616,
-            "selfMsPerTick": 0.004846249999627616
+            "inclusiveMsPerTick": 0.003918750000048021,
+            "selfMsPerTick": 0.003918750000048021
           },
           {
             "name": "shipWeaponSystem.fireWeapon",
             "callsPerTick": 0.275,
-            "inclusiveMsPerTick": 0.0034875000001193257,
-            "selfMsPerTick": 0.0034875000001193257
+            "inclusiveMsPerTick": 0.0029737500000010185,
+            "selfMsPerTick": 0.0029737500000010185
           },
           {
             "name": "fighterMissionSystem.ensureWings",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.002658749999591237,
-            "selfMsPerTick": 0.002658749999591237
+            "inclusiveMsPerTick": 0.0021487500000148428,
+            "selfMsPerTick": 0.0021487500000148428
           }
         ]
       },
@@ -3216,248 +3210,240 @@
       },
       "baseline": {
         "simulation": {
-          "meanMs": 63.667627500000705,
-          "p50Ms": 62.25390000000334,
-          "p95Ms": 78.63799999999901,
-          "maxMs": 85.58529999999882,
-          "rtf": 0.26177615408500154
+          "meanMs": 48.367353749999346,
+          "p50Ms": 45.908400000000256,
+          "p95Ms": 57.01140000000305,
+          "maxMs": 59.86259999999311,
+          "rtf": 0.3445850428951138
         },
         "worker": {
           "binaryPack": {
-            "meanMs": 0.1961649999997462,
-            "p50Ms": 0.16459999999642605,
-            "p95Ms": 0.3214000000007218,
-            "maxMs": 0.9375999999974738,
-            "rtf": 84.96248906118946
+            "meanMs": 0.21581749999950262,
+            "p50Ms": 0.2084000000031665,
+            "p95Ms": 0.285200000005716,
+            "maxMs": 0.9073999999964144,
+            "rtf": 77.22574242915925
           },
           "presentationPack": {
-            "meanMs": 1.200281250000262,
-            "p50Ms": 1.141700000000128,
-            "p95Ms": 1.5957000000053085,
-            "maxMs": 1.9076999999961117,
-            "rtf": 13.885634443313206
+            "meanMs": 1.228418750000401,
+            "p50Ms": 1.1828000000023167,
+            "p95Ms": 1.4844000000011874,
+            "maxMs": 1.9739000000045053,
+            "rtf": 13.567577559900668
           },
           "sidecarCloneProxy": {
-            "meanMs": 2.314686250000159,
-            "p50Ms": 2.3034000000043306,
-            "p95Ms": 3.045299999997951,
-            "maxMs": 3.836799999997311,
-            "rtf": 7.200399910210519
+            "meanMs": 2.460856249999779,
+            "p50Ms": 2.467000000004191,
+            "p95Ms": 3.170799999999872,
+            "maxMs": 3.545799999999872,
+            "rtf": 6.772710379433242
           },
           "combined": {
-            "meanMs": 67.37876000000088,
-            "p50Ms": 66.01119999999355,
-            "p95Ms": 82.39470000000438,
-            "maxMs": 89.29999999999563,
-            "rtf": 0.24735787162996842
+            "meanMs": 52.27244624999903,
+            "p50Ms": 49.97269999999844,
+            "p95Ms": 60.390400000003865,
+            "maxMs": 63.228199999990466,
+            "rtf": 0.31884229383404794
           },
           "bufferBytes": 589888
         },
         "nativeSampling": {
-          "samples": 3518,
+          "samples": 2725,
           "topSelf": [
-            {
-              "function": "acquireMountTarget",
-              "file": "fireControl.ts",
-              "percent": 18.163729391699828
-            },
             {
               "function": "torpedoEscape",
               "file": "flightBehaviors.ts",
-              "percent": 8.328595793064242
+              "percent": 12.403669724770642
             },
             {
-              "function": "__name",
-              "file": "shieldGeometry.ts",
-              "percent": 7.902217168845935
+              "function": "acquireMountTarget",
+              "file": "fireControl.ts",
+              "percent": 9.614678899082568
             },
             {
               "function": "capitalIntent",
               "file": "flightControl.ts",
-              "percent": 6.594656054576464
-            },
-            {
-              "function": "set dirname",
-              "file": "",
-              "percent": 5.969300739056282
-            },
-            {
-              "function": "tick",
-              "file": "simulation.ts",
-              "percent": 4.57646389994315
-            },
-            {
-              "function": "",
-              "file": "fireControl.ts",
-              "percent": 3.723706651506538
-            },
-            {
-              "function": "vecSub",
-              "file": "math2d.ts",
-              "percent": 3.610005685048323
-            },
-            {
-              "function": "calculateSeparation",
-              "file": "flightBehaviors.ts",
-              "percent": 3.524729960204662
-            },
-            {
-              "function": "structuredClone",
-              "file": "js_transferable",
-              "percent": 3.3826037521318932
+              "percent": 5.467889908256881
             },
             {
               "function": "vecLengthSq",
               "file": "math2d.ts",
-              "percent": 3.1267765776009098
+              "percent": 5.027522935779817
+            },
+            {
+              "function": "structuredClone",
+              "file": "js_transferable",
+              "percent": 4.477064220183486
+            },
+            {
+              "function": "__name",
+              "file": "shieldGeometry.ts",
+              "percent": 4.440366972477064
+            },
+            {
+              "function": "vecSub",
+              "file": "math2d.ts",
+              "percent": 4.36697247706422
+            },
+            {
+              "function": "set filename",
+              "file": "",
+              "percent": 4.18348623853211
             },
             {
               "function": "selectNavigationTarget",
               "file": "shipNavigationSystem.ts",
-              "percent": 2.8709494030699263
+              "percent": 3.926605504587156
             },
             {
-              "function": "findNavigationTarget",
-              "file": "shipNavigationSystem.ts",
-              "percent": 1.7055144968732234
+              "function": "",
+              "file": "fireControl.ts",
+              "percent": 3.853211009174312
             },
             {
-              "function": "updateProjectiles",
-              "file": "projectileEngine.ts",
-              "percent": 1.648664013644116
+              "function": "tick",
+              "file": "simulation.ts",
+              "percent": 3.81651376146789
+            },
+            {
+              "function": "calculateSeparation",
+              "file": "flightBehaviors.ts",
+              "percent": 3.5596330275229358
             },
             {
               "function": "skirmishSpacing",
               "file": "flightControl.ts",
-              "percent": 1.6202387720295623
+              "percent": 2.2752293577981653
+            },
+            {
+              "function": "updateProjectiles",
+              "file": "projectileEngine.ts",
+              "percent": 2.165137614678899
             },
             {
               "function": "",
               "file": "fireControl.ts",
-              "percent": 1.5633882888004549
-            },
-            {
-              "function": "(garbage collector)",
-              "file": "",
-              "percent": 1.5065378055713474
-            },
-            {
-              "function": "__name",
-              "file": "fireControl.ts",
-              "percent": 1.335986355884025
+              "percent": 2.018348623853211
             },
             {
               "function": "wasm-function[0]",
               "file": "534b73ca",
-              "percent": 1.1085844229675952
+              "percent": 1.761467889908257
             },
             {
-              "function": "vecDot",
-              "file": "math2d.ts",
-              "percent": 1.0517339397384877
+              "function": "damagedTargetPriority",
+              "file": "fireControl.ts",
+              "percent": 1.5045871559633028
             },
             {
-              "function": "debrisAvoidanceVelocity",
-              "file": "flightControl.ts",
-              "percent": 0.8811824900511654
+              "function": "findNavigationTarget",
+              "file": "shipNavigationSystem.ts",
+              "percent": 1.5045871559633028
             },
             {
-              "function": "pack",
-              "file": "simulationPresentationMetadata.ts",
-              "percent": 0.7390562819783968
-            },
-            {
-              "function": "set dirname",
+              "function": "set filename",
               "file": "",
-              "percent": 0.7390562819783968
+              "percent": 1.2477064220183487
+            },
+            {
+              "function": "__name",
+              "file": "fireControl.ts",
+              "percent": 1.1376146788990826
+            },
+            {
+              "function": "(garbage collector)",
+              "file": "",
+              "percent": 1.1009174311926606
+            },
+            {
+              "function": "",
+              "file": "fireControl.ts",
+              "percent": 1.0642201834862386
             },
             {
               "function": "updateShipNavigation",
               "file": "shipNavigationSystem.ts",
-              "percent": 0.7106310403638431
+              "percent": 0.9174311926605505
             },
             {
-              "function": "",
-              "file": "simulationPresentationMetadata.ts",
-              "percent": 0.625355315520182
+              "function": "vecDot",
+              "file": "math2d.ts",
+              "percent": 0.8440366972477065
+            },
+            {
+              "function": "defensiveStandoff",
+              "file": "flightControl.ts",
+              "percent": 0.8073394495412844
             }
           ],
           "subsystemInclusive": [
             {
               "name": "simulation.update",
-              "percent": 92.72313814667424
+              "percent": 91.30275229357798
             },
             {
               "name": "shipNavigationSystem.updateShipNavigation",
-              "percent": 48.351335986355885
+              "percent": 50.1651376146789
             },
             {
               "name": "flightControl.capitalIntent",
-              "percent": 45.79306424104605
+              "percent": 48.18348623853211
             },
             {
               "name": "fireControl.acquireMountTarget",
-              "percent": 26.86185332575327
+              "percent": 21.137614678899084
             },
             {
               "name": "flightBehaviors.calculateSeparation",
-              "percent": 18.789084707220013
+              "percent": 13.98165137614679
             },
             {
               "name": "flightBehaviors.OrdnanceAvoidanceBlock",
-              "percent": 8.754974417282547
+              "percent": 13.100917431192661
             },
             {
               "name": "shipNavigationSystem.findNavigationTarget",
-              "percent": 5.855599772598067
+              "percent": 7.009174311926605
             },
             {
               "name": "projectileEngine.updateProjectiles",
-              "percent": 3.610005685048323
+              "percent": 4.844036697247707
             },
             {
               "name": "wasmHotLoops.findProjectileShipHitWasm",
-              "percent": 1.1938601478112565
-            },
-            {
-              "name": "shipWeaponSystem.updateTurretAim",
-              "percent": 0.8527572484366117
+              "percent": 1.871559633027523
             },
             {
               "name": "navigationContext.prepareNavigationContext",
-              "percent": 0.7959067652075043
+              "percent": 1.1009174311926606
             },
             {
               "name": "collisionContactSolver.resolveShipCollisions",
-              "percent": 0.5685048322910745
+              "percent": 0.8073394495412844
+            },
+            {
+              "name": "shipWeaponSystem.updateTurretAim",
+              "percent": 0.6972477064220184
             },
             {
               "name": "fireControl.prepareFireControlContext",
-              "percent": 0.3695281409891984
+              "percent": 0.5871559633027523
             },
             {
               "name": "shieldHaven.update",
-              "percent": 0.19897669130187606
-            },
-            {
-              "name": "fighterMissionSystem.updateWings",
-              "percent": 0.05685048322910745
-            },
-            {
-              "name": "harmonicShieldSystem.update",
-              "percent": 0.05685048322910745
-            },
-            {
-              "name": "arenaBoundary.arenaVelocity",
-              "percent": 0.05685048322910745
-            },
-            {
-              "name": "wasmHotLoops.collectCollisionPairsWasm",
-              "percent": 0.05685048322910745
+              "percent": 0.11009174311926606
             },
             {
               "name": "shipWeaponSystem.applyDamage",
-              "percent": 0.028425241614553724
+              "percent": 0.07339449541284404
+            },
+            {
+              "name": "harmonicShieldSystem.update",
+              "percent": 0.07339449541284404
+            },
+            {
+              "name": "wasmHotLoops.collectCollisionPairsWasm",
+              "percent": 0.03669724770642202
             }
           ]
         },
@@ -3469,560 +3455,560 @@
         "trace": [
           {
             "tick": 61,
-            "ms": 75.31239999999525,
+            "ms": 52.21140000000014,
             "alive": 200,
             "projectiles": 2984,
             "missiles": 2984
           },
           {
             "tick": 62,
-            "ms": 85.58529999999882,
+            "ms": 54.105499999997846,
             "alive": 200,
             "projectiles": 2976,
             "missiles": 2976
           },
           {
             "tick": 63,
-            "ms": 73.53610000000481,
+            "ms": 51.15890000000218,
             "alive": 200,
             "projectiles": 2960,
             "missiles": 2960
           },
           {
             "tick": 64,
-            "ms": 76.18340000000171,
+            "ms": 55.927999999999884,
             "alive": 200,
             "projectiles": 2952,
             "missiles": 2952
           },
           {
             "tick": 65,
-            "ms": 75.36540000000241,
+            "ms": 56.30079999999725,
             "alive": 200,
             "projectiles": 2928,
             "missiles": 2928
           },
           {
             "tick": 66,
-            "ms": 74.64069999999629,
+            "ms": 57.01140000000305,
             "alive": 199,
             "projectiles": 2915,
             "missiles": 2915
           },
           {
             "tick": 67,
-            "ms": 78.63799999999901,
+            "ms": 59.86259999999311,
             "alive": 199,
             "projectiles": 2875,
             "missiles": 2875
           },
           {
             "tick": 68,
-            "ms": 78.71910000000207,
+            "ms": 57.04170000000158,
             "alive": 199,
             "projectiles": 2863,
             "missiles": 2863
           },
           {
             "tick": 69,
-            "ms": 73.71719999999914,
+            "ms": 56.335800000000745,
             "alive": 199,
             "projectiles": 2851,
             "missiles": 2851
           },
           {
             "tick": 70,
-            "ms": 81.01239999999962,
+            "ms": 57.67710000000079,
             "alive": 199,
             "projectiles": 2843,
             "missiles": 2843
           },
           {
             "tick": 71,
-            "ms": 75.45889999999781,
+            "ms": 55.79409999999916,
             "alive": 198,
             "projectiles": 2830,
             "missiles": 2830
           },
           {
             "tick": 72,
-            "ms": 76.08200000000215,
+            "ms": 56.261599999998,
             "alive": 197,
             "projectiles": 2829,
             "missiles": 2829
           },
           {
             "tick": 73,
-            "ms": 75.93860000000132,
+            "ms": 54.85780000000523,
             "alive": 197,
             "projectiles": 2817,
             "missiles": 2817
           },
           {
             "tick": 74,
-            "ms": 72.48300000000017,
+            "ms": 53.52599999999802,
             "alive": 197,
             "projectiles": 2809,
             "missiles": 2809
           },
           {
             "tick": 75,
-            "ms": 75.4423999999999,
+            "ms": 53.57709999999497,
             "alive": 197,
             "projectiles": 2805,
             "missiles": 2805
           },
           {
             "tick": 76,
-            "ms": 80.78250000000116,
+            "ms": 54.22230000000127,
             "alive": 197,
             "projectiles": 2801,
             "missiles": 2801
           },
           {
             "tick": 77,
-            "ms": 75.4971000000005,
+            "ms": 54.76339999999618,
             "alive": 197,
             "projectiles": 2797,
             "missiles": 2797
           },
           {
             "tick": 78,
-            "ms": 69.55709999999817,
+            "ms": 56.764100000000326,
             "alive": 195,
             "projectiles": 2787,
             "missiles": 2787
           },
           {
             "tick": 79,
-            "ms": 69.64680000000226,
+            "ms": 56.59939999999915,
             "alive": 194,
             "projectiles": 2771,
             "missiles": 2771
           },
           {
             "tick": 80,
-            "ms": 72.68820000000414,
+            "ms": 54.93579999999929,
             "alive": 193,
             "projectiles": 2766,
             "missiles": 2766
           },
           {
             "tick": 81,
-            "ms": 71.19440000000031,
+            "ms": 57.12799999999697,
             "alive": 193,
             "projectiles": 2762,
             "missiles": 2762
           },
           {
             "tick": 82,
-            "ms": 66.70910000000003,
+            "ms": 53.7760000000053,
             "alive": 193,
             "projectiles": 2753,
             "missiles": 2753
           },
           {
             "tick": 83,
-            "ms": 67.33339999999589,
+            "ms": 53.712399999996705,
             "alive": 192,
             "projectiles": 2732,
             "missiles": 2732
           },
           {
             "tick": 84,
-            "ms": 66.60990000000311,
+            "ms": 53.84610000000248,
             "alive": 191,
             "projectiles": 2725,
             "missiles": 2725
           },
           {
             "tick": 85,
-            "ms": 66.8775999999998,
+            "ms": 54.74519999999757,
             "alive": 190,
             "projectiles": 2713,
             "missiles": 2713
           },
           {
             "tick": 86,
-            "ms": 72.82190000000264,
+            "ms": 51.78050000000076,
             "alive": 190,
             "projectiles": 2697,
             "missiles": 2697
           },
           {
             "tick": 87,
-            "ms": 63.025000000001455,
+            "ms": 52.709100000000035,
             "alive": 190,
             "projectiles": 2689,
             "missiles": 2689
           },
           {
             "tick": 88,
-            "ms": 62.220900000000256,
+            "ms": 47.33969999999681,
             "alive": 189,
             "projectiles": 2678,
             "missiles": 2678
           },
           {
             "tick": 89,
-            "ms": 65.2184000000052,
+            "ms": 51.0821999999971,
             "alive": 189,
             "projectiles": 2675,
             "missiles": 2675
           },
           {
             "tick": 90,
-            "ms": 64.45600000000559,
+            "ms": 50.423299999994924,
             "alive": 188,
             "projectiles": 2659,
             "missiles": 2659
           },
           {
             "tick": 91,
-            "ms": 62.55349999999453,
+            "ms": 48.617999999994936,
             "alive": 188,
             "projectiles": 2648,
             "missiles": 2648
           },
           {
             "tick": 92,
-            "ms": 60.10940000000119,
+            "ms": 44.9178000000029,
             "alive": 188,
             "projectiles": 2640,
             "missiles": 2640
           },
           {
             "tick": 93,
-            "ms": 61.75660000000062,
+            "ms": 47.819400000000314,
             "alive": 188,
             "projectiles": 2630,
             "missiles": 2630
           },
           {
             "tick": 94,
-            "ms": 63.95049999999901,
+            "ms": 46.18789999999717,
             "alive": 188,
             "projectiles": 2622,
             "missiles": 2622
           },
           {
             "tick": 95,
-            "ms": 62.25390000000334,
+            "ms": 45.04959999999846,
             "alive": 187,
             "projectiles": 2618,
             "missiles": 2618
           },
           {
             "tick": 96,
-            "ms": 63.016999999999825,
+            "ms": 47.342200000006414,
             "alive": 187,
             "projectiles": 2606,
             "missiles": 2606
           },
           {
             "tick": 97,
-            "ms": 67.83340000000317,
+            "ms": 46.54699999999866,
             "alive": 186,
             "projectiles": 2596,
             "missiles": 2596
           },
           {
             "tick": 98,
-            "ms": 67.81030000000464,
+            "ms": 46.44029999999475,
             "alive": 184,
             "projectiles": 2587,
             "missiles": 2587
           },
           {
             "tick": 99,
-            "ms": 63.91279999999824,
+            "ms": 45.52440000000206,
             "alive": 184,
             "projectiles": 2568,
             "missiles": 2568
           },
           {
             "tick": 100,
-            "ms": 61.41849999999977,
+            "ms": 45.2670999999973,
             "alive": 184,
             "projectiles": 2564,
             "missiles": 2564
           },
           {
             "tick": 101,
-            "ms": 63.466700000004494,
+            "ms": 44.16120000000228,
             "alive": 183,
             "projectiles": 2550,
             "missiles": 2550
           },
           {
             "tick": 102,
-            "ms": 61.54130000000441,
+            "ms": 47.614199999996345,
             "alive": 183,
             "projectiles": 2531,
             "missiles": 2531
           },
           {
             "tick": 103,
-            "ms": 62.358100000004924,
+            "ms": 45.667499999995925,
             "alive": 182,
             "projectiles": 2495,
             "missiles": 2495
           },
           {
             "tick": 104,
-            "ms": 64.70609999999579,
+            "ms": 44.25669999999809,
             "alive": 182,
             "projectiles": 2490,
             "missiles": 2490
           },
           {
             "tick": 105,
-            "ms": 62.56330000000162,
+            "ms": 43.99250000000029,
             "alive": 182,
             "projectiles": 2490,
             "missiles": 2490
           },
           {
             "tick": 106,
-            "ms": 60.20629999999801,
+            "ms": 47.43619999999646,
             "alive": 182,
             "projectiles": 2482,
             "missiles": 2482
           },
           {
             "tick": 107,
-            "ms": 61.98110000000452,
+            "ms": 46.22929999999906,
             "alive": 182,
             "projectiles": 2474,
             "missiles": 2474
           },
           {
             "tick": 108,
-            "ms": 64.89850000000297,
+            "ms": 45.80689999999595,
             "alive": 182,
             "projectiles": 2466,
             "missiles": 2466
           },
           {
             "tick": 109,
-            "ms": 58.44220000000496,
+            "ms": 45.908400000000256,
             "alive": 182,
             "projectiles": 2442,
             "missiles": 2442
           },
           {
             "tick": 110,
-            "ms": 61.0538000000015,
+            "ms": 43.45820000000094,
             "alive": 182,
             "projectiles": 2428,
             "missiles": 2428
           },
           {
             "tick": 111,
-            "ms": 61.47600000000239,
+            "ms": 45.00330000000395,
             "alive": 182,
             "projectiles": 2416,
             "missiles": 2416
           },
           {
             "tick": 112,
-            "ms": 61.62050000000454,
+            "ms": 43.411299999999756,
             "alive": 182,
             "projectiles": 2408,
             "missiles": 2408
           },
           {
             "tick": 113,
-            "ms": 61.18300000000454,
+            "ms": 45.233399999997346,
             "alive": 182,
             "projectiles": 2389,
             "missiles": 2389
           },
           {
             "tick": 114,
-            "ms": 61.533299999995506,
+            "ms": 44.60519999999815,
             "alive": 182,
             "projectiles": 2373,
             "missiles": 2373
           },
           {
             "tick": 115,
-            "ms": 61.51460000000225,
+            "ms": 47.482600000003,
             "alive": 182,
             "projectiles": 2357,
             "missiles": 2357
           },
           {
             "tick": 116,
-            "ms": 60.186299999993935,
+            "ms": 44.38269999999466,
             "alive": 181,
             "projectiles": 2351,
             "missiles": 2351
           },
           {
             "tick": 117,
-            "ms": 60.934699999997974,
+            "ms": 45.20509999999922,
             "alive": 179,
             "projectiles": 2333,
             "missiles": 2333
           },
           {
             "tick": 118,
-            "ms": 61.57130000000325,
+            "ms": 45.56420000000071,
             "alive": 179,
             "projectiles": 2311,
             "missiles": 2311
           },
           {
             "tick": 119,
-            "ms": 59.0025999999998,
+            "ms": 45.575700000001234,
             "alive": 179,
             "projectiles": 2299,
             "missiles": 2299
           },
           {
             "tick": 120,
-            "ms": 54.88699999999517,
+            "ms": 45.22559999999794,
             "alive": 178,
             "projectiles": 2293,
             "missiles": 2293
           },
           {
             "tick": 121,
-            "ms": 55.6536999999953,
+            "ms": 45.0596000000005,
             "alive": 177,
             "projectiles": 2279,
             "missiles": 2279
           },
           {
             "tick": 122,
-            "ms": 54.42410000000382,
+            "ms": 45.268700000000536,
             "alive": 177,
             "projectiles": 2267,
             "missiles": 2267
           },
           {
             "tick": 123,
-            "ms": 52.8347999999969,
+            "ms": 45.53530000000319,
             "alive": 177,
             "projectiles": 2247,
             "missiles": 2247
           },
           {
             "tick": 124,
-            "ms": 55.804700000000594,
+            "ms": 44.19399999999587,
             "alive": 176,
             "projectiles": 2238,
             "missiles": 2238
           },
           {
             "tick": 125,
-            "ms": 53.63520000000426,
+            "ms": 45.373099999997066,
             "alive": 176,
             "projectiles": 2218,
             "missiles": 2218
           },
           {
             "tick": 126,
-            "ms": 53.12370000000374,
+            "ms": 44.93879999999626,
             "alive": 176,
             "projectiles": 2202,
             "missiles": 2202
           },
           {
             "tick": 127,
-            "ms": 52.88590000000113,
+            "ms": 41.42020000000048,
             "alive": 176,
             "projectiles": 2194,
             "missiles": 2194
           },
           {
             "tick": 128,
-            "ms": 54.79060000000027,
+            "ms": 42.804700000000594,
             "alive": 176,
             "projectiles": 2178,
             "missiles": 2178
           },
           {
             "tick": 129,
-            "ms": 53.03100000000268,
+            "ms": 43.743099999999686,
             "alive": 175,
             "projectiles": 2171,
             "missiles": 2171
           },
           {
             "tick": 130,
-            "ms": 55.76460000000225,
+            "ms": 43.58329999999842,
             "alive": 174,
             "projectiles": 2162,
             "missiles": 2162
           },
           {
             "tick": 131,
-            "ms": 52.85480000000098,
+            "ms": 44.60990000000311,
             "alive": 174,
             "projectiles": 2162,
             "missiles": 2162
           },
           {
             "tick": 132,
-            "ms": 53.05460000000312,
+            "ms": 43.525000000001455,
             "alive": 174,
             "projectiles": 2142,
             "missiles": 2142
           },
           {
             "tick": 133,
-            "ms": 50.723299999997835,
+            "ms": 43.14229999999952,
             "alive": 174,
             "projectiles": 2131,
             "missiles": 2131
           },
           {
             "tick": 134,
-            "ms": 51.38790000000154,
+            "ms": 45.0083999999988,
             "alive": 172,
             "projectiles": 2125,
             "missiles": 2125
           },
           {
             "tick": 135,
-            "ms": 52.66790000000037,
+            "ms": 42.82800000000134,
             "alive": 170,
             "projectiles": 2118,
             "missiles": 2118
           },
           {
             "tick": 136,
-            "ms": 50.45379999999568,
+            "ms": 42.250599999999395,
             "alive": 170,
             "projectiles": 2111,
             "missiles": 2111
           },
           {
             "tick": 137,
-            "ms": 48.88139999999839,
+            "ms": 40.44400000000314,
             "alive": 170,
             "projectiles": 2100,
             "missiles": 2100
           },
           {
             "tick": 138,
-            "ms": 50.48240000000078,
+            "ms": 41.24580000000424,
             "alive": 169,
             "projectiles": 2078,
             "missiles": 2078
           },
           {
             "tick": 139,
-            "ms": 50.02019999999902,
+            "ms": 40.16349999999511,
             "alive": 169,
             "projectiles": 2075,
             "missiles": 2075
           },
           {
             "tick": 140,
-            "ms": 48.439800000000105,
+            "ms": 38.83879999999772,
             "alive": 168,
             "projectiles": 2065,
             "missiles": 2065
@@ -4032,21 +4018,21 @@
       },
       "transpilationControl": {
         "simulation": {
-          "meanMs": 50.06470624999984,
-          "p50Ms": 48.933499999999185,
-          "p95Ms": 62.936900000000605,
-          "maxMs": 78.8344999999972,
-          "rtf": 0.33290251586499064
+          "meanMs": 34.977452499999984,
+          "p50Ms": 34.66820000000007,
+          "p95Ms": 40.907899999998335,
+          "maxMs": 48.83230000000185,
+          "rtf": 0.476497442650138
         },
         "stateHash": "945d4ef48f23c81cdb3477385c5bc26188d5f438000fec42db946ce1b9fb8c1a"
       },
       "profile": {
         "simulation": {
-          "meanMs": 50.51684875000019,
-          "p50Ms": 48.17779999999766,
-          "p95Ms": 61.35430000000633,
-          "maxMs": 71.68800000000192,
-          "rtf": 0.3299229282718591
+          "meanMs": 38.06209999999974,
+          "p50Ms": 36.897799999998824,
+          "p95Ms": 50.54699999999866,
+          "maxMs": 52.557300000000396,
+          "rtf": 0.43788090164932525
         },
         "stateHash": "945d4ef48f23c81cdb3477385c5bc26188d5f438000fec42db946ce1b9fb8c1a",
         "initialEnvelopeOverlaps": 0,
@@ -4056,560 +4042,560 @@
         "trace": [
           {
             "tick": 61,
-            "ms": 60.83499999999913,
+            "ms": 40.40219999999681,
             "alive": 200,
             "projectiles": 2984,
             "missiles": 2984
           },
           {
             "tick": 62,
-            "ms": 59.73670000000129,
+            "ms": 40.4916000000012,
             "alive": 200,
             "projectiles": 2976,
             "missiles": 2976
           },
           {
             "tick": 63,
-            "ms": 58.473400000002584,
+            "ms": 39.90099999999802,
             "alive": 200,
             "projectiles": 2960,
             "missiles": 2960
           },
           {
             "tick": 64,
-            "ms": 59.23440000000119,
+            "ms": 40.81579999999667,
             "alive": 200,
             "projectiles": 2952,
             "missiles": 2952
           },
           {
             "tick": 65,
-            "ms": 59.53740000000107,
+            "ms": 40.20339999999851,
             "alive": 200,
             "projectiles": 2928,
             "missiles": 2928
           },
           {
             "tick": 66,
-            "ms": 60.18279999999504,
+            "ms": 41.210299999998824,
             "alive": 199,
             "projectiles": 2915,
             "missiles": 2915
           },
           {
             "tick": 67,
-            "ms": 63.64140000000043,
+            "ms": 44.435599999997066,
             "alive": 199,
             "projectiles": 2875,
             "missiles": 2875
           },
           {
             "tick": 68,
-            "ms": 58.63940000000002,
+            "ms": 39.21620000000257,
             "alive": 199,
             "projectiles": 2863,
             "missiles": 2863
           },
           {
             "tick": 69,
-            "ms": 58.999400000000605,
+            "ms": 40.09909999999945,
             "alive": 199,
             "projectiles": 2851,
             "missiles": 2851
           },
           {
             "tick": 70,
-            "ms": 57.088000000003376,
+            "ms": 39.79990000000544,
             "alive": 199,
             "projectiles": 2843,
             "missiles": 2843
           },
           {
             "tick": 71,
-            "ms": 60.938499999996566,
+            "ms": 40.95049999999901,
             "alive": 198,
             "projectiles": 2830,
             "missiles": 2830
           },
           {
             "tick": 72,
-            "ms": 58.901200000000244,
+            "ms": 41.1733000000022,
             "alive": 197,
             "projectiles": 2829,
             "missiles": 2829
           },
           {
             "tick": 73,
-            "ms": 61.35430000000633,
+            "ms": 39.87840000000142,
             "alive": 197,
             "projectiles": 2817,
             "missiles": 2817
           },
           {
             "tick": 74,
-            "ms": 57.50460000000021,
+            "ms": 39.249400000000605,
             "alive": 197,
             "projectiles": 2809,
             "missiles": 2809
           },
           {
             "tick": 75,
-            "ms": 54.991500000003725,
+            "ms": 39.396600000000035,
             "alive": 197,
             "projectiles": 2805,
             "missiles": 2805
           },
           {
             "tick": 76,
-            "ms": 62.32180000000517,
+            "ms": 38.861400000001595,
             "alive": 197,
             "projectiles": 2801,
             "missiles": 2801
           },
           {
             "tick": 77,
-            "ms": 59.320599999999104,
+            "ms": 39.346099999995204,
             "alive": 197,
             "projectiles": 2797,
             "missiles": 2797
           },
           {
             "tick": 78,
-            "ms": 52.69749999999476,
+            "ms": 38.76849999999831,
             "alive": 195,
             "projectiles": 2787,
             "missiles": 2787
           },
           {
             "tick": 79,
-            "ms": 56.256099999998696,
+            "ms": 39.54309999999532,
             "alive": 194,
             "projectiles": 2771,
             "missiles": 2771
           },
           {
             "tick": 80,
-            "ms": 67.96349999999802,
+            "ms": 40.56380000000354,
             "alive": 193,
             "projectiles": 2766,
             "missiles": 2766
           },
           {
             "tick": 81,
-            "ms": 54.35859999999957,
+            "ms": 40.35160000000178,
             "alive": 193,
             "projectiles": 2762,
             "missiles": 2762
           },
           {
             "tick": 82,
-            "ms": 55.39800000000105,
+            "ms": 39.34060000000318,
             "alive": 193,
             "projectiles": 2753,
             "missiles": 2753
           },
           {
             "tick": 83,
-            "ms": 71.68800000000192,
+            "ms": 38.04869999999937,
             "alive": 192,
             "projectiles": 2732,
             "missiles": 2732
           },
           {
             "tick": 84,
-            "ms": 53.49960000000283,
+            "ms": 51.08020000000397,
             "alive": 191,
             "projectiles": 2725,
             "missiles": 2725
           },
           {
             "tick": 85,
-            "ms": 51.67819999999483,
+            "ms": 38.195400000004156,
             "alive": 190,
             "projectiles": 2713,
             "missiles": 2713
           },
           {
             "tick": 86,
-            "ms": 52.295500000000175,
+            "ms": 38.09130000000005,
             "alive": 190,
             "projectiles": 2697,
             "missiles": 2697
           },
           {
             "tick": 87,
-            "ms": 50.525699999998324,
+            "ms": 38.03770000000077,
             "alive": 190,
             "projectiles": 2689,
             "missiles": 2689
           },
           {
             "tick": 88,
-            "ms": 56.28910000000178,
+            "ms": 36.6507999999958,
             "alive": 189,
             "projectiles": 2678,
             "missiles": 2678
           },
           {
             "tick": 89,
-            "ms": 50.252300000000105,
+            "ms": 37.96959999999672,
             "alive": 189,
             "projectiles": 2675,
             "missiles": 2675
           },
           {
             "tick": 90,
-            "ms": 52.479499999994005,
+            "ms": 37.18609999999899,
             "alive": 188,
             "projectiles": 2659,
             "missiles": 2659
           },
           {
             "tick": 91,
-            "ms": 49.41680000000633,
+            "ms": 36.897799999998824,
             "alive": 188,
             "projectiles": 2648,
             "missiles": 2648
           },
           {
             "tick": 92,
-            "ms": 51.19079999999667,
+            "ms": 36.306299999996554,
             "alive": 188,
             "projectiles": 2640,
             "missiles": 2640
           },
           {
             "tick": 93,
-            "ms": 49.50600000000122,
+            "ms": 35.795500000000175,
             "alive": 188,
             "projectiles": 2630,
             "missiles": 2630
           },
           {
             "tick": 94,
-            "ms": 49.042600000000675,
+            "ms": 36.306299999996554,
             "alive": 188,
             "projectiles": 2622,
             "missiles": 2622
           },
           {
             "tick": 95,
-            "ms": 48.15099999999802,
+            "ms": 35.47939999999653,
             "alive": 187,
             "projectiles": 2618,
             "missiles": 2618
           },
           {
             "tick": 96,
-            "ms": 49.191399999996065,
+            "ms": 36.38950000000477,
             "alive": 187,
             "projectiles": 2606,
             "missiles": 2606
           },
           {
             "tick": 97,
-            "ms": 60.564400000002934,
+            "ms": 35.22230000000127,
             "alive": 186,
             "projectiles": 2596,
             "missiles": 2596
           },
           {
             "tick": 98,
-            "ms": 48.128899999996065,
+            "ms": 35.84270000000106,
             "alive": 184,
             "projectiles": 2587,
             "missiles": 2587
           },
           {
             "tick": 99,
-            "ms": 47.895400000001246,
+            "ms": 36.252300000000105,
             "alive": 184,
             "projectiles": 2568,
             "missiles": 2568
           },
           {
             "tick": 100,
-            "ms": 46.992999999994936,
+            "ms": 34.26640000000043,
             "alive": 184,
             "projectiles": 2564,
             "missiles": 2564
           },
           {
             "tick": 101,
-            "ms": 47.92530000000261,
+            "ms": 35.411400000004505,
             "alive": 183,
             "projectiles": 2550,
             "missiles": 2550
           },
           {
             "tick": 102,
-            "ms": 47.452799999999115,
+            "ms": 35.72099999999773,
             "alive": 183,
             "projectiles": 2531,
             "missiles": 2531
           },
           {
             "tick": 103,
-            "ms": 50.11250000000291,
+            "ms": 35.919199999996636,
             "alive": 182,
             "projectiles": 2495,
             "missiles": 2495
           },
           {
             "tick": 104,
-            "ms": 49.14409999999771,
+            "ms": 34.846099999995204,
             "alive": 182,
             "projectiles": 2490,
             "missiles": 2490
           },
           {
             "tick": 105,
-            "ms": 47.20930000000226,
+            "ms": 34.96410000000469,
             "alive": 182,
             "projectiles": 2490,
             "missiles": 2490
           },
           {
             "tick": 106,
-            "ms": 48.571600000002945,
+            "ms": 34.46220000000176,
             "alive": 182,
             "projectiles": 2482,
             "missiles": 2482
           },
           {
             "tick": 107,
-            "ms": 46.72729999999865,
+            "ms": 34.423900000001595,
             "alive": 182,
             "projectiles": 2474,
             "missiles": 2474
           },
           {
             "tick": 108,
-            "ms": 46.39259999999922,
+            "ms": 34.32430000000022,
             "alive": 182,
             "projectiles": 2466,
             "missiles": 2466
           },
           {
             "tick": 109,
-            "ms": 46.28770000000077,
+            "ms": 34.830000000001746,
             "alive": 182,
             "projectiles": 2442,
             "missiles": 2442
           },
           {
             "tick": 110,
-            "ms": 48.104700000003504,
+            "ms": 34.33520000000135,
             "alive": 182,
             "projectiles": 2428,
             "missiles": 2428
           },
           {
             "tick": 111,
-            "ms": 47.04780000000028,
+            "ms": 33.79520000000048,
             "alive": 182,
             "projectiles": 2416,
             "missiles": 2416
           },
           {
             "tick": 112,
-            "ms": 46.744800000000396,
+            "ms": 33.44580000000133,
             "alive": 182,
             "projectiles": 2408,
             "missiles": 2408
           },
           {
             "tick": 113,
-            "ms": 48.263700000003155,
+            "ms": 34.117099999995844,
             "alive": 182,
             "projectiles": 2389,
             "missiles": 2389
           },
           {
             "tick": 114,
-            "ms": 46.764900000001944,
+            "ms": 33.93159999999625,
             "alive": 182,
             "projectiles": 2373,
             "missiles": 2373
           },
           {
             "tick": 115,
-            "ms": 46.49279999999999,
+            "ms": 33.83030000000144,
             "alive": 182,
             "projectiles": 2357,
             "missiles": 2357
           },
           {
             "tick": 116,
-            "ms": 47.85080000000016,
+            "ms": 35.88869999999588,
             "alive": 181,
             "projectiles": 2351,
             "missiles": 2351
           },
           {
             "tick": 117,
-            "ms": 47.73909999999887,
+            "ms": 41.156300000002375,
             "alive": 179,
             "projectiles": 2333,
             "missiles": 2333
           },
           {
             "tick": 118,
-            "ms": 47.42820000000211,
+            "ms": 52.557300000000396,
             "alive": 179,
             "projectiles": 2311,
             "missiles": 2311
           },
           {
             "tick": 119,
-            "ms": 45.1646000000037,
+            "ms": 51.46549999999843,
             "alive": 179,
             "projectiles": 2299,
             "missiles": 2299
           },
           {
             "tick": 120,
-            "ms": 45.72280000000319,
+            "ms": 40.70560000000114,
             "alive": 178,
             "projectiles": 2293,
             "missiles": 2293
           },
           {
             "tick": 121,
-            "ms": 45.78330000000278,
+            "ms": 50.62619999999879,
             "alive": 177,
             "projectiles": 2279,
             "missiles": 2279
           },
           {
             "tick": 122,
-            "ms": 44.47570000000269,
+            "ms": 50.54699999999866,
             "alive": 177,
             "projectiles": 2267,
             "missiles": 2267
           },
           {
             "tick": 123,
-            "ms": 44.466999999996915,
+            "ms": 35.38139999999839,
             "alive": 177,
             "projectiles": 2247,
             "missiles": 2247
           },
           {
             "tick": 124,
-            "ms": 44.50019999999495,
+            "ms": 35.668799999999464,
             "alive": 176,
             "projectiles": 2238,
             "missiles": 2238
           },
           {
             "tick": 125,
-            "ms": 45.27939999999944,
+            "ms": 37.10849999999482,
             "alive": 176,
             "projectiles": 2218,
             "missiles": 2218
           },
           {
             "tick": 126,
-            "ms": 42.869900000005146,
+            "ms": 40.04109999999491,
             "alive": 176,
             "projectiles": 2202,
             "missiles": 2202
           },
           {
             "tick": 127,
-            "ms": 43.41790000000037,
+            "ms": 36.73279999999795,
             "alive": 176,
             "projectiles": 2194,
             "missiles": 2194
           },
           {
             "tick": 128,
-            "ms": 43.07839999999851,
+            "ms": 38.4406999999992,
             "alive": 176,
             "projectiles": 2178,
             "missiles": 2178
           },
           {
             "tick": 129,
-            "ms": 43.43130000000383,
+            "ms": 34.65439999999944,
             "alive": 175,
             "projectiles": 2171,
             "missiles": 2171
           },
           {
             "tick": 130,
-            "ms": 44.70760000000155,
+            "ms": 43.229599999998754,
             "alive": 174,
             "projectiles": 2162,
             "missiles": 2162
           },
           {
             "tick": 131,
-            "ms": 42.44239999999991,
+            "ms": 33.29699999999866,
             "alive": 174,
             "projectiles": 2162,
             "missiles": 2162
           },
           {
             "tick": 132,
-            "ms": 40.8752999999997,
+            "ms": 32.69460000000254,
             "alive": 174,
             "projectiles": 2142,
             "missiles": 2142
           },
           {
             "tick": 133,
-            "ms": 48.17779999999766,
+            "ms": 34.55500000000029,
             "alive": 174,
             "projectiles": 2131,
             "missiles": 2131
           },
           {
             "tick": 134,
-            "ms": 44.30419999999867,
+            "ms": 34.991500000003725,
             "alive": 172,
             "projectiles": 2125,
             "missiles": 2125
           },
           {
             "tick": 135,
-            "ms": 40.27479999999923,
+            "ms": 34.274600000004284,
             "alive": 170,
             "projectiles": 2118,
             "missiles": 2118
           },
           {
             "tick": 136,
-            "ms": 45.21340000000055,
+            "ms": 36.06209999999555,
             "alive": 170,
             "projectiles": 2111,
             "missiles": 2111
           },
           {
             "tick": 137,
-            "ms": 38.68309999999474,
+            "ms": 33.224300000001676,
             "alive": 170,
             "projectiles": 2100,
             "missiles": 2100
           },
           {
             "tick": 138,
-            "ms": 38.318299999999,
+            "ms": 34.034599999999045,
             "alive": 169,
             "projectiles": 2078,
             "missiles": 2078
           },
           {
             "tick": 139,
-            "ms": 38.57860000000073,
+            "ms": 32.98210000000108,
             "alive": 169,
             "projectiles": 2075,
             "missiles": 2075
           },
           {
             "tick": 140,
-            "ms": 38.159599999999045,
+            "ms": 38.27419999999984,
             "alive": 168,
             "projectiles": 2065,
             "missiles": 2065
@@ -4619,128 +4605,128 @@
           {
             "name": "fireControl.acquireMountTarget",
             "callsPerTick": 742.8,
-            "inclusiveMsPerTick": 19.270308750010734,
-            "selfMsPerTick": 19.270308750010734
+            "inclusiveMsPerTick": 9.977530000011484,
+            "selfMsPerTick": 9.977530000011484
           },
           {
             "name": "flightControl.capitalIntent",
             "callsPerTick": 185.7,
-            "inclusiveMsPerTick": 20.22117124999777,
-            "selfMsPerTick": 9.992552499999055
+            "inclusiveMsPerTick": 18.24345125000182,
+            "selfMsPerTick": 9.637276250007744
           },
           {
             "name": "flightBehaviors.OrdnanceAvoidanceBlock",
             "callsPerTick": 185.7,
-            "inclusiveMsPerTick": 6.832921250002528,
-            "selfMsPerTick": 6.832921250002528
+            "inclusiveMsPerTick": 6.50432124999752,
+            "selfMsPerTick": 6.50432124999752
           },
           {
             "name": "shipNavigationSystem.findNavigationTarget",
             "callsPerTick": 185.7,
-            "inclusiveMsPerTick": 3.9705312500010224,
-            "selfMsPerTick": 3.9705312500010224
+            "inclusiveMsPerTick": 3.6998900000015964,
+            "selfMsPerTick": 3.6998900000015964
           },
           {
             "name": "flightBehaviors.calculateSeparation",
             "callsPerTick": 185.7,
-            "inclusiveMsPerTick": 3.377949999992052,
-            "selfMsPerTick": 3.377949999992052
+            "inclusiveMsPerTick": 2.0855212499940534,
+            "selfMsPerTick": 2.0855212499940534
           },
           {
             "name": "projectileEngine.updateProjectiles",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 3.1126787500004864,
-            "selfMsPerTick": 2.0327762500306563
+            "inclusiveMsPerTick": 2.8472649999998794,
+            "selfMsPerTick": 1.831601249997948
           },
           {
             "name": "shipNavigationSystem.updateShipNavigation",
             "callsPerTick": 185.7,
-            "inclusiveMsPerTick": 21.708273750000536,
-            "selfMsPerTick": 1.4650937500041437
+            "inclusiveMsPerTick": 19.266036250005982,
+            "selfMsPerTick": 1.0014200000012352
           },
           {
             "name": "wasmHotLoops.findProjectileShipHitWasm",
             "callsPerTick": 2536.0125,
-            "inclusiveMsPerTick": 1.0466724999670987,
-            "selfMsPerTick": 1.0466724999670987
+            "inclusiveMsPerTick": 0.9879325000047174,
+            "selfMsPerTick": 0.9879325000047174
           },
           {
             "name": "simulation.update",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 50.513104999999726,
-            "selfMsPerTick": 0.7316849999861915
+            "inclusiveMsPerTick": 38.05888500000056,
+            "selfMsPerTick": 0.6189237499889714
           },
           {
             "name": "navigationContext.prepareNavigationContext",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.6188100000003033,
-            "selfMsPerTick": 0.6188100000003033
+            "inclusiveMsPerTick": 0.5945000000001528,
+            "selfMsPerTick": 0.5945000000001528
           },
           {
             "name": "shipWeaponSystem.updateTurretAim",
             "callsPerTick": 742.8,
-            "inclusiveMsPerTick": 0.5206862500002899,
-            "selfMsPerTick": 0.5206862500002899
-          },
-          {
-            "name": "collisionContactSolver.resolveShipCollisions",
-            "callsPerTick": 2,
-            "inclusiveMsPerTick": 0.261338749999959,
-            "selfMsPerTick": 0.2084562499951062
+            "inclusiveMsPerTick": 0.40519499999309117,
+            "selfMsPerTick": 0.40519499999309117
           },
           {
             "name": "fireControl.prepareFireControlContext",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.18591374999978144,
-            "selfMsPerTick": 0.18591374999978144
+            "inclusiveMsPerTick": 0.2837562500000786,
+            "selfMsPerTick": 0.2837562500000786
+          },
+          {
+            "name": "collisionContactSolver.resolveShipCollisions",
+            "callsPerTick": 2,
+            "inclusiveMsPerTick": 0.2388287499996295,
+            "selfMsPerTick": 0.1897337499933201
           },
           {
             "name": "shieldHaven.update",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.08803750000042783,
-            "selfMsPerTick": 0.08803750000042783
+            "inclusiveMsPerTick": 0.07671375000008993,
+            "selfMsPerTick": 0.07671375000008993
           },
           {
             "name": "wasmHotLoops.collectCollisionPairsWasm",
             "callsPerTick": 371.4,
-            "inclusiveMsPerTick": 0.05288250000485277,
-            "selfMsPerTick": 0.05288250000485277
+            "inclusiveMsPerTick": 0.04909500000630942,
+            "selfMsPerTick": 0.04909500000630942
           },
           {
             "name": "arenaBoundary.arenaVelocity",
             "callsPerTick": 370.3375,
-            "inclusiveMsPerTick": 0.039756250002756136,
-            "selfMsPerTick": 0.039756250002756136
+            "inclusiveMsPerTick": 0.037497500005429174,
+            "selfMsPerTick": 0.037497500005429174
           },
           {
             "name": "shipWeaponSystem.applyDamage",
             "callsPerTick": 11.4875,
-            "inclusiveMsPerTick": 0.033230000002731686,
-            "selfMsPerTick": 0.033230000002731686
+            "inclusiveMsPerTick": 0.027731249997214037,
+            "selfMsPerTick": 0.027731249997214037
           },
           {
             "name": "harmonicShieldSystem.update",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.023192500000277505,
-            "selfMsPerTick": 0.023192500000277505
+            "inclusiveMsPerTick": 0.01958374999985608,
+            "selfMsPerTick": 0.01958374999985608
           },
           {
             "name": "fighterMissionSystem.updateWings",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.011495000000286382,
-            "selfMsPerTick": 0.011495000000286382
+            "inclusiveMsPerTick": 0.013041249999423599,
+            "selfMsPerTick": 0.013041249999423599
           },
           {
             "name": "fighterMissionSystem.ensureWings",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.005852499999491556,
-            "selfMsPerTick": 0.005852499999491556
+            "inclusiveMsPerTick": 0.01303375000034066,
+            "selfMsPerTick": 0.01303375000034066
           },
           {
             "name": "collisionContactSolver.resolveCruiserClearance",
             "callsPerTick": 1,
-            "inclusiveMsPerTick": 0.004301249999934953,
-            "selfMsPerTick": 0.004301249999934953
+            "inclusiveMsPerTick": 0.004587499999979627,
+            "selfMsPerTick": 0.004587499999979627
           }
         ]
       },
