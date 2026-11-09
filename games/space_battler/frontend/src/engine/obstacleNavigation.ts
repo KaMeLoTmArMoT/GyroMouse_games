@@ -1,7 +1,70 @@
-import type { ShipState } from "../types/combat";
-import type { MapObstacle } from "./battleMaps";
+import type { ShipState, Vector2 } from "../types/combat";
+import { circleContactFraction, type MapObstacle } from "./battleMaps";
 import { clamp, normalizeAngle } from "./math2d";
 import { activeShieldRadius, isCapitalShip } from "./shieldGeometry";
+
+/** Route past the first firing-line blocker, using the swept steering envelope. */
+export function obstacleFlankingWaypoint(
+  ship: ShipState,
+  target: ShipState,
+  obstacles: readonly MapObstacle[],
+  muzzle: Vector2 = ship.pos,
+  aim: Vector2 = target.pos,
+): Vector2 | null {
+  let blocker: MapObstacle | undefined;
+  let firstContact = Infinity;
+  for (const obstacle of obstacles) {
+    // Fire control requires both the current target and its intercept to be visible.
+    const contact = Math.min(
+      circleContactFraction(
+        muzzle[0] - obstacle.pos[0],
+        muzzle[1] - obstacle.pos[1],
+        target.pos[0] - muzzle[0],
+        target.pos[1] - muzzle[1],
+        obstacle.radius,
+      ),
+      circleContactFraction(
+        muzzle[0] - obstacle.pos[0],
+        muzzle[1] - obstacle.pos[1],
+        aim[0] - muzzle[0],
+        aim[1] - muzzle[1],
+        obstacle.radius,
+      ),
+    );
+    if (
+      contact < firstContact ||
+      (contact < Infinity && contact === firstContact && blocker && obstacle.id < blocker.id)
+    ) {
+      firstContact = contact;
+      blocker = obstacle;
+    }
+  }
+  if (!blocker) return null;
+  const radius = activeShieldRadius(ship) + blocker.radius + 60;
+  const dx = ship.pos[0] - blocker.pos[0];
+  const dy = ship.pos[1] - blocker.pos[1];
+  const distance = Math.hypot(dx, dy);
+  const nx = distance > 1e-6 ? dx / distance : -Math.cos(ship.heading);
+  const ny = distance > 1e-6 ? dy / distance : -Math.sin(ship.heading);
+  const side =
+    Math.sign(nx * (aim[1] - blocker.pos[1]) - ny * (aim[0] - blocker.pos[0])) ||
+    (ship.id < blocker.id ? -1 : 1);
+  const tx = -ny * side;
+  const ty = nx * side;
+  if (distance <= radius) {
+    // An embedded/near-boundary ship moves outward as it walks the perimeter.
+    return [blocker.pos[0] + nx * radius + tx * radius, blocker.pos[1] + ny * radius + ty * radius];
+  }
+  const radial = (radius * radius) / distance;
+  const lateral = radius * Math.sqrt(1 - (radius / distance) ** 2);
+  const contactX = blocker.pos[0] + nx * radial + tx * lateral;
+  const contactY = blocker.pos[1] + ny * radial + ty * lateral;
+  const routeX = contactX - ship.pos[0];
+  const routeY = contactY - ship.pos[1];
+  const extension = radius / Math.hypot(routeX, routeY);
+  // Aim beyond contact so arrival does not brake to zero at the tangent point.
+  return [contactX + routeX * extension, contactY + routeY * extension];
+}
 
 /** Allocation-free swept clearance query; returns a course correction in radians. */
 export function obstacleCourseCorrection(

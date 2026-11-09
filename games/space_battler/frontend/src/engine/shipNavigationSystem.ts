@@ -19,6 +19,7 @@ import {
   fleetDefenseAnchor,
   fleetReturnVelocity,
   limitVelocity,
+  obstacleFlankingVelocity,
   orbitVelocity,
   rescueRouteRisk,
   separation,
@@ -46,7 +47,7 @@ import {
   tacticalSupportRadius,
 } from "./navigationContext";
 import { obstacleCourseCorrection } from "./obstacleNavigation";
-import { isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
+import { activeShieldRadius, isCapitalShip, shieldEnvelopeRadius } from "./shieldGeometry";
 import { SHIP_DOCTRINES } from "./shipDoctrines";
 import { CORVETTE_FLAK_THREAT_RADIUS, flakThreatRadius, HULL_PROFILES } from "./shipProfiles";
 import type { ClientCombatSimulation } from "./simulation";
@@ -714,6 +715,18 @@ export function updateShipNavigation(
     targetHeading = Math.atan2(route[1], route[0]);
   }
   const returningToArena = vecDistance([0, 0], ship.pos) > ARENA_RADIUS;
+  const flank =
+    target &&
+    !evadingOrdnance &&
+    !returningToArena &&
+    !(ship.shieldCurrent <= 0 && ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4)
+      ? obstacleFlankingVelocity(ship, target, context.mapObstacles)
+      : null;
+  if (flank) {
+    intendedVelocity = flank;
+    thrusterVelocity = flank;
+    targetHeading = Math.atan2(flank[1], flank[0]);
+  }
   const boundaryVelocity = arenaVelocity(ship, intendedVelocity, aliveShips);
   if (boundaryVelocity !== intendedVelocity) {
     intendedVelocity = boundaryVelocity;
@@ -737,8 +750,8 @@ export function updateShipNavigation(
       ship.hullClass === "strike_craft" && ship.fighterPhase === "attack" ? target : null,
     );
   }
-  let avoidingObstacle = Math.abs(obstacleDecision.correction) > 1e-6;
-  if (avoidingObstacle) {
+  let avoidingObstacle = flank !== null || Math.abs(obstacleDecision.correction) > 1e-6;
+  if (Math.abs(obstacleDecision.correction) > 1e-6) {
     const course =
       Math.atan2(intendedVelocity[1], intendedVelocity[0]) + obstacleDecision.correction;
     const speed = Math.hypot(intendedVelocity[0], intendedVelocity[1]);
@@ -791,6 +804,25 @@ export function updateShipNavigation(
   const newForwardSpeed = currentForwardSpeed + forwardStep;
   let controlledX = forwardX * newForwardSpeed + rightX * newLateralSpeed;
   let controlledY = forwardY * newForwardSpeed + rightY * newLateralSpeed;
+  if (flank && context.mapObstacles) {
+    // Bound actual momentum, not just desired thrust, at the same tangent envelope.
+    for (const obstacle of context.mapObstacles) {
+      const dx = obstacle.pos[0] - ship.pos[0];
+      const dy = obstacle.pos[1] - ship.pos[1];
+      const distance = Math.hypot(dx, dy);
+      if (distance < 1e-6) continue;
+      const clearance = activeShieldRadius(ship) + obstacle.radius + 60;
+      const nx = dx / distance;
+      const ny = dy / distance;
+      const closing =
+        (controlledX - obstacle.velocity[0]) * nx + (controlledY - obstacle.velocity[1]) * ny;
+      const safeClosing = Math.max(0, (distance - clearance) / 0.5);
+      if (closing > safeClosing) {
+        controlledX -= nx * (closing - safeClosing);
+        controlledY -= ny * (closing - safeClosing);
+      }
+    }
+  }
   // Wings can cross another capital's shield while intercepting or rejoining.
   // Preserve tangential flight, but bound closing speed by the remaining clearance.
   if (ship.hullClass === "strike_craft") {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const HISTORY_SIZE = 160;
 const GRAPH_SAMPLE_MS = 50;
+const GRAPH_SMOOTH_WINDOWS = 5;
 
 export class PerformanceSamples {
   frames: number[] = [];
@@ -14,6 +15,22 @@ export class PerformanceSamples {
   private rtfStart: { wallMs: number; simTime: number } | null = null;
   private graphElapsed = 0;
   private graphFrameCount = 0;
+  private graphSlowestFrame = 0;
+  private graphWindowCounts: number[] = [];
+
+  private addGraphWindow(frameCount: number, slowestFrame: number) {
+    if (slowestFrame > 33) {
+      // Show stalls immediately, without letting them skew subsequent healthy windows.
+      this.graphWindowCounts = [];
+      this.graphFrames.push(slowestFrame);
+    } else {
+      this.graphWindowCounts.push(frameCount);
+      if (this.graphWindowCounts.length > GRAPH_SMOOTH_WINDOWS) this.graphWindowCounts.shift();
+      const count = this.graphWindowCounts.reduce((sum, value) => sum + value, 0);
+      this.graphFrames.push((GRAPH_SAMPLE_MS * this.graphWindowCounts.length) / count);
+    }
+    if (this.graphFrames.length > HISTORY_SIZE) this.graphFrames.shift();
+  }
 
   addFrame = (duration: number) => {
     if (!Number.isFinite(duration) || duration <= 0) return;
@@ -24,20 +41,18 @@ export class PerformanceSamples {
       const portion = Math.min(remaining, GRAPH_SAMPLE_MS - this.graphElapsed);
       this.graphElapsed += portion;
       this.graphFrameCount += portion / duration;
+      this.graphSlowestFrame = Math.max(this.graphSlowestFrame, duration);
       remaining -= portion;
       if (this.graphElapsed < GRAPH_SAMPLE_MS - 1e-9) break;
-      // Integrate frame intervals over each time window, avoiding phase aliasing
-      // while preserving the duration and magnitude of long stalls.
-      this.graphFrames.push(this.graphElapsed / this.graphFrameCount);
+      // Integrate frame intervals over rolling windows to avoid refresh-phase aliasing.
+      this.addGraphWindow(this.graphFrameCount, this.graphSlowestFrame);
       this.graphElapsed = 0;
       this.graphFrameCount = 0;
+      this.graphSlowestFrame = 0;
       const fullWindows = Math.floor(remaining / GRAPH_SAMPLE_MS);
       remaining -= fullWindows * GRAPH_SAMPLE_MS;
       for (let i = 0; i < Math.min(fullWindows, HISTORY_SIZE); i++) {
-        this.graphFrames.push(duration);
-      }
-      if (this.graphFrames.length > HISTORY_SIZE) {
-        this.graphFrames.splice(0, this.graphFrames.length - HISTORY_SIZE);
+        this.addGraphWindow(GRAPH_SAMPLE_MS / duration, duration);
       }
     }
   };

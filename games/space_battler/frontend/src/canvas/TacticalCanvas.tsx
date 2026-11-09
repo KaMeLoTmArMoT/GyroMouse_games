@@ -989,34 +989,28 @@ function drawTacticalGrid(ctx: CanvasRenderingContext2D, time: number, pitchDeg:
   ctx.stroke();
   ctx.restore();
 
+  // A diffuse field suggests the buffer without stacking projected rings.
+  const innerGlowRadius = Math.max(0, radius - 100);
+  const outerGlowRadius = ARENA_HARD_PULL_RADIUS + 180;
+  const glowSpan = outerGlowRadius - innerGlowRadius;
+  const boundaryStop = (radius - innerGlowRadius) / glowSpan;
+  const hazardStop = (ARENA_HARD_PULL_RADIUS - innerGlowRadius) / glowSpan;
+  const glow = ctx.createRadialGradient(0, 0, innerGlowRadius, 0, 0, outerGlowRadius);
+  glow.addColorStop(0, "rgba(103, 232, 249, 0)");
+  glow.addColorStop(boundaryStop, "rgba(103, 232, 249, 0.1)");
+  glow.addColorStop(hazardStop, "rgba(251, 191, 36, 0.05)");
+  glow.addColorStop(1, "rgba(251, 191, 36, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, outerGlowRadius, 0, Math.PI * 2);
+  ctx.fill();
+
   const shimmer = 0.2 + 0.05 * Math.sin(time * 0.7);
   ctx.strokeStyle = `rgba(103, 232, 249, ${shimmer * (1 - tilt * 0.45)})`;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(0, 0, radius, 0, Math.PI * 2);
   ctx.stroke();
-  if (tilt > 0.01) {
-    // Fade the raised rear arc into space rather than closing it with cage uprights.
-    const height = (Math.min(radius * 0.08, 180) * tilt) / verticalScale;
-    const arcFade = ctx.createLinearGradient(-radius, 0, radius, 0);
-    arcFade.addColorStop(0, "rgba(103, 232, 249, 0)");
-    arcFade.addColorStop(0.25, `rgba(103, 232, 249, ${0.06 * tilt})`);
-    arcFade.addColorStop(0.75, `rgba(103, 232, 249, ${0.06 * tilt})`);
-    arcFade.addColorStop(1, "rgba(103, 232, 249, 0)");
-    ctx.strokeStyle = arcFade;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(0, -height, radius, radius, 0, Math.PI, Math.PI * 2);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = "rgba(251, 191, 36, 0.2)";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([12, 10]);
-  ctx.beginPath();
-  ctx.arc(0, 0, ARENA_HARD_PULL_RADIUS, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
   {
     ctx.save();
     ctx.fillStyle = "rgba(103, 232, 249, 0.6)";

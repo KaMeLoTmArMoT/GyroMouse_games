@@ -6,6 +6,7 @@ import type {
   Vector2,
 } from "../types/combat";
 import { ARENA_RADIUS, arenaAnticipation, arenaVelocity } from "./arenaBoundary";
+import type { MapObstacle } from "./battleMaps";
 import {
   closeToKillTarget,
   damagedTargetPriority,
@@ -39,6 +40,7 @@ import {
   vecSub,
 } from "./math2d";
 import { antiKitePursuitLimit, distanceSquared, navigationContext } from "./navigationContext";
+import { obstacleFlankingWaypoint } from "./obstacleNavigation";
 import {
   activeShieldRadius,
   escortCapitalStandoff,
@@ -55,6 +57,37 @@ export {
 } from "./arenaBoundary";
 // Keep simulation callers on the existing API while sharing the underlying behavior blocks.
 export { calculateSeparation, calculateSeparation as separation, limitVelocity };
+
+/** Direct-fire hulls must translate even when their normal standoff thrust is zero. */
+export function obstacleFlankingVelocity(
+  ship: ShipState,
+  target: ShipState,
+  obstacles?: readonly MapObstacle[],
+): Vector2 | null {
+  if (
+    !obstacles?.length ||
+    ship.hullClass === "strike_craft" ||
+    ship.hullClass === "tender" ||
+    ship.hullClass === "carrier"
+  )
+    return null;
+  const directFire = (turret: TurretMountState) =>
+    turret.weapon.weaponType !== "missile" && turret.weapon.weaponType !== "point_defense";
+  const gun =
+    ship.turrets.find((turret) => turret.isSpinalGimbal && directFire(turret)) ??
+    ship.turrets.find(directFire);
+  if (!gun) return null;
+  const muzzle = mountPosition(ship, gun);
+  const intercept = interceptTime(
+    vecSub(target.pos, muzzle),
+    target.velocity,
+    gun.weapon.projectileSpeed,
+  );
+  const aim =
+    intercept === null ? target.pos : vecAdd(target.pos, vecScale(target.velocity, intercept));
+  const waypoint = obstacleFlankingWaypoint(ship, target, obstacles, muzzle, aim);
+  return waypoint ? vecScale(vecNormalize(vecSub(waypoint, ship.pos)), ship.maxSpeed) : null;
+}
 
 // Individual envelopes leave a slit open only above diameter + 15 units.
 export function debrisAvoidanceVelocity(
