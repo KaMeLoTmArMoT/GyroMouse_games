@@ -345,6 +345,9 @@ export function orbitVelocity(ship: ShipState, target: ShipState, radius = 300):
 export function tenderRescueTarget(ship: ShipState, ships: ShipState[]): ShipState | undefined {
   let best: ShipState | undefined;
   let bestScore = -Infinity;
+  let capital: ShipState | undefined;
+  let capitalScore = -Infinity;
+  let hasCapital = false;
   for (const peer of navigationContext(ships)?.teams.get(ship.team) ?? ships) {
     if (
       !peer.isAlive ||
@@ -352,17 +355,22 @@ export function tenderRescueTarget(ship: ShipState, ships: ShipState[]): ShipSta
       peer.isDebris ||
       peer.team !== ship.team ||
       peer.id === ship.id ||
-      peer.hullClass === "tender" ||
+      peer.hullClass === "tender"
+    )
+      continue;
+    hasCapital ||= isCapitalShip(peer);
+    if (
       !(
+        (isCapitalShip(peer) && peer.shieldCurrent < peer.shieldMax) ||
         peer.shieldCurrent <= 0 ||
         peer.hullCurrent < peer.hullMax ||
         (peer.shieldDelayTimer > 0 && peer.shieldCurrent < peer.shieldMax * 0.4)
       )
     )
       continue;
-    // Heavy capitals provide a shield shadow: crossfire changes our station,
+    // Capitals provide a shield shadow: crossfire changes our station,
     // rather than vetoing or penalizing the very rescue they need.
-    const risk = isHeavyCapitalShip(peer) ? 0 : rescueRouteRisk(ship, peer, ships);
+    const risk = isCapitalShip(peer) ? 0 : rescueRouteRisk(ship, peer, ships);
     if (risk >= 1.5) continue;
     const importance =
       peer.hullClass === "dreadnought"
@@ -381,12 +389,22 @@ export function tenderRescueTarget(ship: ShipState, ships: ShipState[]): ShipSta
       3 * clamp(1 - peer.hullCurrent / Math.max(1, peer.hullMax), 0, 1);
     const score =
       (importance + criticality) / (1 + vecDistance(ship.pos, peer.pos) / 1200) - risk * 6;
+    if (isCapitalShip(peer)) {
+      // Keep the assigned restoration tether until recovery or loss, even as
+      // incoming damage makes another ally's rescue score more urgent.
+      if (peer.id === ship.flagshipId) return peer;
+      if (score > capitalScore || (score === capitalScore && capital && peer.id < capital.id)) {
+        capital = peer;
+        capitalScore = score;
+      }
+      continue;
+    }
     if (score > bestScore || (score === bestScore && best && peer.id < best.id)) {
       best = peer;
       bestScore = score;
     }
   }
-  return best;
+  return capital ?? (hasCapital ? undefined : best);
 }
 
 /** Allocation-free exposure along the rendezvous segment. */
@@ -443,13 +461,15 @@ export function supportVelocity(
           peer.team === ship.team &&
           peer.id !== ship.id &&
           peer.hullClass !== "tender" &&
-          (isHeavyCapitalShip(peer) || rescueRouteRisk(ship, peer, ships) < 1.5) &&
+          (isCapitalShip(peer) || rescueRouteRisk(ship, peer, ships) < 1.5) &&
           (peer.hullClass !== "strike_craft" || peer.shieldCurrent < peer.shieldMax),
       );
   const anchor =
     rescueTarget ??
     allies.sort(
       (a, b) =>
+        Number(isCapitalShip(b)) - Number(isCapitalShip(a)) ||
+        Number(b.id === ship.flagshipId) - Number(a.id === ship.flagshipId) ||
         Number(b.shieldCurrent < b.shieldMax) - Number(a.shieldCurrent < a.shieldMax) ||
         vecDistance(ship.pos, a.pos) - vecDistance(ship.pos, b.pos) ||
         a.id.localeCompare(b.id),
@@ -465,9 +485,13 @@ export function supportVelocity(
   const damaged = ship.hullCurrent / ship.hullMax < (doctrine.retreat.hullRatio ?? 0);
   if (
     anchor &&
-    isHeavyCapitalShip(anchor) &&
-    (rescueTarget || damaged || rescueRouteRisk(ship, anchor, ships) >= 1.5)
+    isCapitalShip(anchor) &&
+    (rescueTarget ||
+      damaged ||
+      ship.shieldCurrent < ship.shieldMax ||
+      rescueRouteRisk(ship, anchor, ships) > 0)
   ) {
+    ship.flagshipId = anchor.id;
     return formationVelocity(ship, anchor, tenderShieldShadowStation(ship, anchor, ships));
   }
   if ((isolated || damaged) && threat) {
@@ -524,7 +548,10 @@ function tenderShieldShadowStation(
         : ([Math.cos(anchor.heading), Math.sin(anchor.heading)] as Vector2);
   // Tenders are not haven guests. Stay immediately behind the contact envelope
   // so the capital intercepts incoming shots without repulsor/separation ejection.
-  const clearance = activeShieldRadius(anchor) + activeShieldRadius(ship) + 30;
+  const clearance = Math.max(
+    activeShieldRadius(anchor) + activeShieldRadius(ship) + 30,
+    isHeavyCapitalShip(anchor) ? 0 : escortCapitalStandoff(ship, anchor),
+  );
   const rear = vecScale(forward, -1);
   const offset = vecSub(ship.pos, anchor.pos);
   const station = vecScale(rear, clearance);

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CombatTelemetry } from "../src/engine/combatTelemetry";
 import { buildFleetFromSlots, fleetSlotCost } from "../src/engine/fleetBuilder";
 import { calculateSeparation } from "../src/engine/flightBehaviors";
-import { supportVelocity } from "../src/engine/flightControl";
+import { supportVelocity, tenderRescueTarget } from "../src/engine/flightControl";
 import { HarmonicShieldSystem } from "../src/engine/harmonicShieldSystem";
 import { vecDistance } from "../src/engine/math2d";
 import {
@@ -357,6 +357,86 @@ describe("tender fleet and support flight", () => {
     expect(supportVelocity(donor, [donor, ...frigates, ...enemies])[0]).toBeGreaterThan(0);
     donor.pos = [-1200, 0];
     expect(supportVelocity(donor, [donor, ...frigates, ...enemies])[0]).toBeGreaterThan(0);
+  });
+
+  it.each(["battleship", "dreadnought"] as const)(
+    "keeps restoring its assigned %s above 40%% shields after missile and torpedo damage",
+    (hull) => {
+      const parent = ship("parent", hull);
+      parent.shieldCurrent = parent.shieldMax * 0.45;
+      parent.shieldDelayTimer = 3;
+      const donor = ship("donor", "tender", [-425, 0]);
+      donor.flagshipId = parent.id;
+      const secondary = ship("secondary", "missile_frigate", [-1000, 100]);
+      secondary.shieldCurrent = 0;
+      const otherCapital = ship("other", "battleship", [0, 800]);
+      otherCapital.shieldCurrent = 0;
+      const enemy = buildFleetFromSlots(
+        [{ id: "enemy", hullClass: "missile_frigate", groupId: 1 }],
+        1,
+        0,
+        Math.PI,
+      )[0];
+      enemy.pos = [800, 0];
+      const fleet = [donor, parent, secondary, otherCapital, enemy];
+      const sim = new ClientCombatSimulation();
+      for (const peer of fleet) sim.addShip(peer);
+      const initialShield = parent.shieldCurrent;
+      const missile = enemy.turrets.find((turret) => turret.weapon.weaponType === "missile");
+      if (!missile) throw new Error("Expected missile launcher");
+      const torpedo = buildFleetFromSlots(
+        [{ id: "torpedo", hullClass: "cruiser", groupId: 1 }],
+        1,
+        0,
+        0,
+      )[0].turrets.find((turret) => turret.weapon.weaponType === "missile");
+      if (!torpedo) throw new Error("Expected torpedo launcher");
+      for (let step = 1; step <= 6 * 60; step++) {
+        sim.timeElapsed = step / 60;
+        if (step === 1) sim["weapons"].applyDamage(donor, 100, missile.weapon, 1);
+        if (step === 120) {
+          // A second guided impact reaches the hull while restoration is active.
+          donor.shieldCurrent = 0;
+          donor.armorCurrent = 0;
+          sim["weapons"].applyDamage(
+            donor,
+            (donor.hullMax * 0.7) / torpedo.weapon.hullMultiplier,
+            torpedo.weapon,
+            1,
+          );
+        }
+        expect(tenderRescueTarget(donor, fleet)).toBe(parent);
+        sim.shieldHaven.cleanup(fleet);
+        updateShipNavigation(donor, enemy, fleet, 1 / 60, sim, () => ({
+          heading: 0,
+          speed: donor.maxSpeed,
+        }));
+        sim.harmonicShields.update(fleet, step / 60, 1 / 60);
+        expect(donor.pos[0]).toBeLessThan(parent.pos[0]);
+        expect(vecDistance(donor.pos, parent.pos)).toBeLessThan(500);
+        expect(vecDistance([0, 0], donor.pos)).toBeLessThan(500);
+        if (step < 360)
+          expect(sim.harmonicShields.getTenderState(donor.id, step / 60)?.recipientId).toBe(
+            parent.id,
+          );
+      }
+      expect(parent.shieldCurrent).toBeCloseTo(initialShield + 390);
+      expect(donor.hullCurrent / donor.hullMax).toBeLessThan(0.35);
+      expect(donor.havenState).toBe("none");
+    },
+  );
+
+  it("stays with surviving capitals and switches to secondary rescue only after their loss", () => {
+    const donor = ship("donor", "tender", [-425, 0]);
+    const parent = ship("parent", "battleship");
+    const secondary = ship("secondary", "missile_frigate", [-1200, 0]);
+    secondary.shieldCurrent = 0;
+    const fleet = [donor, parent, secondary];
+    expect(tenderRescueTarget(donor, fleet)).toBeUndefined();
+    expect(supportVelocity(donor, fleet)).toEqual([0, 0]);
+    parent.isAlive = false;
+    expect(tenderRescueTarget(donor, fleet)).toBe(secondary);
+    expect(supportVelocity(donor, fleet)[0]).toBeLessThan(0);
   });
 
   it.each(["depleted", "heavy fire"])(
