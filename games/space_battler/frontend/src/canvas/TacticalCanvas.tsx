@@ -26,7 +26,14 @@ import {
 import { projectileAtPoint } from "./projectileSelection";
 import { renderShip } from "./shipRenderer";
 import { SimulationPresenter, type TacticalPresentationState } from "./simulationPresenter";
-import { discVisible, segmentVisible, type Viewport, worldViewport } from "./viewport";
+import {
+  discVisible,
+  segmentVisible,
+  strokeWithoutPitch,
+  unpitchedStrokeContext,
+  type Viewport,
+  worldViewport,
+} from "./viewport";
 import { dispatchWorkerPresentationEvents } from "./workerPresentationEvents";
 
 interface TacticalCanvasProps {
@@ -46,7 +53,6 @@ interface TacticalCanvasProps {
 }
 
 type TacticalCamera = { x: number; y: number; zoom: number; pitchDeg: number };
-const RENDER_INTERVAL_MS = 1000 / 60;
 
 export function clampCameraPitch(deg: number): number {
   return Math.max(25, Math.min(90, deg));
@@ -177,7 +183,6 @@ export function TacticalCanvas({
 
     let animId: number;
     let lastTime: number | null = null;
-    let nextRenderTime: number | null = null;
     let focused = document.hasFocus();
     const handleBlur = () => {
       focused = false;
@@ -186,12 +191,10 @@ export function TacticalCanvas({
     const handleFocus = () => {
       focused = true;
       lastTime = null;
-      nextRenderTime = null;
       performanceSamples?.resetSimulationClock();
     };
     const handleVisibilityChange = () => {
       lastTime = null;
-      nextRenderTime = null;
       performanceSamples?.resetSimulationClock();
       if (document.hidden) presenter.frame(performance.now(), 0, 0);
     };
@@ -200,16 +203,6 @@ export function TacticalCanvas({
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const renderLoop = (now: number) => {
-      // Keep the target cadence across refresh intervals (e.g. 144 Hz) without
-      // accumulating drift; sample real elapsed time only when drawing.
-      if (nextRenderTime !== null && now + 0.2 < nextRenderTime) {
-        animId = requestAnimationFrame(renderLoop);
-        return;
-      }
-      nextRenderTime =
-        nextRenderTime === null || now - nextRenderTime >= RENDER_INTERVAL_MS
-          ? now + RENDER_INTERVAL_MS
-          : nextRenderTime + RENDER_INTERVAL_MS;
       const renderStart = performance.now();
       const rawDt = lastTime === null ? 0 : (now - lastTime) / 1000;
       lastTime = now;
@@ -222,13 +215,18 @@ export function TacticalCanvas({
       const previousTime = presenter.state.timeElapsed;
       const activeSpeed = focused && !document.hidden ? speed : 0;
       if (workerClient) {
-        presenter.frame(now, Math.max(0, rawDt), activeSpeed, performanceSamples, (events) =>
-          dispatchWorkerPresentationEvents(
-            events,
-            (id) => presenter.shipById(id),
-            effectsRef.current,
-            spaceAudio,
-          ),
+        presenter.frame(
+          renderStart,
+          Math.max(0, rawDt),
+          activeSpeed,
+          performanceSamples,
+          (events) =>
+            dispatchWorkerPresentationEvents(
+              events,
+              (id) => presenter.shipById(id),
+              effectsRef.current,
+              spaceAudio,
+            ),
         );
       }
       const sim = presenter.state;
@@ -254,7 +252,11 @@ export function TacticalCanvas({
             const maxY = Math.max(...alive.map((ship) => ship.pos[1] + ship.size * 2));
             camera.zoom = Math.max(
               0.3,
-              Math.min(0.85, canvas.width / (maxX - minX), canvas.height / (maxY - minY)),
+              Math.min(
+                0.85,
+                canvas.clientWidth / (maxX - minX),
+                canvas.clientHeight / (maxY - minY),
+              ),
             );
             camera.x = -((minX + maxX) / 2) * camera.zoom;
             camera.y = -((minY + maxY) / 2) * camera.zoom;
@@ -287,20 +289,30 @@ export function TacticalCanvas({
 
       const canvas = canvasRef.current;
       if (canvas) {
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        const pixelRatio = window.devicePixelRatio || 1;
+        const backingWidth = Math.round(width * pixelRatio);
+        const backingHeight = Math.round(height * pixelRatio);
+        if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+          canvas.width = backingWidth;
+          canvas.height = backingHeight;
+        }
         const ctx = canvas.getContext("2d");
-        if (ctx) {
+        if (ctx && width > 0 && height > 0) {
           ctx.save();
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.setTransform(backingWidth / width, 0, 0, backingHeight / height, 0, 0);
+          ctx.clearRect(0, 0, width, height);
 
           ctx.fillStyle = "#05070f";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillRect(0, 0, width, height);
 
           // Camera Transformation
           const camera = cameraRef.current;
           const verticalScale = pitchVerticalScale(camera.pitchDeg);
-          ctx.translate(canvas.width / 2 + camera.x, canvas.height / 2 + camera.y * verticalScale);
+          ctx.translate(width / 2 + camera.x, height / 2 + camera.y * verticalScale);
           ctx.scale(camera.zoom, camera.zoom * verticalScale);
-          const viewport = worldViewport(canvas.width, canvas.height / verticalScale, camera);
+          const viewport = worldViewport(width, height / verticalScale, camera);
 
           drawTacticalGrid(ctx, sim.timeElapsed, camera.pitchDeg);
           const selectedTender = sim.ships.find(
@@ -535,8 +547,9 @@ export function TacticalCanvas({
           const selectedProjectile = sim.projectiles.find((p) => p.id === selectedProjectileId);
           if (selectedProjectile) {
             const target = sim.ships.find((s) => s.id === selectedProjectile.targetId && s.isAlive);
-            renderProjectileGuidance(ctx, selectedProjectile, target, cameraRef.current.zoom);
-            renderProjectileThreats(ctx, selectedProjectile, sim.ships, cameraRef.current.zoom);
+            const overlay = unpitchedStrokeContext(ctx, verticalScale);
+            renderProjectileGuidance(overlay, selectedProjectile, target, camera.zoom);
+            renderProjectileThreats(overlay, selectedProjectile, sim.ships, camera.zoom);
           }
 
           ctx.save();
@@ -602,14 +615,8 @@ export function TacticalCanvas({
           }
           ctx.restore();
 
-          const [minX, minY] = screenToWorldPoint(0, 0, canvas.width, canvas.height, camera);
-          const [maxX, maxY] = screenToWorldPoint(
-            canvas.width,
-            canvas.height,
-            canvas.width,
-            canvas.height,
-            camera,
-          );
+          const [minX, minY] = screenToWorldPoint(0, 0, width, height, camera);
+          const [maxX, maxY] = screenToWorldPoint(width, height, width, height, camera);
           drawRadiationInterference(ctx, { minX, maxX, minY, maxY }, camera.zoom, sim.timeElapsed);
           ctx.restore();
         }
@@ -644,19 +651,6 @@ export function TacticalCanvas({
     performanceSamples,
   ]);
 
-  useEffect(() => {
-    const handleResize = () => {
-      const canvas = canvasRef.current;
-      if (canvas?.parentElement) {
-        canvas.width = canvas.parentElement.clientWidth;
-        canvas.height = canvas.parentElement.clientHeight;
-      }
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0 || e.button === 1) {
       if (e.button === 1) e.preventDefault();
@@ -684,9 +678,9 @@ export function TacticalCanvas({
         if (dx !== 0 || dy !== 0) followRef.current = false;
         const canvas = canvasRef.current;
         const rect = canvas?.getBoundingClientRect();
-        camera.x += dx * (canvas && rect ? canvas.width / rect.width : 1);
+        camera.x += dx * (canvas && rect ? canvas.clientWidth / rect.width : 1);
         camera.y +=
-          (dy * (canvas && rect ? canvas.height / rect.height : 1)) /
+          (dy * (canvas && rect ? canvas.clientHeight / rect.height : 1)) /
           pitchVerticalScale(camera.pitchDeg);
       }
       dragStartRef.current = { x: e.clientX, y: e.clientY };
@@ -696,15 +690,15 @@ export function TacticalCanvas({
   const shipAtPoint = (e: React.MouseEvent): string | null => {
     if (canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
-      const clickX = ((e.clientX - rect.left) * canvasRef.current.width) / rect.width;
-      const clickY = ((e.clientY - rect.top) * canvasRef.current.height) / rect.height;
+      const clickX = ((e.clientX - rect.left) * canvasRef.current.clientWidth) / rect.width;
+      const clickY = ((e.clientY - rect.top) * canvasRef.current.clientHeight) / rect.height;
 
       // Convert Screen Coords -> World Coords
       const [worldX, worldY] = screenToWorldPoint(
         clickX,
         clickY,
-        canvasRef.current.width,
-        canvasRef.current.height,
+        canvasRef.current.clientWidth,
+        canvasRef.current.clientHeight,
         cameraRef.current,
       );
 
@@ -733,15 +727,21 @@ export function TacticalCanvas({
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const camera = cameraRef.current;
-    const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
-    const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
-    const [worldX, worldY] = screenToWorldPoint(x, y, canvas.width, canvas.height, camera);
+    const x = ((e.clientX - rect.left) * canvas.clientWidth) / rect.width;
+    const y = ((e.clientY - rect.top) * canvas.clientHeight) / rect.height;
+    const [worldX, worldY] = screenToWorldPoint(
+      x,
+      y,
+      canvas.clientWidth,
+      canvas.clientHeight,
+      camera,
+    );
     return projectileAtPoint(
       presentation.projectiles,
       worldX,
       worldY,
-      (camera.zoom * rect.width) / canvas.width,
-      (camera.zoom * pitchVerticalScale(camera.pitchDeg) * rect.height) / canvas.height,
+      (camera.zoom * rect.width) / canvas.clientWidth,
+      (camera.zoom * pitchVerticalScale(camera.pitchDeg) * rect.height) / canvas.clientHeight,
       shipClicked,
     );
   };
@@ -791,9 +791,10 @@ export function TacticalCanvas({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) * canvas.width) / rect.width - canvas.width / 2;
+      const x =
+        ((e.clientX - rect.left) * canvas.clientWidth) / rect.width - canvas.clientWidth / 2;
       const y =
-        (((e.clientY - rect.top) * canvas.height) / rect.height - canvas.height / 2) /
+        (((e.clientY - rect.top) * canvas.clientHeight) / rect.height - canvas.clientHeight / 2) /
         pitchVerticalScale(cameraRef.current.pitchDeg);
       const camera = cameraRef.current;
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
@@ -1118,7 +1119,7 @@ function drawTacticalTrajectory(
       ctx.moveTo(...craft.pos);
       ctx.lineTo(...ship.pos);
     }
-    ctx.stroke();
+    strokeWithoutPitch(ctx, verticalScale);
     ctx.restore();
   }
 
@@ -1142,7 +1143,7 @@ function drawTacticalTrajectory(
     ctx.beginPath();
     ctx.moveTo(ship.pos[0], ship.pos[1]);
     ctx.lineTo(target.pos[0], target.pos[1]);
-    ctx.stroke();
+    strokeWithoutPitch(ctx, verticalScale);
 
     // Target Corner Brackets
     const br = Math.max(shieldEnvelopeRadius(target), 20);
@@ -1151,6 +1152,7 @@ function drawTacticalTrajectory(
     ctx.lineWidth = 1.5;
     ctx.setLineDash([]);
     const [tx, ty] = target.pos;
+    counterPitch(ctx, tx, ty, verticalScale);
 
     ctx.beginPath();
     // Top-left
@@ -1175,7 +1177,6 @@ function drawTacticalTrajectory(
     ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
     ctx.font = "10px monospace";
     ctx.textAlign = "center";
-    counterPitch(ctx, tx, ty - br - 5, verticalScale);
     ctx.fillText(`LOCK: ${target.name} (${Math.round(dist)}u)`, tx, ty - br - 5);
     ctx.restore();
   }
@@ -1196,9 +1197,10 @@ function drawTacticalTrajectory(
     ctx.beginPath();
     ctx.moveTo(ship.pos[0], ship.pos[1]);
     ctx.lineTo(predX, predY);
-    ctx.stroke();
+    strokeWithoutPitch(ctx, verticalScale);
 
     // End Waypoint Marker (Circle + Reticle)
+    counterPitch(ctx, predX, predY, verticalScale);
     ctx.shadowBlur = 0;
     ctx.setLineDash([]);
     ctx.beginPath();
@@ -1226,7 +1228,6 @@ function drawTacticalTrajectory(
     ctx.font = "9px monospace";
     ctx.textAlign = "left";
     ctx.fillStyle = primaryColor;
-    counterPitch(ctx, predX + 14, predY + 3, verticalScale);
     ctx.fillText(`+${horizon}s`, predX + 14, predY + 3);
     ctx.restore();
   }

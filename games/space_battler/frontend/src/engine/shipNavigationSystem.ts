@@ -19,6 +19,7 @@ import {
   fleetDefenseAnchor,
   fleetReturnVelocity,
   limitVelocity,
+  missileObstacleCoverVelocity,
   obstacleFlankingVelocity,
   orbitVelocity,
   rescueRouteRisk,
@@ -508,6 +509,7 @@ export function updateShipNavigation(
   let rangePhase: RangePhase | undefined;
   let evadingOrdnance = false;
   let maintainingStandoff = false;
+  let emergencyBreakout = false;
   let thrustMultiplier = 1;
   if (ship.hullClass === "tender") {
     const rescueTarget = tenderRescueTarget(ship, aliveShips);
@@ -687,6 +689,7 @@ export function updateShipNavigation(
   if (SHIP_DOCTRINES[ship.hullClass].flight.kind === "skirmish") {
     const breakout = emergencySkirmishBreakout(ship, aliveShips, ARENA_RADIUS);
     if (breakout) {
+      emergencyBreakout = true;
       targetHeading = breakout.heading;
       thrusterVelocity = breakout.velocity;
       rangePhase = undefined;
@@ -715,6 +718,26 @@ export function updateShipNavigation(
     targetHeading = Math.atan2(route[1], route[0]);
   }
   const returningToArena = vecDistance([0, 0], ship.pos) > ARENA_RADIUS;
+  const cover =
+    target &&
+    !emergencyBreakout &&
+    !evadingOrdnance &&
+    !returningToArena &&
+    !(ship.shieldCurrent <= 0 && ship.hullCurrent / Math.max(1, ship.hullMax) < 0.4)
+      ? missileObstacleCoverVelocity(
+          ship,
+          target,
+          aliveShips,
+          intendedVelocity,
+          context.mapObstacles,
+        )
+      : null;
+  if (cover) {
+    intendedVelocity = cover;
+    thrusterVelocity = cover;
+    // Preserve salvo aiming; cover changes translation rather than the weapon-facing intent.
+    maintainingStandoff = true;
+  }
   const flank =
     target &&
     !evadingOrdnance &&
@@ -750,7 +773,8 @@ export function updateShipNavigation(
       ship.hullClass === "strike_craft" && ship.fighterPhase === "attack" ? target : null,
     );
   }
-  let avoidingObstacle = flank !== null || Math.abs(obstacleDecision.correction) > 1e-6;
+  let avoidingObstacle =
+    cover !== null || flank !== null || Math.abs(obstacleDecision.correction) > 1e-6;
   if (Math.abs(obstacleDecision.correction) > 1e-6) {
     const course =
       Math.atan2(intendedVelocity[1], intendedVelocity[0]) + obstacleDecision.correction;
@@ -804,7 +828,7 @@ export function updateShipNavigation(
   const newForwardSpeed = currentForwardSpeed + forwardStep;
   let controlledX = forwardX * newForwardSpeed + rightX * newLateralSpeed;
   let controlledY = forwardY * newForwardSpeed + rightY * newLateralSpeed;
-  if (flank && context.mapObstacles) {
+  if ((flank || cover) && context.mapObstacles) {
     // Bound actual momentum, not just desired thrust, at the same tangent envelope.
     for (const obstacle of context.mapObstacles) {
       const dx = obstacle.pos[0] - ship.pos[0];

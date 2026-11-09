@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createMapObstacles } from "../src/engine/battleMaps";
 import { mountPosition } from "../src/engine/fireControl";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
 import {
@@ -16,6 +17,7 @@ import {
   configureArena,
   debrisAvoidanceVelocity,
   escortVelocity,
+  missileObstacleCoverVelocity,
   spinalEscape,
 } from "../src/engine/flightControl";
 import {
@@ -26,6 +28,9 @@ import {
   type SkirmishCycle,
 } from "../src/engine/flightCycles";
 import { normalizeAngle, rotatePoint, vecDistance, vecDot } from "../src/engine/math2d";
+import { NavigationContext } from "../src/engine/navigationContext";
+import { obstacleMissileCoverStation } from "../src/engine/obstacleNavigation";
+import { activeShieldRadius } from "../src/engine/shieldGeometry";
 import { SHIP_DOCTRINES } from "../src/engine/shipDoctrines";
 import { updateShipNavigation } from "../src/engine/shipNavigationSystem";
 import { ClientCombatSimulation } from "../src/engine/simulation";
@@ -113,6 +118,175 @@ describe("skirmish survival overrides", () => {
     const tethered = skirmishFleetVelocity(frigate, desired, [anchor]);
     expect(tethered[0]).toBeGreaterThan(frigate.maxSpeed * 0.8);
     expect(tethered).toEqual(desired);
+  });
+});
+
+describe("missile asteroid shelter", () => {
+  it.each(["battleship", "cruiser", "dreadnought"] as const)(
+    "moves into a nearby asteroid shadow against a direct-fire %s",
+    (hull) => {
+      const frigate = ship("missile_frigate");
+      frigate.pos = [-650, 200];
+      const enemy = ship(hull, 1);
+      enemy.pos = [600, 0];
+      const obstacles = createMapObstacles("megaboulder");
+      const station = obstacleMissileCoverStation(frigate, enemy, obstacles, 1200, 1450);
+      if (!station) throw new Error("Missing cover station");
+      expect(station?.station).toEqual([-600, 0]);
+      expect(vecDistance(station.station, obstacles[0].pos)).toBeGreaterThan(
+        obstacles[0].radius + activeShieldRadius(frigate),
+      );
+      const velocity = missileObstacleCoverVelocity(
+        frigate,
+        enemy,
+        [frigate, enemy],
+        [0, frigate.maxSpeed],
+        obstacles,
+      );
+      if (!velocity) throw new Error("Missing cover velocity");
+      expect(velocity?.[0]).toBeGreaterThan(0);
+      expect(velocity?.[1]).toBeLessThan(0);
+      expect(Math.hypot(...velocity)).toBeLessThanOrEqual(frigate.maxSpeed);
+    },
+  );
+
+  it("holds the shadow instead of following a salvo breakoff out into the firing line", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [-600, 0];
+    const enemy = ship("battleship", 1);
+    enemy.pos = [600, 0];
+    expect(
+      missileObstacleCoverVelocity(
+        frigate,
+        enemy,
+        [frigate, enemy],
+        [-80, 80],
+        createMapObstacles("megaboulder"),
+      ),
+    ).toEqual([0, 0]);
+  });
+
+  it("retreats into open space when heavy ships flank both sides of the asteroid", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [-600, 0];
+    const enemy = ship("battleship", 1);
+    enemy.pos = [600, 0];
+    const flanks = [-1, 1].map((side) => {
+      const flank = ship("cruiser", 1);
+      flank.id = `flank_${side}`;
+      flank.pos = [-200, side * 600];
+      return flank;
+    });
+    const ships = [frigate, enemy, ...flanks];
+    const obstacles = createMapObstacles("megaboulder");
+    const desired: Vector2 = [0, 0];
+    const velocity = missileObstacleCoverVelocity(frigate, enemy, ships, desired, obstacles);
+    if (!velocity) throw new Error("Missing flank escape");
+    expect(velocity[0]).toBeLessThan(-frigate.maxSpeed * 0.5);
+    expect(velocity[1]).toBeCloseTo(0);
+    new NavigationContext(ships);
+    expect(missileObstacleCoverVelocity(frigate, enemy, ships, desired, obstacles)).toEqual(
+      velocity,
+    );
+    expect(
+      missileObstacleCoverVelocity(frigate, enemy, [...ships].reverse(), desired, obstacles),
+    ).toEqual(velocity);
+    flanks[0].isDebris = true;
+    flanks[1].isDocked = true;
+    expect(missileObstacleCoverVelocity(frigate, enemy, ships, desired, obstacles)).toEqual([0, 0]);
+  });
+
+  it("keeps hull separation active when several missile ships share a shelter", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [-600, 0];
+    const ally = ship("missile_frigate");
+    ally.id = "ally";
+    ally.pos = [-600, frigate.size * 2];
+    const enemy = ship("battleship", 1);
+    enemy.pos = [600, 0];
+    const velocity = missileObstacleCoverVelocity(
+      frigate,
+      enemy,
+      [frigate, ally, enemy],
+      [0, 0],
+      createMapObstacles("megaboulder"),
+    );
+    expect(velocity?.[1]).toBeLessThan(0);
+  });
+
+  it("fades continuously into retreat as a flanker exposes the shelter", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [-600, 0];
+    const enemy = ship("battleship", 1);
+    enemy.pos = [600, 0];
+    const flank = ship("cruiser", 1);
+    flank.id = "flanker";
+    const ships = [frigate, enemy, flank];
+    const obstacles = createMapObstacles("megaboulder");
+    let previous: Vector2 = [0, 0];
+    let partial = false;
+    for (let y = 0; y <= 800; y++) {
+      flank.pos = [400, y];
+      const velocity = missileObstacleCoverVelocity(frigate, enemy, ships, [0, 0], obstacles);
+      if (!velocity) throw new Error("Missing cover transition");
+      expect(vecDistance(previous, velocity)).toBeLessThan(frigate.maxSpeed * 0.02);
+      partial ||= Math.hypot(...velocity) > 1 && Math.hypot(...velocity) < frigate.maxSpeed * 0.7;
+      previous = velocity;
+    }
+    expect(partial).toBe(true);
+    expect(previous[0]).toBeLessThan(0);
+  });
+
+  it("does not divert direct-fire hulls, distant cover, tiny rocks, or missile-only enemies", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [-600, 0];
+    const enemy = ship("battleship", 1);
+    enemy.pos = [600, 0];
+    const obstacles = createMapObstacles("megaboulder");
+    const desired: Vector2 = [50, 0];
+    const direct = ship("cruiser");
+    direct.pos = frigate.pos;
+    expect(
+      missileObstacleCoverVelocity(direct, enemy, [direct, enemy], desired, obstacles),
+    ).toBeNull();
+    expect(missileObstacleCoverVelocity(frigate, enemy, [frigate, enemy], desired, [])).toBeNull();
+    obstacles[0].pos = [0, 1500];
+    expect(
+      missileObstacleCoverVelocity(frigate, enemy, [frigate, enemy], desired, obstacles),
+    ).toBeNull();
+    obstacles[0].pos = [0, 0];
+    obstacles[0].radius = activeShieldRadius(frigate);
+    expect(
+      missileObstacleCoverVelocity(frigate, enemy, [frigate, enemy], desired, obstacles),
+    ).toBeNull();
+    obstacles[0].radius = 280;
+    enemy.turrets = enemy.turrets.filter((turret) => turret.weapon.weaponType === "missile");
+    expect(
+      missileObstacleCoverVelocity(frigate, enemy, [frigate, enemy], desired, obstacles),
+    ).toBeNull();
+  });
+
+  it("keeps guided missiles firing while the navigation controller retains asteroid cover", () => {
+    const frigate = ship("missile_frigate");
+    frigate.pos = [-600, 0];
+    frigate.heading = 0;
+    const enemy = ship("battleship", 1);
+    enemy.pos = [600, 0];
+    const sim = new ClientCombatSimulation();
+    sim.mapObstacles = createMapObstacles("megaboulder");
+    sim.addShip(frigate);
+    sim.addShip(enemy);
+    for (let tick = 0; tick < 120; tick++) {
+      sim.update(1 / 60);
+      expect(frigate.pos[0]).toBeLessThan(-sim.mapObstacles[0].radius);
+      expect(Math.abs(frigate.pos[1])).toBeLessThan(activeShieldRadius(frigate));
+    }
+    expect(
+      frigate.turrets.some(
+        (turret) => turret.weapon.weaponType === "missile" && turret.lastFiredTime !== undefined,
+      ),
+    ).toBe(true);
+    expect(sim.projectiles.some((projectile) => projectile.weaponType === "missile")).toBe(true);
   });
 });
 

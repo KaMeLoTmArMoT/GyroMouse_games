@@ -5,7 +5,13 @@ import type { ShieldHavenSystem } from "../engine/shieldHaven";
 import type { ClientCombatSimulation } from "../engine/simulation";
 import type { SimulationWorkerClient } from "../engine/simulationWorkerClient";
 import type { SimulationWorkerEvent } from "../engine/simulationWorkerMessages";
-import type { RenderInterpolationState } from "../engine/simulationWorkerProtocol";
+import {
+  PROJECTILE_STRIDE,
+  ProjectileWord,
+  type RenderInterpolationState,
+  SHIP_STRIDE,
+  ShipWord,
+} from "../engine/simulationWorkerProtocol";
 import { interpolateSimulationSnapshot, snapshotBlendAlpha } from "../engine/snapshotInterpolation";
 import type { ProjectileState, ShipState } from "../types/combat";
 
@@ -23,6 +29,15 @@ export type TacticalPresentationState = Pick<
   getCarrierFabrication: (ship: ShipState) => ReturnType<typeof carrierFabricationProgress>;
 };
 
+// Add the velocity-dependent part of cubic Hermite interpolation to a linear
+// interpolation. Endpoint velocities are in world units per simulation second.
+function hermiteCorrection(a: number, interval: number, delta: number, v0: number, v1: number) {
+  const tangent = delta / interval;
+  const a2 = a * a;
+  const a3 = a2 * a;
+  return interval * ((a3 - 2 * a2 + a) * (v0 - tangent) + (a3 - a2) * (v1 - tangent));
+}
+
 /** A supplied simulation is authoritative only in direct mode. Worker mode
  * mirrors its render model onto the supplied simulation for existing HUD reads;
  * Float32 presentation values never feed the worker's authoritative simulation.
@@ -37,6 +52,9 @@ export class SimulationPresenter {
   private blendedSnapshot: RenderInterpolationState | null = null;
   private blendAlpha = 0;
   private appliedSnapshot: RenderInterpolationState | null = null;
+  private indexedSnapshot: RenderInterpolationState | null = null;
+  private previousShipRows = new Map<string, number>();
+  private previousProjectileRows = new Map<string, number>();
   private ships = new Map<string, ShipState>();
   private definitions = new Map<string, ShipState>();
   private projectiles = new Map<string, ProjectileState>();
@@ -146,6 +164,7 @@ export class SimulationPresenter {
         this.state.ships,
         this.state.projectiles,
       );
+      this.interpolatePositions(client.previousSnapshot, latest, alpha);
       this.state.timeElapsed =
         client.previousSnapshot && speed > 0
           ? client.previousSnapshot.timeElapsed +
@@ -167,6 +186,61 @@ export class SimulationPresenter {
       this.client?.shipDefinitions.get(id) ??
       this.simulation.ships.find((ship) => ship.id === id)
     );
+  }
+
+  private interpolatePositions(
+    previous: RenderInterpolationState | null,
+    latest: RenderInterpolationState,
+    alpha: number,
+  ): void {
+    const old = previous?.views;
+    const current = latest.views;
+    const interval = previous ? latest.timeElapsed - previous.timeElapsed : 0;
+    if (!previous || !old || !current || interval <= 0 || alpha <= 0 || alpha >= 1) return;
+    if (this.indexedSnapshot !== previous) {
+      this.previousShipRows = new Map(previous.presentation?.shipIds.map((id, i) => [id, i]));
+      this.previousProjectileRows = new Map(
+        previous.presentation?.projectileIds.map((id, i) => [id, i]),
+      );
+      this.indexedSnapshot = previous;
+    }
+    this.state.ships.forEach((ship, i) => {
+      const previousIndex = this.previousShipRows.get(ship.id);
+      if (previousIndex === undefined) return;
+      const before = previousIndex * SHIP_STRIDE;
+      const row = i * SHIP_STRIDE;
+      if (old.shipsInt[before + ShipWord.flags] !== current.shipsInt[row + ShipWord.flags]) return;
+      for (const [axis, position, velocity] of [
+        [0, ShipWord.posX, ShipWord.velX],
+        [1, ShipWord.posY, ShipWord.velY],
+      ] as const) {
+        ship.pos[axis] += hermiteCorrection(
+          alpha,
+          interval,
+          current.shipsFloat[row + position] - old.shipsFloat[before + position],
+          old.shipsFloat[before + velocity],
+          current.shipsFloat[row + velocity],
+        );
+      }
+    });
+    this.state.projectiles.forEach((projectile, i) => {
+      const previousIndex = this.previousProjectileRows.get(projectile.id);
+      if (previousIndex === undefined) return;
+      const before = previousIndex * PROJECTILE_STRIDE;
+      const row = i * PROJECTILE_STRIDE;
+      for (const [axis, position, velocity] of [
+        [0, ProjectileWord.posX, ProjectileWord.velX],
+        [1, ProjectileWord.posY, ProjectileWord.velY],
+      ] as const) {
+        projectile.pos[axis] += hermiteCorrection(
+          alpha,
+          interval,
+          current.projectilesFloat[row + position] - old.projectilesFloat[before + position],
+          old.projectilesFloat[before + velocity],
+          current.projectilesFloat[row + velocity],
+        );
+      }
+    });
   }
 
   private applyMetadata(snapshot: RenderInterpolationState): void {

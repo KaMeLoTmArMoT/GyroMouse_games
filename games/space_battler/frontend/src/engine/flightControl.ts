@@ -40,7 +40,7 @@ import {
   vecSub,
 } from "./math2d";
 import { antiKitePursuitLimit, distanceSquared, navigationContext } from "./navigationContext";
-import { obstacleFlankingWaypoint } from "./obstacleNavigation";
+import { obstacleFlankingWaypoint, obstacleMissileCoverStation } from "./obstacleNavigation";
 import {
   activeShieldRadius,
   escortCapitalStandoff,
@@ -87,6 +87,105 @@ export function obstacleFlankingVelocity(
     intercept === null ? target.pos : vecAdd(target.pos, vecScale(target.velocity, intercept));
   const waypoint = obstacleFlankingWaypoint(ship, target, obstacles, muzzle, aim);
   return waypoint ? vecScale(vecNormalize(vecSub(waypoint, ship.pos)), ship.maxSpeed) : null;
+}
+
+/** Guided-only standoff hulls can keep firing without exposing their own firing line. */
+export function missileObstacleCoverVelocity(
+  ship: ShipState,
+  target: ShipState,
+  ships: ShipState[],
+  desired: Vector2,
+  obstacles?: readonly MapObstacle[],
+): Vector2 | null {
+  const directFireHull = (peer: ShipState) =>
+    peer.hullClass === "battleship" ||
+    peer.hullClass === "cruiser" ||
+    peer.hullClass === "dreadnought";
+  if (!obstacles?.length || !directFireHull(target)) return null;
+  const flight = SHIP_DOCTRINES[ship.hullClass].flight;
+  if (
+    flight.kind !== "skirmish" &&
+    !(
+      flight.kind === "capital" &&
+      ship.turrets.every(
+        (turret) =>
+          turret.weapon.weaponType === "missile" || turret.weapon.weaponType === "point_defense",
+      )
+    )
+  )
+    return null;
+  let missileRange = 0;
+  for (const turret of ship.turrets)
+    if (turret.weapon.weaponType === "missile")
+      missileRange = Math.max(missileRange, turret.weapon.range);
+  if (missileRange <= 0) return null;
+  const standoff =
+    flight.kind === "skirmish"
+      ? flight.desiredDistance
+      : Math.min(missileRange * 0.9, flight.optimalDistanceLimit);
+  const cover = obstacleMissileCoverStation(ship, target, obstacles, standoff, missileRange);
+  if (!cover) return null;
+  let exposed = 0;
+  let retreat: Vector2 = [0, 0];
+  let directThreats = 0;
+  // The phase-local capital worklist retains source accumulation order.
+  for (const enemy of navigationContext(ships)?.teamEnemyCapitals.get(ship.team) ?? ships) {
+    if (
+      !enemy.isAlive ||
+      enemy.isDocked ||
+      enemy.isDebris ||
+      enemy.team === ship.team ||
+      !directFireHull(enemy)
+    )
+      continue;
+    let range = 0;
+    for (const turret of enemy.turrets)
+      if (turret.weapon.weaponType !== "missile" && turret.weapon.weaponType !== "point_defense")
+        range = Math.max(range, turret.weapon.range);
+    if (range <= 0) continue;
+    const distance = Math.min(
+      vecDistance(enemy.pos, ship.pos),
+      vecDistance(enemy.pos, cover.station),
+    );
+    if (distance > range + ship.maxSpeed * 2) continue;
+    directThreats++;
+    const ray = vecSub(cover.station, enemy.pos);
+    const offset = vecSub(cover.obstacle.pos, enemy.pos);
+    const t = clamp(vecDot(offset, ray) / Math.max(1, vecDot(ray, ray)), 0, 1);
+    const miss = vecDistance(offset, vecScale(ray, t));
+    // Fade before the full hull leaves the shadow, rather than flipping at ray contact.
+    const exposure = clamp(
+      (miss - cover.obstacle.radius + activeShieldRadius(ship)) /
+        Math.max(1, activeShieldRadius(ship) * 2),
+      0,
+      1,
+    );
+    const urgency = clamp((range + ship.maxSpeed * 2 - distance) / (ship.maxSpeed * 2), 0, 1);
+    exposed += exposure * urgency;
+    retreat = vecAdd(retreat, vecScale(vecNormalize(vecSub(ship.pos, enemy.pos)), urgency));
+  }
+  if (directThreats === 0) return null;
+  const escapeWeight = clamp(exposed, 0, 1);
+  const stationVelocity = limitVelocity(
+    vecAdd(
+      vecAdd(cover.obstacle.velocity, vecScale(vecSub(cover.station, ship.pos), 0.6)),
+      calculateSeparation(ship, ships),
+    ),
+    ship.maxSpeed,
+  );
+  const away =
+    Math.hypot(...retreat) > 1e-6
+      ? vecNormalize(retreat)
+      : vecNormalize(vecSub(ship.pos, cover.obstacle.pos));
+  const escapeVelocity = vecScale(away, ship.maxSpeed);
+  // Keep a small share of the existing kite trajectory when cover is compromised.
+  return limitVelocity(
+    vecAdd(
+      vecScale(stationVelocity, 1 - escapeWeight),
+      vecScale(vecAdd(vecScale(escapeVelocity, 0.8), vecScale(desired, 0.2)), escapeWeight),
+    ),
+    ship.maxSpeed,
+  );
 }
 
 // Individual envelopes leave a slit open only above diameter + 15 units.

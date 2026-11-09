@@ -3,6 +3,53 @@ import { circleContactFraction, type MapObstacle } from "./battleMaps";
 import { clamp, normalizeAngle } from "./math2d";
 import { activeShieldRadius, isCapitalShip } from "./shieldGeometry";
 
+/** Nearby shadow station on the existing standoff vector, outside the solid envelope. */
+export function obstacleMissileCoverStation(
+  ship: ShipState,
+  target: ShipState,
+  obstacles: readonly MapObstacle[],
+  standoff: number,
+  missileRange: number,
+): { station: Vector2; obstacle: MapObstacle } | null {
+  const dx = ship.pos[0] - target.pos[0];
+  const dy = ship.pos[1] - target.pos[1];
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1e-6) return null;
+  const nx = dx / distance;
+  const ny = dy / distance;
+  const shield = activeShieldRadius(ship);
+  let best: { station: Vector2; obstacle: MapObstacle } | null = null;
+  let bestTravel = Infinity;
+  for (const obstacle of obstacles) {
+    // Small rocks cannot shelter the full shield silhouette.
+    if (obstacle.radius <= shield * 2) continue;
+    const ox = obstacle.pos[0] - target.pos[0];
+    const oy = obstacle.pos[1] - target.pos[1];
+    const along = ox * nx + oy * ny;
+    const cross = Math.abs(ox * ny - oy * nx);
+    if (
+      along <= obstacle.radius ||
+      along > distance + ship.maxSpeed * 2 ||
+      cross > obstacle.radius + shield + ship.maxSpeed * 2
+    )
+      continue;
+    const threatDistance = Math.hypot(ox, oy);
+    const radius = Math.max(obstacle.radius + shield + 60, standoff - threatDistance);
+    if (threatDistance + radius > missileRange * 0.95) continue;
+    const station: Vector2 = [
+      obstacle.pos[0] + (ox / threatDistance) * radius,
+      obstacle.pos[1] + (oy / threatDistance) * radius,
+    ];
+    const travel = Math.hypot(station[0] - ship.pos[0], station[1] - ship.pos[1]);
+    if (travel > Math.max(standoff * 0.5, obstacle.radius * 2)) continue;
+    if (travel < bestTravel || (travel === bestTravel && best && obstacle.id < best.obstacle.id)) {
+      best = { station, obstacle };
+      bestTravel = travel;
+    }
+  }
+  return best;
+}
+
 /** Route past the first firing-line blocker, using the swept steering envelope. */
 export function obstacleFlankingWaypoint(
   ship: ShipState,
