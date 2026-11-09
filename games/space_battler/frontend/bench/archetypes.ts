@@ -1,7 +1,7 @@
-// Run from frontend: npx tsx bench/archetypes.ts [--output bench/archetypes.results.json]
+// Run from frontend: npx tsx bench/archetypes.ts [--output path] [--compare prior-results.json]
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { ARENA_RADIUS } from "../src/engine/arenaBoundary";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
@@ -261,15 +261,43 @@ async function run(
 
 const args = process.argv.slice(2);
 assert(
-  args.length === 0 || (args.length === 2 && args[0] === "--output"),
-  "Usage: tsx bench/archetypes.ts [--output path]",
+  args.length % 2 === 0 &&
+    args.every((arg, index) => index % 2 !== 0 || arg === "--output" || arg === "--compare"),
+  "Usage: tsx bench/archetypes.ts [--output path] [--compare prior-results.json]",
 );
+const options = new Map<string, string>();
+for (let index = 0; index < args.length; index += 2) {
+  assert(!options.has(args[index]), `Duplicate option: ${args[index]}`);
+  options.set(args[index], args[index + 1]);
+}
+const comparisonPath = options.get("--compare");
+const previous = comparisonPath
+  ? (JSON.parse(readFileSync(comparisonPath, "utf8")) as {
+      environment: { dt: number; warmupTicks: number; measurementTicks: number };
+      results: Array<{ scenario: (typeof scenarios)[number]; baseline: { stateHash: string } }>;
+    })
+  : undefined;
+if (previous) {
+  assert.equal(previous.environment.dt, dt);
+  assert.equal(previous.environment.warmupTicks, warmupTicks);
+  assert.equal(previous.environment.measurementTicks, measurementTicks);
+  assert.deepEqual(
+    previous.results.map((result) => result.scenario),
+    scenarios,
+  );
+}
 const profiler = createProfiler();
 const plain = createProfiler(false);
 const results = [];
 for (const scenario of scenarios) {
   console.log(`Running ${scenario.name}`);
   const baseline = await run(scenario);
+  if (previous)
+    assert.equal(
+      baseline.stateHash,
+      previous.results.find((result) => result.scenario.name === scenario.name)?.baseline.stateHash,
+      `${scenario.name}: optimization changed combat outcome`,
+    );
   const control = await run(scenario, plain);
   const profile = await run(scenario, profiler);
   assert.equal(
@@ -318,6 +346,7 @@ for (const scenario of scenarios) {
   });
 }
 const report = {
+  comparisonPath,
   environment: {
     node: process.version,
     cpu: cpus()[0].model,
@@ -328,4 +357,5 @@ const report = {
   },
   results,
 };
-if (args[0] === "--output") writeFileSync(args[1], `${JSON.stringify(report, null, 2)}\n`);
+const outputPath = options.get("--output");
+if (outputPath) writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);

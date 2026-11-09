@@ -102,6 +102,7 @@ type MissionContext = Pick<ClientCombatSimulation, "timeElapsed" | "orders" | "p
 
 export class FighterMissionSystem {
   private wings: FighterWing[] = [];
+  private readonly wingsByTeam = new Map<number, FighterWing[]>();
   private readonly context: MissionContext;
   private readonly onEgress: (ship: ShipState) => void;
   private decisions = new WeakMap<ShipState, number>();
@@ -125,6 +126,7 @@ export class FighterMissionSystem {
 
   clear(): void {
     this.wings = [];
+    this.wingsByTeam.clear();
     this.decisions = new WeakMap();
     this.steering = new WeakMap();
   }
@@ -148,9 +150,13 @@ export class FighterMissionSystem {
   }
 
   targetId(ship: ShipState): string | null {
-    return (
-      this.wings.find((w) => w.team === ship.team && w.index === ship.wingIndex)?.targetId ?? null
-    );
+    return this.wingFor(ship)?.targetId ?? null;
+  }
+
+  private wingFor(ship: ShipState): FighterWing | undefined {
+    return ship.wingIndex === undefined
+      ? undefined
+      : this.wingsByTeam.get(ship.team)?.[ship.wingIndex];
   }
 
   onShot(ship: ShipState, target: ShipState | null): void {
@@ -192,6 +198,9 @@ export class FighterMissionSystem {
           heading: members[0].heading,
           rally: [...members[0].pos],
         });
+        const teamWings = this.wingsByTeam.get(team) ?? [];
+        teamWings[index] = this.wings[this.wings.length - 1];
+        this.wingsByTeam.set(team, teamWings);
         members.forEach((ship, slot) => {
           ship.wingIndex = index;
           ship.wingSlot = slot - (size - 1) / 2;
@@ -228,6 +237,11 @@ export class FighterMissionSystem {
     let repulsion: Vector2 = [0, 0];
     for (const [wingKey, wing] of wings) {
       if (wingKey === ownKey) continue;
+      if (
+        Math.abs(own.pos[0] - wing.pos[0]) >= FIGHTER_DISPERSAL_RADIUS ||
+        Math.abs(own.pos[1] - wing.pos[1]) >= FIGHTER_DISPERSAL_RADIUS
+      )
+        continue;
       const delta = vecSub(own.pos, wing.pos);
       const distance = vecDistance([0, 0], delta);
       if (distance >= FIGHTER_DISPERSAL_RADIUS) continue;
@@ -437,7 +451,7 @@ export class FighterMissionSystem {
       ship.dogfightTargetId = undefined;
       this.setPhase(ship, "egress");
     }
-    const wing = this.wings.find((w) => w.team === ship.team && w.index === ship.wingIndex);
+    const wing = this.wingFor(ship);
     if (!wing) return { heading: ship.heading, speed: 0 };
     const phase = ship.havenState === "seeking" ? "recover" : (ship.fighterPhase ?? wing.phase);
     const tier = this.context.crewVeterancy?.[ship.team] ?? "pilot";
@@ -510,10 +524,7 @@ export class FighterMissionSystem {
     switch (phase) {
       case "intercept": {
         const opponent =
-          (ship.dogfightTargetId
-            ? navigationContext(aliveShips)?.byId.get(ship.dogfightTargetId)
-            : undefined) ??
-          aliveShips.find((s) => s.id === ship.dogfightTargetId) ??
+          (ship.dogfightTargetId ? navigation.byId.get(ship.dogfightTargetId) : undefined) ??
           target;
         const distance = vecDistance(ship.pos, opponent.pos);
         const n = vecNormalize(vecSub(opponent.pos, ship.pos));
@@ -635,20 +646,28 @@ export class FighterMissionSystem {
               : 0,
         };
       });
-    const peers = aliveShips
-      .filter(
-        (peer) =>
-          peer.isAlive &&
-          !peer.isDocked &&
-          peer.id !== ship.id &&
-          peer.team === ship.team &&
-          peer.hullClass === "strike_craft",
+    const peers: Array<{ direction: Vector2; distance: number }> = [];
+    const preparedGrid = navigation.separationGrid;
+    const grid = preparedGrid.ships === aliveShips ? preparedGrid : undefined;
+    grid?.query(ship, FIGHTER_CLEARANCE);
+    for (
+      let index = grid ? grid.nextIndex(0) : 0;
+      index < aliveShips.length;
+      index = grid ? grid.nextIndex(index + 1) : index + 1
+    ) {
+      const peer = aliveShips[index];
+      if (
+        !peer.isAlive ||
+        peer.isDocked ||
+        peer.id === ship.id ||
+        peer.team !== ship.team ||
+        peer.hullClass !== "strike_craft"
       )
-      .map((peer) => ({
-        direction: vecNormalize(vecSub(peer.pos, ship.pos)),
-        distance: vecDistance(peer.pos, ship.pos),
-      }))
-      .filter((peer) => peer.distance < FIGHTER_CLEARANCE);
+        continue;
+      const distance = vecDistance(peer.pos, ship.pos);
+      if (distance >= FIGHTER_CLEARANCE) continue;
+      peers.push({ direction: vecNormalize(vecSub(peer.pos, ship.pos)), distance });
+    }
     let bestSector = ship.lastSelectedSector ?? 0;
     let maxScore = -Infinity;
     let maxDangerObserved = 0;
