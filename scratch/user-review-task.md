@@ -15,12 +15,16 @@
 
 ## 2. Active Technical Backlog
 
-### 📝 User Review Feedback
-- **Paused performance HUD**: Investigate and fix the 60 ↔ 120 Hz sawtooth / comb in paused frame-time sampling; retain honest frame-time and low-FPS reporting.
-- **Corvette escort stagnation**: Without a valid friendly capital (for example 200 fighters + 17 corvettes vs 250 fighters), corvettes can remain stationary in escort formation. Fall back to advancing fleet screening or hunting rather than waiting at spawn for flak range.
-- **Obstacles and line of sight**: Investigate obstacle collisions and line-of-sight gating for missiles and other projectiles, and obstacle navigation for retreating craft; verify behavior on obstacle maps.
-- **2.5D tactical tilt**: Investigate the FPS drop, including hull sprite-cache bypass and projected canvas overhead. Polish containment shields and the tactical grid so tilted concentric boundaries do not resemble vinyl grooves.
-- **Profiler roadmap**: The multi-archetype headless rerun measured swarm 70.24 ms / 0.237× RTF, capitals 23.12 ms / 0.721×, and missiles 48.37 ms / 0.345×. Capitals and missiles improved from 35.27 / 63.67 ms, while swarm rose from 61.10 ms. Investigate the swarm regression, expand to mixed and point-defense workloads, and check browser RTF. See `games/space_battler/frontend/bench/archetypes_report.md` for methodology.
+### 📝 User Review Feedback (Progress & Status)
+- **Paused performance HUD (`7eb8d81`)**: Resolved. Eliminated 60 ↔ 120 Hz comb/sawtooth oscillation in paused frame-time sampling while preserving honest telemetry.
+- **Containment boundary visuals (`7eb8d81`)**: Resolved. Replaced harsh concentric vinyl-groove boundary rings under 2.5D tilt with smooth, subtle boundary glow.
+- **Cruiser obstacle flanking (`7eb8d81`)**: Resolved. Cruisers whose direct-fire LoS is blocked calculate tangent flanking waypoints around obstacle contours to restore firing solutions without deadlocking.
+- **Missile frigate asteroid shelter (`412acfe`)**: Resolved. Missile frigates facing heavy line direct-fire ships utilize asteroid directional cover while launching curved missiles, with threat-flank awareness.
+- **Display-refresh interpolation (`412acfe`)**: Resolved. Presentation Hermite interpolation runs at native display refresh rates (120–144 Hz) from 60 Hz Web Worker authoritative snapshots.
+- **Tender (Оберіг) shield support discipline (`b76c1c0`)**: Resolved. Tenders under fire maintain shield restoration in capital shield shadow instead of fleeing to the arena edge or idling in combat patrol.
+- **Swarm mission loops & spatial grid cell pruning (`7e0f701`)**: Resolved. Swarm 59.75 ms/tick; eliminated O(N) array filter/map allocations in fighter peer scans via spatial grid queries and O(1) team-wing indexing.
+- **Corvette escort stagnation (`58dbb77`)**: Resolved. Unanchored corvettes without capital anchors advance as forward screens, maintain wolfpack mutual support, and hunt enemy strike craft rather than stalling at spawn.
+- **Obstacles and line of sight**: Additional validation for retreat vectors and complex multi-obstacle maps.
 
 ### 🎮 Camera & Tactical Controls (Completed)
 - Battlefield pitch ranges from 90° to 25° via middle-drag or Ctrl+left-drag; empty-space double-click and the tilt pill restore 90°.

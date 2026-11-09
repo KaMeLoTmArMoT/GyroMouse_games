@@ -108,13 +108,15 @@ describe("bounded wolfpack hunting", () => {
     const other = ship("corvette", "other", 1);
     other.pos = [-2000, 0];
     const fleet = [hunter, enemy, other];
+    if (hull === "corvette") fleet.push(ship("battleship", "capital"));
     hunter.navigationTargetId = enemy.id;
     hunter.dogfightTargetId = enemy.id;
     expect(findNavigationTarget(hunter, order, fleet, enemy.id)).not.toBe(enemy);
     expect(dogfightTarget(hunter, fleet, 0)).toBeNull();
     if (hull !== "strike_craft" && hull !== "corvette")
       expect(capitalIntent(hunter, enemy, fleet, order).velocity[0]).toBeLessThanOrEqual(0);
-    if (hull === "corvette") expect(escortVelocity(hunter, enemy, [hunter, enemy])).toEqual([0, 0]);
+    if (hull === "corvette")
+      expect(escortVelocity(hunter, enemy, [hunter, enemy])[0]).toBeGreaterThan(0);
   });
 
   it("reserves a picket and pairs excess corvettes against isolated craft, prioritizing gunboats", () => {

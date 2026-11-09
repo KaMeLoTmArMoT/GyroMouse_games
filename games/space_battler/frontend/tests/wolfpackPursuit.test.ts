@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildFleetFromSlots } from "../src/engine/fleetBuilder";
-import { capitalIntent, withinPursuitTheater } from "../src/engine/flightControl";
+import {
+  capitalIntent,
+  escortVelocity,
+  orbitVelocity,
+  withinPursuitTheater,
+} from "../src/engine/flightControl";
 import {
   antiKitePursuitLimit,
   prepareNavigationContext,
@@ -158,6 +163,50 @@ describe("hull-aware isolated targets", () => {
 });
 
 describe("anti-kite pursuit", () => {
+  it.each([false, true])(
+    "unanchored corvettes pursue and advance toward spawn-distance fighters (cached=%s)",
+    (cached) => {
+      for (const lostCapital of [false, true]) {
+        const hunters = Array.from({ length: 3 }, (_, i) =>
+          ship("corvette", `hunter_${i}`, -i * 150),
+        );
+        const friendly = ship("strike_craft", "friendly", 250);
+        const enemy = ship("strike_craft", "enemy", 1800, 1);
+        const capital = ship("battleship", "capital", -500);
+        capital.isAlive = false;
+        if (lostCapital) for (const hunter of hunters) hunter.flagshipId = capital.id;
+        const ships = [...hunters, friendly, enemy, ...(lostCapital ? [capital] : [])];
+        if (cached) prepareNavigationContext(ships);
+        for (const hunter of hunters) {
+          expect(withinPursuitTheater(hunter, enemy, ships)).toBe(true);
+          const target = findNavigationTarget(hunter, order, ships);
+          expect(target).toBe(enemy);
+          hunter.navigationTargetId = enemy.id;
+          expect(escortVelocity(hunter, target, ships)[0]).toBeGreaterThan(0);
+          expect(escortVelocity(hunter, null, ships)[0]).toBeGreaterThan(0);
+          updateShipNavigation(hunter, target, ships, 1 / 60, new ClientCombatSimulation(), () => ({
+            heading: 0,
+            speed: 0,
+          }));
+          expect(hunter.navigationTargetId).toBe(enemy.id);
+          expect(hunter.velocity[0]).toBeGreaterThan(0);
+        }
+      }
+    },
+  );
+
+  it("unanchored wolfpack followers close their gap while advancing", () => {
+    const leader = ship("corvette", "hunter_0");
+    const follower = ship("corvette", "hunter_1", -150);
+    const enemy = ship("strike_craft", "enemy", 1800, 1);
+    const ships = [leader, follower, enemy];
+    prepareNavigationContext(ships);
+    const solo = orbitVelocity(follower, enemy);
+    const supported = escortVelocity(follower, enemy, ships);
+    expect(supported[0]).toBeGreaterThan(solo[0]);
+    expect(Math.hypot(...supported)).toBeLessThanOrEqual(follower.maxSpeed);
+  });
+
   it.each(heavyHulls)("%s calibrates its dynamic pursuit limit to the stock theater", (hull) => {
     expect(antiKitePursuitLimit(ship(hull, "hunter"))).toBeCloseTo(900);
   });

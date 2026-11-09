@@ -653,7 +653,15 @@ export function escortVelocity(
     }
   }
   if (target && !withinPursuitTheater(ship, target, ships)) target = null;
-  let anchor = ships.find((s) => s.isAlive && s.team === ship.team && s.id === ship.flagshipId);
+  let anchor = ships.find(
+    (s) =>
+      s.isAlive &&
+      !s.isDocked &&
+      !s.isDebris &&
+      s.team === ship.team &&
+      s.id === ship.flagshipId &&
+      isCapitalShip(s),
+  );
   if (!anchor) {
     const flagshipCounts = new Map<string, number>();
     for (const peer of ships) {
@@ -663,6 +671,8 @@ export function escortVelocity(
     const capitals = ships.filter(
       (s) =>
         s.isAlive &&
+        !s.isDocked &&
+        !s.isDebris &&
         s.team === ship.team &&
         (s.hullClass === "carrier" ||
           s.hullClass === "battleship" ||
@@ -677,12 +687,38 @@ export function escortVelocity(
     anchor = capitals[0];
     ship.flagshipId = anchor?.id;
   }
+  const pack = corvetteWolfpack(ship, ships);
+  if (!anchor && !target) {
+    const hunter = pack[0] ?? ship;
+    let closestDistance = Infinity;
+    // Share the pack leader's ingress bearing even before a pursuit lock is assigned.
+    for (const enemy of navigationContext(ships)?.teamEnemies.get(ship.team) ?? ships) {
+      if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team) continue;
+      const distance = distanceSquared(hunter, enemy);
+      if (
+        distance < closestDistance ||
+        (distance === closestDistance && target && enemy.id.localeCompare(target.id) < 0)
+      ) {
+        target = enemy;
+        closestDistance = distance;
+      }
+    }
+  }
   let engagementDistance = target?.hullClass === "cruiser" ? 230 : 300;
   if (target?.hullClass === "corvette") {
     for (const turret of ship.turrets)
       engagementDistance = Math.max(engagementDistance, turret.weapon.range * 0.8);
   }
-  if (!anchor) return target ? orbitVelocity(ship, target, engagementDistance) : [0, 0];
+  if (!anchor) {
+    if (!target) return [0, 0];
+    const leader = pack[0] ?? ship;
+    const cohesion =
+      ship === leader ? ([0, 0] as Vector2) : vecScale(vecSub(leader.pos, ship.pos), 0.25);
+    return limitVelocity(
+      vecAdd(orbitVelocity(ship, target, engagementDistance), cohesion),
+      ship.maxSpeed,
+    );
+  }
   const index = Number(ship.id.split("_").at(-1)) || 0;
   const side = index % 2 === 0 ? 1 : -1;
   const shieldRatio = ship.shieldCurrent / Math.max(1, ship.shieldMax);
@@ -710,7 +746,6 @@ export function escortVelocity(
     if (retreat) return retreat;
   }
   const stationVelocity = formationVelocity(ship, anchor, station);
-  const pack = corvetteWolfpack(ship, ships);
   if (target && pack.length >= 2 && vecDistance(ship.pos, anchor.pos) <= 900) {
     const radius = isCapitalShip(target)
       ? Math.max(300, escortCapitalStandoff(ship, target))
@@ -790,8 +825,9 @@ export function withinPursuitTheater(
   }
   const anchor = fleetDefenseAnchor(ship, ships);
   return (
-    vecDistance(ship.pos, target.pos) <= 600 &&
-    (!anchor || vecDistance(anchor.pos, target.pos) <= antiKitePursuitLimit(anchor))
+    !anchor ||
+    (vecDistance(ship.pos, target.pos) <= 600 &&
+      vecDistance(anchor.pos, target.pos) <= antiKitePursuitLimit(anchor))
   );
 }
 

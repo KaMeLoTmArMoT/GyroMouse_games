@@ -16,12 +16,10 @@ import {
   corvetteWolfpack,
   debrisAvoidanceVelocity,
   escortVelocity,
-  fleetDefenseAnchor,
   fleetReturnVelocity,
   limitVelocity,
   missileObstacleCoverVelocity,
   obstacleFlankingVelocity,
-  orbitVelocity,
   rescueRouteRisk,
   separation,
   spinalEscape,
@@ -525,24 +523,7 @@ export function updateShipNavigation(
     );
     targetHeading = Math.atan2(thrusterVelocity[1], thrusterVelocity[0]);
   } else if (ship.hullClass === "corvette") {
-    let orbit = escortVelocity(ship, target, aliveShips);
-    if (!target && !fleetDefenseAnchor(ship, aliveShips)) {
-      // Without a capital to defend, advance the screen instead of waiting at spawn.
-      // This is a movement waypoint, not a pursuit lock outside the local combat theater.
-      let screenTarget: ShipState | undefined;
-      let closestDistance = Infinity;
-      const enemies = navigationContext(aliveShips)?.teamEnemies.get(ship.team) ?? aliveShips;
-      for (const enemy of enemies) {
-        if (!enemy.isAlive || enemy.isDocked || enemy.isDebris || enemy.team === ship.team)
-          continue;
-        const distance = navigationDistanceSquared(ship, enemy);
-        if (distance < closestDistance) {
-          screenTarget = enemy;
-          closestDistance = distance;
-        }
-      }
-      if (screenTarget) orbit = orbitVelocity(ship, screenTarget);
-    }
+    const orbit = escortVelocity(ship, target, aliveShips);
     const avoid = vecAdd(
       separation(ship, aliveShips),
       spinalEscape(ship, aliveShips, context.projectiles, context.timeElapsed),
